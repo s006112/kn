@@ -340,7 +340,7 @@ class PretextHandler(FileSystemEventHandler):
             
             # Combine all results in correct order
             all_results.reverse()  # Reverse to get correct order
-            pretext_result = "\n-\n".join(all_results)
+            pretext_result = intelligent_merge_chunks(all_results)
             
             if not pretext_result:
                 raise ValueError("Empty combined response from OpenAI API")
@@ -652,6 +652,46 @@ def safe_rename(old_path, new_path):
     except Exception as e:
         logging.error(f"Rename failed {old_path} -> {new_path}: {e}")
         return old_path
+
+# --- Intelligent Chunk Merging ---
+def intelligent_merge_chunks(chunks, window=40, min_len=4):
+    """
+    Merge a list of text chunks, eliminating redundant overlapping content between adjacent chunks.
+    For each pair, find the longest common substring between the end of the previous chunk and the start of the next chunk (within a window).
+    """
+    if not chunks:
+        return ''
+    if len(chunks) == 1:
+        return chunks[0]
+
+    def longest_common_substring(a, b):
+        # Returns (start_a, start_b, length) of the longest common substring
+        max_len = 0
+        start_a = start_b = 0
+        dp = [[0] * (len(b) + 1) for _ in range(len(a) + 1)]
+        for i in range(1, len(a) + 1):
+            for j in range(1, len(b) + 1):
+                if a[i - 1] == b[j - 1]:
+                    dp[i][j] = dp[i - 1][j - 1] + 1
+                    if dp[i][j] > max_len:
+                        max_len = dp[i][j]
+                        start_a = i - max_len
+                        start_b = j - max_len
+        return start_a, start_b, max_len
+
+    merged = chunks[0]
+    for i in range(1, len(chunks)):
+        prev = merged[-window:] if len(merged) > window else merged
+        curr = chunks[i][:window] if len(chunks[i]) > window else chunks[i]
+        start_a, start_b, lcs_len = longest_common_substring(prev, curr)
+        if lcs_len >= min_len:
+            # Find the position in the full merged and current chunk
+            merged_pos = len(merged) - len(prev) + start_a
+            curr_pos = start_b + lcs_len
+            merged = merged[:merged_pos] + prev[start_a:start_a + lcs_len] + chunks[i][curr_pos:]
+        else:
+            merged += chunks[i]
+    return merged
 
 if __name__ == "__main__":
     main() 
