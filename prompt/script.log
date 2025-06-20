@@ -1,0 +1,13 @@
+18:03:52 - INFO - Starting text processor
+18:05:58 - INFO - Processing non-ASCII filename: 佛教最震撼的真理，《金剛經》揭示的『時間虛幻』真相，顛覆你的人生觀_p.txt
+18:05:58 - WARNING - Cannot rename 佛教最震撼的真理，《金剛經》揭示的『時間虛幻』真相，顛覆你的人生觀_p.txt to 佛教最震撼的真理，《金剛經》揭示的『時間虛幻』真相，顛覆你的人生觀_p.txt as target already exists. Using original name.
+18:05:58 - INFO - Added file to extract queue: C:\Users\KN\Desktop\Sync\Whisper\佛教最震撼的真理，《金剛經》揭示的『時間虛幻』真相，顛覆你的人生觀_p.txt
+18:05:58 - INFO - Processing pretext file: C:\Users\KN\Desktop\Sync\Whisper\佛教最震撼的真理，《金剛經》揭示的『時間虛幻』真相，顛覆你的人生觀_p.txt
+18:05:58 - INFO - Input text: 5,656 characters
+18:05:58 - INFO - Processing text: 5,692 characters
+18:06:09 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+18:06:09 - INFO - Response text: 938 characters
+18:06:09 - INFO - Output text: 938 characters
+18:06:09 - INFO - Processed and saved to: C:\Users\KN\Desktop\Sync\Whisper\Archive\Extract\佛教最震撼的真理，《金剛經》揭示的『時間虛幻』真相，顛覆你的人生觀_e_1.txt
+18:06:09 - INFO - Archived _p.txt to: C:\Users\KN\Desktop\Sync\Whisper\Archive\佛教最震撼的真理，《金剛經》揭示的『時間虛幻』真相，顛覆你的人生觀_p.txt
+18:11:15 - INFO - Program stopped

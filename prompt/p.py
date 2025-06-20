@@ -9,13 +9,13 @@ import threading
 import requests
 import sys
 from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
 from queue import Queue
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from xml.dom.minidom import parse
 
-# Testing
 
 # Configuration for text chunking
 CHUNK_SIZE = 2000
@@ -64,8 +64,11 @@ def call_openai_with_retry(client, model, messages, max_retries=3):
             logging.warning(f"API call failed (attempt {attempt + 1}): {str(e)}")
             time.sleep(wait_time)
 
-# Load environment variables from .env file
-load_dotenv()
+# Construct a Path to your .env file
+env_path = Path(r"C:\Users\KN\Desktop\Sync\Software") / ".env"
+
+# Load environment variables from that specific file
+load_dotenv(dotenv_path=env_path)
 
 # Configure logging with UTF-8 encoding
 class UTFStreamHandler(logging.StreamHandler):
