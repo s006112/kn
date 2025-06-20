@@ -15,6 +15,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from xml.dom.minidom import parse
 
+# Testing
 
 # Configuration for text chunking
 CHUNK_SIZE = 2000
