@@ -1,0 +1,11 @@
+sudo apt update && apt install pip -y 
+
+
+# Download packages for offline installation
+pip download Flask==3.0.3 
+
+# Offline package download commands
+pip install /desktop/Sync/Software/Linux/wheels_quote/*.whl
+
+Flask==3.0.3 
+

@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- Base layout for both quote and panelizer pages, extended by index_q.html and panelizer_only.html via app_q routes. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PCB Quote (Internal)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" href="/lt.png">
+<link href="{{ url_for('static', filename='quote.css') }}" rel="stylesheet">
+{% block head_extra %}{% endblock %}
+</head>
+{% set panelizer_only = panelizer_only|default(false) %}
+<body>
+<div class="page-layout">
+  <div class="page-main">
+    {% block main %}{% endblock %}
+  </div>
+  {% block sidebar %}{% endblock %}
+</div>
+{% block body_scripts %}{% endblock %}
+<script src="{{ url_for('static', filename='quote.js') }}"></script>
+</body>
+</html>

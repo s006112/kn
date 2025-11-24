@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>PCB Panelizer</title>
+  <link rel="icon" type="image/png" href="/lt.png">
+  <link rel="stylesheet" href="/static/panel.css">
+</head>
+<body class="panelizer-app">
+  <h1>PCB Panelizer by LT</h1>
+
+  <form method="GET" id="panelizer-form">
+    <div class="fieldset-row">
+      <fieldset>
+        <legend>Single PCB</legend>
+        <div>
+          <label for="SPW">Single width (SPW, mm)</label>
+          <input type="number" step="0.1" name="SPW" id="SPW" value="{{VAL_SPW}}"/>
+        </div>
+        <div>
+          <label for="SPL">Single length (SPL, mm)</label>
+          <input type="number" step="0.1" name="SPL" id="SPL" value="{{VAL_SPL}}"/>
+        </div>
+        <div>
+          <label for="ARS">Allow rotate single</label>
+          <input type="checkbox" name="ARS" id="ARS" {{CHK_ARS}}/>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Working Panel</legend>
+        <div>
+          <label for="EW_w">Panel edge width (EW_w, mm)</label>
+          <input type="number" step="0.1" name="EW_w" id="EW_w" value="{{VAL_EW_w}}"/>
+        </div>
+        <div>
+          <label for="EW_l">Panel edge length (EW_l, mm)</label>
+          <input type="number" step="0.1" name="EW_l" id="EW_l" value="{{VAL_EW_l}}"/>
+        </div>
+        <div class="checkbox-group">
+          <span>Panel sets</span>
+          <label class="panel-set-option"><input type="checkbox" name="SET_A" id="SET_A" {{CHK_SET_A}}/><span>A: 1245 x 1041</span></label>
+          <label class="panel-set-option"><input type="checkbox" name="SET_B" id="SET_B" {{CHK_SET_B}}/><span>B: 1245 x 1092</span></label>
+          <label class="panel-set-option"><input type="checkbox" name="SET_C" id="SET_C" {{CHK_SET_C}}/><span>C: 1295 x 1092</span></label>
+          <label class="panel-set-option"><input type="checkbox" name="SET_D" id="SET_D" {{CHK_SET_D}}/><span>D: 1245 x 2082</span></label>
+          <label class="panel-set-option"><input type="checkbox" name="SET_E" id="SET_E" {{CHK_SET_E}}/><span>E: 1295 x 2184</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Board Edge Margins</legend>
+        <div>
+          <label for="BMW">Board edge margin width (BMW, mm)</label>
+          <input type="number" step="0.1" name="BMW" id="BMW" value="{{VAL_BMW}}"/>
+        </div>
+        <div>
+          <label for="BML">Board edge margin length (BML, mm)</label>
+          <input type="number" step="0.1" name="BML" id="BML" value="{{VAL_BML}}"/>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Customer Board Limits</legend>
+        <div>
+          <label for="CBW">Max board width (CBW, mm)</label>
+          <input type="number" step="0.1" name="CBW" id="CBW" value="{{VAL_CBW}}"/>
+        </div>
+        <div>
+          <label for="CBL">Max board length (CBL, mm)</label>
+          <input type="number" step="0.1" name="CBL" id="CBL" value="{{VAL_CBL}}"/>
+        </div>
+        <div>
+          <label for="CBWM">Min board width (CBWM, mm)</label>
+          <input type="number" step="0.1" name="CBWM" id="CBWM" value="{{VAL_CBWM}}"/>
+        </div>
+        <div>
+          <label for="CBLM">Min board length (CBLM, mm)</label>
+          <input type="number" step="0.1" name="CBLM" id="CBLM" value="{{VAL_CBLM}}"/>
+        </div>
+        <div>
+          <label for="ARB">Allow rotate board</label>
+          <input type="checkbox" name="ARB" id="ARB" {{CHK_ARB}}/>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Gaps</legend>
+        <div>
+          <label for="CW">Inter-board gap W (CW, mm)</label>
+          <input type="number" step="0.1" name="CW" id="CW" value="{{VAL_CW}}"/>
+        </div>
+        <div>
+          <label for="CL">Inter-board gap L (CL, mm)</label>
+          <input type="number" step="0.1" name="CL" id="CL" value="{{VAL_CL}}"/>
+        </div>
+        <div>
+          <label for="SW">Inter-single gap W (SW, mm)</label>
+          <input type="number" step="0.1" name="SW" id="SW" value="{{VAL_SW}}"/>
+        </div>
+        <div>
+          <label for="SL">Inter-single gap L (SL, mm)</label>
+          <input type="number" step="0.1" name="SL" id="SL" value="{{VAL_SL}}"/>
+        </div>
+        <div>
+          <label for="KERF">Kerf (adds to all gaps, mm)</label>
+          <input type="number" step="0.1" name="KERF" id="KERF" value="{{VAL_KERF}}"/>
+        </div>
+      </fieldset>
+    </div>
+
+    <div class="controls">
+      <div>
+        <label for="LIMIT">Max rows</label>
+        <input type="number" step="1" name="LIMIT" id="LIMIT" value="{{VAL_LIMIT}}"/>
+      </div>
+      <span class="badge">{{STAR_BADGE}}</span>
+    </div>
+  </form>
+
+  <div id="results">
+    <p class="small" id="results-message">{{RESULTS_MESSAGE}}</p>
+    <table id="results-table" {{RESULTS_TABLE_ATTRS}}>
+      <thead>
+        <tr>
+          <th class="l">Rank</th>
+          <th>PCBs/Jumbo</th>
+          <th>PCBs/Panel</th>
+          <th>Panel WxL</th>
+          <th>Board WxL</th>
+          <th>Board size (mm)</th>
+          <th>Panel style</th>
+          <th>Panel size (mm)</th>
+          <th>Utilization</th>
+          <th>Rotation</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{RESULTS_ROWS}}
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+  (function(){
+    const f=document.getElementById('panelizer-form');
+    if(!f) return;
+    let pending=false;
+    const submit=()=>{pending=false; if(typeof f.requestSubmit==='function'){f.requestSubmit();}else{f.submit();}};
+    const queue=window.requestAnimationFrame?window.requestAnimationFrame.bind(window):function(cb){return setTimeout(cb,0);};
+    const schedule=()=>{if(pending)return;pending=true;queue(submit);};
+    f.addEventListener('input',schedule);
+    f.addEventListener('change',schedule);
+  })();
+  </script>
+</body>
+</html>

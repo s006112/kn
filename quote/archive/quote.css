@@ -1,0 +1,123 @@
+body {
+  margin: 8px;
+  padding: 8px;
+  font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, max-content));
+  gap: 10px;
+  justify-content: start;
+}
+
+label {
+  display: grid;
+  grid-template-columns: 100px auto;
+  align-items: center;
+  gap: 4px;
+  justify-items: start;
+}
+
+label input,
+label select {
+  width: 100px;
+  max-width: 100%;
+}
+
+input,
+select {
+  font: inherit;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+section {
+  margin: 12px 0;
+}
+
+form section {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 18px;
+  padding: 0;
+}
+
+form section h2 {
+  margin: 0;
+  align-self: start;
+}
+
+form section .grid {
+  grid-column: 2;
+}
+
+.page-layout {
+  display: grid;
+  gap: 24px;
+  align-items: start;
+}
+
+.summary-card {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 18px;
+  background: #f8fbff;
+}
+
+.summary-card h2 {
+  margin-top: 0;
+}
+
+.summary-placeholder {
+  color: #6b7280;
+  margin: 0;
+}
+
+@media (min-width: 960px) {
+  .page-layout {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+}
+
+@media (max-width: 640px) {
+  form section {
+    grid-template-columns: 1fr;
+  }
+
+  form section h2,
+  form section .grid {
+    grid-column: 1;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  label {
+    grid-template-columns: 1fr;
+  }
+
+  label input,
+  label select {
+    width: 100%;
+  }
+}
+
+.alert {
+  border: 1px solid #b91c1c;
+  color: #b91c1c;
+  padding: 8px;
+  border-radius: 6px;
+  margin: 10px 0;
+}
+
+.mono {
+  font-family: ui-monospace, Consolas, monospace;
+}

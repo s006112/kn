@@ -1,0 +1,76 @@
+<!-- Live quote summary sidebar only shown on full quote page; relies on pricing result values. -->
+<aside class="page-summary">
+  <section class="summary-card">
+    <h2>Live Summary</h2>
+    <div id="live-summary" class="grid">
+      {% if result %}
+      <ul class="mono">
+        <li>Material: {{ result.breakdown.material.total }}
+          <ul>
+            <li>{{ values.material or 'Laminate' }}: {{ result.breakdown.material.components.laminate }}</li>
+          </ul>
+        </li>
+        {% set multi_layer = result.breakdown.multi_layer %}
+        {% set ml_details = multi_layer.details %}
+        {% set ml_raw = multi_layer.raw %}
+        <li>Layers: {{ multi_layer.total }}
+          <ul>
+            <li>PP 层: {{ multi_layer.components.pp_cost }}
+              {% if ml_details.layers_lt_three %}(L&lt;3)
+              {% else %}(×{{ ml_details.pp_multiplier }}){% endif %}
+            </li>
+            <li>内层: {{ multi_layer.components.inner_cost }}
+              {% if ml_details.layers_lt_three %}(L&lt;3)
+              {% else %}(×{{ ml_details.inner_multiplier }}){% endif %}
+            </li>
+            <li>压合: {{ multi_layer.components.stacking_cost }}
+            </li>
+          </ul>
+        </li>
+        <li>Treatment: {{ result.breakdown.treatment.total }}
+          <ul>
+            <li>{{ values.finish or 'Finish' }}: {{ result.breakdown.treatment.components.finish }}</li>
+            <li>线路: {{ result.breakdown.treatment.components.etching }}</li>
+            <li>阻焊: {{ result.breakdown.treatment.components.masking }}</li>
+            <li>文字丝印: {{ result.breakdown.treatment.components.silkscreen }}</li>
+          </ul>
+        </li>
+        <li>CNC/panel: {{ result.breakdown.cnc.cnd_cost_panel }}
+          <ul>
+            <li>CNC Cost: {{ result.breakdown.cnc.components.cnc_pth }}</li>
+          </ul>
+        </li>
+        <li>Process: {{ result.breakdown.process.total }}
+          <ul>
+            <li>电铜: {{ result.breakdown.process.components.plating }}</li>
+            <li>锣板: {{ result.breakdown.process.components.routing }}</li>
+            <li>啤板: {{ result.breakdown.process.components.stamping }}</li>
+            <li>后工序: {{ result.breakdown.process.components.post_process }}</li>
+          </ul>
+        </li>
+        <li>Overhead: {{ result.breakdown.overhead.total }}
+          <ul>
+            <li>污水: {{ result.breakdown.overhead.components.water }}</li>
+            <li>电: {{ result.breakdown.overhead.components.electricity }}</li>
+            <li>人工: {{ result.breakdown.overhead.components.labor }}</li>
+          </ul>
+        </li>
+        <li>Others: {{ result.breakdown.others.total }}
+          <ul>
+            <li>损耗: {{ result.breakdown.others.loss }}</li>
+            <li>利润: {{ result.breakdown.others.margin }}</li>
+          </ul>
+        </li>
+      </ul>
+      <ul class="mono">
+        <li>Panel Cost: {{ result.cogs }}</li>
+        <li>开料件数: {{ result.breakdown.boards_per_panel }}</li>
+        <li>Unit Cost: {{ result.cogs_unit }}</li>
+        <li>Unit price: {{ result.price_unit }}</li>
+      </ul>
+      {% else %}
+      <p class="summary-placeholder">Fill out the form to see pricing details here.</p>
+      {% endif %}
+    </div>
+  </section>
+</aside>

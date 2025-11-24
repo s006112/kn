@@ -1,0 +1,186 @@
+<!-- Quote form partial included by index_q.html; receives context from services.build_quote_context. -->
+{% if error_msgs and error_msgs|length %}
+<div class="alert">
+  <ul>
+    {% for m in error_msgs %}<li>{{ m }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<form id="quote-form" method="post" novalidate data-default-json="{{ defaults|tojson|forceescape }}" data-default-material="{{ defaults.material|e }}" data-default-finish="{{ defaults.finish|e }}" data-default-masking="{{ defaults.masking|e }}" data-default-plating="{{ defaults.plating|e }}" data-default-substrate_thickness="{{ defaults.substrate_thickness|e }}" data-default-cu_thickness="{{ defaults.cu_thickness|e }}">
+  <section>
+    <h2>Materials</h2>
+    <div class="grid">
+      <label>板材
+        <select name="material" id="material-select">
+          {% for m in priced_options.material %}
+          <option value="{{ m }}" {% if values.material==m %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>基材厚度
+        <select name="substrate_thickness" id="substrate-thickness-select">
+          {% for option in substrate_thickness_options %}
+          <option value="{{ option }}" {% if values.substrate_thickness==option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>铜厚度
+        <select name="cu_thickness" id="cu-thickness-select">
+          {% for option in cu_thickness_options %}
+          <option value="{{ option }}" {% if values.cu_thickness==option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label id="material-price-field">
+        <span id="material-price-label">{{ (values.material or defaults.material) }}</span>
+        <input name="material_price" id="material-price-input" type="number" step="1" value="{{ material_price_value }}">
+      </label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Layers</h2>
+    <div class="grid">
+      <label>层数
+        <input name="layers" type="number" step="1" value="{{ values.layers }}">
+      </label>
+      <label>PP 层
+        <input name="pp_cost" type="number" step="1" min="0" value="{{ values.pp_cost }}">
+      </label>
+      <label>内层
+        <input name="inner_cost" type="number" step="1" min="0" value="{{ values.inner_cost }}">
+      </label>
+      <label>压合
+        <input name="stacking_cost" type="number" step="1" min="0" value="{{ values.stacking_cost }}">
+      </label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Treatment</h2>
+    <div class="grid">
+      <label>表面处理
+        <select name="finish" id="finish-select">
+          {% for f in priced_options.finish %}
+          <option value="{{ f }}" {% if values.finish==f %}selected{% endif %}>{{ f }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label id="finish-price-field">
+        <span id="finish-price-label">{{ (values.finish or defaults.finish) }}</span>
+        <input name="finish_price" id="finish-price-input" type="number" step="1" value="{{ finish_price_value }}">
+      </label>
+      <label>阻焊
+        <select name="masking" id="masking-select">
+          {% for mask in priced_options.masking %}
+          <option value="{{ mask }}" {% if values.masking==mask %}selected{% endif %}>{{ mask }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label id="masking-price-field">
+        <span id="masking-price-label">{{ (values.masking or defaults.masking) }}</span>
+        <input name="masking_price" id="masking-price-input" type="number" step="1" value="{{ masking_price_value }}">
+      </label>
+      <label>线路
+        <input name="etching_cost" type="number" step="1" value="{{ values.etching_cost }}">
+      </label>
+      <label>文字丝印
+        <input name="silkscreen_cost" type="number" step="1" value="{{ values.silkscreen_cost }}">
+      </label>
+    </div>
+  </section>
+
+  <section>
+    <h2>CNC</h2>
+    <div class="grid">
+      <label>PCB厚度
+        <select name="pcb_thickness" id="pcb-thickness-select">
+          {% for t in pcb_thickness_options %}
+          <option value="{{ t }}" {% if values.pcb_thickness==t %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>孔径
+        <select name="cnc_hole_dimension" id="cnc-hole-select">
+          {% for d in cnc_hole_dimension_options %}
+          <option value="{{ d }}" {% if values.cnc_hole_dimension==d %}selected{% endif %}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>每孔$$
+        <input name="cnc_pth_per_hole" type="number" step="0.0001" min="0" value="{{ params_values.cnc_pth_per_hole }}">
+      </label>
+      <label>钻孔数
+        <input name="cnc_pth_holes" type="number" step="1" min="0" value="{{ values.cnc_pth_holes }}">
+      </label>
+      <label>叠片数
+        <input name="stack_qty" id="stack-qty-input" type="number" step="1" min="1" value="{{ values.stack_qty }}">
+      </label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Process</h2>
+    <div class="grid">
+      <label>电铜
+        <select name="plating" id="plating-select">
+          {% for p in priced_options.plating %}
+          <option value="{{ p }}" {% if values.plating==p %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label id="plating-price-field">
+        <span id="plating-price-label">{{ (values.plating or defaults.plating) }}</span>
+        <input name="plating_price" id="plating-price-input" type="number" step="1" value="{{ plating_price_value }}">
+      </label>
+      <label>每锣寸
+        <input name="routing_per_inch" type="number" step="0.0001" min="0" value="{{ params_values.routing_per_inch }}">
+      </label>
+      <label>锣程 (寸)
+        <input name="routing_length" type="number" step="1" min="0" value="{{ values.routing_length }}">
+      </label>
+      <label>啤板
+        <input name="stamping_cost" type="number" step="1" min="0" value="{{ values.stamping_cost }}">
+      </label>
+      <label>后工序
+        <input name="post_process_cost" type="number" step="1" min="0" value="{{ values.post_process_cost }}">
+      </label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Overhead</h2>
+    <div class="grid">
+      <label>污水
+        <input name="sewage_water" type="number" step="1" value="{{ values.sewage_water }}">
+      </label>
+      <label>电
+        <input name="sewage_electricity" type="number" step="1" value="{{ values.sewage_electricity }}">
+      </label>
+      <label>人工
+        <input name="labor_cost" type="number" step="1" min="0" value="{{ params_values.labor_cost }}">
+      </label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Others</h2>
+    <div class="grid">
+      <label>开料件数
+        <input name="panel_boards" type="number" step="1" value="{{ values.panel_boards }}">
+      </label>
+      <label>损耗 (%)
+        <input name="loss_pct" type="number" step="0.1" min="0" max="100" value="{{ params_values.loss_pct }}">
+      </label>
+      <label>利润 (%)
+        <input name="margin_pct" type="number" step="0.5" min="0" value="{{ params_values.margin_pct }}">
+      </label>
+      <div class="grid-button">
+        <button type="button" id="persist-defaults" class="update-button">更新</button>
+      </div>
+    </div>
+  </section>
+
+</form>
+<hr>

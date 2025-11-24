@@ -1,0 +1,10 @@
+__pycache__/
+panel.log
+.vscode-server/
+.gnupg/
+.cache/
+presets.local.json
+presets_qp.local.json
+presets_q.local.json
+*.local.json
+wheelhouse/

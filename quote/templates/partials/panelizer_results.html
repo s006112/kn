@@ -1,0 +1,44 @@
+<!-- Panelizer results table fragment updated via quote.js fetch responses; fed by services summaries. -->
+<section id="panelizer-results" class="panelizer-results results">
+  {% if panelizer_error %}
+  <p class="alert mono">{{ panelizer_error }}</p>
+  {% endif %}
+  {% if panelizer_summary %}
+
+  <table id="results-table" class="panelizer-table" {{ panelizer_summary.table_attrs|safe }}>
+    <thead>
+      <tr>
+        <th class="l">Rank</th>
+        <th>PCBs/Jumbo</th>
+        <th>PCBs/Panel</th>
+        <th>Panel WxL</th>
+        <th>Board WxL</th>
+        <th>Board size (mm)</th>
+        <th>Panel style</th>
+        <th>Panel size (mm)</th>
+        <th>Utilization</th>
+        <th>Rotation</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in panelizer_summary.rows %}
+      {% set rotation = (('B' if row.board_rot else '') + ('S' if row.single_rot else '')) or '—' %}
+      {% set star = ' ★' if panelizer_summary.max_pcbs_per_jumbo is not none and row.pcbs_per_jumbo == panelizer_summary.max_pcbs_per_jumbo else '' %}
+      <tr>
+        <td class="l">{{ loop.index }}{{ star }}</td>
+        <td>{{ row.pcbs_per_jumbo }}</td>
+        <td>{{ row.total_single_pcbs }}</td>
+        <td>{{ row.nbw }}×{{ row.nbl }}</td>
+        <td>{{ row.nw }}×{{ row.nl }}</td>
+        <td>{{ "%.1f×%.1f"|format(row.board_w, row.board_l) }}</td>
+        <td>{{ row.panel_style }}</td>
+        <td>{{ "%.1f×%.1f"|format(row.panel_width, row.panel_length) }}</td>
+        <td>{{ "%.2f%%"|format(row.utilization * 100) }}</td>
+        <td>{{ rotation }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="small" id="panelizer-results-message">{{ panelizer_summary.message }}</p>
+  {% endif %}
+</section>

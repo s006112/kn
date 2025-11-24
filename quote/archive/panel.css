@@ -1,0 +1,161 @@
+:root {
+  --line: #ddd;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 12px;
+  padding: 12px;
+  font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #0f172a;
+  background: #fff;
+}
+
+h1 {
+  margin: 0 0 16px;
+  font-size: 1.6rem;
+}
+
+label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.95rem;
+  color: #1f2937;
+}
+
+.fieldset-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.fieldset-row fieldset {
+  min-width: 0;
+}
+
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+
+legend {
+  padding: 0 6px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.checkbox-group {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.checkbox-group span {
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
+.panel-set-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: #1f2937;
+}
+
+input[type=number] {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+input[type=checkbox] {
+  margin-right: 4px;
+  transform: translateY(1px);
+}
+
+.controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.badge {
+  padding: 2px 6px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  font-size: 0.85rem;
+  color: #374151;
+}
+
+#results {
+  margin-top: 20px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 0.95rem;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 6px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+th {
+  background: #f8f8f8;
+  font-weight: 600;
+}
+
+td.l,
+th.l {
+  text-align: left;
+}
+
+.small {
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+pre {
+  background: #f6f6f6;
+  padding: 8px;
+  border-radius: 6px;
+  overflow: auto;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 640px) {
+  body {
+    padding: 10px;
+    font-size: 15px;
+  }
+
+  .fieldset-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .controls {
+    flex-wrap: wrap;
+  }
+
+  table {
+    font-size: 0.9rem;
+  }
+}

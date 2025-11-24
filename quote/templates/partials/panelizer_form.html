@@ -1,0 +1,109 @@
+<!-- Panelizer configuration form shared by quote and panelizer-only templates; data comes from services layer. -->
+{% set pv = panelizer_values or {} %}
+{% set panelizer_set_options = [
+  {"field": "include_set_A", "input": "SET_A", "label": "A: 1245 x 1041"},
+  {"field": "include_set_B", "input": "SET_B", "label": "B: 1245 x 1092"},
+  {"field": "include_set_C", "input": "SET_C", "label": "C: 1295 x 1092"},
+  {"field": "include_set_D", "input": "SET_D", "label": "D: 1245 x 2082"},
+  {"field": "include_set_E", "input": "SET_E", "label": "E: 1295 x 2184"},
+] %}
+<form id="panelizer-form" method="post" novalidate {% if panelizer_only %}action="{{ url_for('panelizer_only') }}"{% endif %} data-default-json="{{ panelizer_defaults|tojson|forceescape }}">
+
+  <section>
+    <h2>大料规格</h2>
+    <div class="grid">
+      {% for option in panelizer_set_options %}
+      <label>{{ option.label }}
+        <input type="checkbox" name="{{ option.input }}" id="{{ option.input }}" {% if pv.get(option.field) %}checked{% endif %}>
+      </label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section>
+    <h2>单板尺寸</h2>
+    <div class="grid">
+      <label>Width (SPW)
+        <input type="number" step="0.01" name="SPW" id="SPW" value="{{ pv.single_pcb_width_max|default('', false) }}">
+      </label>
+      <label>Length (SPL)
+        <input type="number" step="0.01" name="SPL" id="SPL" value="{{ pv.single_pcb_length_max|default('', false) }}">
+      </label>
+    </div>
+  </section>
+
+  <section>
+    <h2>工作板边</h2>
+    <div class="grid">
+      <label>Width (PEW)
+        <input type="number" step="0.2" name="PEW" id="PEW" value="{{ pv.panel_edge_margin_w|default('', false) }}">
+      </label>
+      <label>Length (PEL)
+        <input type="number" step="0.2" name="PEL" id="PEL" value="{{ pv.panel_edge_margin_l|default('', false) }}">
+      </label>
+    </div>
+  </section>
+
+  <section>
+    <h2>连片板边</h2>
+    <div class="grid">
+      <label>Width (BMW)
+        <input type="number" step="0.2" name="BMW" id="BMW" value="{{ pv.board_edge_margin_w|default('', false) }}">
+      </label>
+      <label>Length (BML)
+        <input type="number" step="0.2" name="BML" id="BML" value="{{ pv.board_edge_margin_l|default('', false) }}">
+      </label>
+    </div>
+  </section>
+
+  <section>
+    <h2>拼板</h2>
+    <div class="grid">
+      <label>Max W (CBW)
+        <input type="number" step="1" name="CBW" id="CBW" value="{{ pv.customer_board_width_max|default('', false) }}">
+      </label>
+      <label>Max L (CBL)
+        <input type="number" step="1" name="CBL" id="CBL" value="{{ pv.customer_board_length_max|default('', false) }}">
+      </label>
+      <label>Min W (CBWM)
+        <input type="number" step="1" name="CBWM" id="CBWM" value="{{ pv.customer_board_width_min|default('', false) }}">
+      </label>
+      <label>Min L (CBLM)
+        <input type="number" step="1" name="CBLM" id="CBLM" value="{{ pv.customer_board_length_min|default('', false) }}">
+      </label>
+    </div>
+  </section>
+
+  <section>
+    <h2>间隔</h2>
+    <div class="grid">
+      <label>拼板 W (CW)
+        <input type="number" step="0.2" name="CW" id="CW" value="{{ pv.inter_board_gap_w|default('', false) }}">
+      </label>
+      <label>拼板 L (CL)
+        <input type="number" step="0.2" name="CL" id="CL" value="{{ pv.inter_board_gap_l|default('', false) }}">
+      </label>
+      <label>单板 W (SW)
+        <input type="number" step="0.2" name="SW" id="SW" value="{{ pv.inter_single_gap_w|default('', false) }}">
+      </label>
+      <label>单板 L (SL)
+        <input type="number" step="0.2" name="SL" id="SL" value="{{ pv.inter_single_gap_l|default('', false) }}">
+      </label>
+    </div>
+  </section>
+
+  <section class="form-controls">
+    <h2>Display</h2>
+    <div class="grid">
+      <label>Max rows
+        <input type="number" step="1" name="LIMIT" id="LIMIT" value="{{ pv.limit|default('', false) }}">
+      </label>
+      <label>单板旋转
+        <input type="checkbox" name="ARS" id="ARS" {% if pv.allow_rotate_single_pcb|default(false) %}checked{% endif %}>
+      </label>
+      <label>拼板旋转
+        <input type="checkbox" name="ARB" id="ARB" {% if pv.allow_rotate_board|default(false) %}checked{% endif %}>
+      </label>
+    </div>
+  </section>
+</form>

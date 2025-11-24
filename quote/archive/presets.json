@@ -1,0 +1,142 @@
+{
+  "defaults": {
+    "units": "mm",
+    "layers": 2,
+    "panel_boards": 240,
+    "stack_qty": 3,
+    "cnc_pth_holes": 125,
+    "material": "KB6160A",
+    "finish": "HASL",
+    "plating": "24um",
+    "masking": "普通",
+    "silkscreen_cost": 2.0,
+    "etching_cost": 3.0,
+    "cutting_cost": 8.0,
+    "routing_length": 100.0,
+    "stamping_cost": 1.0,
+    "post_process_cost": 1.0,
+    "sewage_water": 30.0,
+    "sewage_electricity": 2.0,
+    "margin_pct": 5.0,
+    "overheads_pct": 10.0,
+    "yield_pct": 98.0,
+    "cnc_pth_per_hole": 0.0034,
+    "routing_per_inch": 0.01,
+    "pcb_thickness": "1.2 mm",
+    "pcb_thickness_options": {
+      "1.0 mm": 1.0,
+      "1.2 mm": 1.2,
+      "1.6 mm": 1.6
+    },
+    "cnc_hole_dimension": "<0.45 mm",
+    "cnc_hole_dimension_options": {
+      "<0.35 mm": 0.35,
+      "<0.45 mm": 0.45,
+      "<0.55 mm": 0.55
+    },
+    "material_costs": {
+      "KB6160A": 115.0,
+      "Rogers 4350B": 45.0
+    },
+    "finish_costs": {
+      "HASL": 21.0,
+      "ENIG": 30.0,
+      "OSP": 10.0
+    },
+    "masking_costs": {
+      "普通": 5.0,
+      "其他": 10.0
+    },
+    "plating_costs": {
+      "24um": 5.0,
+      "29um": 10.0,
+      "35um": 15.0
+    },
+    "stack_qty_map": {
+      "1.6 mm": {
+        "<0.35 mm": 2,
+        "<0.45 mm": 3,
+        "<0.55 mm": 3
+      },
+      "1.2 mm": {
+        "<0.35 mm": 3,
+        "<0.45 mm": 3,
+        "<0.55 mm": 4
+      },
+      "1.0 mm": {
+        "<0.35 mm": 3,
+        "<0.45 mm": 4,
+        "<0.55 mm": 5
+      }
+    }
+  },
+  "panelizer_defaults": {
+    "customer_board_width_max": 350.0,
+    "customer_board_length_max": 400.0,
+    "customer_board_width_min": 80.0,
+    "customer_board_length_min": 80.0,
+    "single_pcb_width_max": 52.0,
+    "single_pcb_length_max": 76.2,
+    "panel_edge_margin_w": 5.0,
+    "panel_edge_margin_l": 5.0,
+    "board_edge_margin_w": 5.0,
+    "board_edge_margin_l": 0.0,
+    "inter_board_gap_w": 2.0,
+    "inter_board_gap_l": 2.0,
+    "inter_single_gap_w": 0.0,
+    "inter_single_gap_l": 0.0,
+    "allow_rotate_board": true,
+    "allow_rotate_single_pcb": true,
+    "kerf_allowance": 0.0,
+    "limit": 20,
+    "include_set_A": true,
+    "include_set_B": true,
+    "include_set_C": true,
+    "include_set_D": false,
+    "include_set_E": false
+  },
+  "panelizer_panel_options": {
+    "A1": [520.5, 622.5],
+    "A2": [415.0, 622.5],
+    "A3": [347.0, 622.5],
+    "A4": [520.5, 415.0],
+    "B1": [546.0, 622.5],
+    "B2": [415.0, 622.5],
+    "B3": [415.0, 546.0],
+    "B4": [364.0, 622.5],
+    "C1": [546.0, 647.5],
+    "C2": [431.6, 647.5],
+    "C3": [431.6, 546.0],
+    "C4": [364.0, 647.5],
+    "D1": [520.5, 694.0],
+    "D2": [415.0, 694.0],
+    "D3": [416.4, 622.5],
+    "D4": [365.0, 622.5],
+    "E1": [546.0, 728.0],
+    "E2": [431.5, 728.0],
+    "E3": [436.8, 647.5],
+    "E4": [384.1, 647.5]
+  },
+  "panelizer_jumbo_multiplier": {
+    "A1": 4,
+    "A2": 5,
+    "A3": 6,
+    "A4": 6,
+    "B1": 4,
+    "B2": 5,
+    "B3": 6,
+    "B4": 6,
+    "C1": 4,
+    "C2": 5,
+    "C3": 6,
+    "C4": 6,
+    "D1": 7,
+    "D2": 9,
+    "D3": 10,
+    "D4": 11,
+    "E1": 7,
+    "E2": 9,
+    "E3": 10,
+    "E4": 11
+  }
+}

@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+<!-- Full quote workflow page; app_q.index renders this and includes shared partials and JS data blobs. -->
+
+{% block main %}
+  {% if not panelizer_only %}
+    {% include "partials/quote_form.html" %}
+  {% endif %}
+  {% include "partials/panelizer_form.html" %}
+  {% include "partials/panelizer_results.html" %}
+{% endblock %}
+
+{% block sidebar %}
+  {% if not panelizer_only %}
+    {% include "partials/summary_sidebar.html" %}
+  {% endif %}
+{% endblock %}
+
+{% block body_scripts %}
+  {% if not panelizer_only %}
+  <script id="priced-costs-data" type="application/json">{{ priced_costs|tojson }}</script>
+  <script id="priced-fields-config" type="application/json">{{ priced_client_config|tojson }}</script>
+  <script id="stack-qty-map" type="application/json">{{ stack_qty_map|tojson }}</script>
+  {% endif %}
+{% endblock %}
