@@ -1,0 +1,26 @@
+pip download accelerate # not yet
+
+
+sudo apt update && apt install pip -y 
+sudo pip install kernels triton==3.4.0 protobuf sentencepiece
+
+huggingface_hub==0.25.2
+transformers
+accelerate
+jinja2==3.1.6
+
+# Linux Mint + VSC + container
+cd /desktop/Sync/Software/Windows/torch-cu128-20250723     
+pip install --no-index --find-links=. torch==2.9.0.dev20250723+cu128
+
+huggingface-cli login
+Token = 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
+
+
+
+"Please explain the term of 'Fourier transform' concisely and eleborate as much as you can."
+"What is philosophy. Please express your own thought in a complete passage."
+"If you had a time machine, but could only go to the past or the future once and never return, which would you choose and why?"
+"I am an adult."
+"How are you?"
+"Please explain the term of 'philosophy' itself concisely based on your understanding and eleborate as much as you can. Answer in Chinese only"

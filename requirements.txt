@@ -14,23 +14,23 @@ pip download -d /wheels --only-binary=:all: gradio==5.46.0 gradio_client==1.13.0
 pip download -d /wheels --only-binary=:all: watchdog==6.0.0 numpy==2.2.6 perplexityai==0.20.0 sounddevice==0.5.3 # whisper
 pip download -d /wheels setuptools wheel build # build tools
 pip download -d /wheels openai-whisper # no wheels available, only source package
-
-
+pip download -d /wheels --only-binary=:all: kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
 
 # offline install apt
 sudo apt-get install -y --no-download python3-pip # install from cached .deb
-sudo apt-get install -y --no-download ghostscript # per
+sudo apt-get install -y --no-download ghostscript tesseract-ocr # per
 sudo apt-get install -y --no-download ffmpeg alsa-utils pulseaudio portaudio19-dev python3-pyaudio # whisper
 
 # offline install wheels
-pip install --no-index --find-links=/wheels Flask
-pip install --no-index --find-links=/wheels python-dotenv openai requests jinja2
+pip install --no-index --find-links=/wheels python-dotenv==1.2.1 openai==2.8.1 jinja2==3.1.6 requests=
+pip install --no-index --find-links=/wheels Flask==3.1.2
 pip install --no-index --find-links=/wheels gradio==5.46.0 gradio_client==1.13.0 
 pip install --no-index --find-links=/wheels PyMuPDF==1.24.10 ocrmypdf==16.11.0
-pip install --no-index --find-links=/desktop/Sync/Software/Windows/torch-cu128-20250723 torch==2.9.0.dev20250723+cu128
 pip install --no-index --find-links=/wheels watchdog==6.0.0 numpy==2.2.6 perplexityai==0.20.0 sounddevice==0.5.3 # whisper
 pip install --no-index --find-links=/wheels openai-whisper==20240930 # 只有 源码包（.tar.gz）
-
+pip install --no-index --find-links=/wheels scipy==1.15.3 opencv_python_headless==4.12.0.88 # curve_extract
+pip install --no-index --find-links=/wheels kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
+pip install --no-index --find-links=/wheels transformers==4.57.1 # llm
 
 # common
 python-dotenv==1.2.1
@@ -47,6 +47,34 @@ gradio_client==1.13.0
 PyMuPDF==1.24.10
 ocrmypdf==16.11.0
 
+# whisper
+watchdog==6.0.0
+numpy==2.2.6
+perplexityai==0.20.0
+sounddevice==0.5.3
+openai-whisper==20240930
 
 
+# curve_extract
+scipy==1.15.3
+opencv_python_headless==4.12.0.88
 
+# llm
+huggingface_hub==1.1.5
+kernels==0.11.1
+accelerate==1.12.0
+protobuf==6.33.1
+sentencepiece==0.2.1
+transformers==4.57.1
+
+# huggingface-cli login
+# Token = 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
+
+"Please explain the term of 'Fourier transform' concisely and eleborate as much as you can."
+"What is philosophy. Please express your own thought in a complete passage."
+"If you had a time machine, but could only go to the past or the future once and never return, which would you choose and why?"
+"I am an adult."
+"How are you?"
+"Please explain the term of 'philosophy' itself concisely based on your understanding and eleborate as much as you can. Answer in Chinese only"
+
+pip install --no-index --find-links=/desktop/Sync/Software/Windows/torch-cu128-20250723 torch==2.9.0.dev20250723+cu128

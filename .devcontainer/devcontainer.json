@@ -21,7 +21,8 @@
     "source=${localEnv:HOME}/Desktop/Sync/Software/Linux/offline-cache/apt-archives,target=/var/cache/apt/archives,type=bind",
     "source=${localEnv:HOME}/Desktop/Sync/Software/Linux/offline-cache/pip-wheels,target=/wheels,type=bind",
     // 可选：映射主机 ALSA 配置（增强兼容性）
-    "source=/etc/asound.conf,target=/etc/asound.conf,type=bind,consistency=cached"
+    "source=/etc/asound.conf,target=/etc/asound.conf,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/Desktop/Sync/Software/Linux/hf_models,target=/root/.cache/huggingface/hub,type=bind"
   ],
   
   "containerEnv": {

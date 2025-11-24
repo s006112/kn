@@ -1,0 +1,21 @@
+{
+  "name": "oss-dev",
+  "image": "ubuntu:22.04-custom",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+
+  "runArgs": [
+    "--name=oss-dev",
+    "--gpus=all"
+  ],
+
+  "mounts": [
+    "source=${localEnv:HOME}/Desktop,target=/desktop,type=bind",
+    "source=${localEnv:HOME}/Desktop/Sync/Software/Linux/hf_models,target=/root/.cache/huggingface/hub,type=bind"
+  ],
+
+  "containerEnv": {
+    "NVIDIA_VISIBLE_DEVICES": "all",
+    "NVIDIA_DRIVER_CAPABILITIES": "compute,utility,graphics"
+  }
+}
