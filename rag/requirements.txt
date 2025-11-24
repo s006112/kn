@@ -1,0 +1,34 @@
+
+# 01_email.py
+python-dotenv==1.0.0
+bs4==0.0.2
+python-docx==0.8.11
+fitz==0.0.1.dev2
+PyMuPDF==1.26.3
+psutil==5.8.0
+openpyxl==3.1.5
+xlrd==2.0.1
+ocrmypdf==16.11.0
+# sudo apt install tesseract-ocr
+# sudo apt install ghostscript
+# sudo apt-get install tesseract-ocr-chi-sim tesseract-ocr-chi-tra
+
+
+# 02_embedd.py
+# CPU: pip install torch --pre --index-url https://download.pytorch.org/whl/nightly/cpu
+# GPU: pip install --no-index --find-links /mnt/c/Users/KN/Desktop/Sync/Software/Windows/torch-cu128-20250723 torch==2.9.0.dev20250723+cu128
+faiss-gpu==1.7.2
+sentence-transformers==5.1.0
+transformers==4.56.0
+orjson==3.11.2
+einops==0.8.1     # dependency comes from jinaai/jina-embeddings-v3
+
+# 03_web.py
+numpy==1.26.2
+openai==1.102.0
+gradio==5.44.1
+fastapi==0.116.1
+uvicorn==0.35.0
+
+
+

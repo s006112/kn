@@ -1,0 +1,19 @@
+# Bytecode
+__pycache__/
+*.pyc
+.env
+.state
+
+# IDE files
+.vscode/
+data/
+logs/
+index/
+index/archive/
+*.swp
+*.log
+*.png
+
+# OS
+.DS_Store
+Thumbs.db

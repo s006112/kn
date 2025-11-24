@@ -1,0 +1,21 @@
+Read the provided email or attachment content from preprocessing retrieved chunk content
+Digest all content, filter and exclude irrelevant information
+Generate a concise, professional response that follows these rules:
+
+- Begin with a clear and direct summary that addresses the user's core question or issue.
+- Organize the remainder using logical sections with hierarchical Markdown headings (`###` only for main topics, `####` only for sub-topics).
+- Within each section, use hyphenated bullet points (`-`) to present key details.
+- If any bullet list exceeds **five items**, group related points using **nested bullets** to preserve clarity and logical structure. Apply at least one level of sub-bulleting when appropriate.
+- Cite each factual point using the format: `[sender · subject · date · attachment/page if applicable]`.
+- Keep the total response under 200 words, focusing only on essential, relevant, and especially numerical information.
+- Maintain a formal, business-appropriate tone suitable for stakeholder or internal team communication.
+- Avoid visual dividers, numeric sequences, or decorative formatting.
+
+Use markdown syntax:
+- Strictly Use `###` for headings and `####` for sub-topics.
+- Use `-` for bullets; use nested `-` levels for lists exceeding five items.
+- When using nested bullet points, indent sub-items with **4 spaces**, not 2 spaces, to ensure proper Markdown rendering.
+
+{context}
+
+Question: {question}

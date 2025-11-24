@@ -1,0 +1,106 @@
+# sudo apt-get install -y antiword catdoc libreoffice-common
+
+# 01_email.py
+bs4==0.0.2
+fitz==0.0.1.dev2
+python-docx==0.8.11
+langchain==0.3.27
+openai==1.0.0
+python-dotenv==1.0.0
+
+# Text processing
+typing-extensions
+Flask==2.3.0
+markdown==3.0
+
+# PDF processing
+PyMuPDF
+frontend
+
+# Excel processing
+pandas==2.3.1
+openpyxl==3.1.5
+xlrd==2.0.1
+
+# System monitoring
+psutil==5.8.0
+
+# 02_build_index.py
+faiss-gpu
+numpy==1.26.2
+langchain-huggingface
+langchain_community
+sentence-transformers==2.2.0
+pip install einops
+# GPU acceleration dependencies
+# pip install --no-index \
+#  --find-links /mnt/c/Users/KN/Desktop/Sync/Software/Windows/torch-cu128-20250723 \
+#  torch==2.9.0.dev20250723+cu128
+
+
+# 04_web
+langchain-
+
+
+
+
+
+
+
+# ── Core config / validation
+python-dotenv==1.0.0
+python-docx==0.8.11
+PyMuPDF==1.26.3
+openpyxl==3.1.5
+xlrd==2.0.1
+fitz==0.0.1.dev2
+orjson==3.11.2
+psutil==5.8.0
+bs4==0.0.2
+
+
+# ── LLM / embeddings
+openai==1.102.0
+huggingface-hub==0.34.4
+transformers==4.55.4
+sentence-transformers==5.1.0
+#tiktoken==0.11.0
+
+
+
+# ── Vector index (GPU)
+faiss-gpu==1.7.2
+numpy==1.26.2
+#scikit-learn==1.7.1
+
+# ── LangChain (現有程式有用)
+langchain-community==0.3.27
+langchain-openai==0.3.32
+langchain-huggingface==0.3.1
+
+
+# ── UI / API
+gradio==5.44.1
+fastapi==0.116.1
+uvicorn==0.35.0
+einops==0.8.1
+
+# ── PyTorch (GPU nightly)
+# Option A: version pin
+# torch==2.9.0.dev20250726+cu128 --index-url https://download.pytorch.org/whl/nightly/cu128
+
+# Option B: direct wheel
+https://download.pytorch.org/whl/nightly/cu128/torch-2.9.0.dev20250723%2Bcu128-cp310-cp310-manylinux_2_28_x86_64.whl
+
+
+
+# pip install numpy==1.26.2 faiss-gpu==1.7.2 langchain-community==0.3.27 gradio==5.44.1 fastapi==0.116.1 uvicorn==0.35.0 python-dotenv==1.0.0 langchain-huggingface==0.3.1 langchain-openai==0.3.32 einops==0.8.1 sentence-transformers==5.1.0
+# pip install torch==2.9.0.dev20250726+cu128 --index-url https://download.pytorch.org/whl/nightly/cu128
+# pip install https://download.pytorch.org/whl/nightly/cu128/torch-2.9.0.dev20250723%2Bcu128-cp310-cp310-manylinux_2_28_x86_64.whl
+
+#pydantic==2.11.7
+#langchain-text-splitters==0.3.9
+#langchain-core==0.3.74
+
+
+

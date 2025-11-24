@@ -2,9 +2,8 @@
 sudo apt-get update # update package lists
 sudo apt-get autoclean   #只会删除「过期的 .deb」
 sudo apt-get install -y --download-only python3-pip # download .deb
-sudo apt-get install -y --download-only ghostscript tesseract-ocr # per
+sudo apt-get install -y --download-only ghostscript tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra # per
 sudo apt-get install -y --download-only ffmpeg alsa-utils pulseaudio portaudio19-dev python3-pyaudio # whisper
-
 
 # download wheels
 pip index versions xxxxx # check versions
@@ -18,14 +17,14 @@ pip download -d /wheels --only-binary=:all: kernels==0.11.1 accelerate==1.12.0 p
 
 # offline install apt
 sudo apt-get install -y --no-download python3-pip # install from cached .deb
-sudo apt-get install -y --no-download ghostscript tesseract-ocr # per
+sudo apt-get install -y --no-download ghostscript tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra # per
 sudo apt-get install -y --no-download ffmpeg alsa-utils pulseaudio portaudio19-dev python3-pyaudio # whisper
+sudo apt-get install -y --no-download tesseract-ocr-chi-sim tesseract-ocr-chi-tra
 
 # offline install wheels
-pip install --no-index --find-links=/wheels python-dotenv==1.2.1 openai==2.8.1 jinja2==3.1.6 requests=
-pip install --no-index --find-links=/wheels Flask==3.1.2
-pip install --no-index --find-links=/wheels gradio==5.46.0 gradio_client==1.13.0 
-pip install --no-index --find-links=/wheels PyMuPDF==1.24.10 ocrmypdf==16.11.0
+pip install --no-index --find-links=/wheels python-dotenv==1.2.1 openai==2.8.1 jinja2==3.1.6 requests==2.32.5 gradio==5.46.0 gradio_client==1.13.0 # per
+pip install --no-index --find-links=/wheels PyMuPDF==1.24.10 ocrmypdf==16.11.0 # per
+pip install --no-index --find-links=/wheels Flask==3.1.2 # quote
 pip install --no-index --find-links=/wheels watchdog==6.0.0 numpy==2.2.6 perplexityai==0.20.0 sounddevice==0.5.3 # whisper
 pip install --no-index --find-links=/wheels openai-whisper==20240930 # 只有 源码包（.tar.gz）
 pip install --no-index --find-links=/wheels scipy==1.15.3 opencv_python_headless==4.12.0.88 # curve_extract
@@ -35,12 +34,13 @@ pip install --no-index --find-links=/wheels transformers==4.57.1 # llm
 # common
 python-dotenv==1.2.1
 openai==2.8.1
+transformers==4.57.1
 
 # quote
 Flask==3.1.2
 
 # per
-requests==2.25.1
+requests==2.32.5
 jinja2==3.1.6
 gradio==5.46.0
 gradio_client==1.13.0
@@ -65,7 +65,31 @@ kernels==0.11.1
 accelerate==1.12.0
 protobuf==6.33.1
 sentencepiece==0.2.1
-transformers==4.57.1
+
+# rag-01_email.py
+bs4==0.0.2
+python-docx==0.8.11
+# fitz==0.0.1.dev2
+# PyMuPDF==1.26.3
+psutil==5.8.0
+openpyxl==3.1.5
+xlrd==2.0.1
+
+# rag-02_embedd.py
+faiss-gpu==1.7.2
+sentence-transformers==5.1.0
+orjson==3.11.2
+einops==0.8.1     # dependency comes from jinaai/jina-embeddings-v3
+
+# 03_web.py, need re-write to adapt openai==2.8.1, was openai==1.102.0
+numpy==1.26.2 # check if conflict with numpy==2.2.6
+gradio==5.44.1 # need re-write to adapt gradio==5.46.0
+fastapi==0.116.1
+uvicorn==0.35.0 
+
+
+
+
 
 # huggingface-cli login
 # Token = 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
@@ -76,5 +100,3 @@ transformers==4.57.1
 "I am an adult."
 "How are you?"
 "Please explain the term of 'philosophy' itself concisely based on your understanding and eleborate as much as you can. Answer in Chinese only"
-
-pip install --no-index --find-links=/desktop/Sync/Software/Windows/torch-cu128-20250723 torch==2.9.0.dev20250723+cu128
