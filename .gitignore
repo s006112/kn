@@ -1,10 +1,46 @@
+########################################
+# Python bytecode / virtual env
+########################################
 __pycache__/
+*.pyc
+.env
+
+########################################
+# Logs and temp files
+########################################
+*.log
 panel.log
+archived/
+*.swp
+
+########################################
+# VS Code / Dev Containers
+########################################
+.vscode/
 .vscode-server/
-.gnupg/
+
+########################################
+# System-level caches
+########################################
 .cache/
+wheelhouse/
+
+########################################
+# OS junk
+########################################
+.DS_Store
+Thumbs.db
+
+########################################
+# Preset files (local overrides)
+########################################
 presets.local.json
 presets_qp.local.json
 presets_q.local.json
 *.local.json
-wheelhouse/
+
+########################################
+# Security-sensitive
+########################################
+.gnupg/
+

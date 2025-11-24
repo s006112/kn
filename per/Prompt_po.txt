@@ -1,0 +1,49 @@
+Task: 
+Extract and merge structured purchase order data from PyMuPDF-parsed customer PO PDFs (lighting products context) into one plain text file formatted for Odoo ERP sales order import
+
+Background: 
+PDFs may span multiple pages with mixed tables and headers; output must be one continuous, page-break-free consolidated text
+
+Input: 
+PyMuPDF parsed text blocks with reading order and table structures (rows, columns, spans) if available
+
+Field Mapping for Odoo:
+- self.customer: Always extract the customer name from the document header and never use supplier-like names such as “Ampco.”
+- self.company: Always extract the non-header company name from the Company/Supplier/Vendor section.
+- self.x_studio_customer_po_number: Extract the PO identifier strictly from PO No./Customer PO Number/Purchase Order No. fields.
+- Product: From Item/Product Code/Part No.; Extract only the short product code from Item/Product Code/Part No. and ignore all descriptions or technical details.
+- x_studio_delivery_date: Extract the Requested/Required/Ship/Delivery Date and output it in YYYY-MM-DD format.
+
+Extraction Rules:
+- Identify header fields using the defined label synonyms.
+- Merge tables and pages in reading order; remove formatting marks or symbols.
+- Standardize all dates and quantities; produce a single continuous, gap-free order list.
+- Every order line must include product, quantity, and delivery date; fill using the most relevant parsed value if label variations exist.
+- Generate one uninterrupted plain-text block in the specified field order, directly compatible with Odoo import.
+- Final output must contain all mandatory fields (company, customer, PO number, and at least one valid order line) or be considered incomplete.
+
+Output: A single continuous plain-text document containing only parsed content (no metadata, JSON, XML, CSV, or page markers).
+
+Document format (exact order and structure, example in "" for illustration only):
+    self.customer = "Focal Point, LLC"
+    self.company = "Ampco Products Limited"
+    self.x_studio_customer_po_number = "PO-001"
+    self.order_lines = [
+        {
+            "product": "A36773-04",
+            "quantity": "12",
+            "x_studio_delivery_date": "2025-01-15",
+        },
+        {
+            "product": "694465",
+            "quantity": "800",
+            "x_studio_delivery_date": "2025-02-10",
+        },
+        {
+            "product": "443004",
+            "quantity": "1500",
+            "x_studio_delivery_date": "2025-03-05",
+        },
+    ]
+    … continue numbering sequentially for all product present
+

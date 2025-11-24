@@ -1,0 +1,421 @@
+生成一份销售人员每周工作报告，依据提供的一周客户拜访日报及零散文字记录资料进行信息筛选与整合。以客户公司名称为主线，梳理并分类各客户相关内容，确保结构完整、逻辑清晰。报告提交对象为销售总监，需具备专业、简洁、条理明晰的表达，体现积极主动的跟进态度，对不理想情况采用适度正向表述。内容结构如下：
+・本周拜访客户清单
+・各客户拜访内容摘要
+　・拜访时间
+　・参与人员
+　・客户需求重点与问题反馈
+　・已采取的行动与当前进展
+　・后续跟进计划与待处理事项
+・本周整体总结（主要成果、存在问题、改进方向）
+・下周工作计划（预定拜访安排、重点客户跟进方向、支持需求）
+语言风格要求专业流畅、语气积极、重点突出，便于销售总监快速阅读与汇报，不使用分隔线、编号或任何markdown格式符号。
+
+
+
+
+Please summary the photometric numerical performance in paragragh format, in English
+
+
+
+* Extract the content from the provided PDF **line by line**
+* Determine the number of datasets in the PDF by trying the pattern “第 X 页 共 Y 页,” where the value of Y indicates the total number of datasets.
+For Each data set, handle the following content extraction:
+* Identify the 产品型号 column content: by reading the "Model No." or 产品型号 field, blank if no information found
+* Identify the 产品编号 column content: by reading the "Sample SN." or 产品编号 field, blank if no information found
+* Identify the 备 注 column content: by reading the "Description" or 备 注 field, blank if no information found
+* All parameters and text must be **directly quoted from the PDF content**, without any additions or modifications
+* Merge in table format if multiple data set found
+* Output exactly in the following **format**, while the total number of datasets depends on the PDF content
+* calculate the CRI (Color rendering index) value by arithmetic mean of R1–R14 per particular samples, to the nearest one decimal place. Then fill in the location of $$$  
+* Strictly update the data according to the following **structure and extracted content**
+* Never provide any information except the table data shown below
+
+
+
+• Summarize the photometric numerical performance clearly in concise English point form
+• Identify key performance metrics such as intensity, efficiency, luminous flux, distribution, uniformity, and color characteristics
+• Highlight any abnormal values, outliers, or inconsistencies that may be easily overlooked (e.g., sudden drops, unusually high/low readings, irregular distribution patterns)
+• Point out deviations from expected standards, benchmarks, or design specifications
+• Maintain professional, technical tone with focus on clarity and precision
+• Ensure the list is structured so that critical anomalies stand out distinctly from normal performance data
+
+
+• Digest "the product category table" and the remarks details among datasets
+• Firstly Summarize in detail the photometric numerical performance clearly in concise English paragraph form
+State follow in point form
+• Highlight all outstanding performance metrics
+• Highlight any abnormal values, outliers, or inconsistencies that may be easily overlooked (e.g., sudden drops, unusually high/low readings, irregular distribution patterns)
+• Point out deviations from expected standards, benchmarks, or design specifications
+• Maintain professional, technical tone with focus on clarity and precision
+• Ensure the list is structured so that critical anomalies stand out distinctly from normal performance data
+• Never use three dash markdown horizontal rule  
+• No need further remark or any chain of thought to be mentioned after the summary
+
+
+
+
+按以下參考格式提取內容並輸出成以下markdown format
+
+# 远方 (EVERFINE) HAAS-1200 光色电测试报告
+
+**测试日期**: 2025-07-18 08:13  
+**测试人员**: CDH  
+**环境温度**: 25.3℃  
+**环境湿度**: 65.0%  
+**制造厂商**: BLI  
+**产品型号**: CFA651 12寸圆盘灯  
+**客户样品编号**: CFA651 12寸圆盘灯  
+**仪器状态**: 积分时间 T = 32 ms, Ip = 52381 (80%)  
+**白光分类**: ANSI 3000K  
+
+## 光谱参数
+
+| 参数           | 数值               |
+|----------------|--------------------|
+| 色品坐标 (x, y) | (0.4325, 0.4075)   |
+| 色品坐标 (u', v')| (0.2463, 0.5221)   |
+| 相关色温 (CCT)  | 3104 K             |
+| 色差 (Duv)      | 0.0020             |
+| 主波长 (λd)     | 581.7 nm           |
+| 色纯度 (Purity) | 52.2%              |
+| 峰值波长 (λp)   | 621.6 nm           |
+| 半峰带宽 (FWHM) | 169.0 nm           |
+
+---
+
+## 色比（RGB组成）
+
+| 颜色 | 比例   |
+|-------|--------|
+| 红 (R) | 23.5%  |
+| 绿 (G) | 73.6%  |
+| 蓝 (B) | 2.9%   |
+
+---
+
+## 显色指数 (CRI)
+
+| 指数  | 数值  |
+|--------|-------|
+| Ra     | 93.1  |
+| R1     | 93    |
+| R2     | 96    |
+| R3     | 97    |
+| R4     | 93    |
+| R5     | 92    |
+| R6     | 94    |
+| R7     | 94    |
+| R8     | 85    |
+| R9     | 64    |
+| R10    | 89    |
+| R11    | 94    |
+| R12    | 76    |
+| R13    | 94    |
+| R14    | 98    |
+| R15    | 89    |
+
+---
+
+## 光度参数
+
+| 参数         | 数值         |
+|--------------|--------------|
+| 光通量 Φ     | 1785 lm      |
+| 光效         | 78.57 lm/W   |
+| 辐射通量 Φe  | 6.123 W      |
+
+---
+
+## 电参数
+
+| 参数         | 数值         |
+|--------------|--------------|
+| 电压 V       | 120.05 V     |
+| 电流 I       | 0.1925 A     |
+| 功率 P       | 22.72 W      |
+| 功率因数 PF  | 0.9833       |
+
+
+
+
+---
+
+# 远方 (EVERFINE) HAAS-1200 光色电测试报告
+
+## 光谱参数
+
+| 参数           | 色坐标 (x, y)<br><br> | 色品坐标 (u', v') | 色温 (CCT) | 色容差 (Duv) | 色纯度 (Purity) | 主波长 (λd) | 峰值波长 (λp) | 半峰带宽 (FWHM) |
+| -------------- | --------------------- | ----------------- | ---------- | ------------ | --------------- | ----------- | ------------- | --------------- |
+| 数值 (样品1)   | 0.3191, 0.2190        | 0.2558, 0.3950    | 9165 K     | -0.0720      | 31.6%           | 380.0 nm    | 368.3 nm      | 11.7 nm         |
+| 数值 (样品2)   | 0.3189, 0.2191        | 0.2555, 0.3951    | 9206 K     | -0.0717      | 31.5%           | 380.0 nm    | 368.3 nm      | 11.6 nm         |
+| 数值 (样品3)   | 0.3131, 0.2139        | 0.2534, 0.3897    | 12361 K    | -0.0713      | 33.2%           | 380.0 nm    | 368.3 nm      | 11.8 nm         |
+
+## 显色指数 (CRI)
+
+| 指数  | Ra   | R1  | R2  | R3  | R4  | R5  | R6  | R7  | R8  |
+| ----- | ---- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 样品1 | 45.8 | 35  | 64  | 67  | 25  | 38  | 61  | 71  | 5   |
+| 样品2 | 46.1 | 35  | 64  | 66  | 25  | 39  | 62  | 71  | 6   |
+| 样品3 | 43.6 | 31  | 62  | 62  | 22  | 37  | 63  | 70  | 2   |
+
+| 指数  | CRI  | R9  | R10 | R11 | R12 | R13 | R14 | R15 |     |
+| ----- | ---- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 样品1 |      | 0   | 46  | 23  | 31  | 30  | 75  | 2   |     |
+| 样品2 |      | 0   | 47  | 24  | 33  | 31  | 75  | 3   |     |
+| 样品3 |      | 0   | 45  | 19  | 38  | 26  | 72  | 0   |     |
+
+## 光度参数
+
+| 参数  | 光通量 Φ<br> | 光效          | 辐射通量 Φe |
+| ----- | --------- | ----------- | ------- |
+| 样品1 | 52.28 lm  | 0.75 lm/W   | 39.72 W |
+| 样品2 | 51.55 lm  | 0.75 lm/W   | 39.13 W |
+| 样品3 | 49.88 lm  | 0.73 lm/W   | 36.65 W |
+
+## 电参数
+
+| 参数  | 电压 V<br><br> | 电流 I     | 功率 P    | 功率因数 PF |
+| ----- | ------------ | -------- | ------- | ------- |
+| 样品1 | 120.13 V     | 0.5829 A | 69.89 W | 0.9982  |
+| 样品2 | 120.08 V     | 0.5756 A | 68.99 W | 0.9981  |
+| 样品3 | 120.07 V     | 0.5720 A | 68.55 W | 0.9980  |
+
+**测试日期**: 2023-01-05 (样品1 08:58, 样品2 09:04, 样品3 09:07)  
+**测试人员**: XXZ  
+**环境温度**: 25.3℃  
+**环境湿度**: 65.0%  
+**制造厂商**: BLI  
+**产品型号**: KT-LED70T8-72-365-D  
+**客户样品编号**: 1, 2, 3  
+**仪器状态**: 积分时间 T = 3 ms, Ip = 49260 (75%) / 48762 (74%) / 45127 (69%)  
+**白光分类**: OUT  
+
+
+
+
+### Product category: @@@
+
+| Product Model   | Product Number    |  Remarks    |
+| --- | --------- |--------- |
+|面板灯 1 | 237V8W | LM281B+ 80 3500K |
+|面板灯 2 | 237V8W | LM281B+ 80 4000K |
+|面板灯 3 | 237V8W | LM281B+ 80 5000K |
+
+### 光电参数
+
+| 参数  | 电压 V | 电流 I     | 功率 P    | 功率因数 PF | 光通量 Φ | 光效        | 辐射通量 Φe |
+| --- | ------------ | -------- | ------- | ------- | --------- | ----------- | ------- |
+| 数值 1 | 120.05 V     | 0.1788 A | 21.31 W | 0.9928  | 3373 lm   | 158.31 lm/W | 10.15 W |
+| 数值 2 | 120.05 V     | 0.1788 A | 21.31 W | 0.9928  | 3373 lm   | 158.31 lm/W | 10.15 W |
+| 数值 3 | 120.05 V     | 0.1788 A | 21.31 W | 0.9928  | 3373 lm   | 158.31 lm/W | 10.15 W |
+
+### 光谱参数
+
+| 参数  | 色坐标 (x, y)| 色品坐标 (u', v')  | 色温 (CCT) | 色容差 (Duv) | 色纯度 (Purity) | 主波长 (λd) | 峰值波长 (λp) | 半峰带宽 (FWHM) |
+| --- | ------------------ | -------------- | -------- | --------- | ------------ | -------- | --------- | ----------- |
+| 数值 1 | 0.3774, 0.3772     | 0.2230, 0.5013 | 4085 K   | 0.0011    | 26.5%        | 578.1 nm | 450.2 nm  | 18.4 nm     |
+| 数值 2 | 0.3774, 0.3772     | 0.2230, 0.5013 | 4085 K   | 0.0011    | 26.5%        | 578.1 nm | 450.2 nm  | 18.4 nm     |
+| 数值 3 | 0.3774, 0.3772     | 0.2230, 0.5013 | 4085 K   | 0.0011    | 26.5%        | 578.1 nm | 450.2 nm  | 18.4 nm     |
+
+### 显色指数 (CRI)
+
+| 指数  | CRI (Cal.) | Ra  | R1  | R2  | R3  | R4  | R5  | R6  | R7  | R8  | R9  | R10 | R11 | R12 | R13 | R14 | R15 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 数值 1 | $$$ | 81  | 89  | 95  | 81  | 81  | 85  | 86  | 63  | 63  | 4   | 75  | 81  | 60  | 83  | 98  | 74  |
+| 数值 2 | $$$ | 81  | 89  | 95  | 81  | 81  | 85  | 86  | 63  | 63  | 4   | 75  | 81  | 60  | 83  | 98  | 74  |
+| 数值 3 | $$$ | 81  | 89  | 95  | 81  | 81  | 85  | 86  | 63  | 63  | 4   | 75  | 81  | 60  | 83  | 98  | 74  |
+
+
+
+2025-09-11, Update per Horace.
+
+
+Read and parse all text from the provided PDF line by line, process page by page
+Treat each page as one dataset (if multiple datasets exist on one page, separate them according to layout, but ensure no missing dataset count)
+For each dataset, extract the following fields:
+Product Model: read from “Model No.” or “产品型号”; leave blank if not found
+Product Number: read from “Sample SN.” or “产品编号”; leave blank if not found
+Remarks: read from “Description” or “备 注”; leave blank if not found
+Digest the content of Product Model, Product Number and Remarks to figure out a term to generalize a Product category and insert to the placeholder @@@
+All parameters and text must be quoted exactly from the PDF, without additions, modifications, translations, or conversions
+If text is unrecognizable or contains special symbols, keep it exactly as is
+Calculate CRI (Color Rendering Index): compute the arithmetic mean of R1–R14 for each sample, rounded to one decimal place; insert the result into the placeholder “$$$” in the template
+If multiple datasets are found, merge them into a single table, ordered by dataset sequence
+Output only the table in the exact given format, preserving column names, order, punctuation, and structure; fill extracted values into the cells; leave blanks as empty strings
+Do not output anything other than the completed table (no explanations, headings, notes, or code blocks)
+
+---
+
+### Product category: @@@
+
+| Product Model | Product Number | Remarks          |
+| ------------- | -------------- | ---------------- |
+| Panel Light 1 | 237V8W         | LM281B+ 80 3500K |
+| Panel Light 2 | 237V8W         | LM281B+ 80 4000K |
+| Panel Light 3 | 237V8W         | LM281B+ 80 5000K |
+
+### Optoelectronic Parameters
+
+| Product Number    | Voltage V | Current I | Power P | Power Factor PF | Luminous Flux Φ | Luminous Efficacy | Radiant Flux Φe |
+| ------- | --------- | --------- | ------- | --------------- | --------------- | ----------------- | --------------- |
+| #1 | 120.05 V  | 0.1788 A  | 21.31 W | 0.9928          | 3373 lm         | 158.31 lm/W       | 10.15 W         |
+| #2 | 120.05 V  | 0.1788 A  | 21.31 W | 0.9928          | 3373 lm         | 158.31 lm/W       | 10.15 W         |
+| #3 | 120.05 V  | 0.1788 A  | 21.31 W | 0.9928          | 3373 lm         | 158.31 lm/W       | 10.15 W         |
+
+### Spectral Parameters
+
+| Product Number | CIE 1931 (x, y) | CIE 1976 (u', v') | CCT    | Duv    | Purity | Dominant Wavelength (λd) | Peak Wavelength (λp) | FWHM    |
+| --------- | ------------------------------- | ----------------- | ------ | ------ | ------ | ------------------------ | -------------------- | ------- |
+| #1   | 0.3774, 0.3772                  | 0.2230, 0.5013    | 4085 K | 0.0011 | 26.5%  | 578.1 nm                 | 450.2 nm             | 18.4 nm |
+| #2   | 0.3774, 0.3772                  | 0.2230, 0.5013    | 4085 K | 0.0011 | 26.5%  | 578.1 nm                 | 450.2 nm             | 18.4 nm |
+| #3   | 0.3774, 0.3772                  | 0.2230, 0.5013    | 4085 K | 0.0011 | 26.5%  | 578.1 nm                 | 450.2 nm             | 18.4 nm |
+
+### Color Rendering Index (CRI)
+
+| Product Number   | CRI (Cal.) | Ra | R1 | R2 | R3 | R4 | R5 | R6 | R7 | R8 | R9 | R10 | R11 | R12 | R13 | R14 | R15 |
+| ------- | ---------- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | --- | --- | --- | --- | --- | --- |
+| #1 | $$$     | 81 | 89 | 95 | 81 | 81 | 85 | 86 | 63 | 63 | 4  | 75  | 81  | 60  | 83  | 98  | 74  |
+| #2 | $$$     | 81 | 89 | 95 | 81 | 81 | 85 | 86 | 63 | 63 | 4  | 75  | 81  | 60  | 83  | 98  | 74  |
+| #3 | $$$     | 81 | 89 | 95 | 81 | 81 | 85 | 86 | 63 | 63 | 4  | 75  | 81  | 60  | 83  | 98  | 74  |
+
+
+
+
+
+Remove in case
+
+
+### Spectral Parameters
+
+| Product Number | Voltage V | CIE 1976 (u', v') | Duv    | Purity | Dominant Wavelength (λd) | Peak Wavelength (λp) | FWHM    | Radiant Flux Φe |
+| -------------- | --------- | ----------------- | ------ | ------ | ------------------------ | -------------------- | ------- | --------------- |
+| #1             | 120.05 V  | 0.2230, 0.5013    | 0.0011 | 26.5%  | 578.1 nm                 | 450.2 nm             | 18.4 nm | 10.15 W         |
+| #2             | 120.05 V  | 0.2230, 0.5013    | 0.0011 | 26.5%  | 578.1 nm                 | 450.2 nm             | 18.4 nm | 10.15 W         |
+| #3             | 120.05 V  | 0.2230, 0.5013    | 0.0011 | 26.5%  | 578.1 nm                 | 450.2 nm             | 18.4 nm | 10.15 W         |
+
+### Color Rendering Index (CRI)
+
+| Product Number | CRI (Cal.) | Ra  | R1  | R2  | R3  | R4  | R5  | R6  | R7  | R8  | R9  | R10 | R11 | R12 | R13 | R14 | R15 |
+| -------------- | ---------- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| #1             | $$$        | 81  | 89  | 95  | 81  | 81  | 85  | 86  | 63  | 63  | 4   | 75  | 81  | 60  | 83  | 98  | 74  |
+| #2             | $$$        | 81  | 89  | 95  | 81  | 81  | 85  | 86  | 63  | 63  | 4   | 75  | 81  | 60  | 83  | 98  | 74  |
+| #3             | $$$        | 81  | 89  | 95  | 81  | 81  | 85  | 86  | 63  | 63  | 4   | 75  | 81  | 60  | 83  | 98  | 74  |
+
+
+
+• Objective: Extract and consolidate all critical content from customer purchase orders in PDF (lighting product trading context), using PyMuPDF parsed text, and produce a single continuous plain text output for human review
+• Background: POs may span multiple pages, contain tables, headers, revisions, and mixed layouts; requirement is one coherent consolidated text without page breaks
+• Style: Professional, concise, human-friendly, plain text only, optimized for readability and review
+• Input: PyMuPDF parsed text blocks with reading order and table structures (rows, columns, spans) if available
+• Output format (consolidated plain text):
+– Header section: Purchase Order Number, Date, Revision, Buyer, Seller, Bill To, Ship To, Consignee, Project, Quotation/Reference, Currency, Incoterms, Payment Terms, Shipment Terms, Delivery Date, Contact Details
+– Totals section: Subtotal, Discount, Tax, Freight, Grand Total
+– Line Items section as table-like aligned text: [Line No | Item Code | Description | Specifications | Quantity | UOM | Unit Price | Amount | Delivery Date | Remarks]
+– Compliance / Logistics section: Warranty, Standards, Certifications, Packaging, Labeling, Special Instructions
+– Notes or Attachments section: Additional remarks or references from the document
+• Extraction logic:
+– Consolidate across pages into one continuous flow; remove explicit page references
+– Preserve logical hierarchy; use section headings with clear spacing
+– Align tables consistently with pipes or spaces; multiline descriptions indented under same row
+– Leave placeholder when data is missing (e.g., “Payment Terms: [Not found]”)
+– Show alternates if multiple candidate values exist (e.g., “Possible Alternatives: …”)
+– Preserve original wording for ambiguous values; normalize only if unambiguous
+– If OCR required for missing text, note with “(OCR required)”
+• Output rules:
+– No metadata, JSON, XML, or CSV—only plain text
+– No page break markers; everything consolidated into one clean document
+– Maintain consistent order of sections regardless of PDF layout differences
+– Do not invent or infer missing information; show only what is parsed
+• Edge cases: multiple POs in one file → separate with “=== New Purchase Order ===”; tables spanning pages → merge seamlessly without break markers
+
+
+
+
+
+• Objective: Extract and consolidate all critical content from customer purchase orders in PDF (lighting product trading context), using PyMuPDF parsed text, and produce a single continuous plain text output for human review
+• Background: POs may span multiple pages, contain tables, headers, revisions, and mixed layouts; requirement is one coherent consolidated text without page breaks
+• Style: Professional, concise, human-friendly, plain text only, optimized for readability and review
+• Input: PyMuPDF parsed text blocks with reading order and table structures (rows, columns, spans) if available
+• Output format (consolidated plain text):
+– Header section: Purchase Order Number, Date, Revision, Buyer, Seller, Bill To, Ship To, Consignee, Project, Quotation/Reference, Currency, Incoterms, Payment Terms, Shipment Terms, Delivery Date, Contact Details
+– Totals section: Subtotal, Discount, Tax, Freight, Grand Total
+– Line Items section as table-like aligned text: [Line No | Item Code | Description | Specifications | Quantity | UOM | Unit Price | Amount | Delivery Date | Remarks]
+– Compliance / Logistics section: Warranty, Standards, Certifications, Packaging, Labeling, Special Instructions
+– Notes or Attachments section: Additional remarks or references from the document
+• Extraction logic:
+– Consolidate across pages into one continuous flow; remove explicit page references
+– Preserve logical hierarchy; use section headings with clear spacing
+– Align tables consistently with pipes or spaces; multiline descriptions indented under same row
+– Leave placeholder when data is missing (e.g., “Payment Terms: [Not found]”)
+– Show alternates if multiple candidate values exist (e.g., “Possible Alternatives: …”)
+– Preserve original wording for ambiguous values; normalize only if unambiguous
+– If OCR required for missing text, note with “(OCR required)”
+• Output rules:
+– No metadata, JSON, XML, or CSV—only plain text
+– No page break markers; everything consolidated into one clean document
+– Maintain consistent order of sections regardless of PDF layout differences
+– Do not invent or infer missing information; show only what is parsed
+• Edge cases: multiple POs in one file → separate with “=== New Purchase Order ===”; tables spanning pages → merge seamlessly without break markers
+
+
+
+
+
+
+Extract and consolidate structured purchase order data (lighting products trading context) from PyMuPDF-parsed text of customer PO PDFs into a single plain text document formatted for Odoo ERP sales order import
+• Background: PDFs may contain multiple pages, mixed tables, headers, and revisions; requirement is a coherent, page-break-free consolidated text
+• Input: PyMuPDF parsed text blocks with reading order and table structures (rows, columns, spans) if available
+• Output: One continuous plain text document, no metadata/JSON/XML/CSV, no page break markers, no invented data, only parsed content
+• Output format (exact order and structure):
+- Company: []
+- Customer: []
+- Salesperson: []
+- Order Date: []
+- Customer PO Number: []
+    - Order Lines/1/Product Template: []
+    - Order Lines/1/Quantity: []
+    - Order Lines/1/Delivery Date: []
+    - Order Lines/2/Product Template: []
+    - Order Lines/2/Quantity: []
+    - Order Lines/2/Delivery Date: []
+    - Order Lines/3/Product Template: []
+    - Order Lines/3/Quantity: []
+    - Order Lines/3/Delivery Date: []
+    … continue numbering sequentially for all order lines present
+
+
+• Field mapping rules for Odoo:
+Product: item name, SKU, or product code (accept aliases Item, Product Code, Part No.), long description excluded
+Quantity: numeric only (accept Qty, QTY, Quantity Ordered)
+Delivery Date: requested/required/ship/delivery date (map to commitment date in Odoo)
+Preserve field order exactly; omit fields not found; do not insert placeholders
+• Consolidation rules:
+Combine text from all pages in logical reading order
+Remove headers, footers, page numbers, and revision notes
+Normalize multi-page tables; join wrapped or spanned cells
+Maintain consistent section order regardless of original layout
+Use one blank line only between header section and order lines
+Keep all numbers, dates, and currency symbols as parsed; do not reformat
+Exclude totals, tax summaries, or non-item tables
+
+• Extraction guidance:
+Identify header fields using synonyms: Company/Supplier/Vendor; Customer/Sold To/Bill To; Salesperson/Sales Rep; Order Date/PO Date; Customer PO Number/PO No.
+Detect order line table by common headers: Item, Description, Qty, Unit Price, Tax, Discount, Delivery Date
+Exclude marketing text, terms, or attachments
+Maintain logical grouping of multi-line item descriptions
+• Output rules:
+Plain text only, no markup, no delimiters beyond line breaks
+Fixed field order and naming as defined
+No inferred or guessed data; only parsed text
+• Style: Professional, concise, deterministic, and format-strict
+
+
+
+
+・If "Good Earth Lighting" appears anywhere in the document, always set it as self.customer with highest priority regardless of other address-based rules.
+If the extracted customer field is based solely on an address and matches a known warehouse, shipping location, or lacks typical customer headers, re-evaluate and consider other entities with full name headers (e.g., top of page, company letterhead) as the actual customer.
+Prioritize company names appearing near the document title or "Purchase Order" heading as the true customer when address-only entities appear later in the document.
+If a candidate customer is detected based only on an address block (e.g., lacking company name context), and another entity appears earlier in the document with both name and contact details, prefer the latter as the customer.
+Avoid assigning entities with only shipping or warehouse-style addresses (e.g., lacking company identifiers or found under "Ship To") as the customer; instead, look for earlier sender identity as more likely customer.
+If the customer is inferred solely from a shipping address, verify whether it may represent a warehouse or logistics location; prefer named entities appearing in the document header or company letterhead as the actual customer.
+When multiple parties are present, prioritize the entity prominently featured at the top or associated with contact details as the customer over those listed under shipping or delivery sections.
