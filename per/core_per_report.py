@@ -9,11 +9,16 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import sys
 from typing import List, Tuple
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from utils_config import configure_logging, load_env, load_prompt_text
 from utils_nextcloud import share, ushare
-from utils_llm import run_prompt
+from utils_llm import call_llm
 from utils_pdf import get_pdf_full_text
 
 load_env()
@@ -378,21 +383,19 @@ def generate_per_report(file_path: str) -> PerReportResult:
         return PerReportResult("Error: Failed to load prompts.", [], text, "")
 
     try:
-        llm_md_response = run_prompt(
-            prompt_md_str,
-            text,
+        llm_md_response = call_llm(
             model=LLM_MODEL,
-            placeholder="{context}",
+            system_prompt=prompt_md_str,
+            user_text=text,
         )
     except Exception as exc:
         return PerReportResult(f"Error querying LLM: {exc}", [], text, "")
     updated_md = insert_stats_rows(llm_md_response)
     try:
-        llm_summary_response = run_prompt(
-            prompt_summary_str,
-            updated_md,
+        llm_summary_response = call_llm(
             model=LLM_MODEL,
-            placeholder="{context}",
+            system_prompt=prompt_summary_str,
+            user_text=updated_md,
         )
     except Exception as exc:
         return PerReportResult(f"Error querying LLM: {exc}", [], text, "")

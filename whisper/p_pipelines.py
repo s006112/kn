@@ -5,11 +5,17 @@ Pipelines：实现所有 worker 线程和队列辅助逻辑。
 
 import logging
 import os
+import sys
 import threading
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from queue import Queue
 from typing import Any, Callable, Tuple
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from p_context import PipelineContext
 from p_pretext import PretextHandler, PretextProcessor, request_pretext_processing

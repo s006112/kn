@@ -6,7 +6,7 @@ This project hosts a Gradio interface (`gradio_per_report.py`) backed by a core 
 Processing Pipeline
 -------------------
 - **PDF ingestion** – `handle_upload()` reads the uploaded file, uses `utils_pdf.get_pdf_full_text()` to recover full text, and guards against empty or unreadable PDFs.
-- **Prompt-driven analysis** – The raw text is fed to the shared LLM helper twice (`utils_llm.run_prompt()` using a PER-specific model): first with `Prompt_md.txt` to obtain a structured markdown analysis, then with `Prompt_summary.txt` to condense that analysis into an executive summary.
+- **Prompt-driven analysis** – The raw text is fed to the shared LLM helper twice (`utils_llm.call_llm()` using a PER-specific model): first with `Prompt_md.txt` to obtain a structured markdown analysis, then with `Prompt_summary.txt` to condense that analysis into an executive summary.
 - **Report assembly** – A templated header/ footer wraps the AI responses with branding, placeholder checkboxes, and a link back to the shared PDF on Nextcloud (`utils_nextcloud.share()`).
 - **CIE PNG coordination** – A deterministic timestamp defines the expected PNG artefact name so the frontend can later upload the rendered chart.
 - **Chromaticity parsing** – `_extract_cct_xy()` walks the generated markdown, isolates the “Product category” table, and uses regex matching to pull numeric CIE 1931 x,y pairs for display in a Gradio dataframe.
@@ -46,7 +46,7 @@ Sales Order Importer
 End-to-End Flow
 ---------------
 - **File intake** – `handle_upload()` validates the uploaded PDF and salesperson name, loads `Prompt_po.txt`, and invokes `_extract_text_with_pymupdf()` to recover page-level text.
-- **AI parsing** – `utils_llm.run_prompt(multi_message=True)` merges the prompt and parsed text (using an SO-specific model), then asks the model for a `self.<field> = ...` style payload. The function sanitizes the response, injects the provided salesperson, and returns both the generated code and raw PDF text for inspection.
+- **AI parsing** – `utils_llm.call_llm()` merges the prompt and parsed text (using an SO-specific model) via a two-message payload, then asks the model for a `self.<field> = ...` style response. The function sanitizes the response, injects the provided salesperson, and returns both the generated code and raw PDF text for inspection.
 - **Odoo integration** – When `ODOO_IMPORT=true`, `handle_upload()` passes the AI output to `create_sale_order_from_text()`. Successful imports trigger `attach_pdf_to_sale_order()` to archive the original PDF on the created record, share it to the partner-specific Nextcloud subfolder, and surface all status messages back to the UI.
 - **Frontend** – A compact `gr.Blocks` layout exposes the PDF uploader, salesperson textbox, submit button, and read-only import log. Optional debugging textboxes (`DEBUG_TEXTBOXES=true`) show the AI response and extracted PDF text.
 Module Highlights

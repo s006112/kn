@@ -3,13 +3,18 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Tuple
 
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from utils_config import configure_logging, get_env_flag, load_env, load_prompt_text
 from utils_odoo import attach_pdf_to_sale_order, create_sale_order_from_text
-from utils_llm import run_prompt
+from utils_llm import call_llm
 from utils_pdf import extract_text_from_pdf_bytes
 
 load_env()
@@ -93,11 +98,12 @@ def run_so_import(file_path: str | None, salesperson: str) -> SOImportResult:
         return SOImportResult("Error: Failed to load Prompt_po.txt", "", "", "")
 
     try:
-        llm_po_response = run_prompt(
-            prompt_po_str,
-            pdf_parsing_text,
+        llm_po_response = call_llm(
             model=LLM_MODEL,
-            multi_message=True,
+            messages=[
+                {"role": "user", "content": pdf_parsing_text},
+                {"role": "user", "content": prompt_po_str},
+            ],
         )
     except Exception as exc:
         return SOImportResult(f"Error querying LLM: {exc}", pdf_parsing_text, "", "")

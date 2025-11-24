@@ -1,14 +1,20 @@
 import os
 import logging
 import shutil
+import sys
 from datetime import datetime
+from pathlib import Path
 from watchdog.events import FileSystemEventHandler
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from utils_files import (
     release_text_file_permissions,
     read_file_with_encodings,
 )
-from utils_llm import create_openai_client, process_text_with_openai
+from utils_llm import call_llm
 from utils_md import (
     merge_to_markdown,
     create_or_find_note_for_base_name,
@@ -51,7 +57,6 @@ def process(self, file_path, get_next_available_filename):
 
     try:
         content, enc = read_file_with_encodings(file_path)
-        client = create_openai_client()
         payload = f"《{base}》\n{content}"
 
         # Decide (or create) the target Markdown once; merge incrementally after each success.
@@ -66,8 +71,11 @@ def process(self, file_path, get_next_available_filename):
             model = self.config[key]
             try:
                 # Run extraction for this model
-                result = process_text_with_openai(
-                    client, model, self.config['EXTRACT_PROMPT'], payload, file_path=file_path
+                result = call_llm(
+                    model=model,
+                    system_prompt=self.config['EXTRACT_PROMPT'],
+                    user_text=payload,
+                    file_path=file_path,
                 )
 
                 # Save per-pass raw extract

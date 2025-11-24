@@ -1,9 +1,15 @@
 import os
 import logging
 import shutil
+import sys
+from pathlib import Path
 from typing import Optional
 
 from watchdog.events import FileSystemEventHandler
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from p_context import PipelineContext
 from utils_files import (
@@ -15,7 +21,7 @@ from utils_text import (
     intelligent_merge_chunks,
     sanitize_and_trim_filename,
 )
-from utils_llm import create_openai_client, process_text_with_openai
+from utils_llm import call_llm
 from utils_md import write_pretext_markdown
 
 
@@ -114,7 +120,6 @@ def process_pretext_file(ctx: PipelineContext, file_path: str) -> None:
             f"{len(content):,}",
         )
 
-        client = create_openai_client()
         pretext_model = config['GPT_MODEL_PRETEXT']
         chunks = chunk_text(content)
         logging.info("Pretext: Split into %d chunks", len(chunks))
@@ -129,11 +134,10 @@ def process_pretext_file(ctx: PipelineContext, file_path: str) -> None:
                 pretext_model,
             )
             try:
-                chunk_result = process_text_with_openai(
-                    client,
-                    pretext_model,
-                    config['PRETEXT_PROMPT'],
-                    chunk,
+                chunk_result = call_llm(
+                    model=pretext_model,
+                    system_prompt=config['PRETEXT_PROMPT'],
+                    user_text=chunk,
                     file_path=normalized_path,
                 )
             except Exception as exc:

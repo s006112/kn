@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import sys
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from utils_config import load_prompt_text
-from utils_llm import run_prompt
+from utils_llm import call_llm
 
 LLM_MODEL = "gpt-4.1-mini"
 
@@ -47,11 +52,10 @@ def generate_weekly_summary(user_text: str, base_dir: Path) -> str:
         return "Error: Failed to load prompt_w.txt"
 
     try:
-        weekly_summary = run_prompt(
-            prompt_text,
-            user_text,
+        weekly_summary = call_llm(
             model=LLM_MODEL,
-            placeholder="",
+            system_prompt=prompt_text,
+            user_text=user_text,
         )
     except Exception as exc:
         return f"Error querying LLM: {exc}"
