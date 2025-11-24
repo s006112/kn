@@ -1,0 +1,21 @@
+# download apt
+sudo apt-get update
+sudo apt-get install -y --download-only python3-pip
+sudo apt-get autoclean   #只会删除「过期的 .deb」
+
+# download wheels
+pip download Flask -d /wheels
+
+
+
+# offline install apt
+sudo apt-get install -y --no-download python3-pip
+
+# offline install wheels
+pip install --no-index --find-links=/wheels Flask
+
+
+
+
+# quote
+Flask==3.1.2
