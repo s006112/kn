@@ -1,25 +1,36 @@
 # download apt
 sudo apt-get update # update package lists
-sudo apt-get install -y --download-only python3-pip # download .deb
-sudo apt-get install -y --download-only ghostscript 
 sudo apt-get autoclean   #只会删除「过期的 .deb」
+sudo apt-get install -y --download-only python3-pip # download .deb
+sudo apt-get install -y --download-only ghostscript tesseract-ocr # per
+sudo apt-get install -y --download-only ffmpeg alsa-utils pulseaudio portaudio19-dev python3-pyaudio # whisper
 
-# offline install apt
-sudo apt-get install -y --no-download python3-pip # install from cached .deb
-sudo apt-get install -y --no-download ghostscript
 
 # download wheels
 pip index versions xxxxx # check versions
-pip download Flask -d /wheels # quote
+pip download -d /wheels Flask # quote
 pip download -d /wheels --only-binary=:all: python-dotenv==1.2.1 openai==2.8.1 requests==2.25.1 jinja2==3.1.6 # per
-pip download -d /wheels --only-binary=:all: PyMuPDF==1.24.10 ocrmypdf==16.11.0 # per
-pip download -d /wheels --only-binary=:all: gradio==5.46.0 gradio_client==1.13.0 # per
+pip download -d /wheels --only-binary=:all: gradio==5.46.0 gradio_client==1.13.0 PyMuPDF==1.24.10 ocrmypdf==16.11.0 # per
+pip download -d /wheels --only-binary=:all: watchdog==6.0.0 numpy==2.2.6 perplexityai==0.20.0 sounddevice==0.5.3 # whisper
+pip download -d /wheels setuptools wheel build # build tools
+pip download -d /wheels openai-whisper # no wheels available, only source package
+
+
+
+# offline install apt
+sudo apt-get install -y --no-download python3-pip # install from cached .deb
+sudo apt-get install -y --no-download ghostscript # per
+sudo apt-get install -y --no-download ffmpeg alsa-utils pulseaudio portaudio19-dev python3-pyaudio # whisper
 
 # offline install wheels
 pip install --no-index --find-links=/wheels Flask
 pip install --no-index --find-links=/wheels python-dotenv openai requests jinja2
 pip install --no-index --find-links=/wheels gradio==5.46.0 gradio_client==1.13.0 
 pip install --no-index --find-links=/wheels PyMuPDF==1.24.10 ocrmypdf==16.11.0
+pip install --no-index --find-links=/desktop/Sync/Software/Windows/torch-cu128-20250723 torch==2.9.0.dev20250723+cu128
+pip install --no-index --find-links=/wheels watchdog==6.0.0 numpy==2.2.6 perplexityai==0.20.0 sounddevice==0.5.3 # whisper
+pip install --no-index --find-links=/wheels openai-whisper==20240930 # 只有 源码包（.tar.gz）
+
 
 # common
 python-dotenv==1.2.1
