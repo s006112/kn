@@ -25,7 +25,7 @@ from p_audio import process_audio_queue
 from utils_unlink import clean_dead_links
 from utils_files import get_next_available_filename, safe_rename
 from utils_text import sanitize_and_trim_filename
-from utils_llm import OpenAIPermanentFailure
+from utils_llm import LLMPermanentFailure
 from utils_lock_registry import (
     acquire_file_lock,
     release_file_lock,
@@ -89,7 +89,7 @@ def process_queue(
                         processed = getattr(handler, "processed_files", None)
                         if processed and file_path in processed:
                             processed.discard(file_path)
-                except OpenAIPermanentFailure as e:
+                except LLMPermanentFailure as e:
                     logging.error(
                         "Resilient Queue: OpenAI API permanent failure for file %s "
                         "(model: %s): %s",
