@@ -8,8 +8,8 @@ Input:
 PyMuPDF parsed text blocks with reading order and table structures (rows, columns, spans) if available
 
 Field Mapping for Odoo:
-- self.customer: Always extract the customer name from the document header and never use supplier-like names such as “Ampco.”
-- self.company: Always extract the non-header company name from the Company/Supplier/Vendor section.
+- self.customer: Ignore nonsense wording, e.g. "BAIRSEA IRA", extract from the document header nearby , never use supplier-like names such as “Ampco.”
+- self.company: Ignore nonsense wording, e.g. "BAIRSEA IRA", Extract the non-header company name from the Company/Supplier/Vendor section.
 - self.x_studio_customer_po_number: Extract the PO identifier strictly from PO No./Customer PO Number/Purchase Order No. fields.
 - Product: From Item/Product Code/Part No.; Extract only the short product code from Item/Product Code/Part No. and ignore all descriptions or technical details.
 - x_studio_delivery_date: Extract the Requested/Required/Ship/Delivery Date and output it in YYYY-MM-DD format.

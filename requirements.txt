@@ -1,37 +1,41 @@
 # download apt
 sudo apt-get update # update package lists
 sudo apt-get install -y --download-only python3-pip # download .deb
-sudo apt-get install -y --download-only tesseract-ocr ghostscript 
+sudo apt-get install -y --download-only ghostscript 
 sudo apt-get autoclean   #只会删除「过期的 .deb」
+
+# offline install apt
+sudo apt-get install -y --no-download python3-pip # install from cached .deb
+sudo apt-get install -y --no-download ghostscript
 
 # download wheels
 pip index versions xxxxx # check versions
 pip download Flask -d /wheels # quote
-pip download python-dotenv openai requests jinja2 --only-binary=:all: -d /wheels # per
+pip download -d /wheels --only-binary=:all: python-dotenv==1.2.1 openai==2.8.1 requests==2.25.1 jinja2==3.1.6 # per
 pip download -d /wheels --only-binary=:all: PyMuPDF==1.24.10 ocrmypdf==16.11.0 # per
-pip download  --only-binary=:all: -d /wheels gradio==5.46.0 gradio_client==1.13.0 # per
-
-
-# offline install apt
-sudo apt-get install -y --no-download python3-pip # install from cached .deb
+pip download -d /wheels --only-binary=:all: gradio==5.46.0 gradio_client==1.13.0 # per
 
 # offline install wheels
 pip install --no-index --find-links=/wheels Flask
 pip install --no-index --find-links=/wheels python-dotenv openai requests jinja2
 pip install --no-index --find-links=/wheels gradio==5.46.0 gradio_client==1.13.0 
-
+pip install --no-index --find-links=/wheels PyMuPDF==1.24.10 ocrmypdf==16.11.0
 
 # common
-python-dotenv
-openai
+python-dotenv==1.2.1
+openai==2.8.1
 
 # quote
 Flask==3.1.2
 
 # per
+requests==2.25.1
+jinja2==3.1.6
 gradio==5.46.0
 gradio_client==1.13.0
-PyMuPDF
-requests
-jinja2
-ocrmypdf
+PyMuPDF==1.24.10
+ocrmypdf==16.11.0
+
+
+
+
