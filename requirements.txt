@@ -32,60 +32,60 @@ pip install --no-index --find-links=/wheels kernels==0.11.1 accelerate==1.12.0 p
 pip install --no-index --find-links=/wheels transformers==4.57.1 # llm
 
 # common
-python-dotenv==1.2.1
-openai==2.8.1
-transformers==4.57.1
+python-dotenv==1.2.1  # Manage environment variables from .env files
+openai==2.8.1  # Access OpenAI APIs from Python
+transformers==4.57.1  # State-of-the-art NLP models and pipelines
 
 # quote
-Flask==3.1.2
+Flask==3.1.2  # Lightweight web framework for building APIs and apps
 
 # per
-requests==2.32.5
-jinja2==3.1.6
-gradio==5.46.0
-gradio_client==1.13.0
-PyMuPDF==1.24.10
-ocrmypdf==16.11.0
+requests==2.32.5  # HTTP client library for making web requests
+jinja2==3.1.6  # Templating engine for generating HTML and text
+gradio==5.46.0  # Web UI toolkit for ML demos
+gradio_client==1.13.0  # Python client for interacting with Gradio apps
+PyMuPDF==1.24.10  # PDF processing and rendering library
+ocrmypdf==16.11.0  # Add OCR text layers to PDF files
 
 # whisper
-watchdog==6.0.0
-numpy==2.2.6
-perplexityai==0.20.0
-sounddevice==0.5.3
-openai-whisper==20240930
+watchdog==6.0.0  # Monitor file system events
+numpy==2.2.6  # Core numerical computing library for Python
+perplexityai==0.20.0  # Client library for Perplexity AI API
+sounddevice==0.5.3  # Record and play audio using NumPy arrays
+openai-whisper==20240930  # OpenAI Whisper speech-to-text model
 
 
 # curve_extract
-scipy==1.15.3
-opencv_python_headless==4.12.0.88
+scipy==1.15.3  # Scientific computing algorithms built on NumPy
+opencv_python_headless==4.12.0.88  # OpenCV image processing without GUI dependencies
 
 # llm
-huggingface_hub==1.1.5
-kernels==0.11.1
-accelerate==1.12.0
-protobuf==6.33.1
-sentencepiece==0.2.1
+huggingface_hub==1.1.5  # Interface to models and datasets on Hugging Face Hub
+kernels==0.11.1  # Utility library for managing and running kernels
+accelerate==1.12.0  # Training utilities for distributed and mixed precision
+protobuf==6.33.1  # Protocol Buffers serialization support
+sentencepiece==0.2.1  # Subword tokenizer for NLP models
 
 # rag-01_email.py
-bs4==0.0.2
-python-docx==0.8.11
+bs4==0.0.2  # Beautiful Soup HTML/XML parsing wrapper
+python-docx==0.8.11  # Read and write Microsoft Word .docx files
 # fitz==0.0.1.dev2
 # PyMuPDF==1.26.3
-psutil==5.8.0
-openpyxl==3.1.5
-xlrd==2.0.1
+psutil==5.8.0  # Access system and process information
+openpyxl==3.1.5  # Read and write Excel .xlsx files
+xlrd==2.0.1  # Read legacy Excel .xls files
 
 # rag-02_embedd.py
-faiss-gpu==1.7.2
-sentence-transformers==5.1.0
-orjson==3.11.2
+faiss-gpu==1.7.2  # Similarity search and clustering on GPUs
+sentence-transformers==5.1.0  # Sentence embeddings for semantic search
+orjson==3.11.2  # Fast JSON parser and serializer
 einops==0.8.1     # dependency comes from jinaai/jina-embeddings-v3
 
 # 03_web.py, need re-write to adapt openai==2.8.1, was openai==1.102.0
 numpy==1.26.2 # check if conflict with numpy==2.2.6
 gradio==5.44.1 # need re-write to adapt gradio==5.46.0
-fastapi==0.116.1
-uvicorn==0.35.0 
+fastapi==0.116.1  # High-performance web framework for building APIs
+uvicorn==0.35.0  # ASGI server for running FastAPI and other apps
 
 
 
