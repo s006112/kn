@@ -58,9 +58,9 @@ class LLMPermanentFailure(Exception):
 # 这些函数确保我们为每个后端提供商创建并重用单个客户端实例。
 # 这减少了连接开销，并且是线程安全的。
 
-def _get_openai_client() -> openai.OpenAI:
+def get_openai_client() -> openai.OpenAI:
     """
-    获取或创建 OpenAI 客户端单例。
+    获取 OpenAI 客户端单例用于直接 API 访问。
     
     首次调用时，使用环境变量中的 API 密钥初始化 OpenAI 客户端。
     后续调用返回缓存的实例。
@@ -79,9 +79,9 @@ def _get_openai_client() -> openai.OpenAI:
     return _OPENAI_CLIENT
 
 
-def _get_pplx_client() -> Any:
+def get_perplexity_client() -> Any:
     """
-    获取或创建 Perplexity 客户端单例。
+    获取 Perplexity SDK 客户端单例用于直接 API 访问。
     
     首次调用时，使用环境变量中的 API 密钥初始化 Perplexity SDK 客户端。
     后续调用返回缓存的实例。
@@ -98,6 +98,11 @@ def _get_pplx_client() -> Any:
             raise RuntimeError("PERPLEXITY_API_KEY environment variable is not set.")
         _PPLX_CLIENT = Perplexity(api_key=PERPLEXITY_API_KEY)
     return _PPLX_CLIENT
+
+
+# 内部别名用于向后兼容
+_get_openai_client = get_openai_client
+_get_pplx_client = get_perplexity_client
 
 
 
@@ -566,43 +571,6 @@ def call_llm(
                 )
             # 不是最后一次尝试 - 重试前等待
             time.sleep(wait)
-
-
-# ============================================================================
-# 公共 API：向后兼容导出
-# ============================================================================
-# 这些函数为需要直接访问的代码公开后端客户端。
-
-def get_openai_client() -> openai.OpenAI:
-    """
-    获取 OpenAI 客户端单例用于直接 API 访问。
-    
-    仅在需要 call_llm 提供的超出直接 OpenAI API 访问时使用。
-    大多数代码应该改用 call_llm()。
-    
-    返回值：
-        openai.OpenAI: 配置完毕、准备好进行 API 调用的 OpenAI 客户端
-        
-    抛出异常：
-        RuntimeError: 如果未设置 OPENAI_API_KEY
-    """
-    return _get_openai_client()
-
-
-def get_perplexity_client() -> Any:
-    """
-    获取 Perplexity SDK 客户端单例用于直接 API 访问。
-    
-    仅在需要 call_llm 提供的超出直接 Perplexity API 访问时使用。
-    大多数代码应该改用 call_llm()。
-    
-    返回值：
-        Any: 配置完毕、准备好进行 API 调用的 Perplexity 客户端
-        
-    抛出异常：
-        RuntimeError: 如果未安装 Perplexity SDK 或未设置 API 密钥
-    """
-    return _get_pplx_client()
 
 
 # ============================================================================

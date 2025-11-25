@@ -20,7 +20,7 @@ from utils_llm import get_openai_client
 load_env(dotenv_path=Path(__file__).parent / ".env")
 logger = configure_logging("rendering")
 
-MODEL_OPTIONS = ["gpt-image-1"]
+MODEL_OPTIONS = ["gpt-image-1-mini"]
 REQUEST_TIMEOUT = 60
 
 PROMPT_RENDERING = Path(__file__).with_name("Prompt_rendering.txt").read_text("utf-8")
