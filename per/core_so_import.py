@@ -100,10 +100,8 @@ def run_so_import(file_path: str | None, salesperson: str) -> SOImportResult:
     try:
         llm_po_response = call_llm(
             model=LLM_MODEL,
-            messages=[
-                {"role": "user", "content": pdf_parsing_text},
-                {"role": "user", "content": prompt_po_str},
-            ],
+            system_prompt=prompt_po_str,
+            user_text=pdf_parsing_text,
         )
     except Exception as exc:
         return SOImportResult(f"Error querying LLM: {exc}", pdf_parsing_text, "", "")
