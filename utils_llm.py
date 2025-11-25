@@ -7,7 +7,7 @@ import requests
 import openai
 from perplexity import Perplexity
 from google import genai
-from google.genai import errors as genai_errors
+from google.genai import errors as genai_errors, types
 from dotenv import load_dotenv
 
 from utils_text_processing import _format_text, _normalize_output
@@ -20,7 +20,8 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 _OPENAI_CLIENT: Optional[openai.OpenAI] = None
 _PPLX_CLIENT: Optional[Any] = None
-_GEMINI_CLIENT: Optional[genai.Client] = None
+_GEMINI_CLIENT: Optional[Any] = None
+
 
 
 class LLMPermanentFailure(Exception):
@@ -59,13 +60,21 @@ def get_perplexity_client() -> Any:
     return _PPLX_CLIENT
 
 
-def get_gemini_client() -> genai.Client:
+def get_gemini_client() -> Any:
     global _GEMINI_CLIENT
     if _GEMINI_CLIENT is None:
         if not GEMINI_API_KEY:
             raise RuntimeError("GEMINI_API_KEY is missing.")
-        _GEMINI_CLIENT = genai.Client(api_key=GEMINI_API_KEY)
+
+        # 強制 v1；若只用 2.x 系列其實就算預設 v1beta 也能跑，但這樣未來要用 3.x 也不會再踩雷
+        http_options = types.HttpOptions(api_version="v1")
+
+        _GEMINI_CLIENT = genai.Client(
+            api_key=GEMINI_API_KEY,
+            http_options=http_options,
+        )
     return _GEMINI_CLIENT
+
 
 
 # 共用 messages builder -----------------------------------------------------
@@ -110,22 +119,23 @@ def build_perplexity_payload(system_prompt, user_text, messages):
 
 
 def build_gemini_payload(system_prompt, user_text, messages):
-    # 完全不使用 messages API
+    """
+    Gemini：統一用純文字 contents（所有 2.x 系列都吃得下）。
+    不搞 messages，不做 model 分流，保持簡單。
+    """
     parts = []
 
     if messages:
         for m in messages:
-            text = _format_text(m.get("content"))
-            parts.append(text)
+            parts.append(_format_text(m.get("content")))
         return "\n\n".join(parts)
 
     if system_prompt:
         parts.append(_format_text(system_prompt))
-
     if user_text:
         parts.append(_format_text(user_text))
 
-    return "\n\n".join(parts) if parts else ""
+    return "\n\n".join(parts)
 
 
 # 文字 backend 呼叫 ---------------------------------------------------------
@@ -148,13 +158,17 @@ def call_perplexity(client: Any, model: str, payload: Any, timeout: int) -> str:
     return _normalize_output(text)
 
 
-def call_gemini(client: genai.Client, model: str, payload: Any, timeout: int) -> str:
-    # 舊版 google-genai 不支援 generation_config 參數，只用基本 generate_content
-    resp = client.models.generate_content(model=model, contents=payload)
+def call_gemini(client: Any, model: str, payload: Any, timeout: int) -> str:
+    resp = client.models.generate_content(
+        model=model,
+        contents=payload,  # build_gemini_payload 已經返回 string
+    )
     text = getattr(resp, "text", None)
     if not text:
-        raise RuntimeError("Gemini returned empty text.")
+        raise RuntimeError(f"Gemini ({model}) returned empty text.")
     return _normalize_output(text)
+
+
 
 
 # 圖像 backend 呼叫：統一回傳 List[bytes] -----------------------------------
@@ -205,7 +219,7 @@ def call_openai_image(
 
 
 def call_gemini_image(
-    client: genai.Client,
+    client: Any,
     model: str,
     prompt: str,
     size: str,
@@ -219,9 +233,8 @@ def call_gemini_image(
     try:
         resp = client.models.generate_content(
             model=model,
-            contents=payload,  # ← 單一純文字
+            contents=prompt,  # ← 正確：圖片模型接受純文字 prompt
         )
-        text = resp.text
     except genai_errors.ClientError as exc:
         # 更友善顯示配額 / 流量限制錯誤
         msg = str(exc)
