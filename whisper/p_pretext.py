@@ -184,7 +184,7 @@ def process_pretext_file(ctx: PipelineContext, file_path: str) -> None:
     except Exception as exc:
         logging.error("Error processing file: %s", exc)
         if 'pretext_result' in locals():
-            error_path = pretext_target_path + '.error.txt'
+            error_path = pretext_target_path + '.error'
             with open(error_path, 'w', encoding='utf-8') as f:
                 f.write(f"Error: {exc}\nPartial response:\n{pretext_result}")
             release_text_file_permissions(error_path)

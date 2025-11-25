@@ -15,7 +15,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from utils_config import configure_logging, load_env
-from utils_llm import get_openai_client
+from utils_llm import generate_image
 
 load_env(dotenv_path=Path(__file__).parent / ".env")
 logger = configure_logging("rendering")
@@ -37,8 +37,7 @@ def request_perplexity_render(image_bytes: bytes, model: str) -> bytes:
     # Use the configured image-capable LLM (for example gpt-image-1)
     # to generate a photorealistic rendering based on the textual instructions.
     try:
-        client = get_openai_client()
-        result = client.images.generate(
+        result = generate_image(
             model=model,
             prompt=PROMPT_RENDERING,
             size="1024x1024",
