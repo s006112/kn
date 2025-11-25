@@ -7,7 +7,7 @@ import requests
 import openai
 from perplexity import Perplexity
 from google import genai
-from google.genai import errors as genai_errors, types
+from google.genai import errors as genai_errors
 from dotenv import load_dotenv
 
 from utils_text_processing import _format_text, _normalize_output
@@ -65,14 +65,7 @@ def get_gemini_client() -> Any:
     if _GEMINI_CLIENT is None:
         if not GEMINI_API_KEY:
             raise RuntimeError("GEMINI_API_KEY is missing.")
-
-        # 強制 v1；若只用 2.x 系列其實就算預設 v1beta 也能跑，但這樣未來要用 3.x 也不會再踩雷
-        http_options = types.HttpOptions(api_version="v1")
-
-        _GEMINI_CLIENT = genai.Client(
-            api_key=GEMINI_API_KEY,
-            http_options=http_options,
-        )
+        _GEMINI_CLIENT = genai.Client(api_key=GEMINI_API_KEY)
     return _GEMINI_CLIENT
 
 
@@ -228,8 +221,57 @@ def call_gemini_image(
     """
     Gemini image models（如 gemini-2.5-flash-image / gemini-3-pro-image-preview）：
     - 不傳 generation_config，兼容較舊 SDK
-    - 從 candidates[].content.parts[].inline_data.data 取圖
+    - 從 candidates[].content.parts[].inline_data.data 或 file_data 取圖
     """
+    def _ensure_bytes(data: Any) -> bytes:
+        if isinstance(data, bytes):
+            return data
+        if isinstance(data, bytearray):
+            return bytes(data)
+        if isinstance(data, memoryview):
+            return data.tobytes()
+        if isinstance(data, str):
+            try:
+                return base64.b64decode(data)
+            except Exception:
+                return data.encode("utf-8")
+        return bytes(data)
+
+    def _download(uri: str) -> bytes:
+        files_client = getattr(client, "files", None)
+        if files_client and hasattr(files_client, "download"):
+            return files_client.download(file=uri)
+        resp = requests.get(uri, timeout=60)
+        resp.raise_for_status()
+        return resp.content
+
+    def _iter_images(response: Any):
+        generated = getattr(response, "generated_images", None) or []
+        for item in generated:
+            image = getattr(item, "image", None)
+            data = getattr(image, "image_bytes", None) if image else None
+            if data:
+                yield _ensure_bytes(data)
+
+        candidates = getattr(response, "candidates", None) or []
+        for cand in candidates:
+            content = getattr(cand, "content", None)
+            if not content:
+                continue
+            parts = getattr(content, "parts", None) or []
+            for part in parts:
+                inline = getattr(part, "inline_data", None)
+                if inline:
+                    data = getattr(inline, "data", None)
+                    if data:
+                        yield _ensure_bytes(data)
+                        continue
+                file_data = getattr(part, "file_data", None)
+                if file_data:
+                    uri = getattr(file_data, "file_uri", None)
+                    if uri:
+                        yield _download(uri)
+
     try:
         resp = client.models.generate_content(
             model=model,
@@ -246,37 +288,11 @@ def call_gemini_image(
             ) from exc
         raise
 
-    candidates = getattr(resp, "candidates", None) or []
-    if not candidates:
-        raise RuntimeError("Gemini image API returned no candidates.")
-
     images: List[bytes] = []
-    for cand in candidates:
-        content = getattr(cand, "content", None)
-        if not content:
-            continue
-        parts = getattr(content, "parts", None) or []
-        for part in parts:
-            inline = getattr(part, "inline_data", None)
-            if not inline:
-                continue
-            data = getattr(inline, "data", None)
-            if not data:
-                continue
-
-            if isinstance(data, str):
-                # 嘗試當 base64 處理，失敗就當 bytes
-                try:
-                    data_bytes = base64.b64decode(data)
-                except Exception:
-                    data_bytes = data.encode("utf-8")
-            else:
-                data_bytes = data
-
-            images.append(data_bytes)
-            if len(images) >= n:
-                break
-        if len(images) >= n:
+    limit = max(1, n)
+    for img in _iter_images(resp):
+        images.append(img)
+        if len(images) >= limit:
             break
 
     if not images:
