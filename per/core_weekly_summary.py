@@ -11,7 +11,8 @@ if str(ROOT_DIR) not in sys.path:
 from utils_config import load_prompt_text
 from utils_llm import call_llm
 
-LLM_MODEL = "gpt-4.1-mini"
+LLM_MODEL = "gemini-2.0-flash"
+#LLM_MODEL = "gpt-4.1-mini"
 
 
 def _append_to_weekly_log(base_dir: Path, source_text: str, summary_text: str) -> None:
