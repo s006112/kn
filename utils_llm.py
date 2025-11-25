@@ -1,10 +1,13 @@
 import os
 import time
+import base64
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
+import requests
 import openai
 from perplexity import Perplexity
 from google import genai
+from google.genai import errors as genai_errors
 from dotenv import load_dotenv
 
 from utils_text_processing import _format_text, _normalize_output
@@ -15,15 +18,12 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# 全局 client 單例
 _OPENAI_CLIENT: Optional[openai.OpenAI] = None
 _PPLX_CLIENT: Optional[Any] = None
 _GEMINI_CLIENT: Optional[genai.Client] = None
 
 
 class LLMPermanentFailure(Exception):
-    """所有重試都失敗時拋出的最終錯誤。"""
-
     def __init__(
         self,
         message: str,
@@ -39,7 +39,7 @@ class LLMPermanentFailure(Exception):
         self.reason = reason
 
 
-# client 懶初始化 -----------------------------------------------------------
+# client 初始化 -------------------------------------------------------------
 
 def get_openai_client() -> openai.OpenAI:
     global _OPENAI_CLIENT
@@ -76,17 +76,16 @@ def _build_messages(
     messages: Optional[Iterable[Dict[str, Any]]],
     role_content_factory: Callable[[str, str], Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-
     if messages:
-        built = []
+        built: List[Dict[str, Any]] = []
         for m in messages:
-            role = (m.get("role") or "user").strip()
-            content = _format_text(m.get("content"))
-            built.append(role_content_factory(role, content))
+            role = (m.get("role") or "user").strip() or "user"
+            text = _format_text(m.get("content"))
+            built.append(role_content_factory(role, text))
         if built:
             return built
 
-    built = []
+    built: List[Dict[str, Any]] = []
     if system_prompt:
         built.append(role_content_factory("system", _format_text(system_prompt)))
     if user_text:
@@ -96,28 +95,37 @@ def _build_messages(
     return built
 
 
-# payload builder (OpenAI / PPLX / Gemini) ----------------------------------
+# payload builder（OpenAI / Perplexity / Gemini） ---------------------------
 
-def build_openai_payload(system_prompt, user_text, messages):
-    def factory(role, text):
+def build_openai_payload(
+    system_prompt: str,
+    user_text: str,
+    messages: Optional[Iterable[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    def factory(role: str, text: str) -> Dict[str, Any]:
         return {"role": role, "content": [{"type": "input_text", "text": text}]}
     return _build_messages(system_prompt, user_text, messages, factory)
 
 
-def build_perplexity_payload(system_prompt, user_text, messages):
-    def factory(role, text):
+def build_perplexity_payload(
+    system_prompt: str,
+    user_text: str,
+    messages: Optional[Iterable[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    def factory(role: str, text: str) -> Dict[str, Any]:
         return {"role": role, "content": text}
     return _build_messages(system_prompt, user_text, messages, factory)
 
 
-def build_gemini_payload(system_prompt, user_text, messages):
-    """
-    Gemini text API: 用一個純 text prompt 最穩定。
-    """
-    parts = []
+def build_gemini_payload(
+    system_prompt: str,
+    user_text: str,
+    messages: Optional[Iterable[Dict[str, Any]]],
+) -> str:
+    parts: List[str] = []
     if messages:
         for m in messages:
-            role = (m.get("role") or "user").strip()
+            role = (m.get("role") or "user").strip() or "user"
             text = _format_text(m.get("content"))
             if role == "system":
                 parts.append(f"[SYSTEM]\n{text}")
@@ -132,9 +140,9 @@ def build_gemini_payload(system_prompt, user_text, messages):
     return "\n\n".join(parts) if parts else ""
 
 
-# 各 backend 的統一調用函數 ---------------------------------------------------
+# 文字 backend 呼叫 ---------------------------------------------------------
 
-def call_openai(client, model, payload, timeout):
+def call_openai(client: Any, model: str, payload: Any, timeout: int) -> str:
     resp = client.responses.create(model=model, input=payload, timeout=timeout)
     text = getattr(resp, "output_text", None)
     if not text:
@@ -142,7 +150,7 @@ def call_openai(client, model, payload, timeout):
     return _normalize_output(text)
 
 
-def call_perplexity(client, model, payload, timeout):
+def call_perplexity(client: Any, model: str, payload: Any, timeout: int) -> str:
     resp = client.chat.completions.create(model=model, messages=payload, timeout=timeout)
     if not resp or not getattr(resp, "choices", None):
         raise RuntimeError("Perplexity returned no content.")
@@ -152,7 +160,8 @@ def call_perplexity(client, model, payload, timeout):
     return _normalize_output(text)
 
 
-def call_gemini(client, model, payload, timeout):
+def call_gemini(client: genai.Client, model: str, payload: Any, timeout: int) -> str:
+    # 舊版 google-genai 不支援 generation_config 參數，只用基本 generate_content
     resp = client.models.generate_content(model=model, contents=payload)
     text = getattr(resp, "text", None)
     if not text:
@@ -160,34 +169,122 @@ def call_gemini(client, model, payload, timeout):
     return _normalize_output(text)
 
 
-# 圖片專用：Gemini / OpenAI ---------------------------------------------------
+# 圖像 backend 呼叫：統一回傳 List[bytes] -----------------------------------
 
-def call_openai_image(client, model, prompt, size, n):
-    return client.images.generate(model=model, prompt=prompt, size=size, n=n)
-
-
-def call_gemini_image(client, model, prompt, size, n):
+def call_openai_image(
+    client: openai.OpenAI,
+    model: str,
+    prompt: str,
+    size: str,
+    n: int,
+) -> List[bytes]:
     """
-    Gemini image models (如 gemini-2.5-flash-image / gemini-3-pro-image-preview)
-    返回 base64 inline_data。
+    OpenAI images.generate：
+    - 不傳 response_format（避免 400 unknown_parameter）
+    - 如果有 b64_json 就 decode
+    - 否則如果有 url 就自己 requests 拿 bytes
     """
-    resp = client.models.generate_content(
+    resp = client.images.generate(
         model=model,
-        contents=[prompt],
-        generation_config={
-            "response_mime_type": "image/png",
-        },
+        prompt=prompt,
+        size=size,
+        n=n,
     )
-    # 取出第一張圖片
-    for part in resp.candidates[0].content.parts:
-        if hasattr(part, "inline_data") and part.inline_data:
-            return part.inline_data.data
-    raise RuntimeError("Gemini returned no image data.")
+
+    data = getattr(resp, "data", None) or []
+    if not data:
+        raise RuntimeError("OpenAI image API returned no data.")
+
+    images: List[bytes] = []
+    for item in data:
+        b64 = getattr(item, "b64_json", None)
+        if b64:
+            try:
+                images.append(base64.b64decode(b64))
+                continue
+            except Exception as exc:
+                raise RuntimeError("OpenAI image payload is not valid base64.") from exc
+
+        url = getattr(item, "url", None)
+        if url:
+            r = requests.get(url, timeout=60)
+            r.raise_for_status()
+            images.append(r.content)
+
+    if not images:
+        raise RuntimeError("OpenAI image API did not return any decodable image.")
+    return images
 
 
-# Backend registry (TEXT) ---------------------------------------------------
+def call_gemini_image(
+    client: genai.Client,
+    model: str,
+    prompt: str,
+    size: str,
+    n: int,
+) -> List[bytes]:
+    """
+    Gemini image models（如 gemini-2.5-flash-image / gemini-3-pro-image-preview）：
+    - 不傳 generation_config，兼容較舊 SDK
+    - 從 candidates[].content.parts[].inline_data.data 取圖
+    """
+    try:
+        resp = client.models.generate_content(
+            model=model,
+            contents=[prompt],
+        )
+    except genai_errors.ClientError as exc:
+        # 更友善顯示配額 / 流量限制錯誤
+        msg = str(exc)
+        if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
+            raise RuntimeError(
+                "Gemini image API 配額或速率已用完，"
+                "請到 https://ai.google.dev/gemini-api/docs/rate-limits 與 "
+                "https://ai.dev/usage 檢查專案的計費與配額設定。"
+            ) from exc
+        raise
 
-_BACKENDS = {
+    candidates = getattr(resp, "candidates", None) or []
+    if not candidates:
+        raise RuntimeError("Gemini image API returned no candidates.")
+
+    images: List[bytes] = []
+    for cand in candidates:
+        content = getattr(cand, "content", None)
+        if not content:
+            continue
+        parts = getattr(content, "parts", None) or []
+        for part in parts:
+            inline = getattr(part, "inline_data", None)
+            if not inline:
+                continue
+            data = getattr(inline, "data", None)
+            if not data:
+                continue
+
+            if isinstance(data, str):
+                # 嘗試當 base64 處理，失敗就當 bytes
+                try:
+                    data_bytes = base64.b64decode(data)
+                except Exception:
+                    data_bytes = data.encode("utf-8")
+            else:
+                data_bytes = data
+
+            images.append(data_bytes)
+            if len(images) >= n:
+                break
+        if len(images) >= n:
+            break
+
+    if not images:
+        raise RuntimeError("Gemini image API did not return any image data.")
+    return images
+
+
+# backend registry ----------------------------------------------------------
+
+_BACKENDS: Dict[str, Dict[str, Any]] = {
     "perplexity": {
         "match": lambda m: m.lower().startswith("sonar"),
         "client_getter": get_perplexity_client,
@@ -209,11 +306,9 @@ _BACKENDS = {
 }
 
 
-# Backend registry (IMAGE) --------------------------------------------------
-
-_IMAGE_BACKENDS = {
+_IMAGE_BACKENDS: Dict[str, Dict[str, Any]] = {
     "gemini": {
-        "match": lambda m: "-image" in m.lower(),   # gemini-2.5-flash-image / gemini-3-pro-image-preview
+        "match": lambda m: m.lower().startswith("gemini") and "image" in m.lower(),
         "client_getter": get_gemini_client,
         "call_fn": call_gemini_image,
     },
@@ -225,43 +320,51 @@ _IMAGE_BACKENDS = {
 }
 
 
-# 後端選擇器 -----------------------------------------------------------------
-
-def _resolve_backend(model_name):
+def _resolve_backend(model_name: str) -> tuple[str, Dict[str, Any]]:
     for name, cfg in _BACKENDS.items():
         if cfg["match"](model_name):
             return name, cfg
     raise RuntimeError(f"No text backend matched {model_name}")
 
 
-def _resolve_image_backend(model_name):
+def _resolve_image_backend(model_name: str) -> tuple[str, Dict[str, Any]]:
     for name, cfg in _IMAGE_BACKENDS.items():
         if cfg["match"](model_name):
             return name, cfg
     raise RuntimeError(f"No image backend matched {model_name}")
 
 
-# 單次調用 -------------------------------------------------------------------
-
 def _invoke_once(
-    model, system_prompt, user_text, messages,
-    backend_name, backend_cfg, timeout
-):
+    model: str,
+    system_prompt: str,
+    user_text: str,
+    messages: Optional[Iterable[Dict[str, Any]]],
+    backend_name: str,
+    backend_cfg: Dict[str, Any],
+    timeout: int,
+) -> str:
     client = backend_cfg["client_getter"]()
     payload = backend_cfg["payload_builder"](system_prompt, user_text, messages)
     return backend_cfg["call_fn"](client, model, payload, timeout)
 
 
-# Image wrapper --------------------------------------------------------------
+# 統一 image 入口：回傳 List[bytes] -----------------------------------------
 
-def generate_image(model: str, prompt: str, size="1024x1024", n=1):
+def generate_image(
+    model: str,
+    prompt: str,
+    size: str = "1024x1024",
+    n: int = 1,
+) -> List[bytes]:
+    if not model:
+        raise ValueError("Image model name must not be empty.")
     model_name = model.strip()
     backend_name, backend_cfg = _resolve_image_backend(model_name)
     client = backend_cfg["client_getter"]()
     return backend_cfg["call_fn"](client, model_name, prompt, size, n)
 
 
-# 主入口：call_llm -----------------------------------------------------------
+# 統一 LLM 入口 --------------------------------------------------------------
 
 def call_llm(
     model: str,
@@ -272,7 +375,6 @@ def call_llm(
     file_path: Optional[str] = None,
     max_retries: int = 2,
 ) -> str:
-
     if not model:
         raise ValueError("Model name must not be empty.")
 
@@ -280,7 +382,8 @@ def call_llm(
     backend_name, backend_cfg = _resolve_backend(model_name)
 
     timeout = 90
-    attempts = max_retries + 1
+    wait = 10
+    attempts = max_retries
 
     for i in range(attempts):
         try:
@@ -296,10 +399,10 @@ def call_llm(
         except Exception as exc:
             if i == attempts - 1:
                 raise LLMPermanentFailure(
-                    f"Failed after {attempts} attempts: {exc}",
+                    f"Model API failed after {attempts} attempts for model {model_name} on file {file_path}: {exc}",
                     model=model_name,
                     backend=backend_name,
                     file_path=file_path,
                     reason=str(exc),
                 ) from exc
-            time.sleep(10)
+            time.sleep(wait)

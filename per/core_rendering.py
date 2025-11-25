@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import base64
 import logging
 import sys
 from io import BytesIO
 from pathlib import Path
-from typing import Any
 
-import requests
 from PIL import Image
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -20,49 +17,44 @@ from utils_llm import generate_image
 load_env(dotenv_path=Path(__file__).parent / ".env")
 logger = configure_logging("rendering")
 
-MODEL_OPTIONS = ["gemini-2.5-flash-image", "gemini-3-pro-image-preview","gpt-image-1-mini", "gpt-image-1"]
-REQUEST_TIMEOUT = 60
+MODEL_OPTIONS = [
+    "gemini-2.5-flash-image",
+    "gemini-3-pro-image-preview",
+    "gpt-image-1-mini",
+    "gpt-image-1",
+]
 
-PROMPT_RENDERING = Path(__file__).with_name("Prompt_rendering.txt").read_text("utf-8")
-
-
-def _fetch_image_bytes_from_url(url: str) -> bytes:
-    response = requests.get(url, timeout=REQUEST_TIMEOUT)
-    response.raise_for_status()
-    return response.content
+PROMPT_RENDERING_PATH = Path(__file__).with_name("Prompt_rendering.txt")
+PROMPT_RENDERING = (
+    PROMPT_RENDERING_PATH.read_text("utf-8") if PROMPT_RENDERING_PATH.exists() else ""
+)
 
 
 def request_perplexity_render(image_bytes: bytes, model: str) -> bytes:
-    # Currently Perplexity does not expose an image render API.
-    # Use the configured image-capable LLM (for example gpt-image-1)
-    # to generate a photorealistic rendering based on the textual instructions.
-    try:
-        result = generate_image(
-            model=model,
-            prompt=PROMPT_RENDERING,
-            size="1024x1024",
-            n=1,
-        )
-    except Exception as exc:
-        raise RuntimeError(f"Image generation request failed: {exc}") from exc
+    """
+    使用指定圖像模型（OpenAI 或 Gemini）產生渲染結果。
 
-    if not result.data:
-        raise ValueError("Image generation did not return any data.")
+    目前 Gemini 官方 image API 不支援真正的 image-to-image，
+    所以這裡只把 PROMPT_RENDERING 丟給模型產圖。
+    image_bytes 暫時保留以便未來擴充使用。
+    """
+    if not PROMPT_RENDERING:
+        raise RuntimeError("Prompt_rendering.txt not found or empty.")
 
-    image_info = result.data[0]
-    if getattr(image_info, "b64_json", None):
-        try:
-            return base64.b64decode(image_info.b64_json)
-        except (base64.binascii.Error, ValueError) as exc:
-            raise ValueError("Image generation returned an invalid base64 payload.") from exc
+    images = generate_image(
+        model=model,
+        prompt=PROMPT_RENDERING,
+        size="1024x1024",
+        n=1,
+    )
 
-    if getattr(image_info, "url", None):
-        return _fetch_image_bytes_from_url(image_info.url)
+    if not images:
+        raise ValueError("Image generation did not return any image bytes.")
 
-    raise ValueError("Image generation response did not contain usable image data.")
+    return images[0]
 
 
-def handle_render(uploaded: str | None, model: str) -> tuple[Image.Image | None, str]:
+def handle_render(uploaded: str | None, model: str):
     if not uploaded:
         return None, "Please upload a sketch or CAD drawing before generating."
 

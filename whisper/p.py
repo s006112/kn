@@ -28,10 +28,10 @@ LINK_BACKUP_FOLDER = WATCH_FOLDER / "_p" / "link_backup"
 FAIL_FOLDER = WATCH_FOLDER / "Fail"
 OBSIDIAN_SYNC_FOLDER = Path("/desktop/Obsidian/O_2025")
 
-# gemini-2.0-flash, gemini-2.0-pro
+# gemini-2.5-flash, gemini-2.5-pro, gemini-3-pro
 GPT_MODEL_PRETEXT = "gpt-4.1-mini"  # gpt-5-mini, gpt-5-nano, gpt-4.1-mini, gpt-4.1-nano, gpt-4o-mini, o1-mini, o3-mini, o4-mini, codex-mini-latest
-GPT_MODEL_EXTRACT_1 = "gpt-5-mini" # gpt-5.1, gpt-5, gpt-5-chat-latest, gpt-4.1, gpt-4o, o1, o3,
-GPT_MODEL_EXTRACT_2 = "o3-mini"
+GPT_MODEL_EXTRACT_1 = "gemini-2.5-flash" # gpt-5.1, gpt-5, gpt-5-chat-latest, gpt-4.1, gpt-4o, o1, o3,
+GPT_MODEL_EXTRACT_2 = "gemini-2.5-pro"
 GPT_MODEL_EXTRACT_3 = "gpt-5.1" # sonar, sonar-pro, sonar-reasoning, sonar-reasoning-pro
 
 MAX_RETRIES = 1
