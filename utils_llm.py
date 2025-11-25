@@ -1,11 +1,11 @@
 import os
-import re
 import time
 import inspect
 from typing import Any, Callable, Dict, Iterable, List, Optional
 import openai
 from perplexity import Perplexity
 from dotenv import load_dotenv
+from utils_text_processing import _format_text, _normalize_output
 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -22,21 +22,6 @@ _PPLX_CLIENT: Optional[Any] = None  # Perplexity 客户端单例
 # LLM 故障的自定义异常
 # ============================================================================
 class LLMPermanentFailure(Exception):
-    """
-    在所有重试尝试都用尽后，当 LLM 后端失败时抛出。
-    
-    此异常在以下情况下抛出：
-    - 所有 max_retries 次尝试都已用尽
-    - 底层 API 或网络错误在重试过程中仍然存在
-    
-    属性：
-        message (str): 人类可读的错误描述
-        model (str): 失败的模型名称（例如 "gpt-4"、"sonar-2"）
-        backend (str): 失败的后端提供商（例如 "openai"、"perplexity"）
-        file_path (str): LLM 调用的源文件路径（可选）
-        reason (str): 用于调试的原始异常消息/堆栈跟踪
-    """
-
     def __init__(
         self,
         message: str,
@@ -59,18 +44,6 @@ class LLMPermanentFailure(Exception):
 # 这减少了连接开销，并且是线程安全的。
 
 def get_openai_client() -> openai.OpenAI:
-    """
-    获取 OpenAI 客户端单例用于直接 API 访问。
-    
-    首次调用时，使用环境变量中的 API 密钥初始化 OpenAI 客户端。
-    后续调用返回缓存的实例。
-    
-    返回值：
-        openai.OpenAI: 配置完毕、准备好进行 API 调用的 OpenAI 客户端
-        
-    抛出异常：
-        RuntimeError: 如果未设置 OPENAI_API_KEY 环境变量
-    """
     global _OPENAI_CLIENT
     if _OPENAI_CLIENT is None:
         if not OPENAI_API_KEY:
@@ -80,18 +53,6 @@ def get_openai_client() -> openai.OpenAI:
 
 
 def get_perplexity_client() -> Any:
-    """
-    获取 Perplexity SDK 客户端单例用于直接 API 访问。
-    
-    首次调用时，使用环境变量中的 API 密钥初始化 Perplexity SDK 客户端。
-    后续调用返回缓存的实例。
-    
-    返回值：
-        Any: 配置完毕、准备好进行 API 调用的 Perplexity 客户端
-        
-    抛出异常：
-        RuntimeError: 如果未安装 Perplexity SDK 或 API 密钥缺失
-    """
     global _PPLX_CLIENT
     if _PPLX_CLIENT is None:
         if not PERPLEXITY_API_KEY:
@@ -99,143 +60,9 @@ def get_perplexity_client() -> Any:
         _PPLX_CLIENT = Perplexity(api_key=PERPLEXITY_API_KEY)
     return _PPLX_CLIENT
 
-
 # 内部别名用于向后兼容
 _get_openai_client = get_openai_client
 _get_pplx_client = get_perplexity_client
-
-
-
-# ============================================================================
-# 文本处理工具
-# ============================================================================
-# 用于规范化和清理 LLM 输入和输出的辅助函数
-
-def _format_text(v: Any) -> str:
-    """
-    将任何值转换为规范化的文本字符串。
-    
-    处理多种输入类型：
-    - None → 空字符串
-    - str → 去除前后空白符
-    - 其他 → 转换为字符串，然后去除前后空白符
-    
-    参数：
-        v (Any): 要转换的输入值
-        
-    返回值：
-        str: 规范化的文本（始终小写，准备好进行处理）
-    """
-    if v is None:
-        return ""
-    return v.strip() if isinstance(v, str) else str(v).strip()
-
-
-# ============================================================================
-# HTML <think> 标签处理
-# ============================================================================
-# 用于从模型输出中移除 OpenAI 的推理标签。
-# 某些模型（如 o1-preview）输出 <think>...</think> 标签，显示内部推理过程，
-# 这些应该对用户隐藏。
-
-# 正则表达式模式用于匹配开闭 <think> 标签（不区分大小写）
-# 处理 <think>、< think>、<THINK>、</think> 等变体
-_THINK_TAG = re.compile(r"<\s*(/?)\s*think\b[^>]*>", re.IGNORECASE)
-
-
-def _strip_think(text: str) -> str:
-    """
-    从文本中移除 <think>...</think> 标签及其内容。
-    
-    正确处理：
-    - 嵌套的 think 标签（跟踪深度）
-    - 孤立的关闭标签（保留它们）
-    - 格式错误的标签
-    
-    算法：
-    1. 在解析标签时跟踪嵌套深度
-    2. 只在不在 think 块内时输出文本
-    3. 当进入 think 块（深度 > 0）时，跳过内容
-    4. 当退出 think 块（深度回到 0）时，恢复输出
-    
-    参数：
-        text (str): 可能包含 <think> 标签的输入文本
-        
-    返回值：
-        str: 移除所有 <think> 标签和内容的文本
-    """
-    if not text or "<" not in text:
-        return text
-    
-    depth, last, out = 0, 0, []
-    
-    # 遍历文本中找到的所有 <think> 和 </think> 标签
-    for m in _THINK_TAG.finditer(text):
-        s, e = m.span()  # 标签的开始和结束位置
-        closing = bool(m.group(1))  # 如果这是关闭标签 (</think>)，则为真
-        
-        # 如果不在 think 块内，添加此标签之前的文本
-        if depth == 0:
-            out.append(text[last:s])
-        
-        # 处理开闭标签
-        if not closing:
-            if depth == 0:
-                last = e  # 标记跳过内容的开始
-            depth += 1
-        # 处理关闭标签
-        else:
-            if depth > 0:
-                depth -= 1
-                if depth == 0:
-                    last = e  # 标记跳过内容的结束
-            else:
-                # 孤立的关闭标签（没有匹配的开启） - 保留它
-                out.append(m.group(0))
-                last = e
-    
-    # 添加最后一个标签之后的任何剩余文本（当深度为 0 时）
-    if depth == 0:
-        out.append(text[last:])
-    
-    return "".join(out)
-
-
-def _normalize_output(content: Any) -> str:
-    """
-    将 LLM 响应内容转换为干净的字符串。
-    
-    处理多种响应格式：
-    - str: 直接字符串输出（最常见）
-    - List/Iterable: 多个内容块（用换行符连接）
-    - Dict: 提取 'text' 字段
-    - Object: 提取 'text' 属性
-    
-    还从最终输出中移除 <think> 标签。
-    
-    参数：
-        content (Any): 原始 LLM 响应内容（格式因提供商而异）
-        
-    返回值：
-        str: 清洁、规范化的文本，准备好使用
-    """
-    if isinstance(content, str):
-        text = content.strip()
-    elif not content:
-        # 处理空/无内容
-        text = ""
-    else:
-        # 处理内容块列表/可迭代对象（例如来自 API 响应）
-        parts: List[str] = []
-        for c in content:
-            # 首先尝试从对象属性提取文本，然后尝试字典键
-            t = getattr(c, "text", None) or (c.get("text") if isinstance(c, dict) else None)
-            if t:
-                parts.append(str(t))
-        text = "\n".join(parts).strip()
-    
-    # 移除思考标签并返回清洁文本
-    return _strip_think(text)
 
 
 # ============================================================================
@@ -243,7 +70,6 @@ def _normalize_output(content: Any) -> str:
 # ============================================================================
 # 将输入参数转换为后端特定的有效负载格式。
 # 不同的 LLM API 期望不同的消息结构。
-
 
 def _build_response(
     system_prompt: str,
@@ -268,8 +94,6 @@ def _build_response(
         built.append(block_fn("user", _format_text(user_text)))
     return built or [block_fn("user", "")]
 
-
-
 def _build_openai_responses_payload(
     system_prompt: str,
     user_text: str,
@@ -281,8 +105,6 @@ def _build_openai_responses_payload(
     def block(role: str, value: str) -> Dict[str, Any]:
         return {"role": role, "content": [{"type": "input_text", "text": value}]}
     return _build_response(system_prompt, user_text, messages, block)
-
-
 
 def _build_pplx_responses_payload(
     system_prompt: str,
@@ -309,25 +131,6 @@ def _invoke_openai(
     messages: Optional[Iterable[Dict[str, Any]]],
     timeout: int,
 ) -> str:
-    """
-    调用 OpenAI 的 Responses API 并提取响应。
-    
-    这使用 OpenAI 更新的 Responses API，其格式不同于
-    标准 Chat Completions API。
-    
-    参数：
-        model (str): 模型名称（例如 "gpt-4"、"gpt-3.5-turbo"）
-        system_prompt (str): 系统指令
-        user_text (str): 用户消息
-        messages (Optional): 预构建消息列表
-        timeout (int): API 调用超时（秒）
-        
-    返回值：
-        str: 规范化的模型响应
-        
-    抛出异常：
-        RuntimeError: 如果响应不包含 text 字段
-    """
     client = _get_openai_client()
     payload = _build_openai_responses_payload(system_prompt, user_text, messages)
     
@@ -349,29 +152,6 @@ def _invoke_pplx(
     messages: Optional[Iterable[Dict[str, Any]]],
     timeout: int,
 ) -> str:
-    """
-    调用 Perplexity 的 Chat Completions API 并提取响应。
-    
-    Perplexity.AI 提供启用网络搜索的 LLM 模型（Sonar 系列）。
-    使用标准 Chat Completions 格式。
-    
-    特殊处理：
-    - Perplexity SDK 可能不支持超时参数
-    - 如果发生 TypeError，则回退到无超时的重试
-    
-    参数：
-        model (str): 模型名称（例如 "sonar-pro"、"sonar-reasoning"）
-        system_prompt (str): 系统指令
-        user_text (str): 用户消息
-        messages (Optional): 预构建消息列表
-        timeout (int): API 调用超时（秒）（可能不支持）
-        
-    返回值：
-        str: 规范化的模型响应
-        
-    抛出异常：
-        RuntimeError: 如果响应为空或格式错误
-    """
     client = _get_pplx_client()
     msg_payload = _build_pplx_responses_payload(system_prompt, user_text, messages)
 
@@ -449,10 +229,6 @@ def _resolve_backend(model_name: str) -> str:
             continue
     return "openai"  # 默认备用
 
-
-# ============================================================================
-# Main LLM Entry Point with Retry Logic
-# ============================================================================
 
 # ============================================================================
 # 主 LLM 入口点，具有重试逻辑
