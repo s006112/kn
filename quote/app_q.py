@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-# Main Flask entrypoint wiring PresetsStore, pricing, panelizer, and services layers.
-# Routes call into services.build_quote_context/build_panelizer_only_context which in turn invoke pricing/panelizer logic.
+# 主 Flask 入口点，连接 PresetsStore、定价、面板化和服务层。
+# 路由调用 services.build_quote_context/build_panelizer_only_context，
+# 后者又调用定价/面板化逻辑。
 
 import os
 import threading
@@ -33,7 +34,7 @@ _panelizer_server_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
-# Configuration & preset loading
+# 配置与预设加载
 # ---------------------------------------------------------------------------
 
 ICON_FILENAME = "lt.png"
@@ -46,7 +47,7 @@ INPUT_FIELD_NAMES = tuple(f.name for f in fields(Inputs))
 
 
 # ---------------------------------------------------------------------------
-# Data structures & default-derived options
+# 数据结构和从默认值派生的选项
 # ---------------------------------------------------------------------------
 
 class PricedField(NamedTuple):
