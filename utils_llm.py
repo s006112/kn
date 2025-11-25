@@ -1,7 +1,7 @@
 import os
 import time
 import base64
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar
 
 import requests
 import openai
@@ -72,14 +72,17 @@ def get_gemini_client() -> Any:
 
 # 共用 messages builder -----------------------------------------------------
 
+T = TypeVar("T")
+
+
 def _build_messages(
     system_prompt: str,
     user_text: str,
     messages: Optional[Iterable[Dict[str, Any]]],
-    role_content_factory: Callable[[str, str], Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    role_content_factory: Callable[[str, str], T],
+) -> List[T]:
     if messages:
-        built: List[Dict[str, Any]] = []
+        built: List[T] = []
         for m in messages:
             role = (m.get("role") or "user").strip() or "user"
             text = _format_text(m.get("content"))
@@ -87,7 +90,7 @@ def _build_messages(
         if built:
             return built
 
-    built: List[Dict[str, Any]] = []
+    built: List[T] = []
     if system_prompt:
         built.append(role_content_factory("system", _format_text(system_prompt)))
     if user_text:
@@ -112,23 +115,10 @@ def build_perplexity_payload(system_prompt, user_text, messages):
 
 
 def build_gemini_payload(system_prompt, user_text, messages):
-    """
-    Gemini：統一用純文字 contents（所有 2.x 系列都吃得下）。
-    不搞 messages，不做 model 分流，保持簡單。
-    """
-    parts = []
+    def factory(role, text):  # noqa: ARG001 - role unused but keeps signature uniform
+        return text
 
-    if messages:
-        for m in messages:
-            parts.append(_format_text(m.get("content")))
-        return "\n\n".join(parts)
-
-    if system_prompt:
-        parts.append(_format_text(system_prompt))
-    if user_text:
-        parts.append(_format_text(user_text))
-
-    return "\n\n".join(parts)
+    return "\n\n".join(_build_messages(system_prompt, user_text, messages, factory))
 
 
 # 文字 backend 呼叫 ---------------------------------------------------------
@@ -143,19 +133,14 @@ def call_openai(client: Any, model: str, payload: Any, timeout: int) -> str:
 
 def call_perplexity(client: Any, model: str, payload: Any, timeout: int) -> str:
     resp = client.chat.completions.create(model=model, messages=payload, timeout=timeout)
-    if not resp or not getattr(resp, "choices", None):
-        raise RuntimeError("Perplexity returned no content.")
-    text = resp.choices[0].message.content
+    text = getattr(getattr(getattr(resp, "choices", [None])[0], "message", None), "content", None)
     if not text:
         raise RuntimeError("Perplexity returned empty text.")
     return _normalize_output(text)
 
 
 def call_gemini(client: Any, model: str, payload: Any, timeout: int) -> str:
-    resp = client.models.generate_content(
-        model=model,
-        contents=payload,  # build_gemini_payload 已經返回 string
-    )
+    resp = client.models.generate_content(model=model, contents=payload)
     text = getattr(resp, "text", None)
     if not text:
         raise RuntimeError(f"Gemini ({model}) returned empty text.")

@@ -55,7 +55,8 @@ numpy==2.2.6  # Core numerical computing library for Python
 perplexityai==0.20.0  # Client library for Perplexity AI API
 sounddevice==0.5.3  # Record and play audio using NumPy arrays
 openai-whisper==20240930  # OpenAI Whisper speech-to-text model
-
+google-genai==1.52.0
+perplexityai==0.20.0
 
 # curve_extract
 scipy==1.15.3  # Scientific computing algorithms built on NumPy
