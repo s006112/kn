@@ -4,15 +4,17 @@
     <h2>Live Summary</h2>
     <div id="live-summary" class="grid">
       {% if result %}
+      {% set multi_layer = result.breakdown.multi_layer %}
+      {% set ml_details = multi_layer.details %}
+      {% set ml_raw = multi_layer.raw %}
       <ul class="mono">
         <li>Material: {{ result.breakdown.material.total }}
           <ul>
-            <li>{{ values.material or 'Laminate' }}: {{ result.breakdown.material.components.laminate }}</li>
+            <li>{{ values.material or 'Laminate' }}: {{ result.breakdown.material.components.laminate }}
+              (×{{ ml_details.material_multiplier }})
+            </li>
           </ul>
         </li>
-        {% set multi_layer = result.breakdown.multi_layer %}
-        {% set ml_details = multi_layer.details %}
-        {% set ml_raw = multi_layer.raw %}
         <li>Layers: {{ multi_layer.total }}
           <ul>
             <li>PP 层: {{ multi_layer.components.pp_cost }}

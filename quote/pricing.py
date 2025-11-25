@@ -80,20 +80,21 @@ def price_quote(inp: Inputs, prm: Params) -> dict[str, Any]:
     material_components = {
         "laminate": laminate_cost,
     }
-    material_cost = _component_total(material_components)
 
     pp_base = _non_negative(inp.pp_cost)
     inner_base = _non_negative(inp.inner_cost)
     stacking_base = _non_negative(inp.stacking_cost)
     if inp.layers >= 3:
-        layer_pairs = inp.layers / 2.0
-        pp_multiplier = math.ceil(max(layer_pairs - 1.0, 0.0))
-        inner_multiplier = math.ceil(layer_pairs)
+        material_multiplier = math.ceil(max( inp.layers / 2.0 - 1, 0.0))
+        pp_multiplier = math.ceil(max(inp.layers / 2.0, 0.0))
+        inner_multiplier = math.ceil(max(inp.layers - 2.0, 0.0))
         stacking_component = stacking_base
     else:
+        material_multiplier = 1.0
         pp_multiplier = 0.0
         inner_multiplier = 0.0
         stacking_component = 0.0
+    material_cost = _component_total(material_components) * material_multiplier
     multi_layer_components = {
         "pp_cost": pp_base * pp_multiplier,
         "inner_cost": inner_base * inner_multiplier,
@@ -102,6 +103,7 @@ def price_quote(inp: Inputs, prm: Params) -> dict[str, Any]:
     multi_layer_cost = _component_total(multi_layer_components)
     multi_layer_section = _component_section(multi_layer_cost, multi_layer_components, 2)
     multi_layer_section["details"] = {
+        "material_multiplier": round(material_multiplier, 3),
         "pp_multiplier": round(pp_multiplier, 3),
         "inner_multiplier": round(inner_multiplier, 3),
         "layers": inp.layers,
