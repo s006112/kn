@@ -24,26 +24,30 @@ MODEL_OPTIONS = [
     "gpt-image-1",
 ]
 
-PROMPT_RENDERING_PATH = Path(__file__).with_name("Prompt_rendering.txt")
-PROMPT_RENDERING = (
-    PROMPT_RENDERING_PATH.read_text("utf-8") if PROMPT_RENDERING_PATH.exists() else ""
-)
+PROMPT_RENDERING_PATH = Path(__file__).with_name("prompt_rendering.txt")
+if PROMPT_RENDERING_PATH.exists():
+    PROMPT_RENDERING = PROMPT_RENDERING_PATH.read_text("utf-8")
+else:
+    logger.error(
+        "Prompt template not found at %s. Rendering requests will fail.", PROMPT_RENDERING_PATH
+    )
+    PROMPT_RENDERING = ""
 
 
-def request_perplexity_render(image_bytes: bytes, model: str) -> bytes:
+def request_render(image_bytes: bytes, model: str, prompt: str) -> bytes:
     """
     使用指定圖像模型（OpenAI 或 Gemini）產生渲染結果。
 
     目前 Gemini 官方 image API 不支援真正的 image-to-image，
-    所以這裡只把 PROMPT_RENDERING 丟給模型產圖。
-    image_bytes 暫時保留以便未來擴充使用。
+    所以這裡只把 prompt 丟給模型產圖；image_bytes 暫時保留以便未來擴充使用。
     """
-    if not PROMPT_RENDERING:
-        raise RuntimeError("Prompt_rendering.txt not found or empty.")
+    final_prompt = prompt.strip()
+    if not final_prompt:
+        raise RuntimeError("Rendering prompt is empty.")
 
     images = generate_image(
         model=model,
-        prompt=PROMPT_RENDERING,
+        prompt=final_prompt,
         size="1024x1024",
         n=1,
     )
@@ -54,7 +58,7 @@ def request_perplexity_render(image_bytes: bytes, model: str) -> bytes:
     return images[0]
 
 
-def handle_render(uploaded: str | None, model: str):
+def handle_render(uploaded: str | None, model: str, prompt: str):
     if not uploaded:
         return None, "Please upload a sketch or CAD drawing before generating."
 
@@ -69,7 +73,7 @@ def handle_render(uploaded: str | None, model: str):
         return None, f"Failed to read the uploaded file: {exc}"
 
     try:
-        rendered_bytes = request_perplexity_render(sketch_bytes, model)
+        rendered_bytes = request_render(sketch_bytes, model, prompt)
         rendered_image = Image.open(BytesIO(rendered_bytes))
         return rendered_image, "Rendering complete."
     except Exception as exc:
@@ -77,4 +81,4 @@ def handle_render(uploaded: str | None, model: str):
         return None, f"Rendering failed: {exc}"
 
 
-__all__ = ["MODEL_OPTIONS", "handle_render", "request_perplexity_render"]
+__all__ = ["MODEL_OPTIONS", "PROMPT_RENDERING", "handle_render", "request_render"]

@@ -1,3 +1,20 @@
+Prompt
+A highly detailed, photorealistic image of a modern workspace.
+– Primary subject: a clean wooden desk with a laptop, a mechanical keyboard, and a small desk lamp placed on the right side.
+– Environment: soft natural window light from the left, subtle reflections on the desk surface, realistic shadows, no overexposure.
+– Style: studio-quality photography, 50mm lens, shallow depth of field, true-to-life materials, physically correct lighting.
+– Requirements: extremely clean edges, no artifacts, accurate perspective, no distortion, realistic textures for wood, metal, plastic, and glass.
+– Background: minimal, neutral wall with slight gradient.
+– Output quality: high resolution suitable for product catalog or professional presentation.
+
+Negative Prompt（如模型支援）
+– no cartoon, no painting, no CGI look, no deformation, no extra objects, no reflections with wrong geometry, no text artifacts, no watermark, no people.
+
+
+
+
+
+
 生成一份销售人员每周工作报告，依据提供的一周客户拜访日报及零散文字记录资料进行信息筛选与整合。以客户公司名称为主线，梳理并分类各客户相关内容，确保结构完整、逻辑清晰。报告提交对象为销售总监，需具备专业、简洁、条理明晰的表达，体现积极主动的跟进态度，对不理想情况采用适度正向表述。内容结构如下：
 ・本周拜访客户清单
 ・各客户拜访内容摘要

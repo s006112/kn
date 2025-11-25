@@ -3,7 +3,7 @@ from __future__ import annotations
 import gradio as gr
 
 from clipboard_polyfill import CLIPBOARD_POLYFILL
-from core_rendering import MODEL_OPTIONS, handle_render
+from core_rendering import MODEL_OPTIONS, PROMPT_RENDERING, handle_render
 
 
 with gr.Blocks(title="Sketch-to-Rendering Studio", head=CLIPBOARD_POLYFILL) as demo:
@@ -19,6 +19,11 @@ with gr.Blocks(title="Sketch-to-Rendering Studio", head=CLIPBOARD_POLYFILL) as d
             choices=MODEL_OPTIONS,
             value=MODEL_OPTIONS[0],
         )
+    prompt_editor = gr.Textbox(
+        label="Rendering prompt (edit before submitting)",
+        value=PROMPT_RENDERING,
+        lines=10,
+    )
     with gr.Row():
         generate_btn = gr.Button("Generate Rendering")
     with gr.Column():
@@ -30,11 +35,10 @@ with gr.Blocks(title="Sketch-to-Rendering Studio", head=CLIPBOARD_POLYFILL) as d
         )
     generate_btn.click(
         fn=handle_render,
-        inputs=[upload_image, model_picker],
+        inputs=[upload_image, model_picker, prompt_editor],
         outputs=[rendered_output, status_message],
     )
 
 
 if __name__ == "__main__":
     demo.launch()
-
