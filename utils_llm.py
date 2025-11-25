@@ -164,33 +164,28 @@ def call_openai_image(
     - 如果有 b64_json 就 decode
     - 否則如果有 url 就自己 requests 拿 bytes
     """
-    resp = client.images.generate(
-        model=model,
-        prompt=prompt,
-        size=size,
-        n=n,
-    )
+    resp = client.images.generate(model=model, prompt=prompt, size=size, n=n)
 
     data = getattr(resp, "data", None) or []
     if not data:
         raise RuntimeError("OpenAI image API returned no data.")
 
-    images: List[bytes] = []
-    for item in data:
+    def _extract_bytes(item: Any) -> Optional[bytes]:
         b64 = getattr(item, "b64_json", None)
         if b64:
             try:
-                images.append(base64.b64decode(b64))
-                continue
+                return base64.b64decode(b64)
             except Exception as exc:
                 raise RuntimeError("OpenAI image payload is not valid base64.") from exc
 
         url = getattr(item, "url", None)
-        if url:
-            r = requests.get(url, timeout=60)
-            r.raise_for_status()
-            images.append(r.content)
+        if not url:
+            return None
+        response = requests.get(url, timeout=60)
+        response.raise_for_status()
+        return response.content
 
+    images = [img for item in data if (img := _extract_bytes(item))]
     if not images:
         raise RuntimeError("OpenAI image API did not return any decodable image.")
     return images
