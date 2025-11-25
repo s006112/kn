@@ -18,6 +18,9 @@ load_env(dotenv_path=Path(__file__).parent / ".env")
 logger = configure_logging("rendering")
 
 MODEL_OPTIONS = [
+    "stability-core",
+    "stability-sd3",
+    "stability-ultra",
     "gemini-2.5-flash-image",
     "gemini-3-pro-image-preview",
     "gpt-image-1-mini",
@@ -34,7 +37,7 @@ else:
     PROMPT_RENDERING = ""
 
 
-def request_render(image_bytes: bytes, model: str, prompt: str) -> bytes:
+def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
     """
     使用指定圖像模型（OpenAI 或 Gemini）產生渲染結果。
 
@@ -59,18 +62,17 @@ def request_render(image_bytes: bytes, model: str, prompt: str) -> bytes:
 
 
 def handle_render(uploaded: str | None, model: str, prompt: str):
-    if not uploaded:
-        return None, "Please upload a sketch or CAD drawing before generating."
-
     if model not in MODEL_OPTIONS:
         return None, "Select a valid model from the dropdown before submitting."
 
-    try:
-        with open(uploaded, "rb") as image_file:
-            sketch_bytes = image_file.read()
-    except Exception as exc:
-        logger.exception("Unable to read the uploaded image.")
-        return None, f"Failed to read the uploaded file: {exc}"
+    sketch_bytes: bytes | None = None
+    if uploaded:
+        try:
+            with open(uploaded, "rb") as image_file:
+                sketch_bytes = image_file.read()
+        except Exception as exc:
+            logger.exception("Unable to read the uploaded image.")
+            return None, f"Failed to read the uploaded file: {exc}"
 
     try:
         rendered_bytes = request_render(sketch_bytes, model, prompt)

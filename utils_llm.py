@@ -17,6 +17,7 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+STABLY_API_KEY = os.getenv("STABLY_API_KEY") 
 
 _OPENAI_CLIENT: Optional[openai.OpenAI] = None
 _PPLX_CLIENT: Optional[Any] = None
@@ -68,7 +69,13 @@ def get_gemini_client() -> Any:
         _GEMINI_CLIENT = genai.Client(api_key=GEMINI_API_KEY)
     return _GEMINI_CLIENT
 
-
+def get_stability_client() -> str:
+    """
+    Stability Ultra 不需要 stateful client，只要 API key。
+    """
+    if not STABLY_API_KEY:
+        raise RuntimeError("STABLY_API_KEY is missing.")
+    return STABLY_API_KEY
 
 # 共用 messages builder -----------------------------------------------------
 
@@ -150,6 +157,69 @@ def call_gemini(client: Any, model: str, payload: Any, timeout: int) -> str:
 
 
 # 圖像 backend 呼叫：統一回傳 List[bytes] -----------------------------------
+
+def call_stability_image(
+    api_key: str,
+    model: str,
+    prompt: str,
+    size: str,
+    n: int,
+) -> List[bytes]:
+    """
+    Stability.ai Stable Image 系列（多模型）
+    - 我們用「自訂 model 名」決定要打哪個 endpoint：
+        "stability-ultra" → /generate/ultra
+        "stability-core"  → /generate/core
+        "stability-sd3"   → /generate/sd3   （僅做為示意，實際以官方為準）
+    - 統一：
+        Authorization: Bearer <STABLY_API_KEY>
+        Accept: image/*
+        multipart/form-data:
+            prompt
+            output_format = png
+    - 多張圖片：暫時簡單重複呼叫 n 次（Stability 有些 endpoint 本身只回一張）。
+    """
+    if not api_key:
+        raise RuntimeError("STABLY_API_KEY is missing.")
+
+    # 1) 根據你自己的「model 命名」決定 endpoint 後綴
+    model_lower = model.lower().strip()
+    if model_lower == "stability-ultra":
+        endpoint = "ultra"
+    elif model_lower == "stability-core":
+        endpoint = "core"
+    elif model_lower == "stability-sd3":
+        endpoint = "sd3"   # 實際路徑要以官方文件為準
+    else:
+        raise RuntimeError(f"Unknown Stability model alias: {model}")
+
+    url = f"https://api.stability.ai/v2beta/stable-image/generate/{endpoint}"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "image/*",
+    }
+
+    files = {
+        "prompt": (None, prompt),
+        "output_format": (None, "png"),
+        # 如未來想用 size，可以在這裡根據 size 做額外 mapping
+        # 例如 aspect_ratio, width, height 等
+    }
+
+    images: List[bytes] = []
+    count = max(1, n)
+
+    for _ in range(count):
+        resp = requests.post(url, headers=headers, files=files, timeout=60)
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"Stability image API error {resp.status_code}: {resp.text[:200]}"
+            )
+        images.append(resp.content)
+
+    return images
+
 
 def call_openai_image(
     client: openai.OpenAI,
@@ -305,6 +375,11 @@ _BACKENDS: Dict[str, Dict[str, Any]] = {
 
 
 _IMAGE_BACKENDS: Dict[str, Dict[str, Any]] = {
+    "stability": {
+        "match": lambda m: m.lower().startswith("stability"),
+        "client_getter": get_stability_client,
+        "call_fn": call_stability_image,
+    },
     "gemini": {
         "match": lambda m: m.lower().startswith("gemini") and "image" in m.lower(),
         "client_getter": get_gemini_client,
