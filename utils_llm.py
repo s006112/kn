@@ -97,46 +97,34 @@ def _build_messages(
 
 # payload builder（OpenAI / Perplexity / Gemini） ---------------------------
 
-def build_openai_payload(
-    system_prompt: str,
-    user_text: str,
-    messages: Optional[Iterable[Dict[str, Any]]],
-) -> List[Dict[str, Any]]:
-    def factory(role: str, text: str) -> Dict[str, Any]:
+def build_openai_payload(system_prompt, user_text, messages):
+    def factory(role, text):
         return {"role": role, "content": [{"type": "input_text", "text": text}]}
     return _build_messages(system_prompt, user_text, messages, factory)
 
 
-def build_perplexity_payload(
-    system_prompt: str,
-    user_text: str,
-    messages: Optional[Iterable[Dict[str, Any]]],
-) -> List[Dict[str, Any]]:
-    def factory(role: str, text: str) -> Dict[str, Any]:
+def build_perplexity_payload(system_prompt, user_text, messages):
+    def factory(role, text):
         return {"role": role, "content": text}
     return _build_messages(system_prompt, user_text, messages, factory)
 
 
-def build_gemini_payload(
-    system_prompt: str,
-    user_text: str,
-    messages: Optional[Iterable[Dict[str, Any]]],
-) -> str:
-    parts: List[str] = []
+def build_gemini_payload(system_prompt, user_text, messages):
+    # 完全不使用 messages API
+    parts = []
+
     if messages:
         for m in messages:
-            role = (m.get("role") or "user").strip() or "user"
             text = _format_text(m.get("content"))
-            if role == "system":
-                parts.append(f"[SYSTEM]\n{text}")
-            else:
-                parts.append(text)
+            parts.append(text)
         return "\n\n".join(parts)
 
     if system_prompt:
-        parts.append(f"[SYSTEM]\n{_format_text(system_prompt)}")
+        parts.append(_format_text(system_prompt))
+
     if user_text:
         parts.append(_format_text(user_text))
+
     return "\n\n".join(parts) if parts else ""
 
 
@@ -231,8 +219,9 @@ def call_gemini_image(
     try:
         resp = client.models.generate_content(
             model=model,
-            contents=[prompt],
+            contents=payload,  # ← 單一純文字
         )
+        text = resp.text
     except genai_errors.ClientError as exc:
         # 更友善顯示配額 / 流量限制錯誤
         msg = str(exc)
