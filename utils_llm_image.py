@@ -176,6 +176,7 @@ def call_gemini_image(
     prompt: str,
     size: str,
     n: int,
+    init_image: Optional[bytes] = None,
 ) -> List[bytes]:
     """Invoke Gemini image-capable models and collect inline or remote bytes."""
 
@@ -224,12 +225,30 @@ def call_gemini_image(
                         continue
                 file_data = getattr(part, "file_data", None)
                 if file_data:
-                    uri = getattr(file_data, "file_uri", None)
-                    if uri:
-                        yield _download(uri)
+                        uri = getattr(file_data, "file_uri", None)
+                        if uri:
+                            yield _download(uri)
+
+    if init_image is not None:
+        contents: Any = [
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "inline_data": {
+                            "mime_type": "image/png",
+                            "data": init_image,
+                        }
+                    },
+                    {"text": prompt},
+                ],
+            }
+        ]
+    else:
+        contents = prompt
 
     try:
-        resp = client.models.generate_content(model=model, contents=prompt)
+        resp = client.models.generate_content(model=model, contents=contents)
     except genai_errors.ClientError as exc:  # pragma: no cover - passthrough
         msg = str(exc)
         if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
@@ -320,6 +339,9 @@ def generate_image(
                 n,
                 init_image=image_bytes,
             )
+
+    if backend_name == "gemini":
+        return backend_cfg["call_fn"](client, model_name, prompt, size, n, init_image=image_bytes)
 
     return backend_cfg["call_fn"](client, model_name, prompt, size, n)
 
