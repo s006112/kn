@@ -14,7 +14,7 @@ pip download -d /wheels --only-binary=:all: watchdog==6.0.0 numpy==2.2.6 perplex
 pip download -d /wheels setuptools wheel build # build tools
 pip download -d /wheels openai-whisper # no wheels available, only source package
 pip download -d /wheels --only-binary=:all: kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
-pip download -d /wheels --only-binary=:all: google-genai
+pip download -d /wheels --only-binary=:all: diffusers
 
 # offline install apt
 sudo apt-get install -y --no-download python3-pip # install from cached .deb
@@ -31,7 +31,7 @@ pip install --no-index --find-links=/wheels openai-whisper==20240930 # 只有 �
 pip install --no-index --find-links=/wheels scipy==1.15.3 opencv_python_headless==4.12.0.88 # curve_extract
 pip install --no-index --find-links=/wheels kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
 pip install --no-index --find-links=/wheels transformers==4.57.1 # llm
-pip install --no-index --find-links=/wheels google-genai
+pip install --no-index --find-links=/wheels diffusers==0.35.2
 
 # common
 python-dotenv==1.2.1  # Manage environment variables from .env files
@@ -91,11 +91,14 @@ fastapi==0.116.1  # High-performance web framework for building APIs
 uvicorn==0.35.0  # ASGI server for running FastAPI and other apps
 
 
+# stable diffusion
+diffusers==0.35.2 # Diffusion models for image generation and manipulation
+huggingface-cli download stabilityai/stable-diffusion-3.5-medium \
+    --local-dir sd35_medium_unet \
+    --local-dir-use-symlinks False
 
-
-
-# huggingface-cli login
-# Token = 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
+huggingface-cli login
+Token = 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
 
 "Please explain the term of 'Fourier transform' concisely and eleborate as much as you can."
 "What is philosophy. Please express your own thought in a complete passage."
