@@ -165,36 +165,25 @@ def call_stability_image(
     size: str,
     n: int,
     init_image: Optional[bytes] = None,
-    image_strength: float = 0.35,
+    image_strength: float = 0.45,  # 建議先用 0.3–0.6，而不是 1.0
 ) -> List[bytes]:
     """
-    Stability.ai Stable Image 系列（多模型）
-    - 我們用「自訂 model 名」決定要打哪個 endpoint：
-        "stability-ultra" → /generate/ultra
-        "stability-core"  → /generate/core
-        "stability-sd3"   → /generate/sd3   （僅做為示意，實際以官方為準）
-    - 統一：
-        Authorization: Bearer <STABLY_API_KEY>
-        Accept: image/*
-        multipart/form-data:
-            prompt
-            output_format = png
-    - 多張圖片：暫時簡單重複呼叫 n 次（Stability 有些 endpoint 本身只回一張）。
-    - image-to-image：
-        - 加上 mode=image-to-image
-        - multipart/form-data 增加 init_image 與 image_strength
+    Stability.ai Stable Image v2beta:
+    - text-to-image: 只需要 prompt（可選 aspect_ratio 等）
+    - image-to-image: 必須提供 image、strength、mode="image-to-image"
+      strength ∈ [0,1]，越小越接近原圖，越大越接近純文本生圖。
     """
     if not api_key:
         raise RuntimeError("STABLY_API_KEY is missing.")
 
-    # 1) 根據你自己的「model 命名」決定 endpoint 後綴
+    # 1) 根據自訂 model 名決定 endpoint
     model_lower = model.lower().strip()
     if model_lower == "stability-ultra":
         endpoint = "ultra"
     elif model_lower == "stability-core":
         endpoint = "core"
     elif model_lower == "stability-sd3":
-        endpoint = "sd3"   # 實際路徑要以官方文件為準
+        endpoint = "sd3"
     else:
         raise RuntimeError(f"Unknown Stability model alias: {model}")
 
@@ -211,11 +200,19 @@ def call_stability_image(
     }
 
     if init_image is not None:
+        # 真正的 v2beta image-to-image 參數
+        strength = max(0.0, min(1.0, image_strength))
         files["mode"] = (None, "image-to-image")
-        files["init_image"] = ("init.png", init_image, "image/png")
-        files["image_strength"] = (None, str(image_strength))
+        files["image"] = ("init.png", init_image, "image/png")
+        files["strength"] = (None, str(strength))
+        print(
+            "Stability image-to-image mode,"
+            f" init_image size = {len(init_image)}, strength = {strength}"
+        )
     else:
+        # 純文字生圖
         files["mode"] = (None, "text-to-image")
+        print("Stability text-to-image mode")
 
     images: List[bytes] = []
     count = max(1, n)
