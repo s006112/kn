@@ -1,22 +1,36 @@
-• Transform a provided computer aided design drawing or rendered preview into an realistic photographic visualization
-• The drawing is likely a part of or completed lighting luminaire fixture design
-• Remove all visible CAD artifacts, including abrupt edges, sharp lines, contour irregularities, and synthetic compositing traces
-• Preserve the original camera view, position, angle, rotation, perspective, height, and focal characteristics exactly without any modification
-• Faithfully represent the luminaire’s materials, textures, and surface qualities based on the model’s structure
-• Enhance the appearance with authentic real-world metal, glass, or other material qualities, avoiding artificial or faked-like finishes
-• Refine lighting, reflections, shadows, and material interactions to achieve professional, photography-grade realism
-• Strictly maintain all original design proportions, structures, and details without adding or altering any elements
-• Allow the model to automatically infer and adjust the background and lighting to a realistic environmental style
-• Output a clean, polished, high-quality photorealistic render suitable for direct use in customers presentations
+- Generate a single, realistic photographic visualization based strictly on the provided computer-aided design (CAD) line drawing of a lighting luminaire
+- Use the CAD drawing as the partial or entired structural luminaire blueprint: strictly maintain all original proportions, dimensions, geometries, profiles, and design details without adding, removing, or modifying any elements
+- Preserve exactly the original camera view from the CAD reference: keep identical camera position, viewing angle, rotation, height, distance, field of view, perspective, focal length, framing, and composition with no cropping, reframing, or lens changes
+- Cleanly remove all drawing-style artifacts from the final image: eliminate visible construction lines, outlines, abrupt edges, jagged contours, mesh or wireframe hints, synthetic or sketch-like traces, and any unnatural graphic elements
+- Infer and reconstruct the luminaire’s materials and finishes directly from the shapes and design cues in the sketch, using internal reasoning to choose realistic, physically plausible materials commonly used in luminaires (e.g. coated metal body, glass or acrylic diffusers, precise joinery, subtle fasteners if implied)
+- Define convincing surface qualities for every visible part of the luminaire: realistic gloss or matte levels, micro-surface roughness, brushed or polished metal where appropriate, smooth or frosted diffusers, believable plastic or composite parts, and accurate color tones inferred from the design
+- Ensure physically accurate material interactions: correct reflections, refractions, specular highlights, edge softness, and energy-conserving light behavior across all surfaces
+- Refine lighting to professional, photography-grade quality: balanced exposure, soft natural shadows, realistic falloff, subtle ambient occlusion, and consistent light direction that enhances shape readability and material richness
+- If the design implies an emitting surface (e.g. diffuser, LED panel, lamp head), render it as a functional light source with natural glow, realistic luminance, soft bloom, and light spill onto nearby surfaces, while avoiding overexposed or blown-out regions
+- Automatically infer and create a realistic environment that matches the product’s nature: a clean, modern, non-distracting setting (such as a minimal studio backdrop or subtle architectural context) that supports product presentation without adding new structural features to the luminaire itself
+- Ensure the background, floor, and any contact surfaces are smooth, realistic, and cohesive, with properly aligned contact shadows and, where appropriate, soft reflections or subtle gloss to anchor the luminaire in space
+- Avoid any stylized, cartoonish, painterly, or CGI-looking effects: the final image must look like a high-end professional product photograph rather than a rendering or illustration
+- Maintain crystal-clear edges and forms while avoiding overly sharp, synthetic contours: apply natural edge softness, realistic depth of field where appropriate, and optical characteristics consistent with a real camera lens at the preserved focal settings
+- Render with physically based shading and global illumination: realistic indirect light, color bleeding, and shadow softness that enhance depth and three-dimensionality
+- Remove all technical annotations from the final image (such as measurement lines, callouts, labels, or title blocks from the CAD drawing), leaving only the fully realized luminaire in its environment
+- Color grade the final image subtly and professionally: neutral white balance, accurate material colors, controlled contrast, and no heavy filters or artistic tints
+- Produce a clean, noise-free, high-resolution, presentation-ready photorealistic render, with no watermarks, logos, borders, UI elements, or text overlays, suitable for direct use in customer-facing product presentations and marketing materials
 
 
-
-・將提供的 CAD 成品圖或示意渲染圖轉化為極度逼真的攝影視覺化效果
-・移除所有可見的 CAD 瑕疵，包括突兀邊緣、銳利線條、輪廓異常與合成痕跡
-・精準保留原始視角、位置、角度、旋轉、透視、高度與焦距，不做任何改動
-・根據模型判斷，忠實呈現燈具的材質、紋理與表面質感
-・提升燈具外觀，打造真實世界的金屬、玻璃或其他材質質感，避免人工或塑料質感
-・精修光照、反射、陰影與材質的物理交互，使成品具備專業實拍的視覺品質
-・完全遵守原始設計的比例、結構與細節，不添加或修改任何元素
-・背景與光照由模型自行判斷並自動調整為真實環境風格
-・輸出乾淨俐落、可直接用於客戶展示的高品質寫實渲染圖
+- 根據提供的計算機輔助設計（CAD）圖稿生成單張超真實感的攝影級可視化圖像
+- 以CAD圖紙為局部或完整灯具結構藍本：嚴格保持所有原始比例、尺寸、幾何形體、輪廓和設計細節，不增刪或修改任何元素
+- 完整保留CAD參考圖的原始攝像機視角：保持完全一致的拍攝位置、視角、旋轉角度、高度、距離、視野範圍、透視關系、焦距、構圖，不進行裁切、重構或更換鏡頭
+- 在圖像中移除所有繪圖特征：消除可見的結構線、描邊、突兀邊緣、鋸齒輪廓、網格或線框痕跡、任何不自然的圖形化元素
+- 直接依據草圖的形體與設計線索推斷並重建燈具材料與表面處理，使用內部推理選擇符合真實物理特性的常見燈具材質（如塗層金屬外殼、玻璃或亞克力擴散罩、精準接合細節、可能隱含的細小緊固件）
+- 為燈具每個可見組件設定可信的表面特性：真實的光澤/啞光程度、微表面粗糙度、拉絲或拋光金屬、光滑或磨砂擴散罩、可信的塑料或覆合材質，以及依設計推斷的準確色調
+- 確保物理真實的材質交互：正確的反射、折射、高光、邊緣柔化，以及符合能量守恒的光照行為
+- 將燈光優化至專業攝影級品質：平衡曝光、柔和自然陰影、真實光衰減、細膩環境光遮蔽、一致的光照方向以強化形體層次與材質質感
+- 若設計暗示存在發光面（如擴散罩、LED模組、燈頭），則將其呈現為真實光源，具有自然輝光、真實亮度、柔和光暈，以及合理的光線溢出，同時避免局部過曝
+- 自動推斷並創建與產品屬性匹配的真實環境：簡約、現代、無干擾的場景（如極簡攝影棚背景或低調建築環境），突顯產品展示，而不對燈具本體添加任何新結構
+- 確保背景、地面及接觸面真實連貫，具備正確的接觸陰影，並在需要時呈現輕微反射或細膩光澤，使燈具在空間中合理落位
+- 避免任何風格化、卡通化、繪畫感或明顯CGI效果：最終圖像必須呈現高端專業產品攝影效果，而非渲染或插圖
+- 保持清晰形體邊緣，同時避免過度銳利的人工輪廓：應用自然邊緣柔化、適度景深，以及與原始焦距相符的真實鏡頭光學特性
+- 采用基於物理的著色與全局光照：真實的間接光、顏色反射、陰影柔化，增強畫面深度與三維感
+- 在最終圖像中移除所有技術標注（如尺寸線、引出線、標簽或CAD圖框信息），只保留完整實現的燈具與環境
+- 進行專業且輕度的色彩調整：中性白平衡、準確材質色彩、適度對比度，無強烈濾鏡或藝術化色調
+- 輸出幹凈、無噪點、高分辨率、可直接用於客戶展示的攝影級精修效果，無水印、標識、邊框或任何文字覆蓋

@@ -22,8 +22,8 @@ PATH_CONFIG = {
     "AUDIO_DONE_FOLDER": Path("/desktop/YT1"),
     "PRETEXT_WATCH_FOLDER": WATCH_FOLDER,
     "PREMIUM_WATCH_FOLDER": Path("/desktop"),
-    # PRETEXT_DONE_FOLDER = WATCH_FOLDER / "_p"
-    "PRETEXT_DONE_FOLDER": Path("/desktop"),
+    "PRETEXT_DONE_FOLDER": WATCH_FOLDER / "_p",
+    #"PRETEXT_DONE_FOLDER": Path("/desktop"),
     "ARCHIVE_FOLDER": WATCH_FOLDER / "_p",
     "ORIGINAL_FOLDER": WATCH_FOLDER / "_p" / "Raw",
     "EXTRACT_FOLDER": WATCH_FOLDER / "_p" / "Extract",
@@ -40,11 +40,11 @@ MODEL_PRETEXT = "gpt-4.1-mini"
 MODEL_EXTRACT_MATRIX = {
     "WATCH_FOLDER": [
         "sonar-reasoning-pro",
-        "gemini-3-pro-preview",
-        "gpt-5.1",
+        "gemini-2.5-pro",
+        "o3",
     ],
     "PREMIUM_WATCH_FOLDER": [
-        "o3",
+        "gpt-5.1",
     ],
 }
 

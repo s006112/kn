@@ -14,6 +14,32 @@ Negative Prompt（如模型支援）
 
 
 
+Generate an realistic photographic visualization according to a provided computer aided design drawing
+The attached drawing is likely a part of or completed lighting luminaire design
+Remove all visible artifacts, abrupt edges, sharp lines, contour irregularities, unatural and synthetic elements
+Preserve exactly the original camera view, position, angle, rotation, perspective, height, and focal characteristics
+Infer and reconstruct the luminaire’s materials, textures, and surface qualities directly from the provided sketch, using internal model reasoning.
+Refine lighting, reflections, shadows, and material interactions to achieve professional, photography-grade realism
+Strictly maintain all original design proportions, structures, and details without adding or altering any elements
+Automatically infer and Refine the background and lighting to a realistic environmental style
+Output a clean, polished, high-quality photorealistic render suitable for direct use in customers presentations
+
+
+
+將提供的 CAD 成品圖或示意渲染圖轉化為極度逼真的攝影視覺化效果
+移除所有可見的 CAD 瑕疵，包括突兀邊緣、銳利線條、輪廓異常與合成痕跡
+精準保留原始視角、位置、角度、旋轉、透視、高度與焦距，不做任何改動
+根據模型判斷，忠實呈現燈具的材質、紋理與表面質感
+提升燈具外觀，打造真實世界的金屬、玻璃或其他材質質感，避免人工或塑料質感
+精修光照、反射、陰影與材質的物理交互，使成品具備專業實拍的視覺品質
+完全遵守原始設計的比例、結構與細節，不添加或修改任何元素
+背景與光照由模型自行判斷並自動調整為真實環境風格
+輸出乾淨俐落、可直接用於客戶展示的高品質寫實渲染圖
+
+
+
+
+
 
 生成一份销售人员每周工作报告，依据提供的一周客户拜访日报及零散文字记录资料进行信息筛选与整合。以客户公司名称为主线，梳理并分类各客户相关内容，确保结构完整、逻辑清晰。报告提交对象为销售总监，需具备专业、简洁、条理明晰的表达，体现积极主动的跟进态度，对不理想情况采用适度正向表述。内容结构如下：
 ・本周拜访客户清单

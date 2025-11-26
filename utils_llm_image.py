@@ -23,12 +23,9 @@ def call_stability_image(
     size: str,
     n: int,
     init_image: Optional[bytes] = None,
-    image_strength: float = 0.45,
+    image_strength: float = 0.35,
 ) -> List[bytes]:
     """Invoke Stability.ai Stable Image v2beta for text/image-to-image."""
-    if not api_key:
-        raise RuntimeError("STABLY_API_KEY is missing.")
-
     model_lower = model.lower().strip()
     if model_lower == "stability-ultra":
         endpoint = "ultra"
@@ -68,7 +65,7 @@ def call_stability_image(
     count = max(1, n)
 
     for _ in range(count):
-        resp = requests.post(url, headers=headers, files=files, timeout=60)
+        resp = requests.post(url, headers=headers, files=files, timeout=120)
         if resp.status_code != 200:
             raise RuntimeError(
                 f"Stability image API error {resp.status_code}: {resp.text[:200]}"
@@ -103,7 +100,7 @@ def call_openai_image(
         url = getattr(item, "url", None)
         if not url:
             return None
-        response = requests.get(url, timeout=60)
+        response = requests.get(url, timeout=120)
         response.raise_for_status()
         return response.content
 
@@ -161,7 +158,7 @@ def call_openai_image_edit(
                 pass
         url2 = item.get("url")
         if url2:
-            r2 = requests.get(url2, timeout=60)
+            r2 = requests.get(url2, timeout=120)
             r2.raise_for_status()
             images.append(r2.content)
 
@@ -198,7 +195,7 @@ def call_gemini_image(
         files_client = getattr(client, "files", None)
         if files_client and hasattr(files_client, "download"):
             return files_client.download(file=uri)
-        resp = requests.get(uri, timeout=60)
+        resp = requests.get(uri, timeout=120)
         resp.raise_for_status()
         return resp.content
 
