@@ -120,7 +120,7 @@ def process_pretext_file(ctx: PipelineContext, file_path: str) -> None:
             f"{len(content):,}",
         )
 
-        pretext_model = config['GPT_MODEL_PRETEXT']
+        pretext_model = config['MODEL_PRETEXT']
         chunks = chunk_text(content)
         logging.info("Pretext: Split into %d chunks", len(chunks))
 

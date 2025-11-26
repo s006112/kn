@@ -267,6 +267,60 @@ def call_openai_image(
         raise RuntimeError("OpenAI image API did not return any decodable image.")
     return images
 
+def call_openai_image_edit(
+    client: openai.OpenAI,
+    model: str,
+    prompt: str,
+    size: str,
+    n: int,
+    init_image: bytes,
+) -> List[bytes]:
+    """Use OpenAI /v1/images/edits for image-to-image with gpt-image-1."""
+    if not OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY is missing.")
+
+    url = "https://api.openai.com/v1/images/edits"
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+    }
+
+    files = {
+        "image": ("init.png", init_image, "image/png"),
+        "model": (None, model),
+        "prompt": (None, prompt),
+        "n": (None, str(max(1, n))),
+        "size": (None, size),
+    }
+
+    resp = requests.post(url, headers=headers, files=files, timeout=120)
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"OpenAI image edit error {resp.status_code}: {resp.text[:200]}"
+        )
+
+    payload = resp.json()
+    data = payload.get("data") or []
+    if not data:
+        raise RuntimeError("OpenAI image edit API returned no data.")
+
+    images: List[bytes] = []
+    for item in data:
+        b64 = item.get("b64_json")
+        if b64:
+            try:
+                images.append(base64.b64decode(b64))
+                continue
+            except Exception:
+                pass
+        url2 = item.get("url")
+        if url2:
+            r2 = requests.get(url2, timeout=60)
+            r2.raise_for_status()
+            images.append(r2.content)
+
+    if not images:
+        raise RuntimeError("OpenAI image edit API did not return any decodable image.")
+    return images
 
 def call_gemini_image(
     client: Any,
@@ -442,6 +496,8 @@ def generate_image(
     model_name = model.strip()
     backend_name, backend_cfg = _resolve_image_backend(model_name)
     client = backend_cfg["client_getter"]()
+
+    # 1) Stability backend：支援 image-to-image
     if backend_name == "stability":
         return backend_cfg["call_fn"](
             client,
@@ -451,6 +507,20 @@ def generate_image(
             n,
             init_image=image_bytes,
         )
+
+    # 2) OpenAI backend：gpt-image-1 + 有上傳圖時，走 image-edit
+    if backend_name == "openai" and image_bytes is not None:
+        if model_name.lower().startswith("gpt-image-1"):
+            return call_openai_image_edit(
+                client,
+                model_name,
+                prompt,
+                size,
+                n,
+                init_image=image_bytes,
+            )
+
+    # 3) 其他情況一律當作 text-to-image
     return backend_cfg["call_fn"](client, model_name, prompt, size, n)
 
 

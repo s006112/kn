@@ -38,13 +38,15 @@ else:
 
 
 def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
-    """
-    使用指定圖像模型產生渲染結果。
+    """使用指定圖像模型產生渲染結果。
 
     - Stability 系列（stability-*）：
         - 如果提供 image_bytes，則走 image-to-image。
         - 如果未提供，則為 text-to-image。
-    - 其他模型（Gemini / OpenAI 等）目前僅支援 text-to-image，忽略 image_bytes。
+    - OpenAI gpt-image-1：
+        - 如果提供 image_bytes，走 image-to-image 編輯模式。
+        - 如果未提供，則為 text-to-image。
+    - 其他模型（Gemini 等）目前僅支援 text-to-image，會忽略 image_bytes。
     """
     final_prompt = prompt.strip()
     if not final_prompt:
@@ -55,7 +57,7 @@ def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
         prompt=final_prompt,
         size="1024x1024",
         n=1,
-        image_bytes=image_bytes if model.lower().startswith("stability") else None,
+        image_bytes=image_bytes,   # 關鍵：不要再做 startswith("stability") 判斷
     )
 
     if not images:

@@ -20,6 +20,7 @@ from utils_md import (
     create_or_find_note_for_base_name,
     find_most_recent_md_by_prefix,
 )
+from utils_text import sanitize_filename
 
 class BaseExtractHandler(FileSystemEventHandler):
     def __init__(self, config, queue, watch_folder_key, model_keys):
@@ -80,7 +81,8 @@ def process(self, file_path, get_next_available_filename):
 
                 # Save per-pass raw extract
                 os.makedirs(self.config['EXTRACT_FOLDER'], exist_ok=True)
-                save_path = get_next_available_filename(self.config['EXTRACT_FOLDER'], base, '_e')
+                model_suffix = f"_{sanitize_filename(model)}"
+                save_path = get_next_available_filename(self.config['EXTRACT_FOLDER'], base, model_suffix)
                 with open(save_path, 'w', encoding='utf-8') as f:
                     f.write(result)
                 release_text_file_permissions(save_path)
@@ -106,7 +108,7 @@ def process(self, file_path, get_next_available_filename):
                 # Write a per-model error file (best-effort)
                 try:
                     os.makedirs(self.config['EXTRACT_FOLDER'], exist_ok=True)
-                    err_path = os.path.join(self.config['EXTRACT_FOLDER'], f"{base}_e.{key}.error.txt")
+                    err_path = os.path.join(self.config['EXTRACT_FOLDER'], f"{base}_e.{key}.error")
                     with open(err_path, 'w', encoding='utf-8') as ef:
                         ef.write(f"Model: {model} (key: {key})\nError: {e}\n")
                     release_text_file_permissions(err_path)
@@ -139,7 +141,7 @@ def process(self, file_path, get_next_available_filename):
         # Overall error file (best-effort)
         try:
             os.makedirs(self.config['EXTRACT_FOLDER'], exist_ok=True)
-            err_path = os.path.join(self.config['EXTRACT_FOLDER'], base_nm + '_e.error.txt')
+            err_path = os.path.join(self.config['EXTRACT_FOLDER'], base_nm + '_e.error')
             with open(err_path, 'w', encoding='utf-8') as f:
                 f.write(f"Error: {e}\n")
             release_text_file_permissions(err_path)
@@ -162,11 +164,11 @@ def process(self, file_path, get_next_available_filename):
 class ExtractHandler(BaseExtractHandler):
     def __init__(self, config, queue):
         super().__init__(config, queue, 'WATCH_FOLDER',
-                         ['GPT_MODEL_EXTRACT_1', 'GPT_MODEL_EXTRACT_2'])
+                         ['MODEL_EXTRACT_1', 'MODEL_EXTRACT_2'])
     process_extract = process
 
 class PremiumExtractHandler(BaseExtractHandler):
     def __init__(self, config, queue):
         super().__init__(config, queue, 'PREMIUM_WATCH_FOLDER',
-                         ['GPT_MODEL_EXTRACT_3'])
+                         ['MODEL_EXTRACT_P'])
     process_premium_extract = process

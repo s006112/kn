@@ -32,10 +32,11 @@ OBSIDIAN_SYNC_FOLDER = Path("/desktop/Obsidian/O_2025")
 # gemini-2.0-flash, gemini-2.5-flash, gemini-2.5-pro, gemini-3-pro, 
 # gpt-5-mini, gpt-5-nano, gpt-4.1-mini, gpt-4.1-nano, gpt-4o-mini, o1-mini, o3-mini, o4-mini, codex-mini-latest
 # gpt-5.1, gpt-5, gpt-5-chat-latest, gpt-4.1, gpt-4o, o1, o3,
-GPT_MODEL_PRETEXT = "gpt-4.1-mini"  
-GPT_MODEL_EXTRACT_1 = "gemini-2.5-pro" 
-GPT_MODEL_EXTRACT_2 = "sonar-reasoning-pro"
-GPT_MODEL_EXTRACT_3 = "o3" 
+MODEL_PRETEXT = "gpt-4.1-mini"  
+MODEL_EXTRACT_1 = "gpt-5-mini" 
+MODEL_EXTRACT_2 = "gemini-2.5-pro"
+MODEL_EXTRACT_3 = "sonar-reasoning-pro"
+MODEL_EXTRACT_P = "o3" 
 
 MAX_RETRIES = 1
 RETRY_DELAY = 5  # seconds
@@ -53,10 +54,10 @@ CONFIG = {
     "LINK_BACKUP_FOLDER": LINK_BACKUP_FOLDER,
     "FAIL_FOLDER": FAIL_FOLDER,
     "OBSIDIAN_SYNC_FOLDER": OBSIDIAN_SYNC_FOLDER,
-    "GPT_MODEL_PRETEXT": GPT_MODEL_PRETEXT,
-    "GPT_MODEL_EXTRACT_1": GPT_MODEL_EXTRACT_1,
-    "GPT_MODEL_EXTRACT_2": GPT_MODEL_EXTRACT_2,
-    "GPT_MODEL_EXTRACT_3": GPT_MODEL_EXTRACT_3,
+    "MODEL_PRETEXT": MODEL_PRETEXT,
+    "MODEL_EXTRACT_1": MODEL_EXTRACT_1,
+    "MODEL_EXTRACT_2": MODEL_EXTRACT_2,
+    "MODEL_EXTRACT_P": MODEL_EXTRACT_P,
     "MAX_RETRIES": MAX_RETRIES,
     "RETRY_DELAY": RETRY_DELAY,
     # 这两项由 orchestration 注入
