@@ -1,13 +1,10 @@
 import os
 import time
-import base64
 from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar
 
-import requests
 import openai
 from perplexity import Perplexity
 from google import genai
-from google.genai import errors as genai_errors
 from dotenv import load_dotenv
 
 from utils_text_processing import _format_text, _normalize_output
@@ -17,7 +14,7 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-STABLY_API_KEY = os.getenv("STABLY_API_KEY") 
+STABLY_API_KEY = os.getenv("STABLY_API_KEY")
 
 _OPENAI_CLIENT: Optional[openai.OpenAI] = None
 _PPLX_CLIENT: Optional[Any] = None
@@ -69,10 +66,9 @@ def get_gemini_client() -> Any:
         _GEMINI_CLIENT = genai.Client(api_key=GEMINI_API_KEY)
     return _GEMINI_CLIENT
 
+
 def get_stability_client() -> str:
-    """
-    Stability Ultra 不需要 stateful client，只要 API key。
-    """
+    """Return Stability API key for image helpers."""
     if not STABLY_API_KEY:
         raise RuntimeError("STABLY_API_KEY is missing.")
     return STABLY_API_KEY
@@ -154,268 +150,6 @@ def call_gemini(client: Any, model: str, payload: Any, timeout: int) -> str:
     return _normalize_output(text)
 
 
-
-
-# 圖像 backend 呼叫：統一回傳 List[bytes] -----------------------------------
-
-def call_stability_image(
-    api_key: str,
-    model: str,
-    prompt: str,
-    size: str,
-    n: int,
-    init_image: Optional[bytes] = None,
-    image_strength: float = 0.45,  # 建議先用 0.3–0.6，而不是 1.0
-) -> List[bytes]:
-    """
-    Stability.ai Stable Image v2beta:
-    - text-to-image: 只需要 prompt（可選 aspect_ratio 等）
-    - image-to-image: 必須提供 image、strength、mode="image-to-image"
-      strength ∈ [0,1]，越小越接近原圖，越大越接近純文本生圖。
-    """
-    if not api_key:
-        raise RuntimeError("STABLY_API_KEY is missing.")
-
-    # 1) 根據自訂 model 名決定 endpoint
-    model_lower = model.lower().strip()
-    if model_lower == "stability-ultra":
-        endpoint = "ultra"
-    elif model_lower == "stability-core":
-        endpoint = "core"
-    elif model_lower == "stability-sd3":
-        endpoint = "sd3"
-    else:
-        raise RuntimeError(f"Unknown Stability model alias: {model}")
-
-    url = f"https://api.stability.ai/v2beta/stable-image/generate/{endpoint}"
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "image/*",
-    }
-
-    files: Dict[str, Any] = {
-        "prompt": (None, prompt),
-        "output_format": (None, "png"),
-    }
-
-    if init_image is not None:
-        # 真正的 v2beta image-to-image 參數
-        strength = max(0.0, min(1.0, image_strength))
-        files["mode"] = (None, "image-to-image")
-        files["image"] = ("init.png", init_image, "image/png")
-        files["strength"] = (None, str(strength))
-        print(
-            "Stability image-to-image mode,"
-            f" init_image size = {len(init_image)}, strength = {strength}"
-        )
-    else:
-        # 純文字生圖
-        files["mode"] = (None, "text-to-image")
-        print("Stability text-to-image mode")
-
-    images: List[bytes] = []
-    count = max(1, n)
-
-    for _ in range(count):
-        resp = requests.post(url, headers=headers, files=files, timeout=60)
-        if resp.status_code != 200:
-            raise RuntimeError(
-                f"Stability image API error {resp.status_code}: {resp.text[:200]}"
-            )
-        images.append(resp.content)
-
-    return images
-
-
-def call_openai_image(
-    client: openai.OpenAI,
-    model: str,
-    prompt: str,
-    size: str,
-    n: int,
-) -> List[bytes]:
-    """
-    OpenAI images.generate：
-    - 不傳 response_format（避免 400 unknown_parameter）
-    - 如果有 b64_json 就 decode
-    - 否則如果有 url 就自己 requests 拿 bytes
-    """
-    resp = client.images.generate(model=model, prompt=prompt, size=size, n=n)
-
-    data = getattr(resp, "data", None) or []
-    if not data:
-        raise RuntimeError("OpenAI image API returned no data.")
-
-    def _extract_bytes(item: Any) -> Optional[bytes]:
-        b64 = getattr(item, "b64_json", None)
-        if b64:
-            try:
-                return base64.b64decode(b64)
-            except Exception as exc:
-                raise RuntimeError("OpenAI image payload is not valid base64.") from exc
-
-        url = getattr(item, "url", None)
-        if not url:
-            return None
-        response = requests.get(url, timeout=60)
-        response.raise_for_status()
-        return response.content
-
-    images = [img for item in data if (img := _extract_bytes(item))]
-    if not images:
-        raise RuntimeError("OpenAI image API did not return any decodable image.")
-    return images
-
-def call_openai_image_edit(
-    client: openai.OpenAI,
-    model: str,
-    prompt: str,
-    size: str,
-    n: int,
-    init_image: bytes,
-) -> List[bytes]:
-    """
-    使用 OpenAI /v1/images/edits 做 image-to-image（gpt-image-1）
-    - 直接用 requests 呼叫，避免 SDK 版本差異
-    - 回傳 List[bytes]，與其他 backend 一致
-    """
-    if not OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY is missing.")
-
-    url = "https://api.openai.com/v1/images/edits"
-
-    headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-    }
-
-    files = {
-        "image": ("init.png", init_image, "image/png"),
-        "model": (None, model),
-        "prompt": (None, prompt),
-        "n": (None, str(max(1, n))),
-        "size": (None, size),
-    }
-
-    resp = requests.post(url, headers=headers, files=files, timeout=120)
-    if resp.status_code != 200:
-        raise RuntimeError(
-            f"OpenAI image edit error {resp.status_code}: {resp.text[:200]}"
-        )
-
-    payload = resp.json()
-    data = payload.get("data") or []
-    if not data:
-        raise RuntimeError("OpenAI image edit API returned no data.")
-
-    images: List[bytes] = []
-    for item in data:
-        b64 = item.get("b64_json")
-        if b64:
-            try:
-                images.append(base64.b64decode(b64))
-                continue
-            except Exception:
-                pass
-        url2 = item.get("url")
-        if url2:
-            r2 = requests.get(url2, timeout=60)
-            r2.raise_for_status()
-            images.append(r2.content)
-
-    if not images:
-        raise RuntimeError("OpenAI image edit API did not return any decodable image.")
-    return images
-
-def call_gemini_image(
-    client: Any,
-    model: str,
-    prompt: str,
-    size: str,
-    n: int,
-) -> List[bytes]:
-    """
-    Gemini image models（如 gemini-2.5-flash-image / gemini-3-pro-image-preview）：
-    - 不傳 generation_config，兼容較舊 SDK
-    - 從 candidates[].content.parts[].inline_data.data 或 file_data 取圖
-    """
-    def _ensure_bytes(data: Any) -> bytes:
-        if isinstance(data, bytes):
-            return data
-        if isinstance(data, bytearray):
-            return bytes(data)
-        if isinstance(data, memoryview):
-            return data.tobytes()
-        if isinstance(data, str):
-            try:
-                return base64.b64decode(data)
-            except Exception:
-                return data.encode("utf-8")
-        return bytes(data)
-
-    def _download(uri: str) -> bytes:
-        files_client = getattr(client, "files", None)
-        if files_client and hasattr(files_client, "download"):
-            return files_client.download(file=uri)
-        resp = requests.get(uri, timeout=60)
-        resp.raise_for_status()
-        return resp.content
-
-    def _iter_images(response: Any):
-        generated = getattr(response, "generated_images", None) or []
-        for item in generated:
-            image = getattr(item, "image", None)
-            data = getattr(image, "image_bytes", None) if image else None
-            if data:
-                yield _ensure_bytes(data)
-
-        candidates = getattr(response, "candidates", None) or []
-        for cand in candidates:
-            content = getattr(cand, "content", None)
-            if not content:
-                continue
-            parts = getattr(content, "parts", None) or []
-            for part in parts:
-                inline = getattr(part, "inline_data", None)
-                if inline:
-                    data = getattr(inline, "data", None)
-                    if data:
-                        yield _ensure_bytes(data)
-                        continue
-                file_data = getattr(part, "file_data", None)
-                if file_data:
-                    uri = getattr(file_data, "file_uri", None)
-                    if uri:
-                        yield _download(uri)
-
-    try:
-        resp = client.models.generate_content(
-            model=model,
-            contents=prompt,  # ← 正確：圖片模型接受純文字 prompt
-        )
-    except genai_errors.ClientError as exc:
-        # 更友善顯示配額 / 流量限制錯誤
-        msg = str(exc)
-        if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
-            raise RuntimeError(
-                "Gemini image API 配額或速率已用完，"
-                "請到 https://ai.google.dev/gemini-api/docs/rate-limits 與 "
-                "https://ai.dev/usage 檢查專案的計費與配額設定。"
-            ) from exc
-        raise
-
-    images: List[bytes] = []
-    limit = max(1, n)
-    for img in _iter_images(resp):
-        images.append(img)
-        if len(images) >= limit:
-            break
-
-    if not images:
-        raise RuntimeError("Gemini image API did not return any image data.")
-    return images
-
-
 # backend registry ----------------------------------------------------------
 
 _BACKENDS: Dict[str, Dict[str, Any]] = {
@@ -440,37 +174,11 @@ _BACKENDS: Dict[str, Dict[str, Any]] = {
 }
 
 
-_IMAGE_BACKENDS: Dict[str, Dict[str, Any]] = {
-    "stability": {
-        "match": lambda m: m.lower().startswith("stability"),
-        "client_getter": get_stability_client,
-        "call_fn": call_stability_image,
-    },
-    "gemini": {
-        "match": lambda m: m.lower().startswith("gemini") and "image" in m.lower(),
-        "client_getter": get_gemini_client,
-        "call_fn": call_gemini_image,
-    },
-    "openai": {
-        "match": lambda m: True,
-        "client_getter": get_openai_client,
-        "call_fn": call_openai_image,
-    },
-}
-
-
 def _resolve_backend(model_name: str) -> tuple[str, Dict[str, Any]]:
     for name, cfg in _BACKENDS.items():
         if cfg["match"](model_name):
             return name, cfg
     raise RuntimeError(f"No text backend matched {model_name}")
-
-
-def _resolve_image_backend(model_name: str) -> tuple[str, Dict[str, Any]]:
-    for name, cfg in _IMAGE_BACKENDS.items():
-        if cfg["match"](model_name):
-            return name, cfg
-    raise RuntimeError(f"No image backend matched {model_name}")
 
 
 def _invoke_once(
@@ -487,8 +195,6 @@ def _invoke_once(
     return backend_cfg["call_fn"](client, model, payload, timeout)
 
 
-# 統一 image 入口：回傳 List[bytes] -----------------------------------------
-
 def generate_image(
     model: str,
     prompt: str,
@@ -496,40 +202,16 @@ def generate_image(
     n: int = 1,
     image_bytes: Optional[bytes] = None,
 ) -> List[bytes]:
-    if not model:
-        raise ValueError("Image model name must not be empty.")
-    model_name = model.strip()
-    backend_name, backend_cfg = _resolve_image_backend(model_name)
-    client = backend_cfg["client_getter"]()
+    """Compatibility shim that forwards to utils_llm_image.generate_image."""
+    from utils_llm_image import generate_image as _generate_image
 
-    # 1) Stability backend：支援 image-to-image
-    if backend_name == "stability":
-        return backend_cfg["call_fn"](
-            client,
-            model_name,
-            prompt,
-            size,
-            n,
-            init_image=image_bytes,
-        )
-
-    # 2) OpenAI backend：gpt-image-1 + 有上傳圖時，走 /v1/images/edits 做 image-to-image
-    if backend_name == "openai" and image_bytes is not None:
-        if model_name.lower().startswith("gpt-image-1"):
-            print(
-                f"DEBUG: OpenAI image edit, model={model_name}, bytes={len(image_bytes)}"
-            )
-            return call_openai_image_edit(
-                client,
-                model_name,
-                prompt,
-                size,
-                n,
-                init_image=image_bytes,
-            )
-
-    # 3) 其餘情況統一走 text-to-image（OpenAI images.generate / Gemini 等）
-    return backend_cfg["call_fn"](client, model_name, prompt, size, n)
+    return _generate_image(
+        model=model,
+        prompt=prompt,
+        size=size,
+        n=n,
+        image_bytes=image_bytes,
+    )
 
 
 # 統一 LLM 入口 --------------------------------------------------------------

@@ -11,11 +11,11 @@ if str(ROOT_DIR) not in sys.path:
 from utils_config import load_prompt_text
 from utils_llm import call_llm
 
-LLM_MODEL = "gemini-2.5-pro"
+#LLM_MODEL = "gemini-2.5-pro"
 #LLM_MODEL = "sonar"
 #LLM_MODEL = "gemini-2.0-flash"
 #LLM_MODEL = "gemini-3-pro"
-#LLM_MODEL = "gpt-4.1-mini"
+LLM_MODEL = "gpt-4.1-mini"
 #LLM_MODEL = "sonar, gemini-2.5-flash, gemini-3-pro"
 
 def _append_to_weekly_log(base_dir: Path, source_text: str, summary_text: str) -> None:
