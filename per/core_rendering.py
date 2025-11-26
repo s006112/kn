@@ -18,13 +18,13 @@ load_env(dotenv_path=Path(__file__).parent / ".env")
 logger = configure_logging("rendering")
 
 MODEL_OPTIONS = [
+    "gpt-image-1-mini",
+    "gpt-image-1",
     "stability-core",
     "stability-sd3",
     "stability-ultra",
     "gemini-2.5-flash-image",
     "gemini-3-pro-image-preview",
-    "gpt-image-1-mini",
-    "gpt-image-1",
 ]
 
 PROMPT_RENDERING_PATH = Path(__file__).with_name("prompt_rendering.txt")

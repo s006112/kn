@@ -13,53 +13,51 @@ from pathlib import Path
 # 路径与运行配置
 # -------------------------
 WATCH_FOLDER = Path("/desktop/Sync/Whisper")
-AUDIO_WATCH_FOLDER_1 = Path("/desktop/Sync/Whisper")
-AUDIO_WATCH_FOLDER_2 = Path("/desktop/")
-AUDIO_WATCH_FOLDERS = (AUDIO_WATCH_FOLDER_1, AUDIO_WATCH_FOLDER_2)
-AUDIO_DONE_FOLDER = Path("/desktop/YT1")
-PRETEXT_WATCH_FOLDER = WATCH_FOLDER
-PREMIUM_WATCH_FOLDER = Path("/desktop")
-#PRETEXT_DONE_FOLDER = WATCH_FOLDER / "_p"
-PRETEXT_DONE_FOLDER = Path("/desktop")
-ARCHIVE_FOLDER = WATCH_FOLDER / "_p"
-ORIGINAL_FOLDER = WATCH_FOLDER / "_p" / "Raw"
-EXTRACT_FOLDER = WATCH_FOLDER / "_p" / "Extract"
-LINK_BACKUP_FOLDER = WATCH_FOLDER / "_p" / "link_backup"
-FAIL_FOLDER = WATCH_FOLDER / "Fail"
-OBSIDIAN_SYNC_FOLDER = Path("/desktop/Obsidian/O_2025")
+PATH_CONFIG = {
+    "WATCH_FOLDER": WATCH_FOLDER,
+    "AUDIO_WATCH_FOLDERS": (
+        WATCH_FOLDER,
+        Path("/desktop/"),
+    ),
+    "AUDIO_DONE_FOLDER": Path("/desktop/YT1"),
+    "PRETEXT_WATCH_FOLDER": WATCH_FOLDER,
+    "PREMIUM_WATCH_FOLDER": Path("/desktop"),
+    # PRETEXT_DONE_FOLDER = WATCH_FOLDER / "_p"
+    "PRETEXT_DONE_FOLDER": Path("/desktop"),
+    "ARCHIVE_FOLDER": WATCH_FOLDER / "_p",
+    "ORIGINAL_FOLDER": WATCH_FOLDER / "_p" / "Raw",
+    "EXTRACT_FOLDER": WATCH_FOLDER / "_p" / "Extract",
+    "LINK_BACKUP_FOLDER": WATCH_FOLDER / "_p" / "link_backup",
+    "FAIL_FOLDER": WATCH_FOLDER / "Fail",
+    "OBSIDIAN_SYNC_FOLDER": Path("/desktop/Obsidian/O_2025"),
+}
 
 # sonar, sonar-pro, sonar-reasoning, sonar-reasoning-pro
 # gemini-2.0-flash, gemini-2.5-flash, gemini-2.5-pro, gemini-3-pro, 
 # gpt-5-mini, gpt-5-nano, gpt-4.1-mini, gpt-4.1-nano, gpt-4o-mini, o1-mini, o3-mini, o4-mini, codex-mini-latest
 # gpt-5.1, gpt-5, gpt-5-chat-latest, gpt-4.1, gpt-4o, o1, o3,
-MODEL_PRETEXT = "gpt-4.1-mini"  
-MODEL_EXTRACT_1 = "gpt-5-mini" 
-MODEL_EXTRACT_2 = "gemini-2.5-pro"
-MODEL_EXTRACT_3 = "sonar-reasoning-pro"
-MODEL_EXTRACT_P = "o3" 
+MODEL_PRETEXT = "gpt-4.1-mini"
+MODEL_EXTRACT_MATRIX = {
+    "WATCH_FOLDER": [
+        "gpt-5-mini",
+        "gemini-2.5-pro",
+        "sonar-reasoning-pro",
+    ],
+    "PREMIUM_WATCH_FOLDER": [
+        "o3",
+    ],
+}
 
-MAX_RETRIES = 1
-RETRY_DELAY = 5  # seconds
+RETRY_CONFIG = {
+    "MAX_RETRIES": 1,
+    "RETRY_DELAY": 5,  # seconds
+}
 
 CONFIG = {
-    "WATCH_FOLDER": WATCH_FOLDER,
-    "AUDIO_WATCH_FOLDERS": AUDIO_WATCH_FOLDERS,
-    "AUDIO_DONE_FOLDER": AUDIO_DONE_FOLDER,
-    "PRETEXT_WATCH_FOLDER": PRETEXT_WATCH_FOLDER,
-    "PREMIUM_WATCH_FOLDER": PREMIUM_WATCH_FOLDER,
-    "PRETEXT_DONE_FOLDER": PRETEXT_DONE_FOLDER,
-    "ARCHIVE_FOLDER": ARCHIVE_FOLDER,
-    "ORIGINAL_FOLDER": ORIGINAL_FOLDER,
-    "EXTRACT_FOLDER": EXTRACT_FOLDER,
-    "LINK_BACKUP_FOLDER": LINK_BACKUP_FOLDER,
-    "FAIL_FOLDER": FAIL_FOLDER,
-    "OBSIDIAN_SYNC_FOLDER": OBSIDIAN_SYNC_FOLDER,
+    **PATH_CONFIG,
     "MODEL_PRETEXT": MODEL_PRETEXT,
-    "MODEL_EXTRACT_1": MODEL_EXTRACT_1,
-    "MODEL_EXTRACT_2": MODEL_EXTRACT_2,
-    "MODEL_EXTRACT_P": MODEL_EXTRACT_P,
-    "MAX_RETRIES": MAX_RETRIES,
-    "RETRY_DELAY": RETRY_DELAY,
+    "MODEL_EXTRACT_MATRIX": MODEL_EXTRACT_MATRIX,
+    **RETRY_CONFIG,
     # 这两项由 orchestration 注入
     "PRETEXT_PROMPT": None,
     "EXTRACT_PROMPT": None,

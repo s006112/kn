@@ -23,11 +23,11 @@ from utils_md import (
 from utils_text import sanitize_filename
 
 class BaseExtractHandler(FileSystemEventHandler):
-    def __init__(self, config, queue, watch_folder_key, model_keys):
+    def __init__(self, config, queue, watch_folder_key, model_names):
         self.config = config
         self.queue = queue
         self.watch_folder = config[watch_folder_key]
-        self.model_keys = model_keys
+        self.models = list(model_names or [])
         self.processed_files = set()
 
     def _queue_file(self, file_path):
@@ -68,8 +68,12 @@ def process(self, file_path, get_next_available_filename):
         any_success = False
         any_failure = False
 
-        for key in self.model_keys:
-            model = self.config[key]
+        for model in self.models:
+            if not model:
+                logging.info(
+                    f"{self.__class__.__name__}: Skipping model entry (not configured)"
+                )
+                continue
             try:
                 # Run extraction for this model
                 result = call_llm(
@@ -104,13 +108,14 @@ def process(self, file_path, get_next_available_filename):
 
             except Exception as e:
                 any_failure = True
-                logging.error(f"{self.__class__.__name__}: model {key} failed for {filename}: {e}")
+                logging.error(f"{self.__class__.__name__}: model {model} failed for {filename}: {e}")
                 # Write a per-model error file (best-effort)
                 try:
                     os.makedirs(self.config['EXTRACT_FOLDER'], exist_ok=True)
-                    err_path = os.path.join(self.config['EXTRACT_FOLDER'], f"{base}_e.{key}.error")
+                    err_key = sanitize_filename(model) or "unknown_model"
+                    err_path = os.path.join(self.config['EXTRACT_FOLDER'], f"{base}_e.{err_key}.error")
                     with open(err_path, 'w', encoding='utf-8') as ef:
-                        ef.write(f"Model: {model} (key: {key})\nError: {e}\n")
+                        ef.write(f"Model: {model}\nError: {e}\n")
                     release_text_file_permissions(err_path)
                 except Exception as w:
                     logging.error(f"Write per-model error file failed: {w}")
@@ -163,12 +168,14 @@ def process(self, file_path, get_next_available_filename):
 
 class ExtractHandler(BaseExtractHandler):
     def __init__(self, config, queue):
-        super().__init__(config, queue, 'WATCH_FOLDER',
-                         ['MODEL_EXTRACT_1', 'MODEL_EXTRACT_2'])
+        model_matrix = config.get('MODEL_EXTRACT_MATRIX', {})
+        models = model_matrix.get('WATCH_FOLDER', [])
+        super().__init__(config, queue, 'WATCH_FOLDER', models)
     process_extract = process
 
 class PremiumExtractHandler(BaseExtractHandler):
     def __init__(self, config, queue):
-        super().__init__(config, queue, 'PREMIUM_WATCH_FOLDER',
-                         ['MODEL_EXTRACT_P'])
+        model_matrix = config.get('MODEL_EXTRACT_MATRIX', {})
+        models = model_matrix.get('PREMIUM_WATCH_FOLDER', [])
+        super().__init__(config, queue, 'PREMIUM_WATCH_FOLDER', models)
     process_premium_extract = process

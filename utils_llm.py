@@ -275,11 +275,16 @@ def call_openai_image_edit(
     n: int,
     init_image: bytes,
 ) -> List[bytes]:
-    """Use OpenAI /v1/images/edits for image-to-image with gpt-image-1."""
+    """
+    使用 OpenAI /v1/images/edits 做 image-to-image（gpt-image-1）
+    - 直接用 requests 呼叫，避免 SDK 版本差異
+    - 回傳 List[bytes]，與其他 backend 一致
+    """
     if not OPENAI_API_KEY:
         raise RuntimeError("OPENAI_API_KEY is missing.")
 
     url = "https://api.openai.com/v1/images/edits"
+
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
     }
@@ -508,9 +513,12 @@ def generate_image(
             init_image=image_bytes,
         )
 
-    # 2) OpenAI backend：gpt-image-1 + 有上傳圖時，走 image-edit
+    # 2) OpenAI backend：gpt-image-1 + 有上傳圖時，走 /v1/images/edits 做 image-to-image
     if backend_name == "openai" and image_bytes is not None:
         if model_name.lower().startswith("gpt-image-1"):
+            print(
+                f"DEBUG: OpenAI image edit, model={model_name}, bytes={len(image_bytes)}"
+            )
             return call_openai_image_edit(
                 client,
                 model_name,
@@ -520,7 +528,7 @@ def generate_image(
                 init_image=image_bytes,
             )
 
-    # 3) 其他情況一律當作 text-to-image
+    # 3) 其餘情況統一走 text-to-image（OpenAI images.generate / Gemini 等）
     return backend_cfg["call_fn"](client, model_name, prompt, size, n)
 
 
