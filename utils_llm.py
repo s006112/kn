@@ -120,7 +120,6 @@ def build_perplexity_payload(system_prompt, user_text, messages):
 def build_gemini_payload(system_prompt, user_text, messages):
     def factory(role, text):  # noqa: ARG001 - role unused but keeps signature uniform
         return text
-
     return "\n\n".join(_build_messages(system_prompt, user_text, messages, factory))
 
 
@@ -186,32 +185,12 @@ def _invoke_once(
     system_prompt: str,
     user_text: str,
     messages: Optional[Iterable[Dict[str, Any]]],
-    backend_name: str,
     backend_cfg: Dict[str, Any],
     timeout: int,
 ) -> str:
     client = backend_cfg["client_getter"]()
     payload = backend_cfg["payload_builder"](system_prompt, user_text, messages)
     return backend_cfg["call_fn"](client, model, payload, timeout)
-
-
-def generate_image(
-    model: str,
-    prompt: str,
-    size: str = "1024x1024",
-    n: int = 1,
-    image_bytes: Optional[bytes] = None,
-) -> List[bytes]:
-    """Compatibility shim that forwards to utils_llm_image.generate_image."""
-    from utils_llm_image import generate_image as _generate_image
-
-    return _generate_image(
-        model=model,
-        prompt=prompt,
-        size=size,
-        n=n,
-        image_bytes=image_bytes,
-    )
 
 
 # 統一 LLM 入口 --------------------------------------------------------------
@@ -242,7 +221,6 @@ def call_llm(
                 system_prompt=system_prompt,
                 user_text=user_text,
                 messages=messages,
-                backend_name=backend_name,
                 backend_cfg=backend_cfg,
                 timeout=timeout,
             )

@@ -5,12 +5,7 @@ import openai
 import requests
 from google.genai import errors as genai_errors
 
-from utils_llm import (
-    OPENAI_API_KEY,
-    get_gemini_client,
-    get_openai_client,
-    get_stability_client,
-)
+from utils_llm import get_gemini_client, get_openai_client, get_stability_client
 
 
 # 圖像 backend 呼叫：統一回傳 List[bytes] -----------------------------------
@@ -75,7 +70,7 @@ def call_stability_image(
     return images
 
 
-def call_openai_image(
+def call_openai_t2i(
     client: openai.OpenAI,
     model: str,
     prompt: str,
@@ -110,7 +105,7 @@ def call_openai_image(
     return images
 
 
-def call_openai_image_edit(
+def call_openai_i2i(
     client: openai.OpenAI,
     model: str,
     prompt: str,
@@ -119,13 +114,14 @@ def call_openai_image_edit(
     init_image: bytes,
 ) -> List[bytes]:
     """Call OpenAI /v1/images/edits for image-to-image editing."""
-    if not OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY is missing.")
+    api_key = getattr(client, "api_key", None)
+    if not api_key:
+        raise RuntimeError("OpenAI client is missing api_key.")
 
     url = "https://api.openai.com/v1/images/edits"
 
     headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
     }
 
     files = {
@@ -284,7 +280,7 @@ _IMAGE_BACKENDS: Dict[str, Dict[str, Any]] = {
     "openai": {
         "match": lambda m: True,
         "client_getter": get_openai_client,
-        "call_fn": call_openai_image,
+        "call_fn": call_openai_t2i,
     },
 }
 
@@ -328,7 +324,7 @@ def generate_image(
             print(
                 f"DEBUG: OpenAI image edit, model={model_name}, bytes={len(image_bytes)}"
             )
-            return call_openai_image_edit(
+            return call_openai_i2i(
                 client,
                 model_name,
                 prompt,
