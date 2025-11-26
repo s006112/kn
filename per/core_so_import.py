@@ -22,7 +22,6 @@ log = configure_logging("so_import")
 _ODOO_IMPORT_ENABLED = get_env_flag("ODOO_IMPORT", False)
 _PO_RESPONSE_DEBUG = get_env_flag("PO_RESPONSE_DEBUG", False)
 _DEBUG_PDF_PARSING_TEXT = os.getenv("pdf_parsing_text", "")
-LLM_MODEL = "gpt-5-mini"
 
 
 class _ImportLogHandler(logging.Handler):
@@ -55,7 +54,7 @@ class SOImportResult:
     sale_order_link_url: str
 
 
-def run_so_import(file_path: str | None, salesperson: str) -> SOImportResult:
+def run_so_import(file_path: str | None, salesperson: str, model: str) -> SOImportResult:
     """
     Core handler for SO import processing.
 
@@ -99,7 +98,7 @@ def run_so_import(file_path: str | None, salesperson: str) -> SOImportResult:
 
     try:
         llm_po_response = call_llm(
-            model=LLM_MODEL,
+            model=model,
             system_prompt=prompt_po_str,
             user_text=pdf_parsing_text,
         )

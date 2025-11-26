@@ -4,10 +4,11 @@ import os
 
 import gradio as gr
 
-from core_so_import import run_so_import
+from core_so_import import run_so_import as core_run_so_import
 from clipboard_polyfill import CLIPBOARD_POLYFILL
 
 _SHOW_PO_TEXTBOXES = os.getenv("DEBUG_TEXTBOXES", "false").strip().lower() == "true"
+LLM_MODEL = "gpt-5-mini"
 
 
 def handle_upload(file_path: str, salesperson: str) -> tuple[str, str, str, dict]:
@@ -22,7 +23,7 @@ def handle_upload(file_path: str, salesperson: str) -> tuple[str, str, str, dict
     """
 
     hidden_link_update = gr.update(value="", visible=False)
-    result = run_so_import(file_path, salesperson)
+    result = core_run_so_import(file_path, salesperson, model=LLM_MODEL)
 
     link_update = hidden_link_update
     if result.sale_order_link_url:

@@ -12,10 +12,22 @@ from utils_cie1931 import (
     get_canvas_html,
     get_drawing_javascript,
 )
-from core_per_report import handle_upload, upload_cie_png
+from core_per_report import handle_upload as core_handle_upload, upload_cie_png
 from clipboard_polyfill import CLIPBOARD_POLYFILL
 
+#LLM_MODEL = "gemini-2.5-pro"
+#LLM_MODEL = "sonar"
+#LLM_MODEL = "gemini-2.0-flash"
+#LLM_MODEL = "gemini-3-pro"
+LLM_MODEL = "gpt-4.1-mini"
+#LLM_MODEL = "sonar, gemini-2.5-flash, gemini-3-pro"
+
 DEBUG_TEXTBOXES = os.getenv("DEBUG_TEXTBOXES", "false").strip().lower() == "true"
+
+
+def handle_upload(file_path: str):
+    return core_handle_upload(file_path, model=LLM_MODEL)
+
 
 # ----------------------------
 # UI

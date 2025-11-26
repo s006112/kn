@@ -28,7 +28,6 @@ PNG_REMOTE_DIR = "/Documents/PER/CIE Chart"
 PNG_PLACEHOLDER_PREFIX = "cie-share://"
 
 LATEST_SUMMARY: str = ""
-LLM_MODEL = "gpt-4.1-mini"
 
 
 @dataclass
@@ -359,7 +358,7 @@ def _extract_cct_xy(md: str) -> list[list[float | str]]:
         return []
 
 
-def generate_per_report(file_path: str) -> PerReportResult:
+def generate_per_report(file_path: str, model: str) -> PerReportResult:
     """Generate the PER report result from a PDF file path."""
     if not file_path or not os.path.isfile(file_path):
         return PerReportResult("Error: No file found.", [], "", "")
@@ -384,7 +383,7 @@ def generate_per_report(file_path: str) -> PerReportResult:
 
     try:
         llm_md_response = call_llm(
-            model=LLM_MODEL,
+            model=model,
             system_prompt=prompt_md_str,
             user_text=text,
         )
@@ -393,7 +392,7 @@ def generate_per_report(file_path: str) -> PerReportResult:
     updated_md = insert_stats_rows(llm_md_response)
     try:
         llm_summary_response = call_llm(
-            model=LLM_MODEL,
+            model=model,
             system_prompt=prompt_summary_str,
             user_text=updated_md,
         )
@@ -456,14 +455,14 @@ def generate_per_report(file_path: str) -> PerReportResult:
     return PerReportResult(combined_summary, cct_xy, text, png_filename)
 
 
-def handle_upload(file_path: str) -> Tuple[str, List[List[float | str]], str, str]:
+def handle_upload(file_path: str, model: str) -> Tuple[str, List[List[float | str]], str, str]:
     """
     Core handler for photometric report processing.
 
     Returns:
       combined_summary (str), cct_xy ([[label, x, y], ...]), original_text (str), png_filename (str)
     """
-    result = generate_per_report(file_path)
+    result = generate_per_report(file_path, model)
     return result.combined_summary, result.cct_xy, result.original_text, result.png_filename
 
 
