@@ -164,6 +164,8 @@ def call_stability_image(
     prompt: str,
     size: str,
     n: int,
+    init_image: Optional[bytes] = None,
+    image_strength: float = 0.35,
 ) -> List[bytes]:
     """
     Stability.ai Stable Image 系列（多模型）
@@ -178,6 +180,9 @@ def call_stability_image(
             prompt
             output_format = png
     - 多張圖片：暫時簡單重複呼叫 n 次（Stability 有些 endpoint 本身只回一張）。
+    - image-to-image：
+        - 加上 mode=image-to-image
+        - multipart/form-data 增加 init_image 與 image_strength
     """
     if not api_key:
         raise RuntimeError("STABLY_API_KEY is missing.")
@@ -200,12 +205,17 @@ def call_stability_image(
         "Accept": "image/*",
     }
 
-    files = {
+    files: Dict[str, Any] = {
         "prompt": (None, prompt),
         "output_format": (None, "png"),
-        # 如未來想用 size，可以在這裡根據 size 做額外 mapping
-        # 例如 aspect_ratio, width, height 等
     }
+
+    if init_image is not None:
+        files["mode"] = (None, "image-to-image")
+        files["init_image"] = ("init.png", init_image, "image/png")
+        files["image_strength"] = (None, str(image_strength))
+    else:
+        files["mode"] = (None, "text-to-image")
 
     images: List[bytes] = []
     count = max(1, n)
@@ -428,12 +438,22 @@ def generate_image(
     prompt: str,
     size: str = "1024x1024",
     n: int = 1,
+    image_bytes: Optional[bytes] = None,
 ) -> List[bytes]:
     if not model:
         raise ValueError("Image model name must not be empty.")
     model_name = model.strip()
     backend_name, backend_cfg = _resolve_image_backend(model_name)
     client = backend_cfg["client_getter"]()
+    if backend_name == "stability":
+        return backend_cfg["call_fn"](
+            client,
+            model_name,
+            prompt,
+            size,
+            n,
+            init_image=image_bytes,
+        )
     return backend_cfg["call_fn"](client, model_name, prompt, size, n)
 
 

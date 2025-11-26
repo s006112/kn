@@ -1,3 +1,16 @@
+• Transform a provided computer aided design drawing or rendered preview into an realistic photographic visualization
+• The drawing is likely a part of or completed lighting luminaire fixture design
+• Remove all visible CAD artifacts, including abrupt edges, sharp lines, contour irregularities, and synthetic compositing traces
+• Preserve the original camera view, position, angle, rotation, perspective, height, and focal characteristics exactly without any modification
+• Faithfully represent the luminaire’s materials, textures, and surface qualities based on the model’s structure
+• Enhance the appearance with authentic real-world metal, glass, or other material qualities, avoiding artificial or faked-like finishes
+• Refine lighting, reflections, shadows, and material interactions to achieve professional, photography-grade realism
+• Strictly maintain all original design proportions, structures, and details without adding or altering any elements
+• Allow the model to automatically infer and adjust the background and lighting to a realistic environmental style
+• Output a clean, polished, high-quality photorealistic render suitable for direct use in customers presentations
+
+
+
 ・將提供的 CAD 成品圖或示意渲染圖轉化為極度逼真的攝影視覺化效果
 ・移除所有可見的 CAD 瑕疵，包括突兀邊緣、銳利線條、輪廓異常與合成痕跡
 ・精準保留原始視角、位置、角度、旋轉、透視、高度與焦距，不做任何改動

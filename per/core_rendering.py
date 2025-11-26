@@ -39,10 +39,12 @@ else:
 
 def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
     """
-    使用指定圖像模型（OpenAI 或 Gemini）產生渲染結果。
+    使用指定圖像模型產生渲染結果。
 
-    目前 Gemini 官方 image API 不支援真正的 image-to-image，
-    所以這裡只把 prompt 丟給模型產圖；image_bytes 暫時保留以便未來擴充使用。
+    - Stability 系列（stability-*）：
+        - 如果提供 image_bytes，則走 image-to-image。
+        - 如果未提供，則為 text-to-image。
+    - 其他模型（Gemini / OpenAI 等）目前僅支援 text-to-image，忽略 image_bytes。
     """
     final_prompt = prompt.strip()
     if not final_prompt:
@@ -53,6 +55,7 @@ def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
         prompt=final_prompt,
         size="1024x1024",
         n=1,
+        image_bytes=image_bytes if model.lower().startswith("stability") else None,
     )
 
     if not images:
