@@ -174,12 +174,8 @@ def call_gemini_image(
     """Invoke Gemini image-capable models and collect inline or remote bytes."""
 
     def _ensure_bytes(data: Any) -> bytes:
-        if isinstance(data, bytes):
-            return data
-        if isinstance(data, bytearray):
+        if isinstance(data, (bytes, bytearray, memoryview)):
             return bytes(data)
-        if isinstance(data, memoryview):
-            return data.tobytes()
         if isinstance(data, str):
             try:
                 return base64.b64decode(data)
@@ -195,32 +191,28 @@ def call_gemini_image(
         resp.raise_for_status()
         return resp.content
 
+    def _parts_to_images(parts: Optional[List[Any]]):
+        for part in parts or []:
+            inline = getattr(part, "inline_data", None)
+            data = getattr(inline, "data", None) if inline else None
+            if data:
+                yield _ensure_bytes(data)
+                continue
+            file_data = getattr(part, "file_data", None)
+            uri = getattr(file_data, "file_uri", None) if file_data else None
+            if uri:
+                yield _download(uri)
+
     def _iter_images(response: Any):
-        generated = getattr(response, "generated_images", None) or []
-        for item in generated:
+        for item in getattr(response, "generated_images", None) or []:
             image = getattr(item, "image", None)
             data = getattr(image, "image_bytes", None) if image else None
             if data:
                 yield _ensure_bytes(data)
-
-        candidates = getattr(response, "candidates", None) or []
-        for cand in candidates:
+        for cand in getattr(response, "candidates", None) or []:
             content = getattr(cand, "content", None)
-            if not content:
-                continue
-            parts = getattr(content, "parts", None) or []
-            for part in parts:
-                inline = getattr(part, "inline_data", None)
-                if inline:
-                    data = getattr(inline, "data", None)
-                    if data:
-                        yield _ensure_bytes(data)
-                        continue
-                file_data = getattr(part, "file_data", None)
-                if file_data:
-                        uri = getattr(file_data, "file_uri", None)
-                        if uri:
-                            yield _download(uri)
+            if content:
+                yield from _parts_to_images(getattr(content, "parts", None))
 
     if init_image is not None:
         contents: Any = [
