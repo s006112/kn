@@ -6,6 +6,7 @@ Minimal standalone web UI for downloading audio via yt-dlp.
 import argparse
 import html
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -73,6 +74,38 @@ def _limit_filename_length(filename, limit=50):
     return trimmed + ext
 
 
+def _split_env_args(var_name):
+    value = os.environ.get(var_name)
+    return shlex.split(value) if value else []
+
+
+def _detect_js_runtime():
+    configured = os.environ.get("YTD_JS_RUNTIME")
+    if configured:
+        trimmed = configured.strip()
+        return trimmed or None
+    candidates = [
+        ("deno", "deno"),
+        ("node", "node"),
+        ("bun", "bun"),
+        ("quickjs", "qjs"),
+        ("quickjs", "quickjs"),
+    ]
+    for runtime, binary in candidates:
+        path = shutil.which(binary)
+        if path:
+            return runtime if runtime == binary else f"{runtime}:{path}"
+    return None
+
+
+JS_RUNTIME = _detect_js_runtime()
+REMOTE_COMPONENTS = os.environ.get("YTD_REMOTE_COMPONENTS", "ejs:github").strip() or None
+EXTRACTOR_ARGS = os.environ.get("YTD_EXTRACTOR_ARGS", "youtube:player_client=default").strip() or None
+COOKIES_FILE = os.environ.get("YTD_COOKIES_FILE")
+COOKIES_FROM_BROWSER = os.environ.get("YTD_COOKIES_FROM_BROWSER")
+EXTRA_ARGS = _split_env_args("YTD_EXTRA_ARGS")
+
+
 class DownloadHandler(BaseHTTPRequestHandler):
     server_version = "MinimalYTD/0.1"
     protocol_version = "HTTP/1.1"
@@ -136,14 +169,30 @@ class DownloadHandler(BaseHTTPRequestHandler):
         temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
         is_720p = mode == "720p"
         format_selector = (
-            'bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]'
+            "(bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a])/"
+            "(bestvideo[height<=720]+bestaudio)/"
+            "best[height<=720]"
             if is_720p
             else "worst"
         )
         cmd = ["yt-dlp", "-f", format_selector]
         if is_720p:
             cmd += ["-S", "res:720"]
-        cmd += ["-o", "%(title).50s.%(ext)s", url]
+            cmd += ["--merge-output-format", "mp4"]
+        cmd += ["-o", "%(title).50s.%(ext)s"]
+        if JS_RUNTIME:
+            cmd += ["--js-runtimes", JS_RUNTIME]
+        if REMOTE_COMPONENTS:
+            cmd += ["--remote-components", REMOTE_COMPONENTS]
+        if EXTRACTOR_ARGS:
+            cmd += ["--extractor-args", EXTRACTOR_ARGS]
+        if COOKIES_FILE:
+            cmd += ["--cookies", COOKIES_FILE]
+        if COOKIES_FROM_BROWSER:
+            cmd += ["--cookies-from-browser", COOKIES_FROM_BROWSER]
+        if EXTRA_ARGS:
+            cmd += EXTRA_ARGS
+        cmd.append(url)
         self.log_message("Starting yt-dlp process: %s", " ".join(cmd))
 
         try:

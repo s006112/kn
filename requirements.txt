@@ -14,24 +14,31 @@ pip download -d /wheels --only-binary=:all: watchdog==6.0.0 numpy==2.2.6 perplex
 pip download -d /wheels setuptools wheel build # build tools
 pip download -d /wheels openai-whisper # no wheels available, only source package
 pip download -d /wheels --only-binary=:all: kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
-pip download -d /wheels --only-binary=:all: diffusers
 
 # offline install apt
-sudo apt-get install -y --no-download python3-pip # install from cached .deb
-sudo apt-get install -y --no-download ghostscript tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra # per
-sudo apt-get install -y --no-download ffmpeg alsa-utils pulseaudio portaudio19-dev python3-pyaudio # whisper
-sudo apt-get install -y --no-download tesseract-ocr-chi-sim tesseract-ocr-chi-tra
+sudo apt-get install -y --no-download --fix-missing python3-pip # install from cached .deb
+sudo apt-get install -y --no-download --fix-missing ghostscript tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra # per
+sudo apt-get install -y --no-download --fix-missing ffmpeg # whisper
+sudo apt-get install -y --no-download --fix-missing tesseract-ocr-chi-sim tesseract-ocr-chi-tra
 
 # offline install wheels
-pip install --no-index --find-links=/wheels python-dotenv==1.2.1 openai==2.8.1 jinja2==3.1.6 requests==2.32.5 gradio==5.46.0 gradio_client==1.13.0 # per
-pip install --no-index --find-links=/wheels PyMuPDF==1.24.10 ocrmypdf==16.11.0 # per
-pip install --no-index --find-links=/wheels Flask==3.1.2 # quote
-pip install --no-index --find-links=/wheels watchdog==6.0.0 numpy==2.2.6 perplexityai==0.20.0 sounddevice==0.5.3 # whisper
-pip install --no-index --find-links=/wheels openai-whisper==20240930 # 只有 源码包（.tar.gz）
-pip install --no-index --find-links=/wheels scipy==1.15.3 opencv_python_headless==4.12.0.88 # curve_extract
-pip install --no-index --find-links=/wheels kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
-pip install --no-index --find-links=/wheels transformers==4.57.1 # llm
-pip install --no-index --find-links=/wheels diffusers==0.35.2
+pip3 install --no-index --find-links=/wheels python-dotenv==1.2.1 openai==2.8.1 jinja2==3.1.6 requests==2.32.5 gradio==5.46.0 gradio_client==1.13.0 # per
+pip3 install --no-index --find-links=/wheels PyMuPDF==1.24.10 ocrmypdf==16.11.0 # per
+pip3 install --no-index --find-links=/wheels Flask==3.1.2 # quote
+pip3 install --no-index --find-links=/wheels watchdog==6.0.0 numpy==2.2.6 perplexityai==0.20.0 sounddevice==0.5.3 # whisper
+pip3 install --no-index --find-links=/wheels openai-whisper==20240930 # 只有 源码包（.tar.gz）
+pip3 install --no-index --find-links=/wheels scipy==1.15.3 opencv_python_headless==4.12.0.88 # curve_extract
+pip3 install --no-index --find-links=/wheels kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
+pip3 install --no-index --find-links=/wheels transformers==4.57.1 # llm
+pip3 install --no-index --find-links=/wheels diffusers==0.35.2
+
+pip install --no-deps -U yt-dlp
+
+
+sudo dpkg -i /offline-deb/*.deb || true # 强制解压全部 .deb（不检查依赖）
+sudo apt-get update --no-download # 生成依赖树，告诉 apt “全部以离线为准”生成依赖树，告诉 apt “全部以离线为准”
+
+
 
 # common
 python-dotenv==1.2.1  # Manage environment variables from .env files
