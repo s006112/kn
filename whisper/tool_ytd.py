@@ -58,7 +58,7 @@ FORM_HTML = """<!doctype html>
       <button type="submit">720p</button>
     </form>
     {status}
-    <small>Top form runs <code>yt-dlp -f worst</code>; the 720p form runs <code>yt-dlp -f &quot;bestvideo[ext=mp4][height&lt;=720]+bestaudio[ext=m4a]/best[ext=mp4][height&lt;=720]&quot; -S &quot;res:720&quot;</code>. Files are removed after each request.</small>
+    <small>Top form runs <code>yt-dlp -f &quot;(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst&quot;</code>; the 720p form runs <code>yt-dlp -f &quot;(bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a])/(bestvideo[height=720]+bestaudio)/(bestvideo[ext=mp4][height&lt;=720]+bestaudio[ext=m4a])/(bestvideo[height&lt;=720]+bestaudio)/best[height&lt;=720]&quot; --merge-output-format mp4</code>. Files are removed after each request.</small>
   </main>
 </body>
 </html>
@@ -168,16 +168,21 @@ class DownloadHandler(BaseHTTPRequestHandler):
     def _download_with_yt_dlp(self, url, mode):
         temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
         is_720p = mode == "720p"
+        # Keep the Fetch action intentionally small by forcing the worst
+        # available muxed video+audio combination. The 720p action attempts an
+        # exact 720p grab first before falling back to any format at or below
+        # 720p so that users get the intended resolution when available.
         format_selector = (
+            "(bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a])/"
+            "(bestvideo[height=720]+bestaudio)/"
             "(bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a])/"
             "(bestvideo[height<=720]+bestaudio)/"
             "best[height<=720]"
             if is_720p
-            else "worst"
+            else "(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst"
         )
         cmd = ["yt-dlp", "-f", format_selector]
         if is_720p:
-            cmd += ["-S", "res:720"]
             cmd += ["--merge-output-format", "mp4"]
         cmd += ["-o", "%(title).50s.%(ext)s"]
         if JS_RUNTIME:

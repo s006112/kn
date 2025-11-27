@@ -31,7 +31,7 @@ pip3 install --no-index --find-links=/wheels scipy==1.15.3 opencv_python_headles
 pip3 install --no-index --find-links=/wheels kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
 pip3 install --no-index --find-links=/wheels transformers==4.57.1 # llm
 pip3 install --no-index --find-links=/wheels diffusers==0.35.2
-
+pip3 install --no-index --find-links=/wheels google-genai==1.52.0 perplexityai==0.20.0 
 pip install --no-deps -U yt-dlp
 
 
