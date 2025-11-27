@@ -32,7 +32,7 @@ pip3 install --no-index --find-links=/wheels kernels==0.11.1 accelerate==1.12.0 
 pip3 install --no-index --find-links=/wheels transformers==4.57.1 # llm
 pip3 install --no-index --find-links=/wheels diffusers==0.35.2
 pip3 install --no-index --find-links=/wheels google-genai==1.52.0 perplexityai==0.20.0 
-pip install --no-deps -U yt-dlp
+pip install --no-deps -U yt-dlp --break-system-packages
 
 
 sudo dpkg -i /offline-deb/*.deb || true # 强制解压全部 .deb（不检查依赖）

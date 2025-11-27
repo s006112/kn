@@ -27,7 +27,11 @@ with gr.Blocks(title="Sketch-to-Rendering Studio", head=CLIPBOARD_POLYFILL) as d
     with gr.Row():
         generate_btn = gr.Button("Generate Rendering")
     with gr.Column():
-        rendered_output = gr.Image(label="Generated rendering", interactive=False)
+        rendered_output = gr.Image(
+            label="Generated rendering",
+            interactive=False,
+            format="jpeg",  # ensure downloads default to JPG
+        )
         status_message = gr.Textbox(
             label="Status",
             value="Upload an image, select a model, then press Generate Rendering.",
