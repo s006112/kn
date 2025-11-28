@@ -40,7 +40,7 @@ MODEL_PRETEXT = "gpt-4.1-mini"
 MODEL_EXTRACT_MATRIX = {
     "WATCH_FOLDER": [
         "sonar-reasoning-pro",
-        "gemini-2.5-flash",
+        "gemini-3-pro-preview",
         "o3",
     ],
     "PREMIUM_WATCH_FOLDER": [
