@@ -198,7 +198,7 @@ def _panelizer_enumerate_layouts(
     CBL_min = float(cfg.get("customer_board_length_min", 0.0))
     SPW = float(cfg["single_pcb_width_max"])
     SPL = float(cfg["single_pcb_length_max"])
-    if (SPW + SPL) <= 49.9 or SPW <= 10.0 or SPL <= 10.0:
+    if (SPW + SPL) <= 49.9 or SPW <= 9.9 or SPL <= 9.9:
         return []
     PEW = float(cfg["panel_edge_margin_w"])
     PEL = float(cfg["panel_edge_margin_l"])
