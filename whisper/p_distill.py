@@ -80,7 +80,7 @@ def _build_user_payload(base_name: str, extracts: List[Tuple[str, str, str]]) ->
 
 def run_distillation(config, base_name: str, md_path: str | None = None) -> str | None:
     extract_folder = os.fspath(config["EXTRACT_FOLDER"])
-    distill_model = config.get("MODEL_DISTILL") or ""
+    distill_model = (config.get("MODEL_DISTILL") or "").strip()
     distill_suffix = f"_{sanitize_filename(distill_model)}" if distill_model else ""
 
     if not distill_model:

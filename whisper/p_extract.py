@@ -126,17 +126,21 @@ def process(self, file_path, get_next_available_filename):
         if any_failure:
             raise RuntimeError("One or more extraction models failed")
 
-        logging.info(
-            f"{self.__class__.__name__}: Distillation with {self.config.get('MODEL_DISTILL')} for {filename}"
-        )
-        distill_path = run_distillation(
-            self.config,
-            base_name=base,
-            md_path=md_path,
-        )
-        logging.info(
-            f"{self.__class__.__name__}: Distillation completed for {filename} ({distill_path or 'skipped'})"
-        )
+        distill_model = (self.config.get('MODEL_DISTILL') or "").strip()
+        if distill_model:
+            logging.info(
+                f"{self.__class__.__name__}: Distillation with {distill_model} for {filename}"
+            )
+            distill_path = run_distillation(
+                self.config,
+                base_name=base,
+                md_path=md_path,
+            )
+            logging.info(
+                f"{self.__class__.__name__}: Distillation completed for {filename} ({distill_path or 'skipped'})"
+            )
+        else:
+            logging.info(f"{self.__class__.__name__}: Distillation skipped for {filename} (MODEL_DISTILL disabled)")
 
         # All models succeeded (minimal change: override dest for premium)
         dest_dir = self.config['PRETEXT_DONE_FOLDER']
