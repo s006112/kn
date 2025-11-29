@@ -2,7 +2,6 @@ import os
 import logging
 import shutil
 import sys
-from datetime import datetime
 from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 
@@ -10,6 +9,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from p_distill import run_distillation
 from utils_files import (
     release_text_file_permissions,
     read_file_with_encodings,
@@ -125,6 +125,18 @@ def process(self, file_path, get_next_available_filename):
         # - Else (all succeeded) -> Success.
         if any_failure:
             raise RuntimeError("One or more extraction models failed")
+
+        logging.info(
+            f"{self.__class__.__name__}: Distillation with {self.config.get('MODEL_DISTILL')} for {filename}"
+        )
+        distill_path = run_distillation(
+            self.config,
+            base_name=base,
+            md_path=md_path,
+        )
+        logging.info(
+            f"{self.__class__.__name__}: Distillation completed for {filename} ({distill_path or 'skipped'})"
+        )
 
         # All models succeeded (minimal change: override dest for premium)
         dest_dir = self.config['PRETEXT_DONE_FOLDER']

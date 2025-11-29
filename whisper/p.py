@@ -41,12 +41,13 @@ MODEL_EXTRACT_MATRIX = {
     "WATCH_FOLDER": [
         "sonar-reasoning-pro",
         "gemini-3-pro-preview",
-        "o3",
+        "gpt-5.1",
     ],
     "PREMIUM_WATCH_FOLDER": [
         "o3",
     ],
 }
+MODEL_DISTILL = "o3"
 
 RETRY_CONFIG = {
     "MAX_RETRIES": 1,
@@ -57,10 +58,12 @@ CONFIG = {
     **PATH_CONFIG,
     "MODEL_PRETEXT": MODEL_PRETEXT,
     "MODEL_EXTRACT_MATRIX": MODEL_EXTRACT_MATRIX,
+    "MODEL_DISTILL": MODEL_DISTILL,
     **RETRY_CONFIG,
-    # 这两项由 orchestration 注入
+    # 由 orchestration 注入
     "PRETEXT_PROMPT": None,
     "EXTRACT_PROMPT": None,
+    "DISTILL_PROMPT": None,
 }
 
 

@@ -66,6 +66,7 @@ def start_system(cfg: Optional[Dict[str, Any]] = None) -> SystemHandles:
 
     cfg["PRETEXT_PROMPT"] = read_prompt_file("prompt_pretext.txt")
     cfg["EXTRACT_PROMPT"] = read_prompt_file("prompt_extract.txt")
+    cfg["DISTILL_PROMPT"] = read_prompt_file("prompt_distill.txt")
 
     setup_wikilink_cleaner_logging(logging.getLogger())
     ensure_directories(cfg)
