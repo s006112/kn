@@ -5,6 +5,9 @@ sudo apt-get install -y --download-only python3-pip # download .deb
 sudo apt-get install -y --download-only ghostscript tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra # per
 sudo apt-get install -y --download-only ffmpeg alsa-utils pulseaudio portaudio19-dev python3-pyaudio # whisper
 
+aria2c   # file download acceleration 2.4.14 (amd64)
+
+
 # download wheels
 pip index versions xxxxx # check versions
 pip download -d /wheels Flask # quote

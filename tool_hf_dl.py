@@ -1,12 +1,18 @@
-from huggingface_hub import snapshot_download
+from huggingface_hub import list_repo_files, hf_hub_download
 
-snapshot_download(
-    repo_id="stabilityai/stable-diffusion-3.5-medium",
-#    repo_id="stabilityai/stable-diffusion-3.5-medium-tensorrt",
-    local_dir="/workspaces/sd35_manual",
-#    local_dir="/workspaces/sd35_tensorrt,
-    local_dir_use_symlinks=True,
-    resume_download=True,
-)
+repo = "stabilityai/stable-diffusion-3.5-medium"
+local_dir = "/workspaces/sd35_manual"
+
+files = list_repo_files(repo)
+
+for f in files:
+    print(f"Downloading: {f}")
+    hf_hub_download(
+        repo_id=repo,
+        filename=f,
+        local_dir=local_dir,
+        force_download=False,
+        resume_download=True,
+    )
 
 print("Done.")
