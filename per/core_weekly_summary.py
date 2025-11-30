@@ -8,7 +8,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from utils_config import load_prompt_text
+from per.utils_config import load_prompt_text
 from utils_llm import call_llm
 
 def _append_to_weekly_log(base_dir: Path, source_text: str, summary_text: str) -> None:
