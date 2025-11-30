@@ -4,9 +4,9 @@ from pathlib import Path
 
 import gradio as gr
 
-from per.clipboard_polyfill import CLIPBOARD_POLYFILL
-from per.core_weekly_summary import generate_weekly_summary
-from per.utils_config import configure_logging, load_env
+from clipboard_polyfill import CLIPBOARD_POLYFILL
+from core_weekly_summary import generate_weekly_summary
+from utils_config import configure_logging, load_env
 
 #LLM_MODEL = "gemini-2.5-pro"
 #LLM_MODEL = "sonar"
