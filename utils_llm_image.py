@@ -33,10 +33,6 @@ _STABILITY_MODEL_CONFIG: Dict[str, Dict[str, str]] = {
 }
 
 
-def _clamp01(value: float) -> float:
-    return max(0.0, min(1.0, value))
-
-
 def _build_stability_payload(
     cfg: Dict[str, str],
     prompt: str,
@@ -45,66 +41,47 @@ def _build_stability_payload(
     model_key: str,
 ) -> tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
     variant = cfg["variant"]
+    strength = 0.35 if image_strength is None else image_strength
     if variant == "generate":
-        return _build_generate_payload(prompt, init_image, image_strength)
+        files: Dict[str, Any] = {
+            "prompt": (None, prompt),
+            "output_format": (None, "png"),
+        }
+        if init_image is not None:
+            files.update(
+                {
+                    "mode": (None, "image-to-image"),
+                    "image": ("init.png", init_image, "image/png"),
+                    "strength": (None, str(strength)),
+                }
+            )
+            print(
+                "Stability image-to-image mode,"
+                f" init_image size = {len(init_image)}, strength = {strength}",
+            )
+        else:
+            files["mode"] = (None, "text-to-image")
+            print("Stability text-to-image mode")
+        return files, None
+
     if variant == "control":
-        return _build_control_payload(prompt, init_image, image_strength, model_key)
+        if init_image is None:
+            raise RuntimeError(f"{model_key} requires an input image for control generation.")
+        print(
+            "Stability control mode,"
+            f" model={model_key}, init_image size = {len(init_image)},"
+            f" control_strength = {strength}",
+        )
+        return (
+            {"image": ("init.png", init_image, "image/png")},
+            {
+                "prompt": prompt,
+                "output_format": "png",
+                "control_strength": str(strength),
+            },
+        )
+
     raise RuntimeError(f"Unsupported Stability variant '{variant}' for model {model_key}")
-
-
-def _build_generate_payload(
-    prompt: str,
-    init_image: Optional[bytes],
-    image_strength: Optional[float],
-) -> tuple[Dict[str, Any], None]:
-    files: Dict[str, Any] = {
-        "prompt": (None, prompt),
-        "output_format": (None, "png"),
-    }
-    if init_image is not None:
-        strength = _clamp01(0.35 if image_strength is None else image_strength)
-        files["mode"] = (None, "image-to-image")
-        files["image"] = ("init.png", init_image, "image/png")
-        files["strength"] = (None, str(strength))
-        print(
-            "Stability image-to-image mode,"
-            f" init_image size = {len(init_image)}, strength = {strength}",
-        )
-    else:
-        files["mode"] = (None, "text-to-image")
-        print("Stability text-to-image mode")
-    return files, None
-
-
-def _build_control_payload(
-    prompt: str,
-    init_image: Optional[bytes],
-    image_strength: Optional[float],
-    model_key: str,
-) -> tuple[Dict[str, Any], Dict[str, Any]]:
-    if init_image is None:
-        raise RuntimeError(f"{model_key} requires an input image for control generation.")
-    files: Dict[str, Any] = {
-        "image": ("init.png", init_image, "image/png"),
-    }
-    data: Dict[str, Any] = {
-        "prompt": prompt,
-        "output_format": "png",
-    }
-    if image_strength is not None:
-        data["control_strength"] = str(_clamp01(image_strength))
-        print(
-            "Stability control mode,"
-            f" model={model_key}, init_image size = {len(init_image)},"
-            f" control_strength = {data['control_strength']}",
-        )
-    else:
-        print(
-            "Stability control mode,"
-            f" model={model_key}, init_image size = {len(init_image)},"
-            " control_strength = default",
-        )
-    return files, data
 
 
 # 圖像 backend 呼叫：統一回傳 List[bytes] -----------------------------------
