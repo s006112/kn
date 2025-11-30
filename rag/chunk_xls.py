@@ -11,7 +11,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import pandas as pd  # pandas 會用 openpyxl / xlrd 等底層 engine 處理 xlsx/xls
 from chunk_att import build_attachment_tasks, join_nonempty_segments
-from chunk_san import sanitize_text
+from utils_text_sanitize import sanitize_text
 
 logger = logging.getLogger(__name__)
 

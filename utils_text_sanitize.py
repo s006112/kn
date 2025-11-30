@@ -2,10 +2,17 @@ import re
 import unicodedata
 
 
+# ============================================================================
+# 文本淨化工具
+# ============================================================================
+# 專門用於處理不同來源（PDF、Excel、Email 等）輸出的污染文本，
+# 將 Windows-1252 遗留字元、控制符號、重複標點、URL 等統一清理後，再交給 LLM。
+
+
 # === NULL / URL / MAILTO 清理 ===
 # === 字元修復表（Unicode & Windows-1252）===
 CHAR_REPLACEMENTS = (
-    # Windows-1252 residues kept at the top for clarity
+    # Windows-1252 residues kept at the top for clarity，常見於舊 Office 文件
     ("\x00", " "), ("\xa0", " "), 
     ("\x91", "'"), ("\x92", "'"),
     ("\x93", '"'), ("\x94", '"'),
@@ -14,6 +21,7 @@ CHAR_REPLACEMENTS = (
     ("\x99", "™"),
 
     # Unicode variants and compatibility glyphs unified after normalization
+    # 將繁多的兼容字元映射為簡潔的 ASCII 以方便後續處理。
     ("“", '"'), ("”", '"'),
     ("‘", "'"), ("’", "'"),
     ("–", "-"), ("—", "-"), ("―", "-"), ("‒", "-"), ("﹣", "-"), ("－", "-"),
@@ -71,6 +79,7 @@ _EMAIL_TOKEN_SPLITTER = re.compile(r'(\s+)')
 _EMAIL_STRIP_CHARS = ".,;:!?()[]<>\"'"
 
 
+# 針對 email 正文常見的「請寄到 xxx@yyy.com」等詞彙進行遮罩。
 def _remove_email_like_phrases(text: str) -> str:
     parts = _EMAIL_TOKEN_SPLITTER.split(text)
     for idx, part in enumerate(parts):
@@ -80,11 +89,13 @@ def _remove_email_like_phrases(text: str) -> str:
         if not token:
             continue
         lowered = token.lower()
-        if '@' in token and 'com' in lowered:
-            parts[idx] = ' '
-    return ''.join(parts)
+# heuristics: 確認同時含 @ 與 com（常見商務郵件）才刪除，避免誤刪一般文字
+        if "@" in token and "com" in lowered:
+            parts[idx] = " "
+    return "".join(parts)
 
 
+# 主入口函數：處理 bytes/str，轉為純淨 Unicode 文本。
 def sanitize_text(text: str | bytes) -> str:
     """Return clean Unicode text after removing corruption patterns and legacy encodings."""
 
@@ -101,20 +112,23 @@ def sanitize_text(text: str | bytes) -> str:
             text = text.decode("utf-8", errors="replace")
 
     # === Unicode 正規化 & 控制符號替換 ===
+    # NFKC 能將全形/兼容字元轉為標準形式，讓正則規則更好匹配。
     text = unicodedata.normalize("NFKC", text)
 
     # === 字元處理（正規化後）===
+    # 逐個替換掉常見的錯誤字元與 Windows-1252 遺留碼。
     for bad, good in CHAR_REPLACEMENTS:
         text = text.replace(bad, good)
 
     text = _remove_email_like_phrases(text)
 
     # === 通用格式清洗（正則套件）===
+    # 以正則規則清理 URL、重複標點、表格 artefacts 等。
     for regex, repl in CLEAN_REGEXES_GENERAL:
         text = regex.sub(repl, text)
 
     text = _remove_email_like_phrases(text)
 
     # === 結尾清理 ===
+    # 最後壓縮所有空白為單一空格，避免破壞語句結構。
     return re.sub(r"\s+", " ", text).strip()
-

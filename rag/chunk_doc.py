@@ -11,7 +11,7 @@ from typing import List, Tuple
 
 import docx
 from chunk_att import build_attachment_tasks, join_nonempty_segments
-from chunk_san import sanitize_text
+from utils_text_sanitize import sanitize_text
 
 logger = logging.getLogger(__name__)
 
