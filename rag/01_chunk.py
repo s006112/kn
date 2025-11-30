@@ -12,7 +12,7 @@ from email.parser import BytesParser
 from pathlib import Path
 from typing import Iterable, List, Tuple
 
-from chunk_text import extract_email_body_tasks
+from utils_text_processing import extract_email_body_tasks
 from chunk_json import Task, BatchProcessor, JsonlWriter
 from chunk_att import extract_attachment_tasks
 
