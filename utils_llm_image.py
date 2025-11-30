@@ -8,43 +8,61 @@ from google.genai import errors as genai_errors
 from utils_llm import get_gemini_client, get_openai_client, get_stability_client
 
 
-# 圖像 backend 呼叫：統一回傳 List[bytes] -----------------------------------
+_STABILITY_BASE_URL = "https://api.stability.ai/v2beta/stable-image"
+_STABILITY_MODEL_CONFIG: Dict[str, Dict[str, str]] = {
+    "stability-ultra": {
+        "variant": "generate",
+        "url": f"{_STABILITY_BASE_URL}/generate/ultra",
+    },
+    "stability-core": {
+        "variant": "generate",
+        "url": f"{_STABILITY_BASE_URL}/generate/core",
+    },
+    "stability-sd3": {
+        "variant": "generate",
+        "url": f"{_STABILITY_BASE_URL}/generate/sd3",
+    },
+    "stability-sketch": {
+        "variant": "control",
+        "url": f"{_STABILITY_BASE_URL}/control/sketch",
+    },
+    "stability-structure": {
+        "variant": "control",
+        "url": f"{_STABILITY_BASE_URL}/control/structure",
+    },
+}
 
 
-def call_stability_image(
-    api_key: str,
-    model: str,
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
+def _build_stability_payload(
+    cfg: Dict[str, str],
     prompt: str,
-    size: str,
-    n: int,
-    init_image: Optional[bytes] = None,
-    image_strength: float = 0.35,
-) -> List[bytes]:
-    """Invoke Stability.ai Stable Image v2beta for text/image-to-image."""
-    model_lower = model.lower().strip()
-    if model_lower == "stability-ultra":
-        endpoint = "ultra"
-    elif model_lower == "stability-core":
-        endpoint = "core"
-    elif model_lower == "stability-sd3":
-        endpoint = "sd3"
-    else:
-        raise RuntimeError(f"Unknown Stability model alias: {model}")
+    init_image: Optional[bytes],
+    image_strength: Optional[float],
+    model_key: str,
+) -> tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+    variant = cfg["variant"]
+    if variant == "generate":
+        return _build_generate_payload(prompt, init_image, image_strength)
+    if variant == "control":
+        return _build_control_payload(prompt, init_image, image_strength, model_key)
+    raise RuntimeError(f"Unsupported Stability variant '{variant}' for model {model_key}")
 
-    url = f"https://api.stability.ai/v2beta/stable-image/generate/{endpoint}"
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "image/*",
-    }
-
+def _build_generate_payload(
+    prompt: str,
+    init_image: Optional[bytes],
+    image_strength: Optional[float],
+) -> tuple[Dict[str, Any], None]:
     files: Dict[str, Any] = {
         "prompt": (None, prompt),
         "output_format": (None, "png"),
     }
-
     if init_image is not None:
-        strength = max(0.0, min(1.0, image_strength))
+        strength = _clamp01(0.35 if image_strength is None else image_strength)
         files["mode"] = (None, "image-to-image")
         files["image"] = ("init.png", init_image, "image/png")
         files["strength"] = (None, str(strength))
@@ -55,12 +73,76 @@ def call_stability_image(
     else:
         files["mode"] = (None, "text-to-image")
         print("Stability text-to-image mode")
+    return files, None
+
+
+def _build_control_payload(
+    prompt: str,
+    init_image: Optional[bytes],
+    image_strength: Optional[float],
+    model_key: str,
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    if init_image is None:
+        raise RuntimeError(f"{model_key} requires an input image for control generation.")
+    files: Dict[str, Any] = {
+        "image": ("init.png", init_image, "image/png"),
+    }
+    data: Dict[str, Any] = {
+        "prompt": prompt,
+        "output_format": "png",
+    }
+    if image_strength is not None:
+        data["control_strength"] = str(_clamp01(image_strength))
+        print(
+            "Stability control mode,"
+            f" model={model_key}, init_image size = {len(init_image)},"
+            f" control_strength = {data['control_strength']}",
+        )
+    else:
+        print(
+            "Stability control mode,"
+            f" model={model_key}, init_image size = {len(init_image)},"
+            " control_strength = default",
+        )
+    return files, data
+
+
+# 圖像 backend 呼叫：統一回傳 List[bytes] -----------------------------------
+
+
+def call_stability_image(
+    api_key: str,
+    model: str,
+    prompt: str,
+    size: str,
+    n: int,
+    init_image: Optional[bytes] = None,
+    image_strength: Optional[float] = None,
+) -> List[bytes]:
+    """Invoke Stability.ai Stable Image v2beta for all supported variants."""
+    del size  # Unused but kept for API compatibility.
+    model_lower = model.lower().strip()
+    cfg = _STABILITY_MODEL_CONFIG.get(model_lower)
+    if not cfg:
+        raise RuntimeError(f"Unknown Stability model alias: {model}")
+
+    files, data = _build_stability_payload(cfg, prompt, init_image, image_strength, model_lower)
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "image/*",
+    }
 
     images: List[bytes] = []
     count = max(1, n)
 
     for _ in range(count):
-        resp = requests.post(url, headers=headers, files=files, timeout=120)
+        resp = requests.post(
+            cfg["url"],
+            headers=headers,
+            files=files,
+            data=data,
+            timeout=120,
+        )
         if resp.status_code != 200:
             raise RuntimeError(
                 f"Stability image API error {resp.status_code}: {resp.text[:200]}"

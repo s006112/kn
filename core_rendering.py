@@ -22,6 +22,8 @@ MODEL_OPTIONS = [
     "gemini-3-pro-image-preview",
     "gpt-image-1-mini",
     "gpt-image-1",
+    "stability-structure",
+    "stability-sketch",
     "stability-core",
     "stability-sd3",
     "stability-ultra",
