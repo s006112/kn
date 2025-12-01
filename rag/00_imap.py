@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import base64
-import binascii
 import json
 import logging
 import os
@@ -24,6 +22,14 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 import imaplib
 
 from dotenv import load_dotenv
+from utils_imap import (
+    SYSTEM_FOLDERS,
+    build_ssl_context,
+    decode_mailbox,
+    encode_imap_utf7,
+    parse_fetch_response as iter_imap_fetch_response,
+    quote_mailbox,
+)
 
 
 DEFAULT_SERVER = "mail.ampco.com.hk"
@@ -33,7 +39,6 @@ DEFAULT_SINCE_DATE = "2025-09-20"
 DEFAULT_OUT_DIR = Path("data") / "raw" / "mbox"
 DEFAULT_STATE_PATH = Path(".state") / "imap_state.json"
 DEFAULT_CHUNK_SIZE = 100
-SYSTEM_FOLDERS = {"junk", "trash", "drafts", "spam"}
 UID_BATCH_RETRY_LIMIT = 4
 UID_BATCH_RETRY_BACKOFF_BASE = 2
 
@@ -121,116 +126,12 @@ def load_credentials(logger: logging.Logger) -> Tuple[str, str]:
     return user, password
 
 
-def build_ssl_context(verify: bool, legacy: bool = False) -> ssl.SSLContext:
-    context = ssl.create_default_context()
-    if not verify:
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-    if legacy:
-        try:
-            context.set_ciphers("DEFAULT@SECLEVEL=1")
-        except ssl.SSLError:
-            pass
-        if hasattr(ssl, "OP_LEGACY_SERVER_CONNECT"):
-            context.options |= ssl.OP_LEGACY_SERVER_CONNECT
-    return context
-
-
 def mask_identifier(identifier: str) -> str:
     if not identifier:
         return ""
     if len(identifier) <= 4:
         return "*" * len(identifier)
     return identifier[:2] + "*" * (len(identifier) - 4) + identifier[-2:]
-
-
-LIST_RE = re.compile(r'^\((?P<flags>.*?)\)\s+"(?P<delimiter>.*?)"\s+(?P<name>.*)$')
-
-
-def decode_imap_utf7(value: str) -> str:
-    result: List[str] = []
-    i = 0
-    while i < len(value):
-        if value[i] == "&":
-            j = value.find("-", i)
-            if j == -1:
-                j = len(value)
-            encoded = value[i + 1 : j]
-            if not encoded:
-                result.append("&")
-            else:
-                padding = (-len(encoded)) % 4
-                encoded_bytes = (encoded + "=" * padding).replace(",", "/").encode(
-                    "ascii"
-                )
-                try:
-                    decoded = base64.b64decode(encoded_bytes).decode("utf-16-be")
-                except (binascii.Error, UnicodeDecodeError):
-                    result.append(encoded)
-                else:
-                    result.append(decoded)
-            i = j + 1
-        else:
-            result.append(value[i])
-            i += 1
-    return "".join(result)
-
-
-def encode_imap_utf7(value: str) -> str:
-    result: List[str] = []
-    buffer: List[str] = []
-
-    def flush_buffer() -> None:
-        if not buffer:
-            return
-        chunk = "".join(buffer).encode("utf-16-be")
-        encoded = (
-            base64.b64encode(chunk).decode("ascii").replace("/", ",").rstrip("=")
-        )
-        result.append(f"&{encoded}-")
-        buffer.clear()
-
-    for char in value:
-        code = ord(char)
-        if 0x20 <= code <= 0x7E:
-            flush_buffer()
-            if char == "&":
-                result.append("&-")
-            else:
-                result.append(char)
-        else:
-            buffer.append(char)
-    flush_buffer()
-    return "".join(result)
-
-
-ATOM_SPECIALS = set('(){ %*"\\]')
-
-
-def quote_mailbox(name: str) -> str:
-    if not name:
-        return '""'
-    if any(ch in ATOM_SPECIALS or ch.isspace() for ch in name):
-        escaped = name.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    return name
-
-
-def decode_mailbox(line: bytes) -> Optional[str]:
-    if not line:
-        return None
-    text = line.decode("utf-8", errors="ignore")
-    match = LIST_RE.match(text)
-    if not match:
-        return None
-    name = match.group("name")
-    if name.startswith('"') and name.endswith('"'):
-        name = name[1:-1]
-    name = name.replace('\\"', '"').replace("\\\\", "\\")
-    try:
-        return decode_imap_utf7(name)
-    except (UnicodeError, ValueError):
-        return name
 
 
 def to_search_date(value: Optional[str]) -> Optional[str]:
@@ -616,47 +517,30 @@ class FetchedMessage:
     message: mailbox.mboxMessage
 
 
-UID_PATTERN = re.compile(r"UID (?P<uid>\d+)")
-FLAGS_PATTERN = re.compile(r"FLAGS \((?P<flags>[^)]*)\)")
-INTERNALDATE_PATTERN = re.compile(r'INTERNALDATE "?(?P<date>[^"]+)"?')
-
-
 def parse_fetch_response(
     data: Sequence[object],
 ) -> Iterable[FetchedMessage]:
-    for index in range(0, len(data)):
-        item = data[index]
-        if not item or not isinstance(item, tuple):
-            continue
-        header_bytes, message_bytes = item
-        if not isinstance(header_bytes, (bytes, str)) or not isinstance(
-            message_bytes, (bytes, bytearray)
-        ):
-            continue
-        header = header_bytes.decode("utf-8", errors="ignore")
-        uid_match = UID_PATTERN.search(header)
-        if not uid_match:
-            continue
-        uid = int(uid_match.group("uid"))
-        flags_match = FLAGS_PATTERN.search(header)
-        flags = []
-        if flags_match and flags_match.group("flags"):
-            flags = [flag.strip() for flag in flags_match.group("flags").split()]
-        date_match = INTERNALDATE_PATTERN.search(header)
-        internaldate = date_match.group("date") if date_match else None
-        email_message = message_from_bytes(message_bytes)
+    for record in iter_imap_fetch_response(data):
+        email_message = message_from_bytes(record.raw_bytes)
         mbox_message = mailbox.mboxMessage(email_message)
-        if flags:
-            mbox_message["X-IMAP-Flags"] = " ".join(flags)
-        if internaldate:
+        if record.flags:
+            mbox_message["X-IMAP-Flags"] = " ".join(record.flags)
+        if record.internaldate:
             try:
-                when = imaplib.Internaldate2tuple(f'"{internaldate}"'.encode("utf-8"))
+                when = imaplib.Internaldate2tuple(
+                    f'"{record.internaldate}"'.encode("utf-8")
+                )
                 if when:
                     mbox_message.set_from("imap-export", time.mktime(when))
             except Exception:
                 pass
-            mbox_message["X-IMAP-InternalDate"] = internaldate
-        yield FetchedMessage(uid=uid, flags=flags, internaldate=internaldate, message=mbox_message)
+            mbox_message["X-IMAP-InternalDate"] = record.internaldate
+        yield FetchedMessage(
+            uid=record.uid,
+            flags=record.flags,
+            internaldate=record.internaldate,
+            message=mbox_message,
+        )
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
