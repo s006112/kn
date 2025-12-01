@@ -44,7 +44,8 @@ def generate_weekly_summary(user_text: str, base_dir: Path, model: str) -> str:
     if not user_text or not user_text.strip():
         return "Error: No text provided."
 
-    prompt_text = load_prompt_text(base_dir, "prompt_w.txt")
+    prompt_dir = base_dir / "prompt"
+    prompt_text = load_prompt_text(prompt_dir, "prompt_w.txt")
     if not prompt_text:
         return "Error: Failed to load prompt_w.txt"
 

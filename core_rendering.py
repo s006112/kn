@@ -29,7 +29,7 @@ MODEL_OPTIONS = [
     "stability-ultra",
 ]
 
-PROMPT_RENDERING_PATH = Path(__file__).with_name("prompt_rendering.txt")
+PROMPT_RENDERING_PATH = Path(__file__).parent / "prompt" / "prompt_rendering.txt"
 if PROMPT_RENDERING_PATH.exists():
     PROMPT_RENDERING = PROMPT_RENDERING_PATH.read_text("utf-8")
 else:

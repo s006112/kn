@@ -3,6 +3,7 @@ import re
 import unicodedata
 
 
+# Windows 保留名字集合，避免生成冲突的文件名
 _RESERVED_WINDOWS_NAMES = {
     "con",
     "prn",
@@ -11,16 +12,19 @@ _RESERVED_WINDOWS_NAMES = {
     *{f"com{i}" for i in range(1, 10)},
     *{f"lpt{i}" for i in range(1, 10)},
 }
+# 需要替换的非法字符集合、控制字符模式与替换字符
 _INVALID_FILENAME_CHARS = set("#[]`/\\?*<>|：:｜")
 _CONTROL_CHAR_PATTERN = re.compile(r"[\u0000-\u001f\u007f]")
 _REPLACEMENT_CHAR = "・"
 
 
+# 将特殊 Unicode 名称标准化为常规形式
 def _normalize_unicode_name(name: str) -> str:
     """Normalize exotic Unicode glyphs (e.g. mathematical fonts) to plain forms."""
     return unicodedata.normalize("NFKC", name)
 
 
+# 清洗文件名，去除不合法字符并统一格式
 def sanitize_filename(name: str) -> str:
     """Sanitize a filename by normalizing Unicode and replacing disallowed characters."""
     normalized = _normalize_unicode_name(name)
@@ -52,6 +56,7 @@ def sanitize_filename(name: str) -> str:
     return sanitized
 
 
+# 在清洗文件名的基础上控制长度，保证一致性
 def sanitize_and_trim_filename(base_name: str, max_length: int = 50) -> str:
     """Sanitize and trim a base filename (without extension) for consistent processing."""
     sanitized_name = sanitize_filename(base_name)
@@ -66,6 +71,7 @@ def sanitize_and_trim_filename(base_name: str, max_length: int = 50) -> str:
         return sanitized_name
 
 
+# 将长文本切分为具有重叠的短块
 def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 20):
     """Split long text into overlapping chunks."""
     text_length = len(text)
@@ -92,6 +98,7 @@ def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 20):
     return chunks
 
 
+# 将切分后的文本块智能拼接回完整文本
 def intelligent_merge_chunks(chunks, window: int = 30, min_len: int = 4) -> str:
     """Merge overlapping chunks back together using simple LCS."""
     if not chunks:
@@ -99,6 +106,7 @@ def intelligent_merge_chunks(chunks, window: int = 30, min_len: int = 4) -> str:
     if len(chunks) == 1:
         return chunks[0]
 
+    # 计算两个字符串的最长公共子串位置和长度
     def longest_common_substring(a: str, b: str):
         max_len = 0
         start_a = start_b = 0
@@ -129,4 +137,3 @@ def intelligent_merge_chunks(chunks, window: int = 30, min_len: int = 4) -> str:
         else:
             merged += chunks[i]
     return merged
-

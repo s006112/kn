@@ -92,9 +92,10 @@ def run_so_import(file_path: str | None, salesperson: str, model: str) -> SOImpo
             return SOImportResult("Error: PDF parsing produced empty text.", "", "", "")
 
     base_dir = Path(__file__).parent
-    prompt_po_str = load_prompt_text(base_dir, "Prompt_po.txt")
+    prompt_dir = base_dir / "prompt"
+    prompt_po_str = load_prompt_text(prompt_dir, "prompt_po.txt")
     if not prompt_po_str:
-        return SOImportResult("Error: Failed to load Prompt_po.txt", "", "", "")
+        return SOImportResult("Error: Failed to load prompt_po.txt", "", "", "")
 
     try:
         llm_po_response = call_llm(

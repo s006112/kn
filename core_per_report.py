@@ -253,10 +253,11 @@ def insert_stats_rows(md: str) -> str:
 
 def _load_prompts(base_dir: Path) -> Tuple[str, str] | Tuple[None, None]:
     """Load markdown and summary prompts from disk."""
+    prompt_dir = base_dir / "prompt"
     try:
-        prompt_md_str = (base_dir / "Prompt_md.txt").read_text("utf-8")
+        prompt_md_str = (prompt_dir / "prompt_md.txt").read_text("utf-8")
     except Exception as e:
-        log.error("Error reading Prompt_md.txt: %s", e)
+        log.error("Error reading prompt_md.txt: %s", e)
         return None, None
     try:
         prompt_summary_str = (base_dir / "Prompt_summary.txt").read_text("utf-8")
@@ -376,7 +377,8 @@ def generate_per_report(file_path: str, model: str) -> PerReportResult:
         return PerReportResult("Error: PDF parsing failed.", [], "", "")
 
     base_dir = Path(__file__).parent
-    prompt_md_str = load_prompt_text(base_dir, "Prompt_md.txt")
+    prompt_dir = base_dir / "prompt"
+    prompt_md_str = load_prompt_text(prompt_dir, "prompt_md.txt")
     prompt_summary_str = load_prompt_text(base_dir, "Prompt_summary.txt")
     if not prompt_md_str or not prompt_summary_str:
         return PerReportResult("Error: Failed to load prompts.", [], text, "")
