@@ -17,8 +17,13 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from dotenv import load_dotenv
-from utils_imap import ImapClient, RawFetchedRecord
 import imaplib
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from utils_imap import ImapClient, RawFetchedRecord
 # 與原程式相同的常數 ----------------------------------------------
 
 DEFAULT_SERVER = "mail.ampco.com.hk"
