@@ -7,9 +7,6 @@ import argparse
 import json
 import logging
 import os
-import re
-import socket
-import ssl
 import sys
 import time
 from dataclasses import dataclass
@@ -19,18 +16,10 @@ import mailbox
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-import imaplib
-
 from dotenv import load_dotenv
-from utils_imap import (
-    SYSTEM_FOLDERS,
-    build_ssl_context,
-    decode_mailbox,
-    encode_imap_utf7,
-    parse_fetch_response as iter_imap_fetch_response,
-    quote_mailbox,
-)
-
+from utils_imap import ImapClient, RawFetchedRecord
+import imaplib
+# 與原程式相同的常數 ----------------------------------------------
 
 DEFAULT_SERVER = "mail.ampco.com.hk"
 DEFAULT_PORT = 993
@@ -39,64 +28,41 @@ DEFAULT_SINCE_DATE = "2025-09-20"
 DEFAULT_OUT_DIR = Path("data") / "raw" / "mbox"
 DEFAULT_STATE_PATH = Path(".state") / "imap_state.json"
 DEFAULT_CHUNK_SIZE = 100
-UID_BATCH_RETRY_LIMIT = 4
-UID_BATCH_RETRY_BACKOFF_BASE = 2
 
 
 class ExportError(RuntimeError):
     """Raised when the export process fails."""
 
 
+# ---------------------------------------------------------------------
+# CLI / logging / credential
+# ---------------------------------------------------------------------
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Export IMAP folders into local mbox files."
     )
+    parser.add_argument("--since", type=str, default=DEFAULT_SINCE_DATE)
+    parser.add_argument("--before", type=str)
+    parser.add_argument("--full", action="store_true")
     parser.add_argument(
-        "--since",
-        type=str,
-        default=DEFAULT_SINCE_DATE,
-        help="Lower bound date (YYYY-MM-DD).",
+        "--out-dir", type=Path, default=DEFAULT_OUT_DIR
     )
     parser.add_argument(
-        "--before", type=str, help="Upper bound date (YYYY-MM-DD, exclusive)."
+        "--state", type=Path, default=DEFAULT_STATE_PATH
     )
     parser.add_argument(
-        "--full",
-        action="store_true",
-        help="Perform a full export ignoring stored state.",
+        "--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE
     )
     parser.add_argument(
-        "--out-dir",
-        type=Path,
-        default=DEFAULT_OUT_DIR,
-        help=f"Output directory for mbox files (default: {DEFAULT_OUT_DIR}).",
+        "--include-system", action="store_true"
     )
     parser.add_argument(
-        "--state",
-        type=Path,
-        default=DEFAULT_STATE_PATH,
-        help=f"Path to sync state JSON (default: {DEFAULT_STATE_PATH}).",
+        "--verbose", action="store_true"
     )
     parser.add_argument(
-        "--chunk-size",
-        type=int,
-        default=DEFAULT_CHUNK_SIZE,
-        help="Max UID fetch chunk size (default: %(default)s).",
-    )
-    parser.add_argument(
-        "--include-system",
-        action="store_true",
-        help="Include system folders (Junk/Trash/Drafts/Spam).",
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable verbose logging.",
-    )
-    parser.add_argument(
-        "--insecure",
-        action="store_true",
-        help="Disable SSL certificate verification (warning: insecure).",
+        "--insecure", action="store_true",
+        help="Disable SSL verification (use only for testing).",
     )
     return parser.parse_args(argv)
 
@@ -108,11 +74,7 @@ def configure_logging(verbose: bool) -> logging.Logger:
         format="%(asctime)s %(levelname)s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    logger = logging.getLogger("imap_export")
-    if not verbose:
-        logger.setLevel(logging.INFO)
-    logger.debug("Verbose logging enabled.")
-    return logger
+    return logging.getLogger("imap_export")
 
 
 def load_credentials(logger: logging.Logger) -> Tuple[str, str]:
@@ -122,17 +84,12 @@ def load_credentials(logger: logging.Logger) -> Tuple[str, str]:
     if not user or not password:
         logger.error("Missing IMAP_USER or IMAP_PASSWORD in environment.")
         raise ExportError("Missing IMAP credentials.")
-    logger.debug("Credentials loaded from environment.")
     return user, password
 
 
-def mask_identifier(identifier: str) -> str:
-    if not identifier:
-        return ""
-    if len(identifier) <= 4:
-        return "*" * len(identifier)
-    return identifier[:2] + "*" * (len(identifier) - 4) + identifier[-2:]
-
+# ---------------------------------------------------------------------
+# Util
+# ---------------------------------------------------------------------
 
 def to_search_date(value: Optional[str]) -> Optional[str]:
     if not value:
@@ -155,14 +112,13 @@ def build_search_criteria(
     return criteria
 
 
-def chunked(sequence: Sequence[int], size: int) -> Iterable[List[int]]:
-    for index in range(0, len(sequence), size):
-        yield sequence[index : index + size]
-
-
 def ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
+
+# ---------------------------------------------------------------------
+# State
+# ---------------------------------------------------------------------
 
 @dataclass
 class SyncState:
@@ -199,328 +155,12 @@ class SyncState:
         self.path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-class ImapExporter:
-    def __init__(
-        self,
-        server: str,
-        port: int,
-        user: str,
-        password: str,
-        out_dir: Path,
-        state: SyncState,
-        chunk_size: int,
-        include_system: bool,
-        full: bool,
-        since: Optional[str],
-        before: Optional[str],
-        verify_ssl: bool,
-        logger: logging.Logger,
-    ) -> None:
-        self.server = server
-        self.port = port
-        self.user = user
-        self.password = password
-        self.out_dir = out_dir
-        self.state = state
-        self.chunk_size = max(1, chunk_size)
-        self.include_system = include_system
-        self.full = full
-        self.since = since
-        self.before = before
-        self.verify_ssl = verify_ssl
-        self.timeout = DEFAULT_TIMEOUT
-        self.logger = logger
-        self.connection: Optional[imaplib.IMAP4_SSL] = None
-        self._ssl_context: Optional[ssl.SSLContext] = None
-        self._using_legacy_tls = False
-        self.summary_outputs: List[Path] = []
-        self.summary_messages = 0
-        self.summary_folders = 0
-        self.export_date = datetime.now().strftime("%Y%m%d")
-        self._shared_output_path: Optional[Path] = None
-        self._mbox_prepared = False
+# ---------------------------------------------------------------------
+# mbox 寫入
+# ---------------------------------------------------------------------
 
-    def run(self) -> None:
-        self.out_dir.mkdir(parents=True, exist_ok=True)
-        self._ssl_context = build_ssl_context(self.verify_ssl)
-        if not self.verify_ssl:
-            self.logger.warning(
-                "SSL verification disabled via --insecure. Use only for testing."
-            )
-        self._connect()
-
-        try:
-            folders = self._list_folders()
-            if not folders:
-                self.logger.warning("No folders discovered.")
-                return
-            self.summary_folders = len(folders)
-            for folder in folders:
-                try:
-                    count = self._export_folder(folder)
-                    self.summary_messages += count
-                except ExportError as exc:
-                    self.logger.error("Folder '%s' skipped: %s", folder, exc)
-        finally:
-            self._disconnect()
-
-        self.state.save()
-        self._log_summary()
-
-    def _connect(self) -> None:
-        assert self._ssl_context is not None
-        try:
-            self.logger.info(
-                "Connecting to %s:%s as %s",
-                self.server,
-                self.port,
-                mask_identifier(self.user),
-            )
-            self.connection = imaplib.IMAP4_SSL(
-                self.server,
-                self.port,
-                ssl_context=self._ssl_context,
-                timeout=self.timeout,
-            )
-            self.connection.login(self.user, self.password)
-        except ssl.SSLError as exc:
-            message = str(exc)
-            if "dh key too small" in message.lower() and not self._using_legacy_tls:
-                self.logger.warning(
-                    "Server requires weak DH parameters; retrying connection with legacy TLS settings."
-                )
-                self._ssl_context = build_ssl_context(self.verify_ssl, legacy=True)
-                self._using_legacy_tls = True
-                self._connect()
-                return
-            raise ExportError(f"SSL error: {exc}") from exc
-        except (imaplib.IMAP4.error, socket.timeout, OSError) as exc:
-            raise ExportError(f"Failed to connect to IMAP server: {exc}") from exc
-        else:
-            if self._using_legacy_tls:
-                self.logger.warning(
-                    "Connected using legacy TLS mode; prefer updating server DH parameters."
-                )
-
-    def _disconnect(self) -> None:
-        if self.connection is not None:
-            try:
-                self.connection.logout()
-            except Exception:
-                pass
-            finally:
-                self.connection = None
-
-    def _reconnect(self) -> None:
-        self.logger.debug("Reconnecting to IMAP server after error.")
-        self._disconnect()
-        self._connect()
-
-    def _list_folders(self) -> List[str]:
-        assert self.connection is not None
-        status, data = self.connection.list()
-        if status != "OK" or data is None:
-            raise ExportError("Unable to retrieve folder list.")
-        folders: List[str] = []
-        for entry in data:
-            folder = decode_mailbox(entry)
-            if not folder:
-                continue
-            if not self.include_system:
-                parts = re.split(r"[/\\]", folder.lower())
-                if any(part in SYSTEM_FOLDERS for part in parts if part):
-                    self.logger.debug("Skipping system folder %s", folder)
-                    continue
-            folders.append(folder)
-        folders.sort()
-        self.logger.info("Discovered %d folders to process.", len(folders))
-        return folders
-
-    def _ensure_folder_selected(self, folder: str) -> None:
-        assert self.connection is not None
-        encoded_name = self._encode_folder(folder)
-        status, _ = self.connection.select(encoded_name, readonly=True)
-        if status != "OK":
-            raise ExportError(f"Unable to reselect folder {folder}.")
-
-    def _export_folder(self, folder: str) -> int:
-        assert self.connection is not None
-        encoded_name = self._encode_folder(folder)
-        status, _ = self.connection.select(encoded_name, readonly=True)
-        if status != "OK":
-            raise ExportError("Unable to select folder.")
-
-        criteria = build_search_criteria(self.since, self.before)
-        status, data = self.connection.uid("SEARCH", None, *criteria)
-        if status != "OK" or not data or not data[0]:
-            self.logger.info("Folder %s: no messages match criteria.", folder)
-            return 0
-        raw_uids = data[0].decode().split()
-        uids = sorted(set(int(uid) for uid in raw_uids))
-        if not self.full:
-            last_uid = self.state.last_uid(folder)
-            if last_uid:
-                uids = [uid for uid in uids if uid > last_uid]
-        if not uids:
-            self.logger.info("Folder %s: no new messages after filtering.", folder)
-            return 0
-
-        self.logger.info(
-            "Folder %s: %d messages to export (chunk size %d).",
-            folder,
-            len(uids),
-            self.chunk_size,
-        )
-        output_path = self._resolve_output_path(folder)
-        if not self._mbox_prepared:
-            ensure_parent(output_path)
-            if self.full and output_path.exists():
-                output_path.unlink()
-            self._mbox_prepared = True
-
-        written = 0
-        max_uid = 0
-        mbox = mailbox.mbox(output_path, create=True)
-        try:
-            mbox.lock()
-            for batch in chunked(uids, self.chunk_size):
-                messages = self._fetch_batch(folder, batch)
-                for message in messages:
-                    mbox.add(message.message)
-                    written += 1
-                    max_uid = max(max_uid, message.uid)
-                self.logger.debug(
-                    "Folder %s: fetched %d/%d so far.",
-                    folder,
-                    written,
-                    len(uids),
-                )
-            mbox.flush()
-        finally:
-            try:
-                mbox.unlock()
-            except Exception:
-                pass
-            mbox.close()
-
-        if written:
-            self.state.update(folder, max_uid)
-            resolved_output = output_path.resolve()
-            if resolved_output not in self.summary_outputs:
-                self.summary_outputs.append(resolved_output)
-            self.logger.info(
-                "Folder %s: written %d messages to %s.",
-                folder,
-                written,
-                output_path.resolve(),
-            )
-        return written
-
-    def _fetch_batch(
-        self, folder: str, uid_batch: Sequence[int]
-    ) -> List["FetchedMessage"]:
-        assert self.connection is not None
-        uid_set = ",".join(str(uid) for uid in uid_batch)
-        attempt = 0
-        needs_reselect = False
-        while True:
-            attempt += 1
-            if needs_reselect or attempt > 1:
-                try:
-                    self._ensure_folder_selected(folder)
-                except ExportError as exc:
-                    if attempt >= UID_BATCH_RETRY_LIMIT:
-                        raise
-                    delay = UID_BATCH_RETRY_BACKOFF_BASE ** attempt
-                    self.logger.warning(
-                        "Folder %s: reselect failed (%s); retrying after %ss",
-                        folder,
-                        exc,
-                        delay,
-                    )
-                    time.sleep(delay)
-                    continue
-                needs_reselect = False
-            try:
-                status, data = self.connection.uid(
-                    "FETCH",
-                    uid_set,
-                    "(BODY.PEEK[] FLAGS INTERNALDATE UID)",
-                )
-            except (
-                imaplib.IMAP4.abort,
-                imaplib.IMAP4.error,
-                socket.timeout,
-                OSError,
-            ) as exc:
-                if attempt >= UID_BATCH_RETRY_LIMIT:
-                    raise ExportError(f"Fetch failed for {folder}: {exc}") from exc
-                delay = UID_BATCH_RETRY_BACKOFF_BASE ** attempt
-                self.logger.warning(
-                    "Fetch retry %d/%d for %s after error: %s (sleep %ss)",
-                    attempt,
-                    UID_BATCH_RETRY_LIMIT - 1,
-                    folder,
-                    exc,
-                    delay,
-                )
-                if isinstance(exc, (imaplib.IMAP4.abort, socket.timeout, OSError)):
-                    self._reconnect()
-                    needs_reselect = True
-                else:
-                    needs_reselect = True
-                time.sleep(delay)
-                continue
-            if status != "OK" or not data:
-                if attempt >= UID_BATCH_RETRY_LIMIT:
-                    raise ExportError(f"Invalid fetch response for {folder}.")
-                delay = UID_BATCH_RETRY_BACKOFF_BASE ** attempt
-                needs_reselect = True
-                time.sleep(delay)
-                continue
-            break
-        return list(parse_fetch_response(data))
-
-    def _resolve_output_path(self, folder: str) -> Path:
-        if self._shared_output_path is None:
-            filename = f"mailbox_{self.export_date}.mbox"
-            self._shared_output_path = self.out_dir / filename
-        return self._shared_output_path
-
-    @staticmethod
-    def _encode_folder(folder: str) -> str:
-        try:
-            folder.encode("ascii")
-            return quote_mailbox(folder)
-        except UnicodeEncodeError:
-            return quote_mailbox(encode_imap_utf7(folder))
-
-    def _log_summary(self) -> None:
-        self.logger.info(
-            "Export complete: %d folders processed, %d messages written.",
-            self.summary_folders,
-            self.summary_messages,
-        )
-        if not self.summary_outputs:
-            self.logger.info("No output files generated.")
-            return
-        self.logger.info("Generated mbox files:")
-        for path in self.summary_outputs:
-            self.logger.info(" - %s", path)
-
-
-@dataclass
-class FetchedMessage:
-    uid: int
-    flags: List[str]
-    internaldate: Optional[str]
-    message: mailbox.mboxMessage
-
-
-def parse_fetch_response(
-    data: Sequence[object],
-) -> Iterable[FetchedMessage]:
-    for record in iter_imap_fetch_response(data):
+def records_to_mbox_messages(records: Iterable[RawFetchedRecord]) -> Iterable[mailbox.mboxMessage]:
+    for record in records:
         email_message = message_from_bytes(record.raw_bytes)
         mbox_message = mailbox.mboxMessage(email_message)
         if record.flags:
@@ -535,13 +175,130 @@ def parse_fetch_response(
             except Exception:
                 pass
             mbox_message["X-IMAP-InternalDate"] = record.internaldate
-        yield FetchedMessage(
-            uid=record.uid,
-            flags=record.flags,
-            internaldate=record.internaldate,
-            message=mbox_message,
-        )
+        yield record.uid, mbox_message
 
+
+# ---------------------------------------------------------------------
+# Export 主流程
+# ---------------------------------------------------------------------
+
+def export_all(
+    client: ImapClient,
+    state: SyncState,
+    out_dir: Path,
+    chunk_size: int,
+    full: bool,
+    since: Optional[str],
+    before: Optional[str],
+    include_system: bool,
+    logger: logging.Logger,
+) -> Tuple[int, List[Path]]:
+    client.connect()
+    try:
+        folders = client.list_folders(include_system=include_system)
+        if not folders:
+            logger.warning("No folders discovered.")
+            return 0, []
+
+        logger.info("Discovered %d folders to process.", len(folders))
+
+        export_date = datetime.now().strftime("%Y%m%d")
+        output_path = out_dir / f"mailbox_{export_date}.mbox"
+        ensure_parent(output_path)
+        if full and output_path.exists():
+            output_path.unlink()
+
+        total_written = 0
+        exported_files: List[Path] = []
+
+        mbox = mailbox.mbox(output_path, create=True)
+        try:
+            mbox.lock()
+            for folder in folders:
+                n = export_folder(
+                    client=client,
+                    folder=folder,
+                    state=state,
+                    mbox=mbox,
+                    chunk_size=chunk_size,
+                    full=full,
+                    since=since,
+                    before=before,
+                    logger=logger,
+                )
+                total_written += n
+            mbox.flush()
+            exported_files.append(output_path.resolve())
+        finally:
+            try:
+                mbox.unlock()
+            except Exception:
+                pass
+            mbox.close()
+
+        return total_written, exported_files
+
+    finally:
+        client.disconnect()
+
+
+def export_folder(
+    client: ImapClient,
+    folder: str,
+    state: SyncState,
+    mbox: mailbox.mbox,
+    chunk_size: int,
+    full: bool,
+    since: Optional[str],
+    before: Optional[str],
+    logger: logging.Logger,
+) -> int:
+    criteria = build_search_criteria(since, before)
+    uids = client.search_uids(folder, criteria)
+    if not uids:
+        logger.info("Folder %s: no messages match criteria.", folder)
+        return 0
+
+    if not full:
+        last_uid = state.last_uid(folder)
+        if last_uid:
+            uids = [uid for uid in uids if uid > last_uid]
+    if not uids:
+        logger.info("Folder %s: no new messages after filtering.", folder)
+        return 0
+
+    logger.info(
+        "Folder %s: %d messages to export (chunk size %d).",
+        folder,
+        len(uids),
+        chunk_size,
+    )
+
+    written = 0
+    max_uid = 0
+
+    for start in range(0, len(uids), chunk_size):
+        batch = uids[start : start + chunk_size]
+        raw_records = client.fetch_batch(folder, batch)
+        for uid, mbox_msg in records_to_mbox_messages(raw_records):
+            mbox.add(mbox_msg)
+            written += 1
+            if uid > max_uid:
+                max_uid = uid
+
+    if written:
+        state.update(folder, max_uid)
+        logger.info(
+            "Folder %s: written %d messages.",
+            folder,
+            written,
+        )
+    return written
+
+
+# ---------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(argv)
@@ -557,24 +314,42 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 raise ExportError("--since must be earlier than --before.")
 
         user, password = load_credentials(logger)
-        sync_state = SyncState.load(args.state)
-        exporter = ImapExporter(
+        state = SyncState.load(args.state)
+
+        client = ImapClient(
             server=DEFAULT_SERVER,
             port=DEFAULT_PORT,
             user=user,
             password=password,
+            verify_ssl=not args.insecure,
+            timeout=DEFAULT_TIMEOUT,
+            logger=logger,
+        )
+
+        total, files = export_all(
+            client=client,
+            state=state,
             out_dir=args.out_dir,
-            state=sync_state,
             chunk_size=args.chunk_size,
-            include_system=args.include_system,
             full=args.full,
             since=since,
             before=before,
-            verify_ssl=not args.insecure,
+            include_system=args.include_system,
             logger=logger,
         )
-        exporter.run()
+
+        state.save()
+        logger.info(
+            "Export complete: %d messages written.",
+            total,
+        )
+        if files:
+            logger.info("Generated mbox files:")
+            for p in files:
+                logger.info(" - %s", p)
+
         return 0
+
     except ExportError as exc:
         logger.error("Export failed: %s", exc)
         return 1
