@@ -67,12 +67,18 @@ def compute_panelizer_rows(
     panel_options: Mapping[str, Tuple[float, float]],
     jumbo_multiplier: Mapping[str, int],
 ) -> List[Dict[str, Any]]:
+    spw = float(cfg.get("single_pcb_width_max", 0.0))
+    spl = float(cfg.get("single_pcb_length_max", 0.0))
+    extra_large_styles = {"A5", "A6", "A7", "B5", "B6", "B7"}
+
     enabled_sets = {letter for letter in "ABCDE" if cfg.get(f"include_set_{letter}", False)}
     if not enabled_sets:
         return []
 
     rows: List[Dict[str, Any]] = []
     for style, (pw, pl) in panel_options.items():
+        if style in extra_large_styles and not (spw > 600.0 or spl > 600.0):
+            continue
         if style[:1].upper() not in enabled_sets:
             continue
         rows.extend(_panelizer_enumerate_layouts(cfg, pw, pl, style, jumbo_multiplier))
