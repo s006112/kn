@@ -1,22 +1,3 @@
-#!/usr/bin/env python3
-"""
-Minimal email fetcher for AI assistant:
-
-- 使用 utils_config.load_env() + configure_logging()
-- 使用 utils_imap.ImapClient 抓取 UNSEEN 郵件
-- 將 MIME 解析成簡單的 EmailMessage 結構
-- 可選地透過 state_store 避免重複處理（若提供）
-
-依賴環境變數：
-- IMAP_HOST
-- IMAP_PORT（可選，預設 993）
-- IMAP_USER
-- IMAP_PASSWORD
-- IMAP_FOLDER（可選，預設 "INBOX"）
-- IMAP_VERIFY_SSL（可選，"true"/"false"，預設 true）
-- IMAP_TIMEOUT（可選，秒數，預設 300）
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,7 +5,8 @@ from email import message_from_bytes
 from email.message import Message
 from typing import Iterable, List, Optional, Protocol
 
-from utils_config import load_env, configure_logging, get_env_flag, get_env_int  # type: ignore
+from utils_config import load_env, configure_logging  # type: ignore
+from utils_email import load_imap_config  # type: ignore
 from utils_imap import ImapClient, RawFetchedRecord  # type: ignore
 
 
@@ -54,15 +36,6 @@ class StateStoreLike(Protocol):
 # ------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------
-
-def _get_env_str(name: str, default: str) -> str:
-    import os
-
-    value = os.getenv(name)
-    if not value:
-        return default
-    return value
-
 
 def _extract_addresses(header_value: Optional[str]) -> List[str]:
     """非常簡化版，只 split ';' / ','；後面若要更精確再改用 email.utils.getaddresses。"""
@@ -161,35 +134,24 @@ def fetch_new_messages(
     # 1) env + logger
     load_env()
     logger = configure_logging("email_fetcher")
-
-    host = _get_env_str("IMAP_HOST", "")
-    user = _get_env_str("IMAP_USER", "")
-    password = _get_env_str("IMAP_PASSWORD", "")
-
-    if not host or not user or not password:
-        raise RuntimeError("IMAP_HOST / IMAP_USER / IMAP_PASSWORD 必須設定。")
-
-    port = get_env_int("IMAP_PORT", 993)
-    folder = _get_env_str("IMAP_FOLDER", "INBOX")
-    verify_ssl = get_env_flag("IMAP_VERIFY_SSL", True)
-    timeout = get_env_int("IMAP_TIMEOUT", 300)
+    imap_cfg = load_imap_config("IMAP_FOLDER", "INBOX", require_credentials=True)
 
     logger.debug(
         "IMAP config: host=%s port=%s folder=%s verify_ssl=%s timeout=%s",
-        host,
-        port,
-        folder,
-        verify_ssl,
-        timeout,
+        imap_cfg.host,
+        imap_cfg.port,
+        imap_cfg.folder,
+        imap_cfg.verify_ssl,
+        imap_cfg.timeout,
     )
 
     client = ImapClient(
-        server=host,
-        port=port,
-        user=user,
-        password=password,
-        verify_ssl=verify_ssl,
-        timeout=timeout,
+        server=imap_cfg.host,
+        port=imap_cfg.port,
+        user=imap_cfg.user,
+        password=imap_cfg.password,
+        verify_ssl=imap_cfg.verify_ssl,
+        timeout=imap_cfg.timeout,
         logger=logger,
     )
     client.connect()
@@ -197,9 +159,9 @@ def fetch_new_messages(
     try:
         # 2) 搜尋 UNSEEN
         criteria = ["UNSEEN"]
-        uids = client.search_uids(folder, criteria)
+        uids = client.search_uids(imap_cfg.folder, criteria)
         if not uids:
-            logger.info("No UNSEEN messages in folder %s.", folder)
+            logger.info("No UNSEEN messages in folder %s.", imap_cfg.folder)
             return []
 
         # 3) 透過 state 過濾已處理
@@ -212,10 +174,12 @@ def fetch_new_messages(
         if max_messages is not None and len(uids) > max_messages:
             uids = uids[:max_messages]
 
-        logger.info("Fetching %d messages from folder %s.", len(uids), folder)
+        logger.info(
+            "Fetching %d messages from folder %s.", len(uids), imap_cfg.folder
+        )
 
         # 4) 一次性 fetch（MVS：先不做 chunk）
-        records = client.fetch_batch(folder, uids)
+        records = client.fetch_batch(imap_cfg.folder, uids)
 
         # 5) RawFetchedRecord -> EmailMessage
         messages = [_record_to_email(rec) for rec in records]

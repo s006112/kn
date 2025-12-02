@@ -55,6 +55,14 @@ def get_env_int(name: str, default: int) -> int:
         return default
 
 
+def get_env_str(name: str, default: str) -> str:
+    """Read a string from env or return default when empty/missing."""
+    value = os.getenv(name)
+    if not value:
+        return default
+    return value
+
+
 def load_prompt_text(base_dir: Path, filename: str) -> str | None:
     """Load a UTF-8 prompt text file from base_dir; return None on failure."""
     try:
@@ -63,4 +71,12 @@ def load_prompt_text(base_dir: Path, filename: str) -> str | None:
         return None
 
 
-__all__ = ["load_env", "get_log_level", "configure_logging", "get_env_flag", "get_env_int", "load_prompt_text"]
+__all__ = [
+    "load_env",
+    "get_log_level",
+    "configure_logging",
+    "get_env_flag",
+    "get_env_int",
+    "get_env_str",
+    "load_prompt_text",
+]

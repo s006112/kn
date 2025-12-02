@@ -18,7 +18,8 @@ from email.message import EmailMessage as StdEmailMessage
 from email.utils import parseaddr, formataddr
 from typing import Optional
 
-from utils_config import load_env, configure_logging, get_env_flag, get_env_int  # type: ignore :contentReference[oaicite:1]{index=1}
+from utils_config import load_env, configure_logging  # type: ignore :contentReference[oaicite:1]{index=1}
+from utils_email import load_imap_config, load_smtp_config  # type: ignore
 from ali_fetch import EmailMessage  # type: ignore :contentReference[oaicite:2]{index=2}
 import imaplib
 from utils_imap import build_ssl_context, encode_imap_utf7, quote_mailbox  # type: ignore
@@ -28,11 +29,6 @@ from utils_imap import build_ssl_context, encode_imap_utf7, quote_mailbox  # typ
 class SendResult:
     ok: bool
     error_message: Optional[str] = None
-
-
-def _get_env_str(name: str, default: str) -> str:
-    value = os.getenv(name)
-    return value if value else default
 
 
 def _build_subject(original_subject: str) -> str:
@@ -118,46 +114,43 @@ def _append_to_imap_sent(msg: StdEmailMessage, logger) -> None:
 
     若 IMAP_* 未完整設定，則直接略過，不影響寄信流程。
     """
-    host = _get_env_str("IMAP_HOST", "")
-    user = _get_env_str("IMAP_USER", "")
-    password = _get_env_str("IMAP_PASSWORD", "")
-
-    if not host or not user or not password:
+    imap_cfg = load_imap_config("IMAP_SENT_FOLDER", "Sent")
+    if imap_cfg is None:
         if logger:
             logger.debug("IMAP_* 未完整設定，略過 APPEND 至 Sent。")
         return
 
-    port = get_env_int("IMAP_PORT", 993)
-    verify_ssl = get_env_flag("IMAP_VERIFY_SSL", True)
-    timeout = get_env_int("IMAP_TIMEOUT", 300)
-    folder = _get_env_str("IMAP_SENT_FOLDER", "Sent")
-
     # 處理資料夾名稱（含 UTF-7 與 quoting）
     try:
-        folder.encode("ascii")
-        mailbox_name = quote_mailbox(folder)
+        imap_cfg.folder.encode("ascii")
+        mailbox_name = quote_mailbox(imap_cfg.folder)
     except UnicodeEncodeError:
-        mailbox_name = quote_mailbox(encode_imap_utf7(folder))
+        mailbox_name = quote_mailbox(encode_imap_utf7(imap_cfg.folder))
 
     # 嘗試一般 TLS，若遇到 DH_KEY_TOO_SMALL 則改用 legacy TLS
     using_legacy = False
     while True:
         try:
-            ctx = build_ssl_context(verify_ssl, legacy=using_legacy)
+            ctx = build_ssl_context(imap_cfg.verify_ssl, legacy=using_legacy)
             conn = imaplib.IMAP4_SSL(
-                host,
-                port,
+                imap_cfg.host,
+                imap_cfg.port,
                 ssl_context=ctx,
-                timeout=timeout,
+                timeout=imap_cfg.timeout,
             )
             try:
-                conn.login(user, password)
+                conn.login(imap_cfg.user, imap_cfg.password)
                 raw_bytes = msg.as_bytes()
                 status, resp = conn.append(mailbox_name, None, None, raw_bytes)
                 if status != "OK" and logger:
-                    logger.warning("IMAP APPEND 至 %s 失敗：%s %s", folder, status, resp)
+                    logger.warning(
+                        "IMAP APPEND 至 %s 失敗：%s %s",
+                        imap_cfg.folder,
+                        status,
+                        resp,
+                    )
                 elif logger:
-                    logger.info("已將信件寫入 IMAP 資料夾 %s。", folder)
+                    logger.info("已將信件寫入 IMAP 資料夾 %s。", imap_cfg.folder)
             finally:
                 try:
                     conn.logout()
@@ -192,39 +185,31 @@ def _mark_imap_message_seen(original: EmailMessage, logger) -> None:
     - IMAP_TIMEOUT（選用，預設 300）
     - IMAP_FOLDER（選用，預設 "INBOX"：原信所在資料夾）
     """
-    host = _get_env_str("IMAP_HOST", "")
-    user = _get_env_str("IMAP_USER", "")
-    password = _get_env_str("IMAP_PASSWORD", "")
-
-    if not host or not user or not password:
+    imap_cfg = load_imap_config("IMAP_FOLDER", "INBOX")
+    if imap_cfg is None:
         if logger:
             logger.debug("IMAP_* 未完整設定，略過標記已讀。")
         return
 
-    port = get_env_int("IMAP_PORT", 993)
-    verify_ssl = get_env_flag("IMAP_VERIFY_SSL", True)
-    timeout = get_env_int("IMAP_TIMEOUT", 300)
-    folder = _get_env_str("IMAP_FOLDER", "INBOX")
-
     # 處理資料夾名稱
     try:
-        folder.encode("ascii")
-        mailbox_name = quote_mailbox(folder)
+        imap_cfg.folder.encode("ascii")
+        mailbox_name = quote_mailbox(imap_cfg.folder)
     except UnicodeEncodeError:
-        mailbox_name = quote_mailbox(encode_imap_utf7(folder))
+        mailbox_name = quote_mailbox(encode_imap_utf7(imap_cfg.folder))
 
     using_legacy = False
     while True:
         try:
-            ctx = build_ssl_context(verify_ssl, legacy=using_legacy)
+            ctx = build_ssl_context(imap_cfg.verify_ssl, legacy=using_legacy)
             conn = imaplib.IMAP4_SSL(
-                host,
-                port,
+                imap_cfg.host,
+                imap_cfg.port,
                 ssl_context=ctx,
-                timeout=timeout,
+                timeout=imap_cfg.timeout,
             )
             try:
-                status, _ = conn.login(user, password)
+                status, _ = conn.login(imap_cfg.user, imap_cfg.password)
                 if status != "OK" and logger:
                     logger.warning("IMAP 登入失敗，無法標記已讀。")
                     return
@@ -232,7 +217,9 @@ def _mark_imap_message_seen(original: EmailMessage, logger) -> None:
                 status, _ = conn.select(mailbox_name, readonly=False)
                 if status != "OK":
                     if logger:
-                        logger.warning("無法選取資料夾 %s，略過標記已讀。", folder)
+                        logger.warning(
+                            "無法選取資料夾 %s，略過標記已讀。", imap_cfg.folder
+                        )
                     return
 
                 uid_str = str(original.uid)
@@ -291,35 +278,30 @@ def send_reply(
     load_env()
     logger = configure_logging("ali_email_sender")
 
-    host = _get_env_str("SMTP_HOST", "")
-    port = get_env_int("SMTP_PORT", 587)
-    user = _get_env_str("SMTP_USER", "")
-    password = _get_env_str("SMTP_PASSWORD", "")
-    if not host or not user or not password:
+    smtp_cfg = load_smtp_config()
+    if smtp_cfg is None:
         return SendResult(ok=False, error_message="Missing SMTP_HOST/USER/PASSWORD")
 
-    default_from = os.getenv("ALI_ASSISTANT_EMAIL", user)
-    sender = from_addr or default_from
-
-    use_ssl = get_env_flag("SMTP_USE_SSL", False)
-    use_starttls = get_env_flag("SMTP_STARTTLS", True)
+    sender = from_addr or smtp_cfg.default_from
 
     msg = _build_message(original, reply_body, sender)
     # Ensure correspondent address matches SMTP_USER for replies
-    msg["Reply-To"] = user
+    msg["Reply-To"] = smtp_cfg.user
 
     try:
-        if use_ssl:
-            server: smtplib.SMTP = smtplib.SMTP_SSL(host, port, timeout=60)
+        if smtp_cfg.use_ssl:
+            server: smtplib.SMTP = smtplib.SMTP_SSL(
+                smtp_cfg.host, smtp_cfg.port, timeout=60
+            )
         else:
-            server = smtplib.SMTP(host, port, timeout=60)
+            server = smtplib.SMTP(smtp_cfg.host, smtp_cfg.port, timeout=60)
 
         with server:
             server.ehlo()
-            if not use_ssl and use_starttls:
+            if not smtp_cfg.use_ssl and smtp_cfg.use_starttls:
                 server.starttls()
                 server.ehlo()
-            server.login(user, password)
+            server.login(smtp_cfg.user, smtp_cfg.password)
             server.send_message(msg)
 
         logger.info("Sent reply to %s (uid=%s)", msg["To"], original.uid)
