@@ -315,6 +315,8 @@ def send_reply(
     use_starttls = get_env_flag("SMTP_STARTTLS", True)
 
     msg = _build_message(original, reply_body, sender)
+    # Ensure correspondent address matches SMTP_USER for replies
+    msg["Reply-To"] = user
 
     try:
         if use_ssl:
