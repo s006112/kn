@@ -16,8 +16,8 @@ def main():
     try:
         resp = client.responses.create(
 #            model="gpt-5-nano",
-#            model="gpt-5-mini",
-            model="gpt-5",
+            model="gpt-5-mini",
+#            model="gpt-5",
             input="Say the one word: ready."
         )
         print("Model used:", resp.model)

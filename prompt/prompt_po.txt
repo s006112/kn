@@ -24,26 +24,26 @@ Extraction Rules:
 
 Output: A single continuous plain-text document containing only parsed content (no metadata, JSON, XML, CSV, or page markers).
 
-Document format (exact order and structure, example in "" for illustration only):
-    self.customer = "Focal Point, LLC"
-    self.company = "Ampco Products Limited"
-    self.x_studio_customer_po_number = "PO-001"
-    self.order_lines = [
-        {
-            "product": "A36773-04",
-            "quantity": "12",
-            "x_studio_delivery_date": "2025-01-15",
-        },
-        {
-            "product": "694465",
-            "quantity": "800",
-            "x_studio_delivery_date": "2025-02-10",
-        },
-        {
-            "product": "443004",
-            "quantity": "1500",
-            "x_studio_delivery_date": "2025-03-05",
-        },
-    ]
+Document format (exact indent, order and structure; example in "" for illustration only):
+self.customer = "Focal Point, LLC"
+self.company = "Ampco Products Limited"
+self.x_studio_customer_po_number = "PO-001"
+self.order_lines = [
+    {
+        "product": "A36773-04",
+        "quantity": "12",
+        "x_studio_delivery_date": "2025-01-15",
+    },
+    {
+        "product": "694465",
+        "quantity": "800",
+        "x_studio_delivery_date": "2025-02-10",
+    },
+    {
+        "product": "443004",
+        "quantity": "1500",
+        "x_studio_delivery_date": "2025-03-05",
+    },
+]
     … continue numbering sequentially for all product present
 
