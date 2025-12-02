@@ -33,7 +33,7 @@ PROMPT_DIR = PROJECT_ROOT / "prompt"
 DEFAULT_SYSTEM_PROMPT_PATH = PROMPT_DIR / "prompt_ali_system.txt"
 DEFAULT_USER_PROMPT_PATH = PROMPT_DIR / "prompt_ali_user.txt"
 
-DEFAULT_MODEL = os.getenv("ALI_ASSISTANT_MODEL", "gpt-4.1-mini")
+DEFAULT_MODEL = os.getenv("ALI_ASSISTANT_MODEL", "gpt-5-mini")
 DEFAULT_ASSISTANT_EMAIL = os.getenv("ALI_ASSISTANT_EMAIL", "assistant@company.com")
 
 

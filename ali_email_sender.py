@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import smtplib
+import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage as StdEmailMessage
 from email.utils import parseaddr, formataddr
@@ -19,6 +20,8 @@ from typing import Optional
 
 from utils_config import load_env, configure_logging, get_env_flag  # type: ignore :contentReference[oaicite:1]{index=1}
 from ali_email_fetcher import EmailMessage  # type: ignore :contentReference[oaicite:2]{index=2}
+import imaplib
+from utils_imap import build_ssl_context, encode_imap_utf7, quote_mailbox  # type: ignore
 
 
 @dataclass
@@ -77,6 +80,82 @@ def _build_message(
     return msg
 
 
+def _append_to_imap_sent(msg: StdEmailMessage, logger) -> None:
+    """
+    將已送出的郵件寫入 IMAP「寄件備份」資料夾。
+
+    依賴環境變數（與 fetcher 保持一致）：
+    - IMAP_HOST / IMAP_PORT / IMAP_USER / IMAP_PASSWORD
+    - IMAP_VERIFY_SSL（選用，預設 true）
+    - IMAP_TIMEOUT（選用，預設 300）
+    - IMAP_SENT_FOLDER（選用，預設 "Sent"）
+
+    若 IMAP_* 未完整設定，則直接略過，不影響寄信流程。
+    """
+    host = _get_env_str("IMAP_HOST", "")
+    user = _get_env_str("IMAP_USER", "")
+    password = _get_env_str("IMAP_PASSWORD", "")
+
+    if not host or not user or not password:
+        if logger:
+            logger.debug("IMAP_* 未完整設定，略過 APPEND 至 Sent。")
+        return
+
+    port = _get_env_int("IMAP_PORT", 993)
+    verify_ssl = get_env_flag("IMAP_VERIFY_SSL", True)
+    timeout = _get_env_int("IMAP_TIMEOUT", 300)
+    folder = _get_env_str("IMAP_SENT_FOLDER", "Sent")
+
+    # 處理資料夾名稱（含 UTF-7 與 quoting）
+    try:
+        folder.encode("ascii")
+        mailbox_name = quote_mailbox(folder)
+    except UnicodeEncodeError:
+        mailbox_name = quote_mailbox(encode_imap_utf7(folder))
+
+    # 嘗試一般 TLS，若遇到 DH_KEY_TOO_SMALL 則改用 legacy TLS
+    using_legacy = False
+    while True:
+        try:
+            ctx = build_ssl_context(verify_ssl, legacy=using_legacy)
+            conn = imaplib.IMAP4_SSL(
+                host,
+                port,
+                ssl_context=ctx,
+                timeout=timeout,
+            )
+            try:
+                conn.login(user, password)
+                raw_bytes = msg.as_bytes()
+                status, resp = conn.append(mailbox_name, None, None, raw_bytes)
+                if status != "OK" and logger:
+                    logger.warning("IMAP APPEND 至 %s 失敗：%s %s", folder, status, resp)
+                elif logger:
+                    logger.info("已將信件寫入 IMAP 資料夾 %s。", folder)
+            finally:
+                try:
+                    conn.logout()
+                except Exception:
+                    pass
+            break
+        except ssl.SSLError as exc:
+            msg_text = str(exc)
+            if "dh key too small" in msg_text.lower() and not using_legacy:
+                using_legacy = True
+                if logger:
+                    logger.warning(
+                        "IMAP 伺服器要求弱 DH 參數；改用 legacy TLS 再試一次。"
+                    )
+                continue
+            if logger:
+                logger.warning("寫入已寄信到 IMAP Sent 失敗（SSL）：%s", exc)
+            break
+        except Exception as exc:
+            if logger:
+                logger.warning("寫入已寄信到 IMAP Sent 失敗：%s", exc)
+            break
+
+
 def send_reply(
     original: EmailMessage,
     reply_body: str,
@@ -131,6 +210,8 @@ def send_reply(
             server.send_message(msg)
 
         logger.info("Sent reply to %s (uid=%s)", msg["To"], original.uid)
+        # 寄信成功後，嘗試寫入 IMAP Sent（若 IMAP_* 已設定）
+        _append_to_imap_sent(msg, logger)
         return SendResult(ok=True)
     except Exception as exc:
         logger.error("Failed to send reply for uid=%s: %s", original.uid, exc)
