@@ -39,7 +39,7 @@ PATH_CONFIG = {
 MODEL_PRETEXT = "gpt-4.1-mini"
 MODEL_EXTRACT_MATRIX = {
     "WATCH_FOLDER": [
-        "gpt-5.1",
+        "gpt-5-mini",
         "sonar-reasoning-pro",
         "gemini-3-pro-preview",
     ],

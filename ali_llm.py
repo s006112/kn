@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from utils_config import load_prompt_text
 from utils_llm import call_llm  # 你的 LLM gateway
 from utils_imap_types import EmailMessage  # 前面寫好的 dataclass
 
@@ -52,9 +53,10 @@ _PROMPT_CACHE = _PromptCache()
 
 
 def _read_text(path: Path) -> str:
-    if not path.exists():
+    text = load_prompt_text(path.parent, path.name)
+    if text is None:
         raise FileNotFoundError(f"Prompt file not found: {path}")
-    return path.read_text(encoding="utf-8")
+    return text
 
 
 def load_system_prompt(path: Optional[Path] = None) -> str:
