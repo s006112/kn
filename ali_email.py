@@ -6,6 +6,7 @@ from utils_config import configure_logging, get_env_int  # type: ignore :content
 from ali_fetch import fetch_new_messages  # type: ignore :contentReference[oaicite:2]{index=2}
 from ali_llm import generate_reply  # type: ignore :contentReference[oaicite:3]{index=3}
 from ali_send import send_reply  # type: ignore
+from utils_mail_types import EmailMessage, SendResult
 
 
 def run_once() -> None:
@@ -16,7 +17,7 @@ def run_once() -> None:
     max_messages = 10
 
     # Fetch new messages from IMAP
-    messages = fetch_new_messages(max_messages=max_messages)
+    messages: list[EmailMessage] = fetch_new_messages(max_messages=max_messages)
     if not messages:
         logger.info("No new messages to process.")
         return
@@ -29,7 +30,7 @@ def run_once() -> None:
             logger.info("Processing uid=%s subject=%s", msg.uid, msg.subject)
 
             reply_body = generate_reply(msg)
-            result = send_reply(msg, reply_body)
+            result: SendResult = send_reply(msg, reply_body)
 
             if result.ok:
                 logger.info("Processed uid=%s successfully.", msg.uid)

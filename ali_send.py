@@ -13,22 +13,15 @@ from __future__ import annotations
 import os
 import smtplib
 import ssl
-from dataclasses import dataclass
+import imaplib
 from email.message import EmailMessage as StdEmailMessage
 from email.utils import parseaddr, formataddr
 from typing import Optional
 
 from utils_config import load_env, configure_logging  # type: ignore :contentReference[oaicite:1]{index=1}
 from utils_mail_config import load_imap_config, load_smtp_config  # type: ignore
-from ali_fetch import EmailMessage  # type: ignore :contentReference[oaicite:2]{index=2}
-import imaplib
+from utils_mail_types import EmailMessage, SendResult  # type: ignore
 from utils_imap_client import build_ssl_context, encode_imap_utf7, quote_mailbox  # type: ignore
-
-
-@dataclass
-class SendResult:
-    ok: bool
-    error_message: Optional[str] = None
 
 
 def _build_subject(original_subject: str) -> str:

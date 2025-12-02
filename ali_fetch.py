@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from email import message_from_bytes
 from email.message import Message
 from email.utils import getaddresses
 from typing import Iterable, List, Optional, Protocol
 
+from utils_mail_types import EmailMessage
 from utils_config import load_env, configure_logging  # type: ignore
 from utils_mail_config import load_imap_config  # type: ignore
 from utils_imap_client import ImapClient, RawFetchedRecord  # type: ignore
@@ -13,17 +13,6 @@ from utils_imap_client import ImapClient, RawFetchedRecord  # type: ignore
 # ------------------------------------------------------------
 # Domain model
 # ------------------------------------------------------------
-
-@dataclass
-class EmailMessage:
-    uid: int
-    message_id: str
-    from_addr: str
-    to_addrs: List[str]
-    cc_addrs: List[str]
-    subject: str
-    body_text: str
-    raw_bytes: bytes
 
 
 class StateStoreLike(Protocol):
