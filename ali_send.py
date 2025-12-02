@@ -5,24 +5,29 @@ ali_email_sender.py
 職責：
 - 把 LLM 產生的 reply body 包裝成一封 email
 - 設定 To / From / Subject / In-Reply-To / References
-- 經由 SMTP 寄出
+- 經由 SMTP 寄出，並：
+  - 將已寄信寫入 IMAP 寄件備份
+  - 將原信標記為已讀
 """
 
 from __future__ import annotations
 
-import os
 import smtplib
 import ssl
 import imaplib
 from email.message import EmailMessage as StdEmailMessage
-from email.utils import parseaddr, formataddr
-from typing import Optional
+from email.utils import parseaddr
+from typing import Optional, Callable
 
-from utils_config import load_env, configure_logging  # type: ignore :contentReference[oaicite:1]{index=1}
+from utils_config import load_env, configure_logging  # type: ignore
 from utils_mail_config import load_imap_config, load_smtp_config  # type: ignore
 from utils_mail_types import EmailMessage, SendResult  # type: ignore
 from utils_imap_client import build_ssl_context, encode_imap_utf7, quote_mailbox  # type: ignore
 
+
+# ------------------------------------------------------------
+# Build outgoing message
+# ------------------------------------------------------------
 
 def _build_subject(original_subject: str) -> str:
     if not original_subject:
@@ -95,102 +100,28 @@ def _build_message(
     return msg
 
 
-def _append_to_imap_sent(msg: StdEmailMessage, logger) -> None:
+# ------------------------------------------------------------
+# IMAP helpers：pure core + wrapper
+# ------------------------------------------------------------
+
+def _resolve_mailbox_name(folder: str) -> str:
     """
-    將已送出的郵件寫入 IMAP「寄件備份」資料夾。
-
-    依賴環境變數（與 fetcher 保持一致）：
-    - IMAP_HOST / IMAP_PORT / IMAP_USER / IMAP_PASSWORD
-    - IMAP_VERIFY_SSL（選用，預設 true）
-    - IMAP_TIMEOUT（選用，預設 300）
-    - IMAP_SENT_FOLDER（選用，預設 "Sent"）
-
-    若 IMAP_* 未完整設定，則直接略過，不影響寄信流程。
+    將人類可讀的資料夾名稱轉成 IMAP protocol 名稱（處理 UTF-7 + quoting）。
     """
-    imap_cfg = load_imap_config("IMAP_SENT_FOLDER", "Sent")
-    if imap_cfg is None:
-        if logger:
-            logger.debug("IMAP_* 未完整設定，略過 APPEND 至 Sent。")
-        return
-
-    # 處理資料夾名稱（含 UTF-7 與 quoting）
     try:
-        imap_cfg.folder.encode("ascii")
-        mailbox_name = quote_mailbox(imap_cfg.folder)
+        folder.encode("ascii")
+        return quote_mailbox(folder)
     except UnicodeEncodeError:
-        mailbox_name = quote_mailbox(encode_imap_utf7(imap_cfg.folder))
-
-    # 嘗試一般 TLS，若遇到 DH_KEY_TOO_SMALL 則改用 legacy TLS
-    using_legacy = False
-    while True:
-        try:
-            ctx = build_ssl_context(imap_cfg.verify_ssl, legacy=using_legacy)
-            conn = imaplib.IMAP4_SSL(
-                imap_cfg.host,
-                imap_cfg.port,
-                ssl_context=ctx,
-                timeout=imap_cfg.timeout,
-            )
-            try:
-                conn.login(imap_cfg.user, imap_cfg.password)
-                raw_bytes = msg.as_bytes()
-                status, resp = conn.append(mailbox_name, None, None, raw_bytes)
-                if status != "OK" and logger:
-                    logger.warning(
-                        "IMAP APPEND 至 %s 失敗：%s %s",
-                        imap_cfg.folder,
-                        status,
-                        resp,
-                    )
-                elif logger:
-                    logger.info("已將信件寫入 IMAP 資料夾 %s。", imap_cfg.folder)
-            finally:
-                try:
-                    conn.logout()
-                except Exception:
-                    pass
-            break
-        except ssl.SSLError as exc:
-            msg_text = str(exc)
-            if "dh key too small" in msg_text.lower() and not using_legacy:
-                using_legacy = True
-                if logger:
-                    logger.warning(
-                        "IMAP 伺服器要求弱 DH 參數；改用 legacy TLS 再試一次。"
-                    )
-                continue
-            if logger:
-                logger.warning("寫入已寄信到 IMAP Sent 失敗（SSL）：%s", exc)
-            break
-        except Exception as exc:
-            if logger:
-                logger.warning("寫入已寄信到 IMAP Sent 失敗：%s", exc)
-            break
+        return quote_mailbox(encode_imap_utf7(folder))
 
 
-def _mark_imap_message_seen(original: EmailMessage, logger) -> None:
+def _with_imap_connection(imap_cfg, logger, action: Callable[[imaplib.IMAP4], None], context: str) -> None:
     """
-    寄信成功後，將原始郵件由 UNSEEN 標記為 SEEN。
-
-    依賴環境變數：
-    - IMAP_HOST / IMAP_PORT / IMAP_USER / IMAP_PASSWORD
-    - IMAP_VERIFY_SSL（選用，預設 true）
-    - IMAP_TIMEOUT（選用，預設 300）
-    - IMAP_FOLDER（選用，預設 "INBOX"：原信所在資料夾）
+    通用 IMAP 連線封裝：
+    - 處理 TLS / legacy TLS 重試
+    - 登入 / logout
+    - 執行給定 action(conn)
     """
-    imap_cfg = load_imap_config("IMAP_FOLDER", "INBOX")
-    if imap_cfg is None:
-        if logger:
-            logger.debug("IMAP_* 未完整設定，略過標記已讀。")
-        return
-
-    # 處理資料夾名稱
-    try:
-        imap_cfg.folder.encode("ascii")
-        mailbox_name = quote_mailbox(imap_cfg.folder)
-    except UnicodeEncodeError:
-        mailbox_name = quote_mailbox(encode_imap_utf7(imap_cfg.folder))
-
     using_legacy = False
     while True:
         try:
@@ -203,26 +134,12 @@ def _mark_imap_message_seen(original: EmailMessage, logger) -> None:
             )
             try:
                 status, _ = conn.login(imap_cfg.user, imap_cfg.password)
-                if status != "OK" and logger:
-                    logger.warning("IMAP 登入失敗，無法標記已讀。")
-                    return
-
-                status, _ = conn.select(mailbox_name, readonly=False)
                 if status != "OK":
                     if logger:
-                        logger.warning(
-                            "無法選取資料夾 %s，略過標記已讀。", imap_cfg.folder
-                        )
+                        logger.warning("IMAP 登入失敗，無法執行動作：%s。", context)
                     return
 
-                uid_str = str(original.uid)
-                status, resp = conn.uid("STORE", uid_str, "+FLAGS", r"(\Seen)")
-                if status != "OK" and logger:
-                    logger.warning(
-                        "IMAP 對 UID %s 標記 \\Seen 失敗：%s %s", uid_str, status, resp
-                    )
-                elif logger:
-                    logger.info("已將 UID %s 標記為已讀。", uid_str)
+                action(conn)
             finally:
                 try:
                     conn.logout()
@@ -235,17 +152,142 @@ def _mark_imap_message_seen(original: EmailMessage, logger) -> None:
                 using_legacy = True
                 if logger:
                     logger.warning(
-                        "IMAP 伺服器要求弱 DH 參數；標記已讀時改用 legacy TLS 再試一次。"
+                        "IMAP 伺服器要求弱 DH 參數；%s 時改用 legacy TLS 再試一次。", context
                     )
                 continue
             if logger:
-                logger.warning("標記 IMAP 郵件已讀失敗（SSL）：%s", exc)
+                logger.warning("%s 失敗（SSL）：%s", context, exc)
             break
         except Exception as exc:
             if logger:
-                logger.warning("標記 IMAP 郵件已讀失敗：%s", exc)
+                logger.warning("%s 失敗：%s", context, exc)
             break
 
+
+# ---------- pure core 1：append sent ----------
+
+def append_to_sent_with_connection(
+    conn: imaplib.IMAP4,
+    mailbox_name: str,
+    display_folder: str,
+    msg: StdEmailMessage,
+    logger=None,
+) -> None:
+    """
+    純邏輯版本：
+    - 不讀 env
+    - 不處理 TLS / legacy
+    - 不管理 connect / logout
+    只負責在指定 mailbox 做 APPEND。
+    """
+    raw_bytes = msg.as_bytes()
+    status, resp = conn.append(mailbox_name, None, None, raw_bytes)
+    if status != "OK":
+        if logger:
+            logger.warning(
+                "IMAP APPEND 至 %s 失敗：%s %s",
+                display_folder,
+                status,
+                resp,
+            )
+    elif logger:
+        logger.info("已將信件寫入 IMAP 資料夾 %s。", display_folder)
+
+
+def _append_to_imap_sent(msg: StdEmailMessage, logger) -> None:
+    """
+    Wrapper：
+    - 讀 IMAP_* config
+    - 決定 Sent 資料夾名稱
+    - 建立連線 / TLS / 重試
+    - 呼叫 append_to_sent_with_connection
+    """
+    imap_cfg = load_imap_config("IMAP_SENT_FOLDER", "Sent")
+    if imap_cfg is None:
+        if logger:
+            logger.debug("IMAP_* 未完整設定，略過 APPEND 至 Sent。")
+        return
+
+    mailbox_name = _resolve_mailbox_name(imap_cfg.folder)
+
+    _with_imap_connection(
+        imap_cfg,
+        logger,
+        lambda conn: append_to_sent_with_connection(
+            conn,
+            mailbox_name,
+            imap_cfg.folder,
+            msg,
+            logger=logger,
+        ),
+        context="寫入已寄信到 IMAP Sent",
+    )
+
+
+# ---------- pure core 2：mark seen ----------
+
+def mark_message_seen_with_connection(
+    conn: imaplib.IMAP4,
+    mailbox_name: str,
+    display_folder: str,
+    uid: int,
+    logger=None,
+) -> None:
+    """
+    純邏輯版本：
+    - 不讀 env / 不處理 TLS / 不管理連線
+    只負責 select mailbox + 對指定 UID 加上 \\Seen。
+    """
+    status, _ = conn.select(mailbox_name, readonly=False)
+    if status != "OK":
+        if logger:
+            logger.warning("無法選取資料夾 %s，略過標記已讀。", display_folder)
+        return
+
+    uid_str = str(uid)
+    status, resp = conn.uid("STORE", uid_str, "+FLAGS", r"(\Seen)")
+    if status != "OK":
+        if logger:
+            logger.warning(
+                "IMAP 對 UID %s 標記 \\Seen 失敗：%s %s", uid_str, status, resp
+            )
+    elif logger:
+        logger.info("已將 UID %s 標記為已讀。", uid_str)
+
+
+def _mark_imap_message_seen(original: EmailMessage, logger) -> None:
+    """
+    Wrapper：
+    - 讀 IMAP_* config
+    - 決定原信所在資料夾名稱
+    - 建立連線 / TLS / 重試
+    - 呼叫 mark_message_seen_with_connection
+    """
+    imap_cfg = load_imap_config("IMAP_FOLDER", "INBOX")
+    if imap_cfg is None:
+        if logger:
+            logger.debug("IMAP_* 未完整設定，略過標記已讀。")
+        return
+
+    mailbox_name = _resolve_mailbox_name(imap_cfg.folder)
+
+    _with_imap_connection(
+        imap_cfg,
+        logger,
+        lambda conn: mark_message_seen_with_connection(
+            conn,
+            mailbox_name,
+            imap_cfg.folder,
+            original.uid,
+            logger=logger,
+        ),
+        context="標記 IMAP 郵件已讀",
+    )
+
+
+# ------------------------------------------------------------
+# Public API：send_reply
+# ------------------------------------------------------------
 
 def send_reply(
     original: EmailMessage,
@@ -255,7 +297,7 @@ def send_reply(
 ) -> SendResult:
     """
     對外主入口：
-    - original: ali_email_fetcher.EmailMessage
+    - original: utils_mail_types.EmailMessage
     - reply_body: LLM 產生的 email 正文（純文字）
     - from_addr: 若為 None 則使用 ALI_ASSISTANT_EMAIL 或 SMTP_USER
 
