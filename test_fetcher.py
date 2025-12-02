@@ -13,6 +13,6 @@ for m in msgs:
     print(f"From: {m.from_addr}")
     print(f"To: {m.to_addrs}")
     print(f"Subject: {m.subject}")
-    print("Body (first 200 chars):")
-    print(m.body_text[:200])
+    print("Body (first 500 chars):")
+    print(m.body_text[:500])
     print("-"*50)

@@ -38,6 +38,8 @@ presets.local.json
 presets_qp.local.json
 presets_q.local.json
 *.local.json
+.state/
+data/
 
 ########################################
 # Security-sensitive

@@ -19,10 +19,10 @@ from email.utils import parseaddr, formataddr
 from typing import Optional
 
 from utils_config import load_env, configure_logging  # type: ignore :contentReference[oaicite:1]{index=1}
-from utils_email import load_imap_config, load_smtp_config  # type: ignore
+from utils_mail_config import load_imap_config, load_smtp_config  # type: ignore
 from ali_fetch import EmailMessage  # type: ignore :contentReference[oaicite:2]{index=2}
 import imaplib
-from utils_imap import build_ssl_context, encode_imap_utf7, quote_mailbox  # type: ignore
+from utils_imap_client import build_ssl_context, encode_imap_utf7, quote_mailbox  # type: ignore
 
 
 @dataclass
