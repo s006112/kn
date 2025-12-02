@@ -5,9 +5,9 @@ from email.message import Message
 from email.utils import getaddresses
 from typing import List, Optional, Protocol
 
-from utils_mail_types import EmailMessage
 from utils_config import load_env, configure_logging  # type: ignore
-from utils_mail_config import load_imap_config  # type: ignore
+from utils_imap_types import EmailMessage
+from utils_imap_config import load_imap_config  # type: ignore
 from utils_imap_client import ImapClient, RawFetchedRecord  # type: ignore
 
 

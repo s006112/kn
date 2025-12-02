@@ -375,6 +375,36 @@ class ImapClient:
 
         return list(parse_fetch_response(data))
 
+    # -------------- append / flags --------------
+
+    def append_raw(self, folder: str, raw_bytes: bytes) -> None:
+        """
+        將一封完整 MIME 郵件（raw_bytes）追加寫入指定資料夾。
+        """
+        assert self._conn is not None
+        encoded_name = self._encode_folder(folder)
+        status, resp = self._conn.append(encoded_name, None, None, raw_bytes)
+        if status != "OK":
+            raise RuntimeError(f"APPEND to {folder!r} failed: {status} {resp}")
+
+    def mark_seen(self, folder: str, uid: int) -> None:
+        """
+        對指定 folder + UID 加上 \\Seen。
+        """
+        assert self._conn is not None
+        encoded_name = self._encode_folder(folder)
+        status, _ = self._conn.select(encoded_name, readonly=False)
+        if status != "OK":
+            raise RuntimeError(
+                f"Unable to select folder {folder!r} for mark_seen: {status}"
+            )
+        uid_str = str(uid)
+        status, resp = self._conn.uid("STORE", uid_str, "+FLAGS", r"(\Seen)")
+        if status != "OK":
+            raise RuntimeError(
+                f"Marking UID {uid_str} as \\Seen failed: {status} {resp}"
+            )
+
     # -------------- internal helpers --------------
 
     def _select(self, folder: str) -> None:

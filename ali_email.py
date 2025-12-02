@@ -6,7 +6,7 @@ from utils_config import configure_logging, get_env_int  # type: ignore :content
 from ali_fetch import fetch_new_messages  # type: ignore :contentReference[oaicite:2]{index=2}
 from ali_llm import generate_reply  # type: ignore :contentReference[oaicite:3]{index=3}
 from ali_send import send_reply  # type: ignore
-from utils_mail_types import EmailMessage, SendResult
+from utils_imap_types import EmailMessage, SendResult
 
 
 def run_once() -> None:
