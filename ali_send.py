@@ -19,7 +19,7 @@ from email.utils import parseaddr, formataddr
 from typing import Optional
 
 from utils_config import load_env, configure_logging, get_env_flag, get_env_int  # type: ignore :contentReference[oaicite:1]{index=1}
-from ali_email_fetcher import EmailMessage  # type: ignore :contentReference[oaicite:2]{index=2}
+from ali_fetch import EmailMessage  # type: ignore :contentReference[oaicite:2]{index=2}
 import imaplib
 from utils_imap import build_ssl_context, encode_imap_utf7, quote_mailbox  # type: ignore
 

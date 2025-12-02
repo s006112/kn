@@ -1,4 +1,4 @@
-from ali_email_fetcher import fetch_new_messages
+from ali_fetch import fetch_new_messages
 
 # case 1：无 state_store，仅抓 UNSEEN
 msgs = fetch_new_messages(state=None, max_messages=5)

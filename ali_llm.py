@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Optional
 
 from utils_llm import call_llm  # 你的 LLM gateway
-from ali_email_fetcher import EmailMessage  # 前面寫好的 dataclass
+from ali_fetch import EmailMessage  # 前面寫好的 dataclass
 
 
 # 預設路徑與模型，可視需要改成從 config 讀取

@@ -3,9 +3,9 @@ from __future__ import annotations
 import time
 
 from utils_config import configure_logging, get_env_int  # type: ignore :contentReference[oaicite:1]{index=1}
-from ali_email_fetcher import fetch_new_messages  # type: ignore :contentReference[oaicite:2]{index=2}
-from ali_llm_responder import generate_reply  # type: ignore :contentReference[oaicite:3]{index=3}
-from ali_email_sender import send_reply  # type: ignore
+from ali_fetch import fetch_new_messages  # type: ignore :contentReference[oaicite:2]{index=2}
+from ali_llm import generate_reply  # type: ignore :contentReference[oaicite:3]{index=3}
+from ali_send import send_reply  # type: ignore
 
 
 def run_once() -> None:

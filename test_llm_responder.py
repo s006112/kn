@@ -1,5 +1,5 @@
-from ali_email_fetcher import fetch_new_messages
-from ali_llm_responder import generate_reply
+from ali_fetch import fetch_new_messages
+from ali_llm import generate_reply
 
 msgs = fetch_new_messages(max_messages=1)
 if not msgs:

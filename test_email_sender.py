@@ -13,9 +13,9 @@ test_full_ali_pipeline.py
 - OPENAI_API_KEY 已設定（或你的 LLM backend）
 """
 
-from ali_email_fetcher import fetch_new_messages
-from ali_llm_responder import generate_reply
-from ali_email_sender import send_reply
+from ali_fetch import fetch_new_messages
+from ali_llm import generate_reply
+from ali_send import send_reply
 
 
 def main():
