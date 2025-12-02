@@ -76,7 +76,43 @@ def _build_message(
         msg["In-Reply-To"] = original.message_id
         msg["References"] = original.message_id
 
-    msg.set_content(reply_body or "", subtype="plain", charset="utf-8")
+    # 將原信內容附在回覆信底部，模擬一般郵件客戶端的「回覆」行為
+    base_body = (reply_body or "").rstrip()
+    original_body = (original.body_text or "").strip()
+
+    if original_body:
+        header_lines = []
+        if original.from_addr:
+            header_lines.append(f"From: {original.from_addr}")
+        if original.to_addrs:
+            header_lines.append(f"To: {', '.join(original.to_addrs)}")
+        if original.subject:
+            header_lines.append(f"Subject: {original.subject}")
+
+        header_block = ""
+        if header_lines:
+            header_block = "-----Original Message-----\n" + "\n".join(header_lines)
+
+        quoted_lines = []
+        for line in original_body.splitlines():
+            if line.strip():
+                quoted_lines.append(f"> {line}")
+            else:
+                quoted_lines.append(">")
+        quoted_block = "\n".join(quoted_lines)
+
+        history_block = (
+            f"{header_block}\n\n{quoted_block}" if header_block else quoted_block
+        )
+
+        if base_body:
+            full_body = f"{base_body}\n\n{history_block}"
+        else:
+            full_body = history_block
+    else:
+        full_body = base_body
+
+    msg.set_content(full_body, subtype="plain", charset="utf-8")
     return msg
 
 
