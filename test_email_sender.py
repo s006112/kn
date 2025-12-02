@@ -16,6 +16,7 @@ test_full_ali_pipeline.py
 from ali_fetch import fetch_new_messages
 from ali_llm import generate_reply
 from ali_send import send_reply
+from ali_email import LLM_MODEL, SYSTEM_PROMPT_PATH
 
 
 def main():
@@ -37,7 +38,11 @@ def main():
 
         print("=== Generating LLM reply... ===")
         try:
-            reply_body = generate_reply(msg)
+            reply_body = generate_reply(
+                msg,
+                system_prompt_path=SYSTEM_PROMPT_PATH,
+                model=LLM_MODEL,
+            )
             print("LLM reply preview:", reply_body[:200].replace("\n", " "))
         except Exception as e:
             print("LLM ERROR:", e)
