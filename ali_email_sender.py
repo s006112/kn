@@ -18,7 +18,7 @@ from email.message import EmailMessage as StdEmailMessage
 from email.utils import parseaddr, formataddr
 from typing import Optional
 
-from utils_config import load_env, configure_logging, get_env_flag  # type: ignore :contentReference[oaicite:1]{index=1}
+from utils_config import load_env, configure_logging, get_env_flag, get_env_int  # type: ignore :contentReference[oaicite:1]{index=1}
 from ali_email_fetcher import EmailMessage  # type: ignore :contentReference[oaicite:2]{index=2}
 import imaplib
 from utils_imap import build_ssl_context, encode_imap_utf7, quote_mailbox  # type: ignore
@@ -33,16 +33,6 @@ class SendResult:
 def _get_env_str(name: str, default: str) -> str:
     value = os.getenv(name)
     return value if value else default
-
-
-def _get_env_int(name: str, default: int) -> int:
-    value = os.getenv(name)
-    if not value:
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        return default
 
 
 def _build_subject(original_subject: str) -> str:
@@ -137,9 +127,9 @@ def _append_to_imap_sent(msg: StdEmailMessage, logger) -> None:
             logger.debug("IMAP_* 未完整設定，略過 APPEND 至 Sent。")
         return
 
-    port = _get_env_int("IMAP_PORT", 993)
+    port = get_env_int("IMAP_PORT", 993)
     verify_ssl = get_env_flag("IMAP_VERIFY_SSL", True)
-    timeout = _get_env_int("IMAP_TIMEOUT", 300)
+    timeout = get_env_int("IMAP_TIMEOUT", 300)
     folder = _get_env_str("IMAP_SENT_FOLDER", "Sent")
 
     # 處理資料夾名稱（含 UTF-7 與 quoting）
@@ -211,9 +201,9 @@ def _mark_imap_message_seen(original: EmailMessage, logger) -> None:
             logger.debug("IMAP_* 未完整設定，略過標記已讀。")
         return
 
-    port = _get_env_int("IMAP_PORT", 993)
+    port = get_env_int("IMAP_PORT", 993)
     verify_ssl = get_env_flag("IMAP_VERIFY_SSL", True)
-    timeout = _get_env_int("IMAP_TIMEOUT", 300)
+    timeout = get_env_int("IMAP_TIMEOUT", 300)
     folder = _get_env_str("IMAP_FOLDER", "INBOX")
 
     # 處理資料夾名稱
@@ -302,7 +292,7 @@ def send_reply(
     logger = configure_logging("ali_email_sender")
 
     host = _get_env_str("SMTP_HOST", "")
-    port = _get_env_int("SMTP_PORT", 587)
+    port = get_env_int("SMTP_PORT", 587)
     user = _get_env_str("SMTP_USER", "")
     password = _get_env_str("SMTP_PASSWORD", "")
     if not host or not user or not password:

@@ -24,7 +24,7 @@ from email import message_from_bytes
 from email.message import Message
 from typing import Iterable, List, Optional, Protocol
 
-from utils_config import load_env, configure_logging, get_env_flag  # type: ignore
+from utils_config import load_env, configure_logging, get_env_flag, get_env_int  # type: ignore
 from utils_imap import ImapClient, RawFetchedRecord  # type: ignore
 
 
@@ -54,18 +54,6 @@ class StateStoreLike(Protocol):
 # ------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------
-
-def _get_env_int(name: str, default: int) -> int:
-    import os
-
-    value = os.getenv(name)
-    if not value:
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        return default
-
 
 def _get_env_str(name: str, default: str) -> str:
     import os
@@ -181,10 +169,10 @@ def fetch_new_messages(
     if not host or not user or not password:
         raise RuntimeError("IMAP_HOST / IMAP_USER / IMAP_PASSWORD 必須設定。")
 
-    port = _get_env_int("IMAP_PORT", 993)
+    port = get_env_int("IMAP_PORT", 993)
     folder = _get_env_str("IMAP_FOLDER", "INBOX")
     verify_ssl = get_env_flag("IMAP_VERIFY_SSL", True)
-    timeout = _get_env_int("IMAP_TIMEOUT", 300)
+    timeout = get_env_int("IMAP_TIMEOUT", 300)
 
     logger.debug(
         "IMAP config: host=%s port=%s folder=%s verify_ssl=%s timeout=%s",
