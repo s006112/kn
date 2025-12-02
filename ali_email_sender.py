@@ -192,6 +192,91 @@ def _append_to_imap_sent(msg: StdEmailMessage, logger) -> None:
             break
 
 
+def _mark_imap_message_seen(original: EmailMessage, logger) -> None:
+    """
+    寄信成功後，將原始郵件由 UNSEEN 標記為 SEEN。
+
+    依賴環境變數：
+    - IMAP_HOST / IMAP_PORT / IMAP_USER / IMAP_PASSWORD
+    - IMAP_VERIFY_SSL（選用，預設 true）
+    - IMAP_TIMEOUT（選用，預設 300）
+    - IMAP_FOLDER（選用，預設 "INBOX"：原信所在資料夾）
+    """
+    host = _get_env_str("IMAP_HOST", "")
+    user = _get_env_str("IMAP_USER", "")
+    password = _get_env_str("IMAP_PASSWORD", "")
+
+    if not host or not user or not password:
+        if logger:
+            logger.debug("IMAP_* 未完整設定，略過標記已讀。")
+        return
+
+    port = _get_env_int("IMAP_PORT", 993)
+    verify_ssl = get_env_flag("IMAP_VERIFY_SSL", True)
+    timeout = _get_env_int("IMAP_TIMEOUT", 300)
+    folder = _get_env_str("IMAP_FOLDER", "INBOX")
+
+    # 處理資料夾名稱
+    try:
+        folder.encode("ascii")
+        mailbox_name = quote_mailbox(folder)
+    except UnicodeEncodeError:
+        mailbox_name = quote_mailbox(encode_imap_utf7(folder))
+
+    using_legacy = False
+    while True:
+        try:
+            ctx = build_ssl_context(verify_ssl, legacy=using_legacy)
+            conn = imaplib.IMAP4_SSL(
+                host,
+                port,
+                ssl_context=ctx,
+                timeout=timeout,
+            )
+            try:
+                status, _ = conn.login(user, password)
+                if status != "OK" and logger:
+                    logger.warning("IMAP 登入失敗，無法標記已讀。")
+                    return
+
+                status, _ = conn.select(mailbox_name, readonly=False)
+                if status != "OK":
+                    if logger:
+                        logger.warning("無法選取資料夾 %s，略過標記已讀。", folder)
+                    return
+
+                uid_str = str(original.uid)
+                status, resp = conn.uid("STORE", uid_str, "+FLAGS", r"(\Seen)")
+                if status != "OK" and logger:
+                    logger.warning(
+                        "IMAP 對 UID %s 標記 \\Seen 失敗：%s %s", uid_str, status, resp
+                    )
+                elif logger:
+                    logger.info("已將 UID %s 標記為已讀。", uid_str)
+            finally:
+                try:
+                    conn.logout()
+                except Exception:
+                    pass
+            break
+        except ssl.SSLError as exc:
+            msg_text = str(exc)
+            if "dh key too small" in msg_text.lower() and not using_legacy:
+                using_legacy = True
+                if logger:
+                    logger.warning(
+                        "IMAP 伺服器要求弱 DH 參數；標記已讀時改用 legacy TLS 再試一次。"
+                    )
+                continue
+            if logger:
+                logger.warning("標記 IMAP 郵件已讀失敗（SSL）：%s", exc)
+            break
+        except Exception as exc:
+            if logger:
+                logger.warning("標記 IMAP 郵件已讀失敗：%s", exc)
+            break
+
+
 def send_reply(
     original: EmailMessage,
     reply_body: str,
@@ -248,6 +333,8 @@ def send_reply(
         logger.info("Sent reply to %s (uid=%s)", msg["To"], original.uid)
         # 寄信成功後，嘗試寫入 IMAP Sent（若 IMAP_* 已設定）
         _append_to_imap_sent(msg, logger)
+        # 並將原始郵件從未讀改為已讀
+        _mark_imap_message_seen(original, logger)
         return SendResult(ok=True)
     except Exception as exc:
         logger.error("Failed to send reply for uid=%s: %s", original.uid, exc)
