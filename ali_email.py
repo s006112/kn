@@ -48,7 +48,7 @@ def run_once() -> None:
 
 if __name__ == "__main__":
     # Read polling interval (minutes) from environment or default
-    interval_minutes = get_env_int("ALI_POLL_INTERVAL_MINUTES", 2)
+    interval_minutes = get_env_int("ALI_POLL_INTERVAL_MINUTES", 1)
     # Main loop: run pipeline, then sleep before next poll
     while True:
         run_once()

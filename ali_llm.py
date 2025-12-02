@@ -33,6 +33,10 @@ PROMPT_DIR = PROJECT_ROOT / "prompt"
 DEFAULT_SYSTEM_PROMPT_PATH = PROMPT_DIR / "prompt_ali_system.txt"
 DEFAULT_USER_PROMPT_PATH = PROMPT_DIR / "prompt_ali_user.txt"
 
+# sonar, sonar-pro, sonar-reasoning, sonar-reasoning-pro
+# gemini-2.0-flash, gemini-2.5-flash, gemini-2.5-pro, gemini-3-pro-preview, 
+# gpt-5-mini, gpt-5-nano, gpt-4.1-mini, gpt-4.1-nano, gpt-4o-mini, o1-mini, o3-mini, o4-mini, codex-mini-latest
+# gpt-5.1, gpt-5, gpt-5-chat-latest, gpt-4.1, gpt-4o, o1, o3,
 DEFAULT_MODEL = "sonar"
 DEFAULT_ASSISTANT_EMAIL = os.getenv("ALI_ASSISTANT_EMAIL", "assistant@company.com")
 
