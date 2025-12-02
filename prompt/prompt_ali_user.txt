@@ -1,9 +1,0 @@
-Here is an email you received from a colleague.
-Write the reply email body you will send back, according to the system instructions.
-
-From: {sender_address_or_name}
-To: {assistant_email}
-Subject: {original_subject}
-
-Body:
-{original_email_body}
