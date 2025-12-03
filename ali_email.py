@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime, time as dt_time
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from utils_config import configure_logging, get_env_int  # type: ignore :contentReference[oaicite:1]{index=1}
 from ali_fetch import fetch_new_messages  # type: ignore :contentReference[oaicite:2]{index=2}
@@ -16,13 +18,26 @@ from utils_imap_types import EmailMessage, SendResult
 LLM_MODEL = "sonar"
 SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent / "prompt" / "prompt_ali_system.txt"
 
+_HKT_ZONE = ZoneInfo("Asia/Hong_Kong")
+_DAY_START = dt_time(9, 0)
+_DAY_END = dt_time(18, 0)
+
+
+def _default_poll_interval_minutes(now: datetime | None = None) -> int:
+    """Return 2 minute during HKT 09:00-18:00, else 10 minutes."""
+    current = now or datetime.now(tz=_HKT_ZONE)
+    local_time = current.timetz().replace(tzinfo=None)
+    if _DAY_START <= local_time < _DAY_END:
+        return 2
+    return 10
+
 
 def run_once() -> None:
     # Set up logger for this pipeline run
     logger = configure_logging("ali_pipeline")
 
     # Fixed maximum messages per polling cycle
-    max_messages = 10
+    max_messages = 2
 
     # Fetch new messages from IMAP
     messages: list[EmailMessage] = fetch_new_messages(max_messages=max_messages)
@@ -56,9 +71,9 @@ def run_once() -> None:
 
 
 if __name__ == "__main__":
-    # Read polling interval (minutes) from environment or default
-    interval_minutes = get_env_int("ALI_POLL_INTERVAL_MINUTES", 1)
     # Main loop: run pipeline, then sleep before next poll
     while True:
         run_once()
+        default_interval = _default_poll_interval_minutes()
+        interval_minutes = get_env_int("ALI_POLL_INTERVAL_MINUTES", default_interval)
         time.sleep(interval_minutes * 60)

@@ -41,7 +41,7 @@ MODEL_EXTRACT_MATRIX = {
     "WATCH_FOLDER": [
         "gpt-5-mini",
         "sonar-reasoning-pro",
-        "gemini-3-pro-preview",
+        "gemini-2.5-pro",
     ],
     "PREMIUM_WATCH_FOLDER": [
         "o3",
