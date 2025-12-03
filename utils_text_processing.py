@@ -1,6 +1,6 @@
 import re
 from email.message import Message
-from typing import Any, List, Tuple
+from typing import Any, List, Optional, Tuple
 
 from bs4 import BeautifulSoup
 
@@ -92,17 +92,56 @@ def _normalize_output(content: Any) -> str:
 # 提取邮件正文内容，先尝试 text/plain，再回退到 text/html。
 def extract_email_body(msg: Message) -> str:
     """提取邮件正文内容，优先使用 text/plain，备用 text/html"""
-    plain = msg.get_body(preferencelist=("plain",))
-    if plain:
-        text = plain.get_content()
-        if text and len(text.strip()) > 20:
-            return text.strip()
-    html = msg.get_body(preferencelist=("html",))
-    if html:
-        html_content = html.get_content()
-        if html_content:
-            soup = BeautifulSoup(html_content, "html.parser")
-            return soup.get_text(separator="\n", strip=True)
+
+    def _decode_part(part: Message) -> Optional[str]:
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            raw_payload = part.get_payload(decode=False)
+            return raw_payload if isinstance(raw_payload, str) else None
+        charset = part.get_content_charset() or "utf-8"
+        try:
+            return payload.decode(charset, errors="replace")
+        except Exception:
+            return payload.decode("utf-8", errors="replace")
+
+    def _html_to_text(content: str) -> str:
+        soup = BeautifulSoup(content, "html.parser")
+        return soup.get_text(separator="\n", strip=True)
+
+    get_body = getattr(msg, "get_body", None)
+    if callable(get_body):
+        plain = msg.get_body(preferencelist=("plain",))
+        if plain:
+            text = plain.get_content()
+            if text and text.strip():
+                return text.strip()
+        html = msg.get_body(preferencelist=("html",))
+        if html:
+            html_content = html.get_content()
+            if html_content:
+                return _html_to_text(html_content)
+        return ""
+
+    preferred: list[Message] = []
+    others: list[Message] = []
+    for part in msg.walk():
+        if part.get_content_maintype() == "multipart":
+            continue
+        disp = (part.get("Content-Disposition") or "").lower()
+        if part.get_content_type() == "text/plain" and "attachment" not in disp:
+            preferred.append(part)
+        else:
+            others.append(part)
+
+    for part in preferred + others:
+        text = _decode_part(part)
+        if not text:
+            continue
+        text = text.strip()
+        if not text:
+            continue
+        return _html_to_text(text) if part.get_content_type() == "text/html" else text
+
     return ""
 
 

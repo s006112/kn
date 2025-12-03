@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 from email import message_from_bytes
-from email.message import Message
 from email.header import decode_header, make_header
+from email.message import Message
+from email.policy import default
 from email.utils import getaddresses
 from typing import List, Optional, Protocol
 
-from utils_config import load_env, configure_logging, get_env_str  # type: ignore
-from utils_imap_types import EmailMessage
-from utils_imap_config import load_imap_config  # type: ignore
+from utils_config import configure_logging, get_env_str, load_env  # type: ignore
 from utils_imap_client import ImapClient, RawFetchedRecord  # type: ignore
+from utils_imap_config import load_imap_config  # type: ignore
 from utils_imap_ops import move_imap_message_with_client  # type: ignore
+from utils_imap_types import EmailMessage
+from utils_text_processing import extract_email_body  # type: ignore
 
 
 _ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"
@@ -36,35 +38,6 @@ def _extract_addresses(header_value: Optional[str]) -> List[str]:
     return [addr for _, addr in parsed if addr]
 
 
-def _extract_best_body(msg: Message) -> str:
-    def _decode_part(part: Message) -> Optional[str]:
-        payload = part.get_payload(decode=True)
-        if not payload:
-            return None
-        try:
-            charset = part.get_content_charset() or "utf-8"
-            return payload.decode(charset, errors="replace")
-        except Exception:
-            return None
-
-    preferred: list[Message] = []
-    others: list[Message] = []
-
-    for part in msg.walk():
-        content_type = (part.get_content_type() or "").lower()
-        disp = (part.get("Content-Disposition") or "").lower()
-        if content_type == "text/plain" and "attachment" not in disp:
-            preferred.append(part)
-        else:
-            others.append(part)
-
-    for part in preferred + others:
-        text = _decode_part(part)
-        if text:
-            return text
-    return ""
-
-
 def _get_header(msg: Message, name: str) -> str:
     raw_value = (msg.get(name) or "").strip()
     if not raw_value:
@@ -76,7 +49,7 @@ def _get_header(msg: Message, name: str) -> str:
 
 
 def _record_to_email(record: RawFetchedRecord) -> EmailMessage:
-    msg = message_from_bytes(record.raw_bytes)
+    msg = message_from_bytes(record.raw_bytes, policy=default)
     return EmailMessage(
         uid=record.uid,
         message_id=_get_header(msg, "Message-ID"),
@@ -84,7 +57,7 @@ def _record_to_email(record: RawFetchedRecord) -> EmailMessage:
         to_addrs=_extract_addresses(msg.get("To")),
         cc_addrs=_extract_addresses(msg.get("Cc")),
         subject=_get_header(msg, "Subject"),
-        body_text=_extract_best_body(msg),
+        body_text=extract_email_body(msg),
         raw_bytes=record.raw_bytes,
     )
 
