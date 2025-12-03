@@ -6,10 +6,14 @@ from email.header import decode_header, make_header
 from email.utils import getaddresses
 from typing import List, Optional, Protocol
 
-from utils_config import load_env, configure_logging  # type: ignore
+from utils_config import load_env, configure_logging, get_env_str  # type: ignore
 from utils_imap_types import EmailMessage
 from utils_imap_config import load_imap_config  # type: ignore
 from utils_imap_client import ImapClient, RawFetchedRecord  # type: ignore
+from utils_imap_ops import move_imap_message_with_client  # type: ignore
+
+
+_ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"
 
 
 # ------------------------------------------------------------
@@ -160,12 +164,44 @@ def fetch_new_messages(
     client, imap_cfg, logger = _init_imap_client()
 
     try:
-        return fetch_new_messages_with_client(
+        messages = fetch_new_messages_with_client(
             client,
             imap_cfg.folder,
             state=state,
             max_messages=max_messages,
             logger=logger,
         )
+        if not messages:
+            return messages
+
+        allowed_messages: list[EmailMessage] = []
+        blocked_messages: list[EmailMessage] = []
+        domain_suffix = _ALLOWED_DOMAIN_SUFFIX.lower()
+        for msg in messages:
+            senders = _extract_addresses(msg.from_addr)
+            if any(addr.lower().endswith(domain_suffix) for addr in senders):
+                allowed_messages.append(msg)
+            else:
+                blocked_messages.append(msg)
+
+        if blocked_messages:
+            trash_folder = get_env_str("IMAP_TRASH_FOLDER", "Trash")
+            for msg in blocked_messages:
+                if logger:
+                    logger.info(
+                        "Dropping uid=%s from disallowed sender %s; moving to %s.",
+                        msg.uid,
+                        msg.from_addr or "<unknown>",
+                        trash_folder,
+                    )
+                move_imap_message_with_client(
+                    client,
+                    imap_cfg.folder,
+                    msg.uid,
+                    trash_folder,
+                    logger=logger,
+                )
+
+        return allowed_messages
     finally:
         client.disconnect()

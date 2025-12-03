@@ -405,6 +405,37 @@ class ImapClient:
                 f"Marking UID {uid_str} as \\Seen failed: {status} {resp}"
             )
 
+    def move_message(self, source_folder: str, uid: int, target_folder: str) -> None:
+        """
+        移動指定 UID 至目標資料夾，若伺服器不支援 MOVE 則改用 COPY+DELETE。
+        """
+        assert self._conn is not None
+        encoded_source = self._encode_folder(source_folder)
+        status, _ = self._conn.select(encoded_source, readonly=False)
+        if status != "OK":
+            raise RuntimeError(f"Unable to select folder {source_folder!r} for move.")
+
+        uid_str = str(uid)
+        encoded_target = self._encode_folder(target_folder)
+        try:
+            status, resp = self._conn.uid("MOVE", uid_str, encoded_target)
+        except imaplib.IMAP4.error:
+            status, resp = "NO", None
+        if status == "OK":
+            return
+
+        status, resp = self._conn.uid("COPY", uid_str, encoded_target)
+        if status != "OK":
+            raise RuntimeError(
+                f"Copying UID {uid_str} to {target_folder!r} failed: {status} {resp}"
+            )
+        status, resp = self._conn.uid("STORE", uid_str, "+FLAGS", r"(\Deleted)")
+        if status != "OK":
+            raise RuntimeError(
+                f"Marking UID {uid_str} as \\Deleted failed: {status} {resp}"
+            )
+        self._conn.expunge()
+
     # -------------- internal helpers --------------
 
     def _select(self, folder: str) -> None:

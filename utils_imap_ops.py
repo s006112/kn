@@ -81,6 +81,37 @@ def mark_imap_message_seen_with_client(
             )
 
 
+def move_imap_message_with_client(
+    client: ImapClient,
+    source_folder: str,
+    uid: int,
+    target_folder: str,
+    logger: Any = None,
+) -> bool:
+    """
+    使用已連線的 ImapClient，將指定 UID 由 source_folder 移至 target_folder。
+    """
+    try:
+        client.move_message(source_folder, uid, target_folder)
+        if logger:
+            logger.info(
+                "已將 UID %s 從 %s 移動至 %s。",
+                uid,
+                source_folder,
+                target_folder,
+            )
+        return True
+    except Exception as exc:
+        if logger:
+            logger.warning(
+                "移動 UID %s 至 %s 失敗：%s",
+                uid,
+                target_folder,
+                exc,
+            )
+        return False
+
+
 # ------------------------------------------------------------
 # Convenience wrappers：自己建 ImapClient 的版本
 # ------------------------------------------------------------
