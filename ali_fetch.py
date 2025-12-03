@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from email import message_from_bytes
 from email.message import Message
+from email.header import decode_header, make_header
 from email.utils import getaddresses
 from typing import List, Optional, Protocol
 
@@ -61,7 +62,13 @@ def _extract_best_body(msg: Message) -> str:
 
 
 def _get_header(msg: Message, name: str) -> str:
-    return (msg.get(name) or "").strip()
+    raw_value = (msg.get(name) or "").strip()
+    if not raw_value:
+        return ""
+    try:
+        return str(make_header(decode_header(raw_value)))
+    except Exception:
+        return raw_value
 
 
 def _record_to_email(record: RawFetchedRecord) -> EmailMessage:

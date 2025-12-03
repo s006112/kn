@@ -41,8 +41,15 @@ def generate_reply(
     system_prompt = load_prompt_text(system_prompt_path.parent, system_prompt_path.name)
     if system_prompt is None:
         raise FileNotFoundError(f"Prompt file not found: {system_prompt_path}")
-    # 2) 取出原始郵件正文
-    user_text = email.body_text or ""
+    # 2) 把主旨與正文組合成 user_text
+    parts: list[str] = []
+    subject = (email.subject or "").strip()
+    if subject:
+        parts.append(f"Subject: {subject}")
+    body_text = email.body_text or ""
+    if body_text:
+        parts.append(body_text)
+    user_text = "\n\n".join(parts)
 
     # 3) 呼叫 LLM
     reply_body = call_llm(

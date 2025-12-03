@@ -32,7 +32,7 @@ def _default_poll_interval_minutes(now: datetime | None = None) -> int:
     return 10
 
 
-def run_once() -> None:
+def pipeline_run() -> None:
     # Set up logger for this pipeline run
     logger = configure_logging("ali_pipeline")
 
@@ -67,13 +67,13 @@ def run_once() -> None:
             # Catch-all to avoid crashing the whole loop on one bad email
             logger.error("Unhandled error processing uid=%s: %s", msg.uid, exc)
 
-    logger.info("run_once finished.")
+    logger.info("Pipeline run finished.")
 
 
 if __name__ == "__main__":
     # Main loop: run pipeline, then sleep before next poll
     while True:
-        run_once()
+        pipeline_run()
         default_interval = _default_poll_interval_minutes()
         interval_minutes = get_env_int("ALI_POLL_INTERVAL_MINUTES", default_interval)
         time.sleep(interval_minutes * 60)
