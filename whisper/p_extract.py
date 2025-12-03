@@ -114,7 +114,10 @@ def process(self, file_path, get_next_available_filename):
                 try:
                     os.makedirs(self.config['EXTRACT_FOLDER'], exist_ok=True)
                     err_key = sanitize_filename(model) or "unknown_model"
-                    err_path = os.path.join(self.config['EXTRACT_FOLDER'], f"{base}_e.{err_key}.error")
+                    err_path = os.path.join(
+                        self.config['EXTRACT_FOLDER'],
+                        f"{base}.{err_key}.error",
+                    )
                     with open(err_path, 'w', encoding='utf-8') as ef:
                         ef.write(f"Model: {model}\nError: {e}\n")
                     release_text_file_permissions(err_path)
@@ -166,7 +169,9 @@ def process(self, file_path, get_next_available_filename):
         # Overall error file (best-effort)
         try:
             os.makedirs(self.config['EXTRACT_FOLDER'], exist_ok=True)
-            err_path = os.path.join(self.config['EXTRACT_FOLDER'], base_nm + '_e.error')
+            err_path = os.path.join(
+                self.config['EXTRACT_FOLDER'], f"{base_nm}.error"
+            )
             with open(err_path, 'w', encoding='utf-8') as f:
                 f.write(f"Error: {e}\n")
             release_text_file_permissions(err_path)
