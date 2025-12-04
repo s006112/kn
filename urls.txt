@@ -1,0 +1,8 @@
+https://huggingface.co/stabilityai/stable-diffusion-3.5-medium-tensorrt/resolve/main/.gitattributes
+https://huggingface.co/stabilityai/stable-diffusion-3.5-medium-tensorrt/resolve/main/LICENSE.md
+https://huggingface.co/stabilityai/stable-diffusion-3.5-medium-tensorrt/resolve/main/ONNX/t5/5f377917-7229-11f0-a74f-6b69a026d8b7
+https://huggingface.co/stabilityai/stable-diffusion-3.5-medium-tensorrt/resolve/main/ONNX/t5/model_optimized.onnx
+https://huggingface.co/stabilityai/stable-diffusion-3.5-medium-tensorrt/resolve/main/ONNX/transformer/bf16/f8657009-723b-11f0-acc2-37da728859e3
+https://huggingface.co/stabilityai/stable-diffusion-3.5-medium-tensorrt/resolve/main/ONNX/transformer/bf16/model_optimized.onnx
+https://huggingface.co/stabilityai/stable-diffusion-3.5-medium-tensorrt/resolve/main/ONNX/vae/model_optimized.onnx
+https://huggingface.co/stabilityai/stable-diffusion-3.5-medium-tensorrt/resolve/main/README.md
