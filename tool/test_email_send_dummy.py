@@ -4,7 +4,14 @@
 from __future__ import annotations
 
 import os
+import sys
 import uuid
+from pathlib import Path
+
+# Ensure project root is available when running from tool/
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from ali_send import send_reply
 from utils_config import load_env
