@@ -2,39 +2,30 @@
 sudo apt-get update # update package lists
 sudo apt-get autoclean   #只会删除「过期的 .deb」
 sudo apt-get install -y --download-only python3-pip # download .deb
-sudo apt-get install -y --download-only ghostscript tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra # per
-sudo apt-get install -y --download-only ffmpeg alsa-utils pulseaudio portaudio19-dev python3-pyaudio # whisper
 
 aria2c   # file download acceleration 2.4.14 (amd64)
 
-
 # download wheels
 pip index versions xxxxx # check versions
-pip download -d /wheels Flask # quote
-pip download -d /wheels --only-binary=:all: python-dotenv==1.2.1 openai==2.8.1 requests==2.25.1 jinja2==3.1.6 # per
-pip download -d /wheels --only-binary=:all: gradio==5.46.0 gradio_client==1.13.0 PyMuPDF==1.24.10 ocrmypdf==16.11.0 # per
-pip download -d /wheels --only-binary=:all: watchdog==6.0.0 numpy==2.2.6 perplexityai==0.20.0 sounddevice==0.5.3 # whisper
-pip download -d /wheels setuptools wheel build # build tools
-pip download -d /wheels faiss-gpu==1.7.2 # no wheels available, only source package
-pip download -d /wheels --only-binary=:all: kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
+pip download -d /wheels  
 
 # offline install apt
 sudo apt-get install -y --no-download --fix-missing python3-pip # install from cached .deb
 sudo apt-get install -y --no-download --fix-missing ghostscript tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra # per
 sudo apt-get install -y --no-download --fix-missing ffmpeg # whisper
-sudo apt-get install -y --no-download --fix-missing tesseract-ocr-chi-sim tesseract-ocr-chi-tra
+sudo apt-get install -y --no-download --fix-missing
 
 # offline install wheels
 pip3 install --no-index --find-links=/wheels python-dotenv==1.2.1 openai==2.8.1 jinja2==3.1.6 requests==2.32.5 gradio==5.46.0 gradio_client==1.13.0 # per
 pip3 install --no-index --find-links=/wheels bs4==0.0.2 PyMuPDF==1.24.10 ocrmypdf==16.11.0 # per
 pip3 install --no-index --find-links=/wheels Flask==3.1.2 # quote
-pip3 install --no-index --find-links=/wheels watchdog==6.0.0 numpy==2.2.6 perplexityai==0.20.0 sounddevice==0.5.3 # whisper
+pip3 install --no-index --find-links=/wheels watchdog==6.0.0 perplexityai==0.20.0 sounddevice==0.5.3 # whisper
 pip3 install --no-index --find-links=/wheels openai-whisper==20240930 # 只有 源码包（.tar.gz）
 pip3 install --no-index --find-links=/wheels scipy==1.15.3 opencv_python_headless==4.12.0.88 # curve_extract
 pip3 install --no-index --find-links=/wheels kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
 pip3 install --no-index --find-links=/wheels transformers==4.57.1 # llm
-pip3 install --no-index --find-links=/wheels faiss-gpu==1.7.2
-pip3 install --no-index --find-links=/wheels google-genai==1.52.0 perplexityai==0.20.0 
+pip3 install --no-index --find-links=/wheels python-docx==0.8.11 openpyxl==3.1.5 xlrd==2.0.1 einops==0.8.1 numpy==1.26.2 diffusers==0.35.2 faiss-gpu==1.7.2 google-genai==1.52.0 perplexityai==0.20.0 
+pip3 install --no-index --find-links=/wheels 
 pip3 install --no-deps -U yt-dlp --break-system-packages
 
 
@@ -61,7 +52,7 @@ ocrmypdf==16.11.0  # Add OCR text layers to PDF files
 
 # whisper
 watchdog==6.0.0  # Monitor file system events
-numpy==2.2.6  # Core numerical computing library for Python
+# numpy==2.2.6  # Core numerical computing library for Python
 perplexityai==0.20.0  # Client library for Perplexity AI API
 sounddevice==0.5.3  # Record and play audio using NumPy arrays
 openai-whisper==20240930  # OpenAI Whisper speech-to-text model
@@ -84,18 +75,17 @@ bs4==0.0.2  # Beautiful Soup HTML/XML parsing wrapper
 python-docx==0.8.11  # Read and write Microsoft Word .docx files
 # fitz==0.0.1.dev2
 # PyMuPDF==1.26.3
-psutil==5.8.0  # Access system and process information
 openpyxl==3.1.5  # Read and write Excel .xlsx files
 xlrd==2.0.1  # Read legacy Excel .xls files
 
 # rag-02_embedd.py
 faiss-gpu==1.7.2  # Similarity search and clustering on GPUs
+numpy==1.26.2 # check if conflict with numpy==2.2.6
 sentence-transformers==5.1.0  # Sentence embeddings for semantic search
 orjson==3.11.2  # Fast JSON parser and serializer
 einops==0.8.1     # dependency comes from jinaai/jina-embeddings-v3
 
 # 03_web.py, need re-write to adapt openai==2.8.1, was openai==1.102.0
-numpy==1.26.2 # check if conflict with numpy==2.2.6
 gradio==5.44.1 # need re-write to adapt gradio==5.46.0
 fastapi==0.116.1  # High-performance web framework for building APIs
 uvicorn==0.35.0  # ASGI server for running FastAPI and other apps
