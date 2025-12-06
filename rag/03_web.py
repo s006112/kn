@@ -4,21 +4,24 @@ Designed for Hugging Face Spaces (sdk: gradio).
 Phase 0: keep functionality identical, no Pydantic, no langchain_core.output_parsers.
 """
 
-import json
 import os
-import sqlite3
 import sys
 import time
 from pathlib import Path
 from collections import defaultdict
 
-import gradio as gr
-import numpy as np
-import torch
 import faiss
+import gradio as gr
 from openai import OpenAI
 from dotenv import load_dotenv
-from transformers import AutoConfig, AutoModel
+
+from rag_embeddings import EmbeddingModel
+from rag_retrieval import (
+    build_grouped_docs,
+    max_marginal_relevance_search,
+    similarity_search_with_score,
+)
+from rag_vectorstore import Chunk, load_faiss_index_and_metadata
 
 # ─── Environment setup ──────────────────────────────────────────────────────
 os.environ.update({"CUDA_VISIBLE_DEVICES": "", "TORCH_USE_CUDA_DSA": "0"})  # force CPU
@@ -42,59 +45,6 @@ MAX_EMAIL_HIT = 5
 QUERY_PREFIX = ""  # Jina v3 不需 e5 的 "query: " 前綴
 SCORE_THRESHOLD = 0.5
 
-
-class Chunk:
-    __slots__ = ("page_content", "metadata")
-
-    def __init__(self, page_content: str, metadata: dict):
-        self.page_content = page_content
-        self.metadata = metadata
-
-
-class EmbeddingModel:
-    """Minimal wrapper around a Transformers model's encode()."""
-
-    def __init__(self, model_name: str, device: str, batch_size: int, task: str):
-        self._device = device
-        self._batch_size = batch_size
-        self._task = task
-        config = AutoConfig.from_pretrained(
-            model_name,
-            trust_remote_code=True,
-        )
-        if getattr(config, "use_flash_attn", False):
-            print("ℹ️ Disabling flash attention for this model; using PyTorch attention instead")
-            config.use_flash_attn = False
-
-        self._model = AutoModel.from_pretrained(
-            model_name,
-            trust_remote_code=True,
-            config=config,
-        )
-        if torch.cuda.is_available() and device.startswith("cuda"):
-            self._model.to(device)
-        self._model.eval()
-
-    def embed_query(self, text: str) -> np.ndarray:
-        with torch.no_grad():
-            vectors = self._model.encode(
-                [text],
-                batch_size=self._batch_size,
-                task=self._task,
-                device=self._device,
-            )
-        if isinstance(vectors, np.ndarray):
-            vec = vectors[0]
-        elif torch.is_tensor(vectors):
-            vec = vectors[0].detach().cpu().numpy()
-        else:
-            vec = np.asarray(vectors[0], dtype=np.float32)
-        vec = np.asarray(vec, dtype=np.float32)
-        norm = float(np.linalg.norm(vec))
-        if norm > 0:
-            vec = vec / norm
-        return vec
-
 FAISS_INDEX: faiss.Index | None = None
 DOCS_BY_ID: dict[int, Chunk] = {}
 GROUPED_DOCS: dict[str, list[Chunk]] = {}
@@ -102,141 +52,14 @@ GROUPED_DOCS: dict[str, list[Chunk]] = {}
 def format_query(q: str) -> str:
     return f"{QUERY_PREFIX}{q.strip()}"
 
-# ─── Persistence helpers ─────────────────────────────────────────────────────
-def _load_index_and_metadata(index_dir: Path) -> tuple[faiss.Index, dict[int, Chunk]]:
-    index_path = index_dir / "vectors.faiss"
-    metadata_path = index_dir / "metadata.sqlite"
-    if not index_path.exists():
-        raise FileNotFoundError(f"FAISS index not found: {index_path}")
-    if not metadata_path.exists():
-        raise FileNotFoundError(f"Metadata store not found: {metadata_path}")
-
-    index = faiss.read_index(str(index_path))
-    conn = sqlite3.connect(metadata_path)
-    try:
-        rows = conn.execute(
-            "SELECT vector_id, email_id, subject, chunk_text, metadata_json FROM chunks"
-        ).fetchall()
-    finally:
-        conn.close()
-
-    docs: dict[int, Chunk] = {}
-    for vector_id, email_id, subject, chunk_text, metadata_json in rows:
-        try:
-            metadata = json.loads(metadata_json) if metadata_json else {}
-        except json.JSONDecodeError:
-            metadata = {}
-        if email_id and not metadata.get("email_id"):
-            metadata["email_id"] = email_id
-        if subject and not metadata.get("subject"):
-            metadata["subject"] = subject
-        docs[int(vector_id)] = Chunk(chunk_text, metadata)
-    return index, docs
-
-
-def _build_grouped_docs(docs_by_id: dict[int, Chunk]) -> dict[str, list[Chunk]]:
-    grouped: dict[str, list[Chunk]] = defaultdict(list)
-    for doc in docs_by_id.values():
-        meta = doc.metadata or {}
-        email_id = meta.get("email_id")
-        if email_id:
-            grouped[email_id].append(doc)
-        else:
-            print(f"[WARN] Skipping chunk missing email_id: {meta}")
-    for chunks in grouped.values():
-        chunks.sort(
-            key=lambda d: (
-                d.metadata.get("seq", d.metadata.get("chunk", 0)),
-                d.metadata.get("chunk", 0),
-            )
-        )
-    return grouped
-
-
-def _faiss_search(vec: np.ndarray, k: int) -> list[tuple[Chunk, float, int]]:
-    if FAISS_INDEX is None:
-        return []
-    query = np.asarray([vec], dtype=np.float32)
-    distances, ids = FAISS_INDEX.search(query, k)
-    hits: list[tuple[Chunk, float, int]] = []
-    for idx, score in zip(ids[0], distances[0]):
-        if idx == -1:
-            continue
-        doc = DOCS_BY_ID.get(int(idx))
-        if not doc:
-            continue
-        hits.append((doc, float(score), int(idx)))
-    return hits
-
-
-def max_marginal_relevance_search(
-    vec: np.ndarray, *, k: int, fetch_k: int, lambda_mult: float = 0.5
-) -> list[Chunk]:
-    candidates = _faiss_search(vec, fetch_k)
-    if not candidates:
-        return []
-
-    candidate_vectors: dict[int, np.ndarray] = {}
-    filtered = []
-    for doc, score, idx in candidates:
-        try:
-            vec_i = FAISS_INDEX.reconstruct(int(idx))
-        except RuntimeError:
-            try:
-                vec_i = FAISS_INDEX.index.reconstruct(int(idx))
-            except Exception:
-                continue
-        arr = np.asarray(vec_i, dtype=np.float32)
-        norm = float(np.linalg.norm(arr))
-        if norm > 0:
-            arr = arr / norm
-        candidate_vectors[int(idx)] = arr
-        filtered.append((doc, float(score), int(idx)))
-
-    if not filtered:
-        return []
-
-    selected: list[tuple[Chunk, int]] = []
-    selected_ids: set[int] = set()
-
-    fetch_limit = min(k, len(filtered))
-    for _ in range(fetch_limit):
-        best_candidate: tuple[Chunk, float, int] | None = None
-        best_score = -float("inf")
-        for doc, score, idx in filtered:
-            if idx in selected_ids:
-                continue
-            if not selected:
-                mmr_score = score
-            else:
-                max_sim = max(
-                    float(np.dot(candidate_vectors[idx], candidate_vectors[s_idx]))
-                    for _, s_idx in selected
-                )
-                mmr_score = lambda_mult * score - (1.0 - lambda_mult) * max_sim
-            if mmr_score > best_score:
-                best_score = mmr_score
-                best_candidate = (doc, score, idx)
-        if best_candidate is None:
-            break
-        doc, _, idx = best_candidate
-        selected.append((doc, idx))
-        selected_ids.add(idx)
-
-    return [doc for doc, _ in selected]
-
-
-def similarity_search_with_score(vec: np.ndarray, k: int) -> list[tuple[Chunk, float]]:
-    return [(doc, score) for doc, score, _ in _faiss_search(vec, k)]
-
 # Initialize OpenAI client (preserve timeout behavior)
 _OPENAI_TIMEOUT = 30
 client = OpenAI(timeout=_OPENAI_TIMEOUT)
 
 # ─── Load vector store and prepare grouping ─────────────────────────────────
 print(f"🔄 Loading FAISS index from {INDEX_DIR}…")
-FAISS_INDEX, DOCS_BY_ID = _load_index_and_metadata(INDEX_DIR)
-GROUPED_DOCS = _build_grouped_docs(DOCS_BY_ID)
+FAISS_INDEX, DOCS_BY_ID = load_faiss_index_and_metadata(INDEX_DIR)
+GROUPED_DOCS = build_grouped_docs(DOCS_BY_ID)
 
 embedding_model = EmbeddingModel(
     model_name=EMBED_MODEL,
@@ -291,12 +114,14 @@ def answer_question(raw_query: str):
     q_vec = embedding_model.embed_query(query)
 
     mmr_docs = max_marginal_relevance_search(
+        FAISS_INDEX,
+        DOCS_BY_ID,
         q_vec,
         k=TOP_K,
         fetch_k=50,
         lambda_mult=0.5,
     )
-    scored_pool = similarity_search_with_score(q_vec, k=50)
+    scored_pool = similarity_search_with_score(FAISS_INDEX, DOCS_BY_ID, q_vec, k=50)
 
     def _key(doc):
         email_id = doc.metadata.get("email_id")

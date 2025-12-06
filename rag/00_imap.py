@@ -29,7 +29,7 @@ from utils_imap_client import ImapClient, RawFetchedRecord
 DEFAULT_SERVER = "mail.ampco.com.hk"
 DEFAULT_PORT = 993
 DEFAULT_TIMEOUT = 300
-DEFAULT_SINCE_DATE = "2025-09-20"
+DEFAULT_SINCE_DATE = "2025-11-30"
 DEFAULT_OUT_DIR = Path("data") / "raw" / "mbox"
 DEFAULT_STATE_PATH = Path(".state") / "imap_state.json"
 DEFAULT_CHUNK_SIZE = 100

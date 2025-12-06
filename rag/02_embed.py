@@ -1,12 +1,16 @@
-import os, json, time
 import gc
-import sqlite3
-import torch
-import faiss
-import numpy as np
-from transformers import AutoConfig, AutoModel
+import json
+import os
+import time
 from math import ceil
 from pathlib import Path
+
+import faiss
+import torch
+
+from rag_embeddings import build_embeddings, l2_normalize
+from rag_io_jsonl import safe_read_jsonl_line
+from rag_vectorstore import FaissStore, archive_existing_index
 
 HF_EMBEDDING_MODEL = "jinaai/jina-embeddings-v3"
 EMBEDDING_BATCH_SIZE = 16
@@ -60,23 +64,6 @@ def setup_faiss_gpu():
         print(f"⚠️ FAISS GPU setup failed: {e}, falling back to CPU")
         return None
 
-def safe_read_jsonl_line(line_bytes, line_num):
-    fallback_encodings = ['utf-8', 'windows-1252', 'iso-8859-1', 'cp1252', 'latin1']
-    for enc in fallback_encodings:
-        try:
-            text = line_bytes.decode(enc).strip()
-            json.loads(text)
-            return text, None
-        except (UnicodeDecodeError, LookupError):
-            continue
-        except json.JSONDecodeError:
-            return None, f"invalid JSON with {enc}"
-    try:
-        text = line_bytes.decode('utf-8', errors='replace').strip()
-        return text, "decoded with replacement chars"
-    except Exception:
-        return None, "encoding failed completely"
-
 def _resolve_email_id(rec: dict, metadata: dict) -> str | None:
     """Return the first non-empty identifier that lets us trace a chunk back to its email."""
     for candidate in (
@@ -88,158 +75,6 @@ def _resolve_email_id(rec: dict, metadata: dict) -> str | None:
         if candidate:
             return candidate
     return None
-
-# ── Common helpers ───────────────────────────────────────────────────────────
-def l2_normalize(mat: list[list[float]]) -> list[list[float]]:
-    arr = np.asarray(mat, dtype=np.float32)
-    norms = np.linalg.norm(arr, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    arr = arr / norms
-    return arr.tolist()
-
-# ── Swappable Vector Store Interface (minimal) ───────────────────────────────
-class VectorStore:
-    """Minimal interface to allow swapping vector backends."""
-
-    def add_embeddings(self, texts: list[str], embs: list[list[float]], metadatas: list[dict]):
-        raise NotImplementedError
-
-    def save(self, path: str):
-        raise NotImplementedError
-
-    @property
-    def dimension(self) -> int | None:
-        return None
-
-class FaissStore(VectorStore):
-    """FAISS IDMap index paired with SQLite metadata storage."""
-
-    def __init__(self):
-        self._index = None
-        self._next_id = 0
-        self._records: list[tuple[int, str, dict]] = []
-
-    def add_embeddings(self, texts: list[str], embs: list[list[float]], metadatas: list[dict]):
-        if not texts:
-            return
-        embs_np = np.asarray(embs, dtype=np.float32)
-        if self._index is None:
-            dim = int(embs_np.shape[1])
-            base = faiss.IndexFlatIP(dim)
-            self._index = faiss.IndexIDMap(base)
-        ids = np.arange(self._next_id, self._next_id + len(embs_np), dtype=np.int64)
-        self._next_id += len(embs_np)
-        self._index.add_with_ids(embs_np, ids)
-        for idx, text, meta in zip(ids, texts, metadatas):
-            # Store a shallow copy so downstream mutations do not affect persistence.
-            self._records.append((int(idx), text, meta.copy()))
-
-    def save(self, path: str):
-        if self._index is None or self._index.ntotal == 0:
-            raise RuntimeError("No data added to vector store before save().")
-        target = Path(path)
-        target.mkdir(parents=True, exist_ok=True)
-
-        faiss.write_index(self._index, str(target / "vectors.faiss"))
-
-        conn = sqlite3.connect(target / "metadata.sqlite")
-        try:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS chunks (
-                    vector_id INTEGER PRIMARY KEY,
-                    email_id TEXT,
-                    subject TEXT,
-                    chunk_text TEXT,
-                    metadata_json TEXT
-                )
-                """
-            )
-            rows = [
-                (
-                    rid,
-                    record_meta.get("email_id"),
-                    record_meta.get("subject"),
-                    record_text,
-                    json.dumps(record_meta, ensure_ascii=False),
-                )
-                for rid, record_text, record_meta in self._records
-            ]
-            conn.executemany(
-                "INSERT OR REPLACE INTO chunks VALUES (?, ?, ?, ?, ?)",
-                rows,
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    @property
-    def dimension(self) -> int | None:
-        if self._index is None:
-            return None
-        return int(self._index.d)
-
-class EmbeddingModel:
-    """Lightweight wrapper around a Transformers model with encode()."""
-
-    def __init__(self, model_name: str, device: str, batch_size: int, task: str):
-        self._model_name = model_name
-        self._device = device
-        self._batch_size = batch_size
-        self._task = task
-        config = AutoConfig.from_pretrained(
-            model_name,
-            trust_remote_code=True,
-        )
-        if getattr(config, "use_flash_attn", False):
-            print("ℹ️ Disabling flash attention for this model; using PyTorch attention instead")
-            config.use_flash_attn = False
-
-        self._model = AutoModel.from_pretrained(
-            model_name,
-            trust_remote_code=True,
-            config=config,
-        )
-        if torch.cuda.is_available() and device.startswith("cuda"):
-            self._model.to(device)
-        self._model.eval()
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        if not texts:
-            return []
-        with torch.no_grad():
-            vectors = self._model.encode(
-                texts,
-                batch_size=self._batch_size,
-                task=self._task,
-                device=self._device,
-            )
-        if isinstance(vectors, np.ndarray):
-            return vectors.tolist()
-        if torch.is_tensor(vectors):
-            return vectors.detach().cpu().numpy().tolist()
-        return [list(vec) for vec in vectors]
-
-def build_embeddings(device: str, batch_size: int) -> EmbeddingModel:
-    return EmbeddingModel(
-        model_name=HF_EMBEDDING_MODEL,
-        device=device,
-        batch_size=batch_size,
-        task="retrieval.passage",
-    )
-
-def _archive_old_index(base_dir: Path):
-    """Move existing files inside index/ into index/archive/index_vYYYY-MM-DD_HHMM/"""
-    base_dir.mkdir(parents=True, exist_ok=True)
-    archive_dir = base_dir / "archive" / f"index_v{time.strftime('%Y-%m-%d_%H%M')}"
-    # Only archive if there are files (avoid creating empty archives on first run)
-    existing = [p for p in base_dir.glob("*") if p.is_file()]
-    if not existing:
-        return
-    archive_dir.mkdir(parents=True, exist_ok=True)
-    for f in existing:
-        f.rename(archive_dir / f.name)
-    print(f"ℹ️ Archived old index to {archive_dir}")
 
 def main():
     # ── LOAD CHUNKS ────────────────────────────────────────────────────────────
@@ -316,7 +151,12 @@ def main():
     # ── INITIALIZE EMBEDDINGS ─────────────────────────────────────────────────
     device = 'cuda' if GPU_AVAILABLE else 'cpu'
     print(f"🔄 Initializing HuggingFace embeddings on {device.upper()}: {HF_EMBEDDING_MODEL}")
-    embeddings = build_embeddings(device, EMBEDDING_BATCH_SIZE)
+    embeddings = build_embeddings(
+        model_name=HF_EMBEDDING_MODEL,
+        device=device,
+        batch_size=EMBEDDING_BATCH_SIZE,
+        task="retrieval.passage",
+    )
 
     # ── BUILD INDEX ────────────────────────────────────────────────────────────
     gpu_memory_cleanup()
@@ -354,7 +194,12 @@ def main():
     except Exception as e:
         print(f"❌ Error during vector store creation: {e}")
         print("🔄 Falling back to CPU-only processing…")
-        cpu_emb = build_embeddings("cpu", 16)
+        cpu_emb = build_embeddings(
+            model_name=HF_EMBEDDING_MODEL,
+            device="cpu",
+            batch_size=16,
+            task="retrieval.passage",
+        )
         # CPU-only fallback, compute + normalize embeddings explicitly
         all_embs = cpu_emb.embed_documents(texts)
         all_embs = l2_normalize(all_embs)
@@ -365,7 +210,7 @@ def main():
     INDEX_DIR.mkdir(parents=True, exist_ok=True)
 
     # 1) Archive current index files (if any) to index/archive/index_vYYYY-MM-DD_HHMM/
-    _archive_old_index(INDEX_DIR)
+    archive_existing_index(INDEX_DIR)
 
     # 2) Save NEW index files directly into index/
     #    (keep your original save call; only the folder is ensured above)
