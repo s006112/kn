@@ -2,15 +2,20 @@ from dataclasses import dataclass, field
 import logging
 import os
 import re
+import sys
 import threading
 import time
 import mailbox
 import psutil
 from collections import deque
 from email import policy
-from email.parser import BytesParser  
+from email.parser import BytesParser
 from pathlib import Path
 from typing import Iterable, List, Tuple
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from utils_text_processing import extract_email_body_tasks
 from chunk_json import Task, BatchProcessor, JsonlWriter

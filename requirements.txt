@@ -15,7 +15,7 @@ pip download -d /wheels --only-binary=:all: python-dotenv==1.2.1 openai==2.8.1 r
 pip download -d /wheels --only-binary=:all: gradio==5.46.0 gradio_client==1.13.0 PyMuPDF==1.24.10 ocrmypdf==16.11.0 # per
 pip download -d /wheels --only-binary=:all: watchdog==6.0.0 numpy==2.2.6 perplexityai==0.20.0 sounddevice==0.5.3 # whisper
 pip download -d /wheels setuptools wheel build # build tools
-pip download -d /wheels bs4==0.0.2 # no wheels available, only source package
+pip download -d /wheels faiss-gpu==1.7.2 # no wheels available, only source package
 pip download -d /wheels --only-binary=:all: kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
 
 # offline install apt
@@ -33,7 +33,7 @@ pip3 install --no-index --find-links=/wheels openai-whisper==20240930 # 只有 �
 pip3 install --no-index --find-links=/wheels scipy==1.15.3 opencv_python_headless==4.12.0.88 # curve_extract
 pip3 install --no-index --find-links=/wheels kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
 pip3 install --no-index --find-links=/wheels transformers==4.57.1 # llm
-pip3 install --no-index --find-links=/wheels diffusers==0.35.2
+pip3 install --no-index --find-links=/wheels faiss-gpu==1.7.2
 pip3 install --no-index --find-links=/wheels google-genai==1.52.0 perplexityai==0.20.0 
 pip3 install --no-deps -U yt-dlp --break-system-packages
 
