@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 
-from utils_config import get_env_flag, get_env_int, get_env_str  # type: ignore
+from helper.utils_config import get_env_flag, get_env_int, get_env_str  # type: ignore
 
 
 @dataclass

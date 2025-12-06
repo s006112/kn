@@ -18,7 +18,7 @@ import torch  # noqa: E402
 from rag.rag_embeddings import build_embeddings, l2_normalize  # type: ignore  # noqa: E402
 from rag.rag_io_jsonl import safe_read_jsonl_line  # type: ignore  # noqa: E402
 from rag.rag_vectorstore import archive_existing_index  # type: ignore  # noqa: E402
-from std_vectorstore import StandardFaissStore  # noqa: E402
+from helper.std_vectorstore import StandardFaissStore  # noqa: E402
 
 
 HF_EMBEDDING_MODEL = "jinaai/jina-embeddings-v3"

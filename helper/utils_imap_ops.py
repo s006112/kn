@@ -13,8 +13,8 @@ from __future__ import annotations
 from email.message import EmailMessage as StdEmailMessage
 from typing import Any
 
-from utils_imap_config import load_imap_config  # type: ignore
-from utils_imap_client import ImapClient  # type: ignore
+from helper.utils_imap_config import load_imap_config  # type: ignore
+from helper.utils_imap_client import ImapClient  # type: ignore
 
 
 # ------------------------------------------------------------

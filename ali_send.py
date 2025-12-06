@@ -17,10 +17,10 @@ from email.message import EmailMessage as StdEmailMessage
 from email.utils import parseaddr
 from typing import Optional
 
-from utils_config import load_env, configure_logging  # type: ignore
-from utils_imap_config import load_smtp_config  # type: ignore
-from utils_imap_types import EmailMessage, SendResult  # type: ignore
-from utils_imap_ops import append_to_imap_sent, mark_imap_message_seen  # type: ignore
+from helper.utils_config import load_env, configure_logging  # type: ignore
+from helper.utils_imap_config import load_smtp_config  # type: ignore
+from helper.utils_imap_types import EmailMessage, SendResult  # type: ignore
+from helper.utils_imap_ops import append_to_imap_sent, mark_imap_message_seen  # type: ignore
 
 
 # ------------------------------------------------------------

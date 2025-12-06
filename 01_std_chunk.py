@@ -10,8 +10,8 @@ if str(RAG_DIR) not in sys.path:
     sys.path.insert(0, str(RAG_DIR))
 
 from rag.chunk_json import JsonlWriter  # type: ignore
-from std_chunker import StandardDocInfo, chunk_standard_text  # type: ignore
-import utils_pdf
+from helper.std_chunker import StandardDocInfo, chunk_standard_text  # type: ignore
+import helper.utils_pdf as utils_pdf
 
 
 def load_text(path: Path) -> str:

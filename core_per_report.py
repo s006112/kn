@@ -16,10 +16,10 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from utils_config import configure_logging, load_env, load_prompt_text
-from utils_nextcloud import share, ushare
-from utils_llm import call_llm
-from utils_pdf import get_pdf_full_text
+from helper.utils_config import configure_logging, load_env, load_prompt_text
+from helper.utils_nextcloud import share, ushare
+from helper.utils_llm import call_llm
+from helper.utils_pdf import get_pdf_full_text
 
 load_env()
 log = configure_logging("per_report")

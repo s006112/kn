@@ -5,7 +5,7 @@ import openai
 import requests
 from google.genai import errors as genai_errors
 
-from utils_llm import get_gemini_client, get_openai_client, get_stability_client
+from helper.utils_llm import get_gemini_client, get_openai_client, get_stability_client
 
 
 _STABILITY_BASE_URL = "https://api.stability.ai/v2beta/stable-image"

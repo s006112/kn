@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from utils_odoo import OdooClient
+    from helper.utils_odoo import OdooClient
 
 log = logging.getLogger("utils_odoo")
 

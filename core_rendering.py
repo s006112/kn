@@ -11,8 +11,8 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from utils_config import configure_logging, load_env
-from utils_llm_image import generate_image
+from helper.utils_config import configure_logging, load_env
+from helper.utils_llm_image import generate_image
 
 load_env(dotenv_path=Path(__file__).parent / ".env")
 logger = configure_logging("rendering")

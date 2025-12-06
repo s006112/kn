@@ -14,8 +14,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from ali_send import send_reply
-from utils_config import load_env
-from utils_imap_types import EmailMessage
+from helper.utils_config import load_env
+from helper.utils_imap_types import EmailMessage
 
 
 def build_dummy_message(to_addr: str, subject: str) -> EmailMessage:

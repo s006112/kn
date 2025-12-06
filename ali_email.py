@@ -5,11 +5,11 @@ from datetime import datetime, time as dt_time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from utils_config import configure_logging, get_env_int  # type: ignore :contentReference[oaicite:1]{index=1}
+from helper.utils_config import configure_logging, get_env_int  # type: ignore :contentReference[oaicite:1]{index=1}
 from ali_fetch import fetch_new_messages  # type: ignore :contentReference[oaicite:2]{index=2}
 from ali_llm import generate_reply  # type: ignore :contentReference[oaicite:3]{index=3}
 from ali_send import send_reply  # type: ignore
-from utils_imap_types import EmailMessage, SendResult
+from helper.utils_imap_types import EmailMessage, SendResult
 
 # sonar, sonar-pro, sonar-reasoning, sonar-reasoning-pro
 # gemini-2.0-flash, gemini-2.5-flash, gemini-2.5-pro, gemini-3-pro-preview, 

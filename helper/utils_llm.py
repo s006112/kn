@@ -7,7 +7,7 @@ from perplexity import Perplexity
 from google import genai
 from dotenv import load_dotenv
 
-from utils_text_processing import _format_text, _normalize_output
+from helper.utils_text_processing import _format_text, _normalize_output
 
 
 load_dotenv()

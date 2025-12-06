@@ -12,10 +12,10 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from utils_config import configure_logging, get_env_flag, load_env, load_prompt_text
-from utils_odoo import attach_pdf_to_sale_order, create_sale_order_from_text
-from utils_llm import call_llm
-from utils_pdf import extract_text_from_pdf_bytes
+from helper.utils_config import configure_logging, get_env_flag, load_env, load_prompt_text
+from helper.utils_odoo import attach_pdf_to_sale_order, create_sale_order_from_text
+from helper.utils_llm import call_llm
+from helper.utils_pdf import extract_text_from_pdf_bytes
 
 load_env()
 log = configure_logging("so_import")

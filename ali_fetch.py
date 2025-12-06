@@ -7,12 +7,12 @@ from email.policy import default
 from email.utils import getaddresses
 from typing import List, Optional, Protocol
 
-from utils_config import configure_logging, get_env_str, load_env  # type: ignore
-from utils_imap_client import ImapClient, RawFetchedRecord  # type: ignore
-from utils_imap_config import load_imap_config  # type: ignore
-from utils_imap_ops import move_imap_message_with_client  # type: ignore
-from utils_imap_types import EmailMessage
-from utils_text_processing import extract_email_body  # type: ignore
+from helper.utils_config import configure_logging, get_env_str, load_env  # type: ignore
+from helper.utils_imap_client import ImapClient, RawFetchedRecord  # type: ignore
+from helper.utils_imap_config import load_imap_config  # type: ignore
+from helper.utils_imap_ops import move_imap_message_with_client  # type: ignore
+from helper.utils_imap_types import EmailMessage
+from helper.utils_text_processing import extract_email_body  # type: ignore
 
 
 _ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"

@@ -11,8 +11,8 @@ if str(RAG_DIR) not in sys.path:
 
 from rag.rag_embeddings import EmbeddingModel  # type: ignore  # noqa: E402
 from rag.rag_retrieval import similarity_search_with_score  # type: ignore  # noqa: E402
-from std_vectorstore import StdChunk, load_standard_index  # noqa: E402
-from utils_llm import call_llm  # noqa: E402
+from helper.std_vectorstore import StdChunk, load_standard_index  # noqa: E402
+from helper.utils_llm import call_llm  # noqa: E402
 
 
 INDEX_DIR = Path("data/index_std")

@@ -16,9 +16,9 @@ llm_responder.py
 from __future__ import annotations
 from pathlib import Path
 
-from utils_config import load_prompt_text
-from utils_llm import call_llm  # 你的 LLM gateway
-from utils_imap_types import EmailMessage  # 前面寫好的 dataclass
+from helper.utils_config import load_prompt_text
+from helper.utils_llm import call_llm  # 你的 LLM gateway
+from helper.utils_imap_types import EmailMessage  # 前面寫好的 dataclass
 
 
 def generate_reply(

@@ -17,7 +17,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from rag_config import Config, PerformanceTracker
-from utils_text_processing import extract_email_body_tasks
+from helper.utils_text_processing import extract_email_body_tasks
 from chunk_json import Task, BatchProcessor, JsonlWriter
 from chunk_att import extract_attachment_tasks
 

@@ -10,9 +10,9 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from xmlrpc import client as xmlrpc_client
 
-from utils_config import configure_logging, load_env
-from utils_odoo_id import find_id
-from utils_nextcloud import PO_REMOTE_DIR, share_file
+from helper.utils_config import configure_logging, load_env
+from helper.utils_odoo_id import find_id
+from helper.utils_nextcloud import PO_REMOTE_DIR, share_file
 
 load_env()
 log = configure_logging("utils_odoo")
