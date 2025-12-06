@@ -10,26 +10,16 @@ import json
 import numpy as np
 from pathlib import Path
 
-from rag.rag_embeddings import EmbeddingModel
-from helper.utils_llm import call_llm
+import faiss
 
+from helper.utils_llm import call_llm
 from sentence_transformers import SentenceTransformer
-import numpy as np
 
 
 class EmbeddingModel:
     def __init__(self, model_name: str, device: str, batch_size: int, task: str = None):
         self.model = SentenceTransformer(model_name, device=device)
         self.batch_size = batch_size
-
-    def embed_documents(self, texts):
-        return self.model.encode(
-            texts,
-            batch_size=self.batch_size,
-            normalize_embeddings=True,
-            convert_to_numpy=True,
-            show_progress_bar=False,
-        )
 
     def embed_query(self, text):
         v = self.model.encode(
@@ -42,13 +32,21 @@ class EmbeddingModel:
         return v[0]
 
 
-
 # ─── Config ─────────────────────────────────────────
 DB_PATH = Path("data/index_std/metadata.sqlite")
+INDEX_PATH = Path("data/index_std/faiss.index")
 EMBED_MODEL = "BAAI/bge-m3"
 EMBED_BATCH_SIZE = 16
 LLM_MODEL = "gpt-4.1-mini"
 TOP_K = 20
+SYSTEM_PROMPT_PATH = Path("prompt/prompt_std.txt")
+SYSTEM_PROMPT = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
+PROMPT_TEMPLATE = """Refer to the following clauses and answer the question with citations to clause numbers:
+
+{context}
+
+Question: {question}
+"""
 
 
 # ─── Data Load ─────────────────────────────────────
@@ -56,14 +54,13 @@ def load_all_chunks(db_path: Path):
     conn = sqlite3.connect(db_path)
     try:
         rows = conn.execute(
-            "SELECT vector_id, chunk_text, metadata_json FROM chunks"
+            "SELECT vector_id, chunk_text, metadata_json FROM chunks ORDER BY vector_id"
         ).fetchall()
     finally:
         conn.close()
 
-    ids, texts, metas = [], [], []
-    for vid, text, meta_json in rows:
-        ids.append(int(vid))
+    texts, metas = [], []
+    for _vid, text, meta_json in rows:
         texts.append(text)
 
         if meta_json:
@@ -74,7 +71,23 @@ def load_all_chunks(db_path: Path):
         else:
             metas.append({})
 
-    return ids, texts, metas
+    return texts, metas
+
+
+def load_embedding_matrix(index_path: Path) -> np.ndarray:
+    if not index_path.exists():
+        raise FileNotFoundError(f"FAISS index not found: {index_path}")
+
+    index = faiss.read_index(str(index_path))
+    if index.ntotal == 0:
+        return np.zeros((0, index.d), dtype=np.float32)
+
+    try:
+        vectors = index.reconstruct_n(0, index.ntotal)
+    except RuntimeError:
+        raise ValueError("Loaded FAISS index does not support vector reconstruction")
+
+    return np.asarray(vectors, dtype=np.float32)
 
 
 # ─── Brute-force kNN Core ─────────────────────────
@@ -98,7 +111,7 @@ def answer_standard_question(question: str):
     if not question.strip():
         return "", ""
 
-    ids, texts, metas = load_all_chunks(DB_PATH)
+    texts, metas = load_all_chunks(DB_PATH)
 
     embedder = EmbeddingModel(
         model_name=EMBED_MODEL,
@@ -107,8 +120,10 @@ def answer_standard_question(question: str):
         task="text_embedding",
     )
 
-    # ─── Build embedding matrix (full brute-force) ─────────
-    E = np.asarray(embedder.embed_documents(texts), dtype=np.float32)
+    # ─── Load embedding matrix (pre-built) ─────────
+    E = load_embedding_matrix(INDEX_PATH)
+    if len(texts) != E.shape[0]:
+        raise ValueError("Mismatch between metadata rows and embedding matrix size")
     norms = np.linalg.norm(E, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
     E = E / norms
@@ -120,16 +135,11 @@ def answer_standard_question(question: str):
     snippets = [format_snippet(texts[i], metas[i]) for i in top_idx]
     context = "\n\n".join(snippets)
 
-    prompt = f"""Refer to the following clauses and answer the question with citations to clause numbers:
-
-{context}
-
-Question: {question.strip()}
-"""
+    prompt = PROMPT_TEMPLATE.format(context=context, question=question.strip())
 
     result_text = call_llm(
         LLM_MODEL,
-        system_prompt="You are a technical standards assistant. Cite clause numbers and table IDs in your answers.",
+        system_prompt=SYSTEM_PROMPT,
         user_text=prompt,
         max_retries=2,
     )
@@ -147,7 +157,7 @@ Question: {question.strip()}
 
 # ─── CLI ──────────────────────────────────────────
 if __name__ == "__main__":
-    q = "一款仅适用于橱柜底部安装的 under-cabinet 灯具，根据 UL 1598，铭牌或标签上必须有哪一句或哪些安装适用性标示？这些标示文字在哪一个条款和哪一张表格中规定？Only reply in Chinese"
+    q = "UL935里面,有關灯管重新安裝relamping的时候Risk of Electric Shock Measurements,其中单端针漏电的测试方式内容展开。 only reply in Chinese"
     answer, sources = answer_standard_question(q)
     print("\n=== Answer ===\n")
     print(answer)

@@ -2,11 +2,11 @@
 import os
 import json
 import sqlite3
+from glob import glob
+
 import faiss
 import torch
-import time
 from transformers import AutoTokenizer, AutoModel
-from glob import glob
 
 # ============================================================
 # Model: BGE-M3 (MIT license, commercial friendly)
@@ -17,42 +17,45 @@ print(f"Loading embedding model: {MODEL_NAME}")
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 model = AutoModel.from_pretrained(MODEL_NAME).cuda()  # assume GPU exists
 
+
 def embed(texts):
-    """Return L2-normalized dense embeddings (batch capable)."""
+    """Return L2-normalized dense embeddings for a list of texts."""
     with torch.no_grad():
         tokens = tokenizer(
             texts,
             padding=True,
             truncation=True,
-            max_length=8192,
-            return_tensors="pt"
+            max_length=2048,  # 足够覆盖大部分条款，避免无谓占用显存
+            return_tensors="pt",
         ).to(model.device)
 
         out = model(**tokens)
-        emb = out.last_hidden_state[:, 0]              # CLS pooling
+        emb = out.last_hidden_state[:, 0]  # CLS pooling
         emb = torch.nn.functional.normalize(emb, p=2, dim=1)
         return emb.cpu().numpy()
 
+
 # ============================================================
-# I/O paths
+# Paths
 # ============================================================
 DATA_DIR = "data/clean_std"
 INDEX_DIR = "data/index_std"
 os.makedirs(INDEX_DIR, exist_ok=True)
 
-def log_batch_status(batch_idx, total_batches, batch_size, elapsed):
-    print(f"   🔍 Embedding batch of {batch_size} chunks...{batch_idx}/{total_batches}")
-    print(f"   ✅ Embedding done in {elapsed:.2f}s")
-
 
 # ============================================================
 # SQLite helper
 # ============================================================
-def init_sqlite(path):
+def init_sqlite(path: str) -> sqlite3.Connection:
+    # 每次重建，避免 vector_id 主键冲突
+    if os.path.exists(path):
+        os.remove(path)
+
     conn = sqlite3.connect(path)
     cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS chunks (
+    cur.execute(
+        """
+        CREATE TABLE chunks (
             vector_id INTEGER PRIMARY KEY,
             doc_type TEXT,
             doc_id TEXT,
@@ -62,9 +65,11 @@ def init_sqlite(path):
             chunk_text TEXT,
             metadata_json TEXT
         )
-    """)
+    """
+    )
     conn.commit()
     return conn
+
 
 # ============================================================
 # Load JSONL chunks
@@ -73,86 +78,64 @@ def load_chunks():
     files = glob(os.path.join(DATA_DIR, "*.jsonl"))
     chunks = []
     print(f"Found {len(files)} JSONL files")
+
     for fp in files:
         with open(fp, "r", encoding="utf-8") as f:
             for line in f:
-                if not line.strip():
+                line = line.strip()
+                if not line:
                     continue
                 obj = json.loads(line)
                 text = obj.get("content", "")
                 meta = obj.get("metadata", {})
-                chunks.append((text, meta))
+                if text:
+                    chunks.append((text, meta))
+
     print(f"Loaded {len(chunks)} chunks")
     return chunks
+
+
+# ============================================================
+# Simple terminal progress bar (no tqdm)
+# ============================================================
+def progress_bar(done: int, total: int):
+    width = 40
+    ratio = done / total if total else 1.0
+    filled = int(width * ratio)
+    bar = "█" * filled + "-" * (width - filled)
+    print(f"\r[{bar}] {done}/{total} ({ratio*100:5.1f}%)", end="", flush=True)
+
 
 # ============================================================
 # Build FAISS index
 # ============================================================
 def build_index(chunks):
-    # Embedding dimensions for BGE-M3 ~1024 (CLS)
-    test_emb = embed(["test"])
-    dim = test_emb.shape[1]
+    total = len(chunks)
+    if total == 0:
+        print("No chunks to index.")
+        return
 
-    index = faiss.IndexFlatIP(dim)  # cosine = dot product on L2-normalized vectors
+    # 推断向量维度
+    dim = embed(["test"]).shape[1]
+    index = faiss.IndexFlatIP(dim)
+
     sqlite_path = os.path.join(INDEX_DIR, "metadata.sqlite")
     conn = init_sqlite(sqlite_path)
     cur = conn.cursor()
 
+    SAFE_BATCH = 32
     vector_id = 0
-    batch = []
-    metas = []
 
-    # Batch embedding for throughput
-    BATCH_SIZE = 10  # 你原本是 500，所以沿用
-    total_batches = (len(chunks) + BATCH_SIZE - 1) // BATCH_SIZE
-    batch_index = 0
+    for start_idx in range(0, total, SAFE_BATCH):
+        batch = chunks[start_idx : start_idx + SAFE_BATCH]
+        texts = [t for (t, _) in batch]
+        metas = [m for (_, m) in batch]
 
-    for text, meta in chunks:
-        batch.append(text)
-        metas.append(meta)
-
-        if len(batch) == BATCH_SIZE:
-            batch_index += 1
-            start = time.time()
-
-            embs = embed(batch)
-            elapsed = time.time() - start
-            log_batch_status(batch_index, total_batches, len(batch), elapsed)
-
-            index.add(embs)
-
-            for i, embedding in enumerate(embs):
-                meta_json = json.dumps(metas[i], ensure_ascii=False)
-                cur.execute(
-                    "INSERT INTO chunks VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        vector_id,
-                        meta.get("doc_type"),
-                        meta.get("doc_id"),
-                        meta.get("doc_code"),
-                        meta.get("location_path"),
-                        meta.get("heading"),
-                        batch[i],
-                        meta_json,
-                    ),
-                )
-                vector_id += 1
-
-            conn.commit()
-            batch, metas = [], []
-
-    # Last small batch
-    if batch:
-        batch_index += 1
-        start = time.time()
-
-        embs = embed(batch)
-        elapsed = time.time() - start
-        log_batch_status(batch_index, total_batches, len(batch), elapsed)
+        embs = embed(texts)
 
         index.add(embs)
-        for i, embedding in enumerate(embs):
-            meta = metas[i]
+
+        for j, meta in enumerate(metas):
             meta_json = json.dumps(meta, ensure_ascii=False)
             cur.execute(
                 "INSERT INTO chunks VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -163,17 +146,21 @@ def build_index(chunks):
                     meta.get("doc_code"),
                     meta.get("location_path"),
                     meta.get("heading"),
-                    batch[i],
+                    texts[j],
                     meta_json,
                 ),
             )
             vector_id += 1
-        conn.commit()
 
-    # Save index
+        conn.commit()
+        done = min(start_idx + SAFE_BATCH, total)
+        progress_bar(done, total)
+
+    print()  # 换行
     faiss.write_index(index, os.path.join(INDEX_DIR, "faiss.index"))
     print("FAISS index + metadata saved.")
     conn.close()
+
 
 # ============================================================
 # Main
@@ -181,6 +168,7 @@ def build_index(chunks):
 def main():
     chunks = load_chunks()
     build_index(chunks)
+
 
 if __name__ == "__main__":
     main()
