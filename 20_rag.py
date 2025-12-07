@@ -38,7 +38,7 @@ EMBED_MODEL = "BAAI/bge-m3"
 EMBED_BATCH_SIZE = 16
 LLM_MODEL = "gpt-4.1-mini"
 TOP_K = 20
-SYSTEM_PROMPT_PATH = Path("prompt/prompt_user.txt")
+SYSTEM_PROMPT_PATH = Path("prompt/prompt_rag_system.txt")
 SYSTEM_PROMPT = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
 
 
