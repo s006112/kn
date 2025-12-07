@@ -25,7 +25,7 @@ def embed(texts):
             texts,
             padding=True,
             truncation=True,
-            max_length=2048,  # 足够覆盖大部分条款，避免无谓占用显存
+            max_length=2048,  # 足够覆盖大部分頁級內容
             return_tensors="pt",
         ).to(model.device)
 
@@ -38,8 +38,11 @@ def embed(texts):
 # ============================================================
 # Paths
 # ============================================================
-DATA_DIR = "data/clean_std"
-INDEX_DIR = "data/index_std"
+# 改成指向存放 *.page_blocks.jsonl 的目錄
+DATA_DIR = "data/json"
+INDEX_DIR = "data/index"
+PAGE_BLOCK_SUFFIX = ".page_blocks.jsonl"
+
 os.makedirs(INDEX_DIR, exist_ok=True)
 
 
@@ -72,11 +75,26 @@ def init_sqlite(path: str) -> sqlite3.Connection:
 
 
 # ============================================================
-# Load JSONL chunks
+# Load page-level blocks
 # ============================================================
 def load_chunks():
-    files = glob(os.path.join(DATA_DIR, "*.jsonl"))
+    """
+    從 *.page_blocks.jsonl 加載 chunk：
+    每行預期結構 roughly 為：
+    {
+        "block_id": "...",
+        "file_id": "...",
+        "page": 104,
+        "char": 1234,
+        "word": 250,
+        "text": "......"
+    }
+    """
+    pattern = os.path.join(DATA_DIR, f"*{PAGE_BLOCK_SUFFIX}")
+    files = glob(pattern)
     chunks = []
+
+    print(f"Looking for page_blocks: {pattern}")
     print(f"Found {len(files)} JSONL files")
 
     for fp in files:
@@ -86,10 +104,30 @@ def load_chunks():
                 if not line:
                     continue
                 obj = json.loads(line)
-                text = obj.get("content", "")
-                meta = obj.get("metadata", {})
-                if text:
-                    chunks.append((text, meta))
+
+                text = obj.get("text", "").strip()
+                if not text:
+                    continue
+
+                file_id = obj.get("file_id")
+                page = obj.get("page", 0)
+                block_id = obj.get("block_id")
+
+                # 給 SQLite 那幾個固定欄位一個合理映射
+                meta = {
+                    "doc_type": "page_block",
+                    "doc_id": file_id,                  # 可以理解成檔案 ID
+                    "doc_code": file_id,                # 目前直接共用；以後可換成標準號，如 UL935
+                    "location_path": f"page:{page}",    # 粗略定位
+                    "heading": None,                    # 暫時沒有 heading
+                    # 其餘信息原樣保留
+                    "block_id": block_id,
+                    "page": page,
+                    "char": obj.get("char"),
+                    "word": obj.get("word"),
+                }
+
+                chunks.append((text, meta))
 
     print(f"Loaded {len(chunks)} chunks")
     return chunks
@@ -132,7 +170,6 @@ def build_index(chunks):
         metas = [m for (_, m) in batch]
 
         embs = embed(texts)
-
         index.add(embs)
 
         for j, meta in enumerate(metas):

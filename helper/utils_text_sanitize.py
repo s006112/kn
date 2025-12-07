@@ -35,6 +35,80 @@ def clean_watermark(text: str) -> str:
     return _STANDARD_WATERMARK_REGEX.sub("", text)
 
 
+# ======================================================================
+# 版面清洗：專門針對 UL / IEC 類安規 TXT 的結構噪音
+# ======================================================================
+
+# 領點 + 頁碼，比如 "Scope ..........7"
+_UL_TOC_DOTS_RE = re.compile(r"^(.*?)(?:\.+\s*\d+)\s*$")
+
+# 明顯沒用的頁眉 / 頁腳 / 垃圾行
+_UL_JUNK_PATTERNS = [
+    r"^UL 935\s*$",
+    r"^UL Standard for Safety for Fluorescent-Lamp Ballasts, UL 935",
+    r"^STANDARD FOR SAFETY",
+    r"^Fluorescent-Lamp Ballasts",
+    r"^FEBRUARY \d{1,2}, \d{4}",
+    r"^No Text on This Page",
+    r"^COPYRIGHT",
+    r"^ANSI/UL 935-2024.*$",
+    r"^Tenth Edition, Dated .*",
+    r"^\d+\s*$",        # 單獨的頁碼行
+    r"^tr\d+\s*$",     # tr1 / tr2 ...
+]
+_UL_JUNK_RE = re.compile("|".join(_UL_JUNK_PATTERNS))
+
+
+def clean_ul_layout(text: str) -> str:
+    """
+    針對 UL 等安規 TXT 的「版面層」清洗：
+    - 去掉目錄中的 ...... + 頁碼，只保留標題
+    - 合併「純數字行 + 下一行標題」為一行
+    - 刪除明顯的頁眉 / 頁腳 / 垃圾行
+
+    注意：不壓縮整體空白、不打亂行結構，適合在切 block 前使用。
+    """
+    if not text:
+        return ""
+
+    # 1) 去掉 toc 領點 + 頁碼
+    lines = []
+    for line in text.splitlines():
+        m = _UL_TOC_DOTS_RE.match(line)
+        if m:
+            lines.append(m.group(1).rstrip())
+        else:
+            lines.append(line)
+    text1 = "\n".join(lines)
+
+    # 2) 合併 "13\\nSupply and Load Connections" → "13 Supply and Load Connections"
+    raw_lines = text1.splitlines()
+    merged: list[str] = []
+    i = 0
+    while i < len(raw_lines):
+        line = raw_lines[i]
+        stripped = line.strip()
+
+        if re.fullmatch(r"\d{1,3}", stripped) and i + 1 < len(raw_lines):
+            nxt = raw_lines[i + 1].strip()
+            if re.match(r"[A-Za-z]", nxt):
+                merged.append(f"{stripped} {nxt}")
+                i += 2
+                continue
+
+        merged.append(line)
+        i += 1
+
+    # 3) 刪除明顯無用的垃圾行
+    cleaned: list[str] = []
+    for line in merged:
+        if _UL_JUNK_RE.match(line.strip()):
+            continue
+        cleaned.append(line)
+
+    return "\n".join(cleaned)
+
+
 # ============================================================================
 # 文本淨化工具
 # ============================================================================

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-03_std_rag_bruteforce.py
 Pure brute-force exact kNN for technical standards.
-No FAISS. No ANN. 100% recall. Fully auditable.
+No ANN. 100% recall. Fully auditable.
 """
 
 import sqlite3
@@ -33,15 +32,15 @@ class EmbeddingModel:
 
 
 # ─── Config ─────────────────────────────────────────
-DB_PATH = Path("data/index_std/metadata.sqlite")
-INDEX_PATH = Path("data/index_std/faiss.index")
+DB_PATH = Path("data/index/metadata.sqlite")
+INDEX_PATH = Path("data/index/faiss.index")
 EMBED_MODEL = "BAAI/bge-m3"
 EMBED_BATCH_SIZE = 16
 LLM_MODEL = "gpt-4.1-mini"
 TOP_K = 20
 SYSTEM_PROMPT_PATH = Path("prompt/prompt_std.txt")
 SYSTEM_PROMPT = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
-PROMPT_TEMPLATE = """Refer to the following clauses and answer the question with citations to clause numbers:
+PROMPT_TEMPLATE = """Refer to the following clauses and answer the question in plain language with citations to clause numbers, and the page numbers.:
 
 {context}
 
@@ -99,9 +98,11 @@ def brute_force_knn(E: np.ndarray, q: np.ndarray, k: int):
 
 # ─── Formatting ───────────────────────────────────
 def format_snippet(text: str, meta: dict) -> str:
+    if not isinstance(meta, dict):
+        meta = {}
     doc = meta.get("doc_code", "(doc)")
     loc = meta.get("location_path", "(loc)")
-    heading = meta.get("heading", "").strip()
+    heading = (meta.get("heading") or "").strip()
     h_part = f" — {heading}" if heading else ""
     return f"[{doc} {loc}{h_part}]\n{text}"
 
@@ -137,6 +138,14 @@ def answer_standard_question(question: str):
 
     prompt = PROMPT_TEMPLATE.format(context=context, question=question.strip())
 
+    # Similarity table
+    table = ["| score | doc | page | text |", "|---:|---|---|---|"]
+    for i, s in zip(top_idx, top_scores):
+        meta = metas[i] or {}
+        table.append(
+            f"| {float(s):.4f} | {meta.get('doc_code')} | {meta.get('page')} | {meta.get('text')} |"
+        )
+
     result_text = call_llm(
         LLM_MODEL,
         system_prompt=SYSTEM_PROMPT,
@@ -144,20 +153,12 @@ def answer_standard_question(question: str):
         max_retries=2,
     )
 
-    # Similarity table
-    table = ["| score | doc | clause | heading |", "|---:|---|---|---|"]
-    for i, s in zip(top_idx, top_scores):
-        meta = metas[i]
-        table.append(
-            f"| {float(s):.4f} | {meta.get('doc_code')} | {meta.get('location_path')} | {meta.get('heading','')} |"
-        )
-
     return result_text.strip(), "\n".join(table)
 
 
 # ─── CLI ──────────────────────────────────────────
 if __name__ == "__main__":
-    q = "UL935里面,有關灯管重新安裝relamping的时候Risk of Electric Shock Measurements,其中单端针漏电的测试方式内容展开。 only reply in Chinese"
+    q = "有關灯管重新安裝relamping的时候Risk of Electric Shock Measurements,其中单端针漏电的测试方式内容展开。 用淺白的中文回答,並且標明條款編號和頁碼。"
     answer, sources = answer_standard_question(q)
     print("\n=== Answer ===\n")
     print(answer)
