@@ -1,0 +1,118 @@
+
+https://chatgpt.com/c/6934d4e5-b81c-8321-a4cb-7fdb3d85a90d
+
+
+你是一个资深 Python 工程师，请为我实现一个 **“PDF 文本高频水印自动识别与规则生成工具”**，用于后续文本清洗流程。该工具 **不参与 PDF 解析，仅处理纯 TXT 文本**。
+
+一、输入与目录结构
+
+1. 输入目录：`data/raw/standard/`
+2. 输入文件类型：`*.raw.txt`
+
+   * 每个文件是由 PyMuPDF `get_text("raw")` 直接导出的原始全文
+   * 文件中包含大量重复出现的下载水印、页眉、页脚
+3. 输出目录：同目录下生成：
+
+   * `XXX.watermark_candidates.json`
+   * 以及可选的：`watermark_rules.py`（自动生成正则规则）
+
+二、核心目标
+对 **单个 raw.txt 文件** 自动完成以下工作：
+
+1. 将全文按“行”切分
+2. 统计：
+
+   * 每一行在全文中出现的次数
+   * 该行出现的页号分布（通过检测 UL 常见页码模式如 `\n 123 \n UL 935 \n` 进行近似定位即可，不要求严格页解析）
+3. 自动识别“疑似水印候选行”，满足以下任意组合条件即可入选：
+
+   * 在全文中重复出现 ≥ 5 次
+   * 出现间隔接近“跨页周期性”
+   * 包含关键词之一：
+
+     * `Downloaded`
+     * `COPYRIGHT`
+     * `NOT AUTHORIZED`
+     * `UL` + `INC`
+     * 人名格式（如 `Lo, Daniel`）
+     * 时间戳格式（如 `12/5/2025 - 8:18 PM`）
+
+三、输出格式要求
+
+1. 输出 JSON：`XXX.watermark_candidates.json`，结构如下：
+
+```json
+{
+  "source_file": "s935_10.raw.txt",
+  "candidates": [
+    {
+      "line": "Lo, Daniel : 12/5/2025 - 8:18 PM",
+      "count": 73,
+      "confidence": 0.98,
+      "reason": ["high_frequency", "timestamp_pattern", "person_name"]
+    },
+    {
+      "line": "NOT AUTHORIZED FOR FURTHER",
+      "count": 71,
+      "confidence": 0.95,
+      "reason": ["copyright_keyword", "high_frequency"]
+    }
+  ]
+}
+```
+
+2. 同时自动生成一个 Python 规则文件（可选）：
+   `watermark_rules.py`
+
+```python
+WATERMARK_PATTERNS = [
+    r"Lo, Daniel\s*:\s*\d{1,2}/\d{1,2}/\d{4}\s*-\s*\d{1,2}:\d{2}\s*(AM|PM)",
+    r"NOT AUTHORIZED FOR FURTHER.*",
+]
+```
+
+这些规则必须直接可被 `re.compile()` 使用。
+
+四、约束条件（非常重要）
+
+1. 该工具 **绝对不允许改动正文内容**
+2. 只负责：
+
+   * 统计
+   * 判定
+   * 生成规则
+3. 不允许：
+
+   * 自动执行清洗
+   * 自动删除任何正文
+   * 自动覆盖原始 txt
+4. 所有“是否是水印”的最终决策权必须留给人类确认
+
+五、工程质量要求
+
+* 代码必须：
+
+  * 单文件可运行
+  * Python 3.10+
+  * 只依赖标准库（`re`, `json`, `collections`, `pathlib` 等）
+* 提供清晰函数结构，例如：
+
+  * `load_raw_text()`
+  * `extract_lines()`
+  * `analyze_frequency()`
+  * `detect_candidates()`
+  * `export_json()`
+  * `export_rules()`
+* 每个步骤需有最少但清楚的注释
+* 输出必须可重复、确定性强，不得使用随机算法
+
+六、最终目标
+
+该工具的唯一使命是：
+**帮助我从“人眼判断水印”升级为“机器先给候选，我只做确认”的半自动化水印工程系统。**
+
+---
+
+如果你愿意，等你之后要真正开始做这一步时，你可以直接对我说：
+“用刚才那个提示词，直接给我完整实现代码。”
+我会一次性按这个规格直接给你一版最终可用实现。
