@@ -4,6 +4,7 @@ from pathlib import Path
 import json, re, sys
 
 ROOT = Path("data/raw/standard")
+OUTPUT = Path("data/json")
 IN_SUFFIX = ".page_splited"
 OUT_SUFFIX = ".page_blocks.jsonl"
 PAGE_RE = re.compile(r"^<<<PAGE_BREAK_(\d+)>>>$")
@@ -13,8 +14,10 @@ def main() -> None:
         print(f"[ERROR] {ROOT} not found", file=sys.stderr)
         sys.exit(1)
 
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+
     for src in sorted(ROOT.rglob(f"*{IN_SUFFIX}")):
-        dst = src.with_suffix(OUT_SUFFIX)
+        dst = OUTPUT / src.with_suffix(OUT_SUFFIX).name
         file_id = src.stem   # 例如 s935_10.page_splited
         print(f"[INFO] {src} -> {dst}")
 

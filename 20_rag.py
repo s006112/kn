@@ -97,6 +97,22 @@ def brute_force_knn(E: np.ndarray, q: np.ndarray, k: int):
 
 
 # ─── Formatting ───────────────────────────────────
+def build_similarity_table(top_idx, top_scores, metas, texts):
+    table = ["| score | doc | page | text |", "|---:|---|---|---|"]
+    for i, s in zip(top_idx, top_scores):
+        meta = metas[i] or {}
+        doc = meta.get("doc_code")
+        page = meta.get("page")
+
+        full_text = texts[i] or ""
+        preview = full_text[:10]
+        if len(full_text) > 10:
+            preview += "...."
+
+        table.append(f"| {float(s):.4f} | {doc} | {page} | {preview} |")
+    return "\n".join(table)
+
+
 def format_snippet(text: str, meta: dict) -> str:
     if not isinstance(meta, dict):
         meta = {}
@@ -138,13 +154,10 @@ def answer_standard_question(question: str):
 
     prompt = PROMPT_TEMPLATE.format(context=context, question=question.strip())
 
-    # Similarity table
-    table = ["| score | doc | page | text |", "|---:|---|---|---|"]
-    for i, s in zip(top_idx, top_scores):
-        meta = metas[i] or {}
-        table.append(
-            f"| {float(s):.4f} | {meta.get('doc_code')} | {meta.get('page')} | {meta.get('text')} |"
-        )
+    # Similarity table (log this before LLM call)
+    table_str = build_similarity_table(top_idx, top_scores, metas, texts)
+    print("\n=== Top hits ===\n")
+    print(table_str, flush=True)
 
     result_text = call_llm(
         LLM_MODEL,
@@ -153,14 +166,12 @@ def answer_standard_question(question: str):
         max_retries=2,
     )
 
-    return result_text.strip(), "\n".join(table)
+    return result_text.strip(), table_str
 
 
 # ─── CLI ──────────────────────────────────────────
 if __name__ == "__main__":
-    q = "有關灯管重新安裝relamping的时候Risk of Electric Shock Measurements,其中单端针漏电的测试方式内容展开。 用淺白的中文回答,並且標明條款編號和頁碼。"
+    q = "有關灯管重新安裝relamping的时候Risk of Electric Shock Measurements,其中单端针漏电的测试方式内容展开。 用straightforward english回答,並且標明條款編號和頁碼。"
     answer, sources = answer_standard_question(q)
     print("\n=== Answer ===\n")
     print(answer)
-    print("\n=== Top hits ===\n")
-    print(sources)

@@ -29,6 +29,21 @@ OUTPUT_SUFFIX = ".page_splited"
 PAGE_BREAK_PREFIX = "<<<PAGE_BREAK_"  # 實際輸出：<<<PAGE_BREAK_2>>>
 
 
+def is_ul_header_line(s: str) -> bool:
+    """
+    判斷是否為包含 UL 頁碼的頁眉行。
+
+    規則：
+    - 完整匹配 "UL xxx"
+    - 或者以 "NMX-J" 開頭，且內容中包含 "UL xxx"
+    """
+    if re.fullmatch(r"UL\s+\d+", s):
+        return True
+    if s.startswith("NMX-J") and re.search(r"\bUL\s+\d+\b", s):
+        return True
+    return False
+
+
 def apply_page_splitting(text: str) -> str:
     """
     規則（更新版）：
@@ -53,14 +68,14 @@ def apply_page_splitting(text: str) -> str:
         if s.isdigit() and i + 1 < len(lines):
             next_line = lines[i + 1]
             ns = next_line.strip()
-            if re.fullmatch(r"UL\s+\d+", ns):
+            if is_ul_header_line(ns):
                 page_no = s
                 out_lines.append(f"{PAGE_BREAK_PREFIX}{page_no}>>>")
                 i += 2
                 continue
 
         # Case 2: 當前行是 "UL xxx"，下一行是純數字
-        if re.fullmatch(r"UL\s+\d+", s) and i + 1 < len(lines):
+        if is_ul_header_line(s) and i + 1 < len(lines):
             next_line = lines[i + 1]
             ns = next_line.strip()
             if ns.isdigit():
