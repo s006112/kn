@@ -38,14 +38,8 @@ EMBED_MODEL = "BAAI/bge-m3"
 EMBED_BATCH_SIZE = 16
 LLM_MODEL = "gpt-4.1-mini"
 TOP_K = 20
-SYSTEM_PROMPT_PATH = Path("prompt/prompt_std.txt")
+SYSTEM_PROMPT_PATH = Path("prompt/prompt_user.txt")
 SYSTEM_PROMPT = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
-PROMPT_TEMPLATE = """Refer to the following clauses and answer the question in plain language with citations to clause numbers, and the page numbers.:
-
-{context}
-
-Question: {question}
-"""
 
 
 # ─── Data Load ─────────────────────────────────────
@@ -152,7 +146,7 @@ def answer_standard_question(question: str):
     snippets = [format_snippet(texts[i], metas[i]) for i in top_idx]
     context = "\n\n".join(snippets)
 
-    prompt = PROMPT_TEMPLATE.format(context=context, question=question.strip())
+    prompt = f"{context}\n\nQuestion: {question.strip()}"
 
     # Similarity table (log this before LLM call)
     table_str = build_similarity_table(top_idx, top_scores, metas, texts)
@@ -171,7 +165,7 @@ def answer_standard_question(question: str):
 
 # ─── CLI ──────────────────────────────────────────
 if __name__ == "__main__":
-    q = "有關灯管重新安裝relamping的时候Risk of Electric Shock Measurements,其中单端针漏电的测试方式内容展开。 用straightforward english回答,並且標明條款編號和頁碼。"
+    q = Path("prompt/prompt_rag_user.txt").read_text(encoding="utf-8")
     answer, sources = answer_standard_question(q)
     print("\n=== Answer ===\n")
     print(answer)
