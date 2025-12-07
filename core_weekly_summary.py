@@ -14,7 +14,7 @@ from helper.utils_llm import call_llm
 def _append_to_weekly_log(base_dir: Path, source_text: str, summary_text: str) -> None:
     """Append the raw input and generated summary to weekly.log."""
 
-    log_path = base_dir / "weekly.log"
+    log_path = base_dir / "log" / "weekly.log"
     timestamp = datetime.now().isoformat(timespec="seconds")
     entry_lines = [
         "",

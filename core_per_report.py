@@ -260,9 +260,9 @@ def _load_prompts(base_dir: Path) -> Tuple[str, str] | Tuple[None, None]:
         log.error("Error reading prompt_md.txt: %s", e)
         return None, None
     try:
-        prompt_summary_str = (base_dir / "Prompt_summary.txt").read_text("utf-8")
+        prompt_summary_str = (prompt_dir / "prompt_summary.txt").read_text("utf-8")
     except Exception as e:
-        log.error("Error reading Prompt_summary.txt: %s", e)
+        log.error("Error reading prompt_summary.txt: %s", e)
         return None, None
     return prompt_md_str, prompt_summary_str
 
@@ -379,7 +379,7 @@ def generate_per_report(file_path: str, model: str) -> PerReportResult:
     base_dir = Path(__file__).parent
     prompt_dir = base_dir / "prompt"
     prompt_md_str = load_prompt_text(prompt_dir, "prompt_md.txt")
-    prompt_summary_str = load_prompt_text(base_dir, "Prompt_summary.txt")
+    prompt_summary_str = load_prompt_text(base_dir, "prompt_summary.txt")
     if not prompt_md_str or not prompt_summary_str:
         return PerReportResult("Error: Failed to load prompts.", [], text, "")
 

@@ -169,7 +169,9 @@ def run_so_import(file_path: str | None, salesperson: str, model: str) -> SOImpo
                             unique_messages.append(entry)
                     import_messages = unique_messages
                     if saw_warning:
-                        log_path = Path(__file__).with_name("app_so_import.log")
+                        log_dir = Path(__file__).resolve().parents[1] / "log"
+                        log_dir.mkdir(parents=True, exist_ok=True)
+                        log_path = log_dir / "app_so_import.log"
                         new_content = "\n".join(import_messages)
                         if new_content:
                             new_content = f"{new_content}\n"

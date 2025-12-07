@@ -9,8 +9,6 @@ __pycache__/
 # Logs and temp files
 ########################################
 *.log
-panel.log
-archived/
 *.swp
 
 ########################################
@@ -23,7 +21,6 @@ archived/
 # System-level caches
 ########################################
 .cache/
-wheelhouse/
 
 ########################################
 # OS junk
@@ -34,9 +31,6 @@ Thumbs.db
 ########################################
 # Preset files (local overrides)
 ########################################
-presets.local.json
-presets_qp.local.json
-presets_q.local.json
 *.local.json
 .state/
 data/

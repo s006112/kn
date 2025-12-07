@@ -83,13 +83,20 @@ class UTFStreamHandler(logging.StreamHandler):
             self.handleError(record)
 
 
+LOG_DIR = Path(__file__).resolve().parent.parent / "log"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     datefmt="%H:%M:%S",
     handlers=[
         RotatingFileHandler(
-            "script.log", maxBytes=1 * 1024 * 1024, backupCount=2, encoding="utf-8"
+            LOG_DIR / "script.log",
+            maxBytes=1 * 1024 * 1024,
+            backupCount=2,
+            encoding="utf-8",
         ),
         UTFStreamHandler(sys.stdout),
     ],
