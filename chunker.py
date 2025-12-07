@@ -1,95 +1,80 @@
 #!/usr/bin/env python3
 """
-chunker.py
+chunker.py  —— 流水线入口（Pipeline Entry）
 
-從 /data/raw/standard/ 掃描所有 PDF，使用 PyMuPDF 以最「原始」的方式抽取文字，
-不做 OCR、不做版面清洗，只額外移除重複出現的下載水印文字，將全文輸出為 .txt。
+职责：
+1. 扫描原始 PDF 目录
+2. 调用 helper 模块做原始提取 + 水印清洗
+3. 输出 TXT 到同目录
+4. 将来可在本文件继续扩展下一个步骤（LLM 标注、结构解析）
 """
 
 from __future__ import annotations
 
-import sys
-import re
 from pathlib import Path
+import sys
 
-import fitz  # PyMuPDF
-
-
-BASE_DIR = Path("data/raw/standard")
-
-
-# --- 水印清洗 Helper（只針對明確的下載水印，不碰正文） ------------------------
-
-WATERMARK_PATTERNS = [
-    r"Document Was Downloaded By .*? SUPER X MFG LTD .*?\n",
-    r"ULSE INC\. COPYRIGHTED MATERIAL .*?\n",
-    r"REPRODUCTION OR DISTRIBUTION WITHOUT PERMISSION FROM ULSE INC\.\n?",
-]
-
-WATERMARK_REGEX = re.compile("|".join(WATERMARK_PATTERNS), flags=re.IGNORECASE)
+# --- helper modules ---
+from helper.utils_pdf import extract_raw_text
+from helper.utils_text_sanitize import clean_watermark
 
 
-def clean_watermark(text: str) -> str:
+# === 配置 ===
+
+RAW_PDF_DIR = Path("data/raw/standard")   # 输入目录
+OUTPUT_SUFFIX = ".txt"                    # 输出格式
+
+
+# === 内联的目录扫描工具（无需独立 helper） ===
+
+def list_pdfs(root: Path):
     """
-    只移除固定格式的下載水印，不做任何其他內容處理。
+    遍历 root 下所有 pdf 文件。
     """
-    return WATERMARK_REGEX.sub("", text)
+    return sorted(root.rglob("*.pdf"))
 
 
-# --- Raw PDF 抽取 ---------------------------------------------------------------
+# === Pipeline Step 1: PDF → Clean TXT ===
 
-def extract_pdf_raw(pdf_path: Path) -> str:
+def pdf_to_txt_pipeline() -> None:
     """
-    使用 PyMuPDF 以最接近「原始內容流」的方式抽取文字：
-    - 使用 page.get_text("raw")
-    - 不做 strip、不重排
-    - 不做 OCR 回退
+    将 PDF 抽取为 TXT（只做水印清洗，不做结构解析）。
     """
-    text_parts: list[str] = []
-
-    with fitz.open(pdf_path) as doc:
-        for page in doc:
-            page_text = page.get_text("raw") or ""
-            text_parts.append(page_text)
-
-    return "".join(text_parts)
-
-
-# --- 主流程 ---------------------------------------------------------------------
-
-def process_all_pdfs(base_dir: Path) -> None:
-    if not base_dir.exists():
-        print(f"[ERROR] Base directory not found: {base_dir}", file=sys.stderr)
+    if not RAW_PDF_DIR.exists():
+        print(f"[ERROR] Directory not found: {RAW_PDF_DIR}", file=sys.stderr)
         sys.exit(1)
 
-    pdf_files = sorted(base_dir.rglob("*.pdf"))
-
+    pdf_files = list_pdfs(RAW_PDF_DIR)
     if not pdf_files:
-        print(f"[INFO] No PDF files found under: {base_dir}")
+        print(f"[INFO] No PDF found in {RAW_PDF_DIR}")
         return
 
     for pdf_path in pdf_files:
-        try:
-            print(f"[INFO] Processing: {pdf_path}")
+        print(f"[INFO] Extracting: {pdf_path}")
 
-            raw_text = extract_pdf_raw(pdf_path)
+        raw_text = extract_raw_text(pdf_path)
+        cleaned = clean_watermark(raw_text)
 
-            # ✅ 只在這一行做「水印級清洗」，不做任何正文整理
-            cleaned_text = clean_watermark(raw_text)
+        out_path = pdf_path.with_suffix(OUTPUT_SUFFIX)
+        out_path.write_text(cleaned, encoding="utf-8")
 
-            # ✅ 你已改成：XXXXX.txt
-            out_path = pdf_path.with_suffix(".txt")
-
-            out_path.write_text(cleaned_text, encoding="utf-8")
-
-            print(f"[INFO] Wrote: {out_path}")
-
-        except Exception as exc:
-            print(f"[ERROR] Failed on {pdf_path}: {exc}", file=sys.stderr)
+        print(f"[INFO] Wrote TXT: {out_path}")
 
 
-def main() -> None:
-    process_all_pdfs(BASE_DIR)
+# === 主入口 ===
+
+def main():
+    print("[PIPELINE] Step 1: PDF → TXT")
+    pdf_to_txt_pipeline()
+
+    # 未来步骤示范：
+    # print("[PIPELINE] Step 2: LLM 标注")
+    # run_llm_annotation()
+    #
+    # print("[PIPELINE] Step 3: 条文结构组装")
+    # build_clause_json()
+    #
+    # print("[PIPELINE] Step 4: 精炼 metadata / 分析")
 
 
 if __name__ == "__main__":

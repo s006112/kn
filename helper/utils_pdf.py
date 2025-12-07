@@ -110,6 +110,22 @@ def _extract_text_with_ocr_fallback(
         logger.error("OCR fallback failed: %s", exc)
     return {}
 
+
+def extract_raw_text(pdf_path: Path) -> str:
+    """
+    使用 PyMuPDF 以最接近原始 stream 的方式抽取文字。Chunker.py 會用到此函式。
+    不做 OCR、不做任何版式修复。
+    """
+    parts: list[str] = []
+
+    with fitz.open(pdf_path) as doc:
+        for page in doc:
+            text = page.get_text("raw") or ""
+            parts.append(text)
+
+    return "".join(parts)
+
+
 # -------------------------------------------------------------------------------------
 # 封裝提取流程：對外公開的頁面文字提取接口
 # -------------------------------------------------------------------------------------

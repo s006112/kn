@@ -2,6 +2,39 @@ import re
 import unicodedata
 
 
+# ======================================================================
+# 專用：UL / IEC / ANSI 標準文件常見水印清除（不干涉其他清洗邏輯）
+# ======================================================================
+
+import re
+
+# 可持續擴充
+_STANDARD_WATERMARK_PATTERNS = [
+    r"Document Was Downloaded By .*?(?:\n|$)",
+    r"ULSE INC\. COPYRIGHTED MATERIAL .*?(?:\n|$)",
+    r"REPRODUCTION OR DISTRIBUTION WITHOUT PERMISSION FROM ULSE INC\..*?(?:\n|$)",
+    r"NOT AUTHORIZED FOR FURTHER REPRODUCTION.*?(?:\n|$)",
+]
+
+_STANDARD_WATERMARK_REGEX = re.compile(
+    "|".join(_STANDARD_WATERMARK_PATTERNS),
+    flags=re.IGNORECASE
+)
+
+def clean_watermark(text: str) -> str:
+    """
+    專門去除 UL / IEC 等安規 PDF 產出的水印。
+    完全不修改其他字符、不壓縮空白、不影響 sanitize_text 的正常運作。
+
+    適合放在：
+        - PDF → RAW TXT 的最前處
+        - sanitize_text() 之前
+    """
+    if not text:
+        return text
+    return _STANDARD_WATERMARK_REGEX.sub("", text)
+
+
 # ============================================================================
 # 文本淨化工具
 # ============================================================================
