@@ -26,8 +26,8 @@ DB_PATH = Path("data/index/metadata.sqlite")
 INDEX_PATH = Path("data/index/faiss.index")
 EMBED_MODEL = "BAAI/bge-m3"
 EMBED_BATCH_SIZE = 16
-LLM_MODEL = "gpt-4.1-mini"
-TOP_K = 20
+LLM_MODEL = "sonar-reasoning-pro"
+TOP_K = 30
 SYSTEM_PROMPT_PATH = Path("prompt/prompt_rag_system.txt")
 
 
