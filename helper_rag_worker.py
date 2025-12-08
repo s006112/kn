@@ -12,6 +12,7 @@ import sqlite3
 import json
 import numpy as np
 import faiss
+import torch
 from pathlib import Path
 from typing import Optional, Any, Dict, List, Tuple
 
@@ -36,7 +37,11 @@ SYSTEM_PROMPT_PATH = Path("prompt/prompt_rag_system.txt")
 class EmbeddingModel:
     # 保持原有的 EmbeddingModel 類
     def __init__(self, model_name: str, device: str, batch_size: int, task: str = None):
-        self.model = SentenceTransformer(model_name, device=device)
+        actual_device = device
+        if device.startswith("cuda") and not torch.cuda.is_available():
+            print("CUDA not available, falling back to CPU for embeddings.")
+            actual_device = "cpu"
+        self.model = SentenceTransformer(model_name, device=actual_device)
         self.batch_size = batch_size
 
     def embed_query(self, text):
@@ -142,16 +147,17 @@ class RagEngine:
         Performs the RAG pipeline. 
         Returns: (LLM Answer, Source Table String for debugging/logging)
         """
-        if not question.strip():
+        q = question.strip()
+        if not q:
             return "", ""
 
-        q_vec = self.embedder.embed_query(question.strip())
+        q_vec = self.embedder.embed_query(q)
         top_idx, top_scores = brute_force_knn(self.E, q_vec, TOP_K)
 
         snippets = [format_snippet(self.texts[i], self.metas[i]) for i in top_idx]
         context = "\n\n".join(snippets)
 
-        prompt = f"{context}\n\nQuestion: {question.strip()}"
+        prompt = f"{context}\n\nQuestion: {q}"
         table_str = build_similarity_table(top_idx, top_scores, self.metas, self.texts)
         
         result_text = call_llm(
