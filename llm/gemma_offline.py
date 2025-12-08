@@ -1,72 +1,45 @@
 from pathlib import Path
-
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-# model path inside container
-model_path = "/root/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752"
-# model_path = "/root/.cache/huggingface/hub/models--google--gemma-3-270m-it/snapshots/ac82b4e820549b854eebf28ce6dedaf9fdfa17b3"
-# model_path = "/root/.cache/huggingface/hub/models--google--gemma-3-4b-it"
+# ⚠️ 注意：將此路徑設置為直接包含 model.safetensors 和 tokenizer.json 的目錄。
+MODEL_PATH = "/root/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752"
+#MODEL_PATH = "/root/.cache/huggingface/hub/models--google--gemma-3-270m-it/snapshots/ac82b4e820549b854eebf28ce6dedaf9fdfa17b3"
+# MODEL_PATH = "/root/.cache/huggingface/hub/models--google--gemma-3-4b-it/snapshots/093f9f388b31de276ce2de164bdc2081324b9767"
 
+# 設置計算設備
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def resolve_snapshot_path(cache_root: str) -> str:
-    """Return the snapshot directory that actually contains the weights."""
-    base = Path(cache_root)
-    snapshots_dir = base / "snapshots"
-    refs_main = base / "refs" / "main"
-
-    if snapshots_dir.is_dir():
-        if refs_main.is_file():
-            commit_hash = refs_main.read_text().strip()
-            candidate = snapshots_dir / commit_hash
-            if candidate.is_dir():
-                return str(candidate)
-
-        snapshot_dirs = [
-            child for child in snapshots_dir.iterdir() if child.is_dir()
-        ]
-        if snapshot_dirs:
-            latest_snapshot = max(snapshot_dirs, key=lambda p: p.stat().st_mtime)
-            return str(latest_snapshot)
-
-    return str(base)
-
-
-snapshot_path = resolve_snapshot_path(model_path)
-
-tokenizer = AutoTokenizer.from_pretrained(snapshot_path, local_files_only=True)
+# 載入模型和分詞器
+tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True)
 model = AutoModelForCausalLM.from_pretrained(
-    snapshot_path,
-    dtype=torch.bfloat16,
+    MODEL_PATH,
+    torch_dtype=torch.float32,   # float32, bfloat16, int8, qint4
     device_map="auto",
     local_files_only=True
-)
+).to(DEVICE)
 
-prompt = "Please use to explain the term 'Fourier transform'."
+# 定義提示
+PROMPT = "Eleborate the concept of 'Laplace transform' followed by simple examples illustration."
+messages = [{"role": "user", "content": PROMPT}]
 
-messages = [{"role": "user", "content": prompt}]
-if getattr(tokenizer, "chat_template", None):
-    prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+# 應用聊天模板以符合 instruction-tuned 模型的要求
+if hasattr(tokenizer, "chat_template") and tokenizer.chat_template is not None:
+    PROMPT = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
-inputs = tokenizer(prompt, return_tensors="pt").to(device)
+# 準備輸入
+inputs = tokenizer(PROMPT, return_tensors="pt").to(DEVICE)
 
-gen_kwargs = {
+# 生成參數設定：強制模型生成完整內容直到達到 max_new_tokens (2048)
+GEN_KWARGS = {
     "do_sample": False,
-    "max_new_tokens": 16384,
+    "max_new_tokens":4096,
+    "pad_token_id": tokenizer.eos_token_id, 
 }
 
-eos_token_id = model.generation_config.eos_token_id
-if eos_token_id is not None:
-    gen_kwargs["eos_token_id"] = eos_token_id
-
-pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
-if pad_token_id is not None:
-    gen_kwargs["pad_token_id"] = pad_token_id
-
 with torch.no_grad():
-    outputs = model.generate(**inputs, **gen_kwargs)
+    outputs = model.generate(**inputs, **GEN_KWARGS)
 
+# 解碼並輸出結果
+# 由於啟用了 eos_token_id=None，結果可能會比較長。
 print(tokenizer.decode(outputs[0], skip_special_tokens=True))

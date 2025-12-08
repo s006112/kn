@@ -17,7 +17,7 @@ PATH_CONFIG = {
     "WATCH_FOLDER": WATCH_FOLDER,
     "AUDIO_WATCH_FOLDERS": (
         WATCH_FOLDER,
-    #    Path("/desktop/"),
+        Path("/desktop/"),
     ),
     "AUDIO_DONE_FOLDER": Path("/desktop/YT1"),
     "PRETEXT_WATCH_FOLDER": WATCH_FOLDER,

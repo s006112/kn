@@ -75,7 +75,11 @@ def _get_rag_answer_lazy(question: str) -> str:
 
     try:
         # RagEngine.answer_question 返回 (answer, table_str)
-        answer, _ = _RAG_ENGINE.answer_question(question)
+        answer, table_str = _RAG_ENGINE.answer_question(question)
+        if table_str:
+            print("\n[RAG] FAISS similarity table:\n")
+            print(table_str)
+            print()
         return answer
     except Exception as e:
         print(f"RAG Retrieval or Generation failed: {e}")
