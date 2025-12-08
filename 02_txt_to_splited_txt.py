@@ -35,11 +35,15 @@ def is_ul_header_line(s: str) -> bool:
 
     規則：
     - 完整匹配 "UL xxx"
-    - 或者以 "NMX-J" 開頭，且內容中包含 "UL xxx"
+    - 或者以 "NMX-J" 開頭，且內容中包含 "UL"
     """
-    if re.fullmatch(r"UL\s+\d+", s):
+    if re.fullmatch(r"UL\s+\d+[A-Za-z]?", s):
         return True
-    if s.startswith("NMX-J") and re.search(r"\bUL\s+\d+\b", s):
+    if s.startswith("NMX-J") and "UL" in s:
+        return True
+    if s.startswith("CSA") and re.search(r"\bUL\s+\d+\b", s):
+        return True
+    if s.startswith("ANSI") and re.search(r"\bUL\s+\d+\b", s):
         return True
     return False
 
