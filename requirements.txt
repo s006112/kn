@@ -7,7 +7,7 @@ aria2c   # file download acceleration 2.4.14 (amd64)
 
 # download wheels
 pip index versions xxxxx # check versions
-pip download -d /wheels --only-binary=:all: sentence-transformers==5.1.0
+pip download -d /wheels --only-binary=:all: bitsandbytes
 
 # offline install apt
 sudo apt-get install -y --no-download --fix-missing python3-pip # install from cached .deb
@@ -23,9 +23,9 @@ pip3 install --no-index --find-links=/wheels watchdog==6.0.0 perplexityai==0.20.
 pip3 install --no-index --find-links=/wheels openai-whisper==20240930 # 只有 源码包（.tar.gz）
 pip3 install --no-index --find-links=/wheels scipy==1.15.3 opencv_python_headless==4.12.0.88 # curve_extract
 pip3 install --no-index --find-links=/wheels kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
-pip3 install --no-index --find-links=/wheels transformers==4.57.1 # llm
+pip3 install --no-index --find-links=/wheels sentence-transformers==5.1.0 transformers==4.57.1 # llm
 pip3 install --no-index --find-links=/wheels python-docx==0.8.11 openpyxl==3.1.5 xlrd==2.0.1 einops==0.8.1 numpy==1.26.2 diffusers==0.35.2 faiss-gpu==1.7.2 google-genai==1.52.0 perplexityai==0.20.0 
-pip3 install --no-index --find-links=/wheels sentence-transformers==5.1.0
+pip3 install --no-index --find-links=/wheels bitsandbytes==0.48.2
 pip3 install --no-deps -U yt-dlp --break-system-packages
 
 
@@ -90,6 +90,8 @@ gradio==5.44.1 # need re-write to adapt gradio==5.46.0
 fastapi==0.116.1  # High-performance web framework for building APIs
 uvicorn==0.35.0  # ASGI server for running FastAPI and other apps
 
+# LLM
+bitsandbytes==0.48.2
 
 # stable diffusion
 diffusers==0.35.2 # Diffusion models for image generation and manipulation
