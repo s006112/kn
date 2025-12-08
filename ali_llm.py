@@ -23,7 +23,7 @@ except ImportError:
 
 # RAG 實例，首次使用時才會初始化 (Lazy Initialization)
 _RAG_ENGINE: Optional[RagEngine] = None
-_RAG_CLASSIFICATION_MODEL = "gpt-4o-mini" # 使用成本較低的模型進行分類
+_RAG_CLASSIFICATION_MODEL = "sonar" # 使用成本較低的模型進行分類
 
 
 # -----------------------------------------------------------------------------
@@ -92,10 +92,7 @@ def generate_reply(
     system_prompt_path: Path,
     model: str,
 ) -> str:
-    """
-    對外主入口：
-    ...
-    """
+    """對外主入口：根據 email 內容產生回覆。"""
     system_prompt = load_prompt_text(system_prompt_path.parent, system_prompt_path.name)
     if system_prompt is None:
         raise FileNotFoundError(f"Prompt file not found: {system_prompt_path}")
@@ -103,28 +100,17 @@ def generate_reply(
     subject = (email.subject or "").strip()
     body_text = (email.body_text or "").strip()
 
-    # 2) Agentic Routing: 判斷是否需要安規知識
-    rag_context = ""
+    # 1) Agentic Routing: 判斷是否需要安規知識
     if _is_safety_regulation_query(subject, body_text):
         print(f"   [Router] Detected safety inquiry. Invoking RAG...")
-        # 查詢整個郵件正文 (Question)
         rag_answer = _get_rag_answer_lazy(body_text)
-        
+        # 若 RAG 成功給出專業回答，直接作為回信內容返回
         if rag_answer and "[RAG Error" not in rag_answer:
-            # 將 RAG 答案包裝成一個內部參考，注入到 Prompt
-            # LLM 會被指示使用這段內容來回答問題
-            rag_context = (
-                f"\n\n--- INTERNAL REFERENCE (DO NOT SHOW TO USER) ---\n"
-                f"Use this information to answer the user's inquiry about safety standards/regulations:\n"
-                f"{rag_answer}\n"
-                f"---------------------------------------------------\n"
-            )
-            print(f"   [Agent] RAG context successfully injected.")
-        else:
-             print(f"   [Agent] RAG detected, but no useful answer found or error occurred.")
+            print(f"   [Agent] RAG answer generated. Using it as reply body.")
+            return rag_answer.strip()
+        print(f"   [Agent] RAG detected, but no useful answer found or error occurred. Falling back to general model.")
 
-
-    # 3) 把主旨、正文和 RAG Context 組合成 user_text
+    # 2) 非 RAG 或 RAG 失敗：使用一般模型，以主旨與正文產生回覆
     parts: list[str] = []
     
     if subject:
@@ -132,14 +118,10 @@ def generate_reply(
     
     if body_text:
         parts.append(body_text)
-    
-    if rag_context:
-        # RAG Context 放在 User Text 的結尾，用於指導 LLM 回信
-        parts.append(rag_context)
         
     user_text = "\n\n".join(parts)
 
-    # 4) 呼叫 LLM
+    # 3) 呼叫一般 LLM
     reply_body = call_llm(
         model=model,
         system_prompt=system_prompt,

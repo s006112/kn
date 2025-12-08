@@ -28,7 +28,7 @@ def _default_poll_interval_minutes(now: datetime | None = None) -> int:
     current = now or datetime.now(tz=_HKT_ZONE)
     local_time = current.timetz().replace(tzinfo=None)
     if _DAY_START <= local_time < _DAY_END:
-        return 2
+        return 1
     return 10
 
 
