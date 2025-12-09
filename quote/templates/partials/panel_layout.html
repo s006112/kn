@@ -1,0 +1,48 @@
+<!-- Panel layout visualization partial (templates/partials/panel_layout.html). -->
+{% set best_row = best_row if best_row is defined else (panelizer_summary.rows[0] if panelizer_summary and panelizer_summary.rows else none) %}
+{% set valid = best_row and best_row.nbw and best_row.nbl and best_row.panel_width and best_row.panel_length %}
+{% if valid %}
+<section id="panelizer-layout-visual" class="panelizer-layout">
+  <div class="panelizer-layout-head">
+    <h3 class="panelizer-layout-title">Best panel layout</h3>
+    <div class="panelizer-layout-summary mono">
+      Panel WxL: {{ best_row.nbw }}×{{ best_row.nbl }} boards · Board WxL: {{ best_row.nw }}×{{ best_row.nl }} singles · Utilization: {{ "%.2f%%"|format(best_row.utilization * 100) }}
+      {% if best_row.board_rot or best_row.single_rot %}
+      · Rotation: {{ 'B' if best_row.board_rot else '' }}{{ 'S' if best_row.single_rot else '' }}
+      {% endif %}
+    </div>
+  </div>
+  <div class="panel-visual-wrapper">
+    <div class="panel-visual-surface" aria-label="Panel layout" style="aspect-ratio: {{ best_row.panel_width|float }}/{{ best_row.panel_length|float }};">
+      {% set board_w_pct = (best_row.board_w / best_row.panel_width * 100) if best_row.panel_width else 0 %}
+      {% set board_l_pct = (best_row.board_l / best_row.panel_length * 100) if best_row.panel_length else 0 %}
+      {% set board_positions = best_row.placements.boards if best_row.placements is defined and best_row.placements.boards is defined else [] %}
+      {% if board_positions %}
+        {# nbl corresponds to rows (length) and nbw to columns (width) #}
+        {% for placement in board_positions %}
+          {% set left_pct = (placement.x / best_row.panel_width * 100) if best_row.panel_width else 0 %}
+          {% set top_pct = (placement.y / best_row.panel_length * 100) if best_row.panel_length else 0 %}
+          {% set row_index = (loop.index0 // best_row.nbw) + 1 if best_row.nbw else loop.index %}
+          {% set col_index = (loop.index0 % best_row.nbw) + 1 if best_row.nbw else loop.index %}
+          <div class="panel-visual-board" style="width: {{ "%.4f"|format(board_w_pct) }}%; height: {{ "%.4f"|format(board_l_pct) }}%; left: {{ "%.4f"|format(left_pct) }}%; top: {{ "%.4f"|format(top_pct) }}%;">
+            <span class="panel-visual-badge">r{{ row_index }}c{{ col_index }}</span>
+            <span class="panel-visual-meta">{{ best_row.nw }}×{{ best_row.nl }} singles</span>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="panel-visual-fallback-grid" style="grid-template-columns: repeat({{ best_row.nbw }}, 1fr); grid-template-rows: repeat({{ best_row.nbl }}, 1fr);">
+          {% for j in range(best_row.nbl) %}
+            {% for i in range(best_row.nbw) %}
+              <div class="panel-visual-board">
+                <span class="panel-visual-badge">r{{ j + 1 }}c{{ i + 1 }}</span>
+                <span class="panel-visual-meta">{{ best_row.nw }}×{{ best_row.nl }} singles</span>
+              </div>
+            {% endfor %}
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+    <p class="panel-visual-footnote">Schematic scale based on panel and board dimensions; gaps and margins follow placement data when available.</p>
+  </div>
+</section>
+{% endif %}

@@ -40,5 +40,9 @@
     </tbody>
   </table>
   <p class="small" id="panelizer-results-message">{{ panelizer_summary.message }}</p>
+  {% if panelizer_summary.rows %}
+    {% set best_row = panelizer_summary.rows[0] %}
+    {% include "partials/panel_layout.html" %}
+  {% endif %}
   {% endif %}
 </section>
