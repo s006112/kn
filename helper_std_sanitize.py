@@ -12,15 +12,15 @@ def clean_overlay(text: str) -> str:
         # 日期 + 年份 + 可選 UL 編號，例如：JANUARY 31, 2025 - UL20
         # 不強制行首行尾，只要行內出現就視為覆蓋文字
         r"[A-Z][A-Z ]+\s+\d{1,2},\s+\d{4}(?:\s*[–-]\s*UL\s*\d+[A-Za-z]?)?",
-        r"Document Was Downloaded By .*?(?:\r?\n|$)",
-        r"REPRODUCTION OR DISTRIBUTION WITHOUT .*?(?:\r?\n|$)",
-        r"NOT AUTHORIZED FOR FURTHER.*?(?:\r?\n|$)",
-        r"COPYRIGHTED MATERIAL.*?(?:\r?\n|$)",
+        r"Document Was Downloaded By .*",
+        r"NOT AUTHORIZED FOR FURTHER.*",
+        r"REPRODUCTION OR DISTRIBUTION WITHOUT .*",
     ]
     overlay_regex = re.compile("|".join(patterns), flags=re.IGNORECASE)
-    cleaned = overlay_regex.sub("", text)
-    # 移除因覆蓋文字被刪除而產生的多餘空行（不壓縮一般內容間正常的單一換行）
-    cleaned = re.sub(r"\n{2,}", "\n", cleaned)
+    # 改為：只要某行中出現覆蓋文字，整行刪除
+    lines = text.splitlines(keepends=True)
+    kept_lines = [line for line in lines if not overlay_regex.search(line)]
+    cleaned = "".join(kept_lines)
     return cleaned
 
 
