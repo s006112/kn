@@ -16,7 +16,6 @@ import sys
 
 # --- helper modules ---
 from helper.utils_pdf import extract_raw_text
-from helper.utils_text_sanitize import clean_watermark
 
 
 # === 配置 ===
@@ -57,13 +56,12 @@ def pdf_to_txt_pipeline() -> None:
         print(f"[INFO] Extracting: {pdf_path}")
 
         raw_text = extract_raw_text(pdf_path)
-        cleaned = clean_watermark(raw_text)
 
         # 生成相对路径，写入到单独的 TXT 目录
         relative_path = pdf_path.relative_to(RAW_PDF_DIR)
         out_path = (OUTPUT_TXT_DIR / relative_path).with_suffix(OUTPUT_SUFFIX)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(cleaned, encoding="utf-8")
+        out_path.write_text(raw_text, encoding="utf-8")
 
         print(f"[INFO] Wrote TXT: {out_path}")
 
