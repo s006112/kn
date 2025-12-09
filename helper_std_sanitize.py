@@ -10,14 +10,18 @@ def clean_overlay(text: str) -> str:
         return text
     patterns = [
         # 日期 + 年份 + 可選 UL 編號，例如：JANUARY 31, 2025 - UL20
-        r"^[A-Z]+\s+\d{1,2},\s+\d{4}.*?(- UL\d+)?$",
-        r"Document Was Downloaded By .*?(?:\n|$)",
-        r"ULSE INC\. COPYRIGHTED MATERIAL .*?(?:\n|$)",
-        r"REPRODUCTION OR DISTRIBUTION WITHOUT PERMISSION FROM ULSE INC\..*?(?:\n|$)",
-        r"NOT AUTHORIZED FOR FURTHER REPRODUCTION.*?(?:\n|$)",
+        # 不強制行首行尾，只要行內出現就視為覆蓋文字
+        r"[A-Z][A-Z ]+\s+\d{1,2},\s+\d{4}(?:\s*[–-]\s*UL\s*\d+[A-Za-z]?)?",
+        r"Document Was Downloaded By .*?(?:\r?\n|$)",
+        r"REPRODUCTION OR DISTRIBUTION WITHOUT .*?(?:\r?\n|$)",
+        r"NOT AUTHORIZED FOR FURTHER.*?(?:\r?\n|$)",
+        r"COPYRIGHTED MATERIAL.*?(?:\r?\n|$)",
     ]
     overlay_regex = re.compile("|".join(patterns), flags=re.IGNORECASE)
-    return overlay_regex.sub("", text)
+    cleaned = overlay_regex.sub("", text)
+    # 移除因覆蓋文字被刪除而產生的多餘空行（不壓縮一般內容間正常的單一換行）
+    cleaned = re.sub(r"\n{2,}", "\n", cleaned)
+    return cleaned
 
 
 # === 分頁相關工具（供 txt_to_splited_txt 等模塊調用）===
