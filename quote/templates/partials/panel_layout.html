@@ -4,6 +4,7 @@
 {% set panel_cols = best_row.nbw if best_row else 0 %}
 {% set singles_rows = best_row.nl if best_row else 0 %}
 {% set singles_cols = best_row.nw if best_row else 0 %}
+{% set panel_aspect_ratio = (best_row.panel_width / best_row.panel_length) if best_row and best_row.panel_width and best_row.panel_length else 1 %} {# width / height; height derives from physical ratio #}
 {% set valid = best_row and panel_cols and panel_rows and best_row.panel_width and best_row.panel_length %}
 {% if valid %}
 <section id="panelizer-layout-visual" class="panelizer-layout">
@@ -17,7 +18,7 @@
     </div>
   </div>
   <div class="panel-visual-wrapper">
-    <div class="panel-visual-surface" aria-label="Panel layout" style="aspect-ratio: {{ best_row.panel_width|float }}/{{ best_row.panel_length|float }};">
+    <div class="panel-visual-surface" aria-label="Panel layout" style="aspect-ratio: {{ "%.6f"|format(panel_aspect_ratio) }};"> {# Width is 100%; height follows panel aspect ratio to preserve physical scaling. #}
       {% set board_w_pct = (best_row.board_w / best_row.panel_width * 100) if best_row.panel_width else 0 %}
       {% set board_l_pct = (best_row.board_l / best_row.panel_length * 100) if best_row.panel_length else 0 %}
       {% set board_positions = best_row.placements.boards if best_row.placements is defined and best_row.placements.boards is defined else [] %}

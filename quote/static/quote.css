@@ -162,7 +162,6 @@ form section .grid {
 .panel-visual-surface {
   position: relative;
   width: 100%;
-  max-height: 520px;
   margin: 0 auto;
   border: 1px dashed #d1d5db;
   border-radius: 8px;
@@ -222,12 +221,6 @@ form section .grid {
   margin: 8px 0 0;
   color: #4b5563;
   font-size: 0.85rem;
-}
-
-@media (max-width: 600px) {
-  .panel-visual-surface {
-    max-height: 360px;
-  }
 }
 
 /* Error/alert styling */
