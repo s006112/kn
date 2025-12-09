@@ -188,20 +188,6 @@ form section .grid {
   overflow: hidden;
 }
 
-.panel-visual-board .panel-visual-badge {
-  align-self: flex-start;
-  background: #1d4ed8;
-  color: #fff;
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-size: 0.75rem;
-}
-
-.panel-visual-board .panel-visual-meta {
-  font-size: 0.75rem;
-  color: #374151;
-}
-
 .panel-visual-board--with-singles {
   background: #e7efff;
 }

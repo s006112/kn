@@ -28,8 +28,6 @@
           {% set top_pct = (placement.y / best_row.panel_length * 100) if best_row.panel_length else 0 %}
           {% set row_index0 = panel_cols and (loop.index0 // panel_cols) or 0 %}
           {% set col_index0 = panel_cols and (loop.index0 % panel_cols) or 0 %}
-          {% set row_index = row_index0 + 1 %}
-          {% set col_index = col_index0 + 1 %}
           {% set is_top_left = (row_index0 == 0 and col_index0 == 0 and singles_rows and singles_cols) %}
           <div class="panel-visual-board{{ ' panel-visual-board--with-singles' if is_top_left else '' }}" style="width: {{ "%.4f"|format(board_w_pct) }}%; height: {{ "%.4f"|format(board_l_pct) }}%; left: {{ "%.4f"|format(left_pct) }}%; top: {{ "%.4f"|format(top_pct) }}%;">
             {% if is_top_left %}
@@ -41,8 +39,6 @@
                 {% endfor %}
               </div>
             {% endif %}
-            <span class="panel-visual-badge">r{{ row_index }}c{{ col_index }}</span>
-            <span class="panel-visual-meta">{{ singles_rows }}×{{ singles_cols }} singles</span>
           </div>
         {% endfor %}
       {% else %}
@@ -60,8 +56,6 @@
                     {% endfor %}
                   </div>
                 {% endif %}
-                <span class="panel-visual-badge">r{{ j + 1 }}c{{ i + 1 }}</span>
-                <span class="panel-visual-meta">{{ singles_rows }}×{{ singles_cols }} singles</span>
               </div>
             {% endfor %}
           {% endfor %}
