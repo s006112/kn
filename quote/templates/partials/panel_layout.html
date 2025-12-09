@@ -1,12 +1,16 @@
 <!-- Panel layout visualization partial (templates/partials/panel_layout.html). -->
 {% set best_row = best_row if best_row is defined else (panelizer_summary.rows[0] if panelizer_summary and panelizer_summary.rows else none) %}
-{% set valid = best_row and best_row.nbw and best_row.nbl and best_row.panel_width and best_row.panel_length %}
+{% set panel_rows = best_row.nbl if best_row else 0 %} {# first number = rows (vertical count), second = columns (horizontal count) #}
+{% set panel_cols = best_row.nbw if best_row else 0 %}
+{% set singles_rows = best_row.nl if best_row else 0 %}
+{% set singles_cols = best_row.nw if best_row else 0 %}
+{% set valid = best_row and panel_cols and panel_rows and best_row.panel_width and best_row.panel_length %}
 {% if valid %}
 <section id="panelizer-layout-visual" class="panelizer-layout">
   <div class="panelizer-layout-head">
     <h3 class="panelizer-layout-title">Best panel layout</h3>
     <div class="panelizer-layout-summary mono">
-      Panel WxL: {{ best_row.nbw }}×{{ best_row.nbl }} boards · Board WxL: {{ best_row.nw }}×{{ best_row.nl }} singles · Utilization: {{ "%.2f%%"|format(best_row.utilization * 100) }}
+      Panel WxL: {{ panel_rows }}×{{ panel_cols }} boards · Board WxL: {{ singles_rows }}×{{ singles_cols }} singles · Utilization: {{ "%.2f%%"|format(best_row.utilization * 100) }}
       {% if best_row.board_rot or best_row.single_rot %}
       · Rotation: {{ 'B' if best_row.board_rot else '' }}{{ 'S' if best_row.single_rot else '' }}
       {% endif %}
@@ -18,31 +22,53 @@
       {% set board_l_pct = (best_row.board_l / best_row.panel_length * 100) if best_row.panel_length else 0 %}
       {% set board_positions = best_row.placements.boards if best_row.placements is defined and best_row.placements.boards is defined else [] %}
       {% if board_positions %}
-        {# nbl corresponds to rows (length) and nbw to columns (width) #}
+        {# Row/col mapping: rows follow panel length axis (nbl), cols follow width (nbw). Only the top-left board shows singles. #}
         {% for placement in board_positions %}
           {% set left_pct = (placement.x / best_row.panel_width * 100) if best_row.panel_width else 0 %}
           {% set top_pct = (placement.y / best_row.panel_length * 100) if best_row.panel_length else 0 %}
-          {% set row_index = (loop.index0 // best_row.nbw) + 1 if best_row.nbw else loop.index %}
-          {% set col_index = (loop.index0 % best_row.nbw) + 1 if best_row.nbw else loop.index %}
-          <div class="panel-visual-board" style="width: {{ "%.4f"|format(board_w_pct) }}%; height: {{ "%.4f"|format(board_l_pct) }}%; left: {{ "%.4f"|format(left_pct) }}%; top: {{ "%.4f"|format(top_pct) }}%;">
+          {% set row_index0 = panel_cols and (loop.index0 // panel_cols) or 0 %}
+          {% set col_index0 = panel_cols and (loop.index0 % panel_cols) or 0 %}
+          {% set row_index = row_index0 + 1 %}
+          {% set col_index = col_index0 + 1 %}
+          {% set is_top_left = (row_index0 == 0 and col_index0 == 0 and singles_rows and singles_cols) %}
+          <div class="panel-visual-board{{ ' panel-visual-board--with-singles' if is_top_left else '' }}" style="width: {{ "%.4f"|format(board_w_pct) }}%; height: {{ "%.4f"|format(board_l_pct) }}%; left: {{ "%.4f"|format(left_pct) }}%; top: {{ "%.4f"|format(top_pct) }}%;">
+            {% if is_top_left %}
+              <div class="panel-visual-singles-grid" style="grid-template-rows: repeat({{ singles_rows }}, 1fr); grid-template-columns: repeat({{ singles_cols }}, 1fr);">
+                {% for sr in range(singles_rows) %}
+                  {% for sc in range(singles_cols) %}
+                    <div class="panel-visual-single" aria-hidden="true"></div>
+                  {% endfor %}
+                {% endfor %}
+              </div>
+            {% endif %}
             <span class="panel-visual-badge">r{{ row_index }}c{{ col_index }}</span>
-            <span class="panel-visual-meta">{{ best_row.nw }}×{{ best_row.nl }} singles</span>
+            <span class="panel-visual-meta">{{ singles_rows }}×{{ singles_cols }} singles</span>
           </div>
         {% endfor %}
       {% else %}
-        <div class="panel-visual-fallback-grid" style="grid-template-columns: repeat({{ best_row.nbw }}, 1fr); grid-template-rows: repeat({{ best_row.nbl }}, 1fr);">
-          {% for j in range(best_row.nbl) %}
-            {% for i in range(best_row.nbw) %}
-              <div class="panel-visual-board">
+        <div class="panel-visual-fallback-grid" style="grid-template-columns: repeat({{ panel_cols }}, 1fr); grid-template-rows: repeat({{ panel_rows }}, 1fr);">
+          {% for j in range(panel_rows) %}
+            {% for i in range(panel_cols) %}
+              {% set is_top_left = (j == 0 and i == 0 and singles_rows and singles_cols) %}
+              <div class="panel-visual-board{{ ' panel-visual-board--with-singles' if is_top_left else '' }}">
+                {% if is_top_left %}
+                  <div class="panel-visual-singles-grid" style="grid-template-rows: repeat({{ singles_rows }}, 1fr); grid-template-columns: repeat({{ singles_cols }}, 1fr);">
+                    {% for sr in range(singles_rows) %}
+                      {% for sc in range(singles_cols) %}
+                        <div class="panel-visual-single" aria-hidden="true"></div>
+                      {% endfor %}
+                    {% endfor %}
+                  </div>
+                {% endif %}
                 <span class="panel-visual-badge">r{{ j + 1 }}c{{ i + 1 }}</span>
-                <span class="panel-visual-meta">{{ best_row.nw }}×{{ best_row.nl }} singles</span>
+                <span class="panel-visual-meta">{{ singles_rows }}×{{ singles_cols }} singles</span>
               </div>
             {% endfor %}
           {% endfor %}
         </div>
       {% endif %}
     </div>
-    <p class="panel-visual-footnote">Schematic scale based on panel and board dimensions; gaps and margins follow placement data when available.</p>
+    <p class="panel-visual-footnote">Schematic scale based on panel and board dimensions; first number denotes rows, second columns. Gaps and margins follow placement data when available.</p>
   </div>
 </section>
 {% endif %}

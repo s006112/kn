@@ -185,6 +185,7 @@ form section .grid {
   font-size: 0.85rem;
   min-width: 24px;
   min-height: 24px;
+  overflow: hidden;
 }
 
 .panel-visual-board .panel-visual-badge {
@@ -199,6 +200,28 @@ form section .grid {
 .panel-visual-board .panel-visual-meta {
   font-size: 0.75rem;
   color: #374151;
+}
+
+.panel-visual-board--with-singles {
+  background: #e7efff;
+}
+
+.panel-visual-singles-grid {
+  flex: 1 1 auto;
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #dbeafe;
+  border-radius: 4px;
+  background: #fff;
+  min-height: 28px;
+}
+
+.panel-visual-single {
+  background: #eef2ff;
+  border: 1px solid #cbd5e1;
+  border-radius: 2px;
 }
 
 .panel-visual-fallback-grid {
