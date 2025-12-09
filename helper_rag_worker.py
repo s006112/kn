@@ -96,28 +96,19 @@ def brute_force_knn(E: np.ndarray, q: np.ndarray, k: int):
 
 def build_similarity_table(top_idx, top_scores, metas, texts):
     # (實現與 20_rag.py 中 build_similarity_table 相同)
-    table = ["| score | doc | page | text |", "|---:|---|---|---|"]
+    table = ["| score | doc | page | word |", "|---:|---|---:|---:|"]
+    total_words = 0
     for i, s in zip(top_idx, top_scores):
         meta = metas[i] or {}
         doc = meta.get("doc_code")
         page = meta.get("page")
-        full_text = texts[i] or ""
-        preview = full_text[:10]
-        if len(full_text) > 10:
-            preview += "...."
-        table.append(f"| {float(s):.4f} | {doc} | {page} | {preview} |")
+        # 從 metadata 中直接讀取 word 數
+        word_count = meta.get("word", 0) or 0
+        total_words += int(word_count)
+        table.append(f"| {float(s):.4f} | {doc} | {page} | {word_count} |")
+    # 在表格之後加一行總詞數
+    table.append(f"Total word count: {total_words}")
     return "\n".join(table)
-
-
-def format_snippet(text: str, meta: dict) -> str:
-    # (實現與 20_rag.py 中 format_snippet 相同)
-    if not isinstance(meta, dict):
-        meta = {}
-    doc = meta.get("doc_code", "(doc)")
-    loc = meta.get("location_path", "(loc)")
-    heading = (meta.get("heading") or "").strip()
-    h_part = f" — {heading}" if heading else ""
-    return f"[{doc} {loc}{h_part}]\n{text}"
 
 
 # ─── 核心類別 ──────────────────────────────
@@ -154,7 +145,8 @@ class RagEngine:
         q_vec = self.embedder.embed_query(q)
         top_idx, top_scores = brute_force_knn(self.E, q_vec, TOP_K)
 
-        snippets = [format_snippet(self.texts[i], self.metas[i]) for i in top_idx]
+        # 直接使用原始文本作為 snippet，前綴已在 03_txt_to_page_blocks.py 中注入
+        snippets = [self.texts[i] for i in top_idx]
         context = "\n\n".join(snippets)
 
         prompt = f"{context}\n\nQuestion: {q}"
