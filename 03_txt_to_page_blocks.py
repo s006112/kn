@@ -33,7 +33,8 @@ def main() -> None:
                 if not text_body:
                     buf = []
                     return
-                injected_prefix = f"UL standard code: {file_id}, page: {current_page}. "
+                # 为每个块注入标准编号与页码前缀
+                injected_prefix = f"UL standard: {file_id}, page: {current_page}. "
                 text = injected_prefix + text_body
                 block = {
                     "block_id": f"{file_id}_p{current_page:04d}",
