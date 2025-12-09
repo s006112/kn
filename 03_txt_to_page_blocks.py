@@ -29,10 +29,12 @@ def main() -> None:
                 nonlocal buf, current_page
                 if not buf:
                     return
-                text = "\n".join(buf).strip()
-                if not text:
+                text_body = "\n".join(buf).strip()
+                if not text_body:
                     buf = []
                     return
+                injected_prefix = f"UL standard code: {file_id}\npage: {current_page}\n"
+                text = injected_prefix + "\n" + text_body
                 block = {
                     "block_id": f"{file_id}_p{current_page:04d}",
                     "file_id": file_id,
