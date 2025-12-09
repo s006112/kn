@@ -29,7 +29,7 @@ def main() -> None:
                 nonlocal buf, current_page
                 if not buf:
                     return
-                text_body = "\n".join(buf).strip()
+                text_body = " ".join(buf).strip()
                 if not text_body:
                     buf = []
                     return
