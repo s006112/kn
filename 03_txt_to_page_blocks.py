@@ -33,8 +33,8 @@ def main() -> None:
                 if not text_body:
                     buf = []
                     return
-                injected_prefix = f"UL standard code: {file_id}\npage: {current_page}\n"
-                text = injected_prefix + "\n" + text_body
+                injected_prefix = f"UL standard code: {file_id}, page: {current_page}. "
+                text = injected_prefix + text_body
                 block = {
                     "block_id": f"{file_id}_p{current_page:04d}",
                     "file_id": file_id,
