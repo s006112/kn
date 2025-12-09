@@ -21,7 +21,7 @@ import sys
 
 # === 配置 ===
 
-TXT_ROOT = Path("data/raw/standard")   # chunker.py 輸出的 txt 所在目錄
+TXT_ROOT = Path("data/raw/standard/txt")   # chunker.py 輸出的 txt 所在目錄
 INPUT_SUFFIX = ".txt"
 OUTPUT_SUFFIX = ".page_splited"
 
@@ -48,7 +48,14 @@ def is_ul_header_line(s: str) -> bool:
     return False
 
 
+
+# 新增一个噪音匹配模式 (根据你的文档特征定制)
+# 匹配像 "JANUARY 31, 2025 - UL20" 或单纯的日期行
+NOISE_DATE_RE = re.compile(r"^[A-Z]+\s+\d{1,2},\s+\d{4}.*?(- UL\d+)?$")
+
 def apply_page_splitting(text: str) -> str:
+    lines = text.splitlines()
+    out_lines: list[str] = []
     """
     規則（更新版）：
     - 兩行一組，只要同時出現：
@@ -60,13 +67,15 @@ def apply_page_splitting(text: str) -> str:
     - 其他行原樣保留
     - 不依賴日期行
     """
-    lines = text.splitlines()
-    out_lines: list[str] = []
-
     i = 0
     while i < len(lines):
         line = lines[i]
         s = line.strip()
+
+        # [新增优化]：如果这行是日期噪音，直接跳过 (不写入 out_lines)
+        if NOISE_DATE_RE.match(s):
+            i += 1
+            continue
 
         # Case 1: 當前行是純數字，下一行是 "UL xxx"
         if s.isdigit() and i + 1 < len(lines):
