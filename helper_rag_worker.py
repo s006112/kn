@@ -28,7 +28,7 @@ INDEX_PATH = Path("data/index/faiss.index")
 EMBED_MODEL = "BAAI/bge-m3"
 EMBED_BATCH_SIZE = 16
 LLM_MODEL = "sonar-reasoning-pro"
-TOP_K = 30
+TOP_K = 10
 SYSTEM_PROMPT_PATH = Path("prompt/prompt_rag_system.txt")
 
 

@@ -29,12 +29,15 @@ def main() -> None:
                 nonlocal buf, current_page
                 if not buf:
                     return
+                # 从文件名中抽取标准号，如 s1581_4 -> 1581, s50E_4 -> 50E
+                m_std = re.match(r"^s(\d+[A-Za-z]?)_\d+$", file_id)
+                standard_number = m_std.group(1) if m_std else file_id
                 text_body = " ".join(buf).strip()
                 if not text_body:
                     buf = []
                     return
                 # 为每个块注入标准编号与页码前缀
-                injected_prefix = f"UL standard: {file_id}, page: {current_page}. "
+                injected_prefix = f"UL {standard_number}, page {current_page} "
                 text = injected_prefix + text_body
                 block = {
                     "block_id": f"{file_id}_p{current_page:04d}",
