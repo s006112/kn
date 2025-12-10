@@ -1,7 +1,7 @@
 from huggingface_hub import list_repo_files, hf_hub_download
 
-repo = "stabilityai/stable-diffusion-3.5-medium"
-local_dir = "/workspaces/sd35_manual"
+repo = "google/embeddinggemma-300m"
+local_dir = "/workspaces/kn/data/google-embeddinggemma-300m"
 
 files = list_repo_files(repo)
 
