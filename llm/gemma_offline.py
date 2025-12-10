@@ -1,21 +1,24 @@
 from pathlib import Path
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
 # ⚠️ 注意：將此路徑設置為直接包含 model.safetensors 和 tokenizer.json 的目錄。
-#MODEL_PATH = "/root/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752"
 #MODEL_PATH = "/root/.cache/huggingface/hub/models--google--gemma-3-270m-it/snapshots/ac82b4e820549b854eebf28ce6dedaf9fdfa17b3"
-MODEL_PATH = "/root/.cache/huggingface/hub/models--google--gemma-3-4b-it/"
+MODEL_PATH = "/root/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752"
+#MODEL_PATH = "/root/.cache/huggingface/hub/models--google--gemma-3-4b-it/"
 
 # 設置計算設備
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # 載入模型和分詞器
 tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True)
+
+#    - 這是原始代碼中不使用量化時最穩定的載入方式。
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_PATH,
-    torch_dtype=torch.bfloat16,   # float32, bfloat16, int8, qint4
+    dtype=torch.float32,   # float32, bfloat16
     device_map="auto",
+    # 移除 quantization_config
     local_files_only=True
 )
 
@@ -40,6 +43,5 @@ GEN_KWARGS = {
 with torch.no_grad():
     outputs = model.generate(**inputs, **GEN_KWARGS)
 
-# 解碼並輸出結果
 # 由於啟用了 eos_token_id=None，結果可能會比較長。
 print(tokenizer.decode(outputs[0], skip_special_tokens=True))
