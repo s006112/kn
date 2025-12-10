@@ -25,8 +25,21 @@ pip3 install --no-index --find-links=/wheels scipy==1.15.3 opencv_python_headles
 pip3 install --no-index --find-links=/wheels kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
 pip3 install --no-index --find-links=/wheels sentence-transformers==5.1.0 transformers==4.57.1 # llm
 pip3 install --no-index --find-links=/wheels python-docx==0.8.11 openpyxl==3.1.5 xlrd==2.0.1 einops==0.8.1 numpy==1.26.2 diffusers==0.35.2 faiss-gpu==1.7.2 google-genai==1.52.0 perplexityai==0.20.0 
-pip3 install --no-index --find-links=/wheels bitsandbytes==0.48.2
+pip install --no-index --find-links=/wheels mistral-common==1.8.6
 pip3 install --no-deps -U yt-dlp --break-system-packages
+
+
+
+root@2fd775fda3fe:/workspaces/kn# pip install mistral-common
+Collecting mistral-common
+  Downloading mistral_common-1.8.6-py3-none-any.whl (6.5 MB)
+     ━━╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 0.4/6.5 MB 292.7 kB/s eta 0:00:22
+root@2fd775fda3fe:/workspaces/kn# pip3 install --no-index --find-links=/wheels mistral-common
+Looking in links: /wheels
+ERROR: Could not find a version that satisfies the requirement mistral-common (from versions: none)
+ERROR: No matching distribution found for mistral-common
+
+
 
 
 sudo dpkg -i /offline-deb/*.deb || true # 强制解压全部 .deb（不检查依赖）
