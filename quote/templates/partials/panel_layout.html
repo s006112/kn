@@ -4,7 +4,7 @@
 {% set panel_cols = best_row.nbw if best_row else 0 %}
 {% set singles_rows = best_row.nl if best_row else 0 %}
 {% set singles_cols = best_row.nw if best_row else 0 %}
-{% set panel_aspect_ratio = (best_row.panel_width / best_row.panel_length) if best_row and best_row.panel_width and best_row.panel_length else 1 %} {# width / height; height derives from physical ratio #}
+{% set panel_aspect_ratio = (best_row.panel_length / best_row.panel_width) if best_row and best_row.panel_width and best_row.panel_length else 1 %} {# width / height; height derives from physical ratio #}
 {% set valid = best_row and panel_cols and panel_rows and best_row.panel_width and best_row.panel_length %}
 {% if valid %}
 <section id="panelizer-layout-visual" class="panelizer-layout">
@@ -19,20 +19,20 @@
   </div>
   <div class="panel-visual-wrapper">
     <div class="panel-visual-surface" aria-label="Panel layout" style="aspect-ratio: {{ "%.6f"|format(panel_aspect_ratio) }};"> {# Width is 100%; height follows panel aspect ratio to preserve physical scaling. #}
-      {% set board_w_pct = (best_row.board_w / best_row.panel_width * 100) if best_row.panel_width else 0 %}
-      {% set board_l_pct = (best_row.board_l / best_row.panel_length * 100) if best_row.panel_length else 0 %}
+      {% set board_w_pct = (best_row.board_l / best_row.panel_length * 100) if best_row.panel_length else 0 %}
+      {% set board_l_pct = (best_row.board_w / best_row.panel_width * 100) if best_row.panel_width else 0 %}
       {% set board_positions = best_row.placements.boards if best_row.placements is defined and best_row.placements.boards is defined else [] %}
       {% if board_positions %}
         {# Row/col mapping: rows follow panel length axis (nbl), cols follow width (nbw). Only the top-left board shows singles. #}
         {% for placement in board_positions %}
-          {% set left_pct = (placement.x / best_row.panel_width * 100) if best_row.panel_width else 0 %}
-          {% set top_pct = (placement.y / best_row.panel_length * 100) if best_row.panel_length else 0 %}
+          {% set left_pct = (placement.y / best_row.panel_length * 100) if best_row.panel_length else 0 %}
+          {% set top_pct = (placement.x / best_row.panel_width * 100) if best_row.panel_width else 0 %}
           {% set row_index0 = panel_cols and (loop.index0 // panel_cols) or 0 %}
           {% set col_index0 = panel_cols and (loop.index0 % panel_cols) or 0 %}
           {% set is_top_left = (row_index0 == 0 and col_index0 == 0 and singles_rows and singles_cols) %}
           <div class="panel-visual-board{{ ' panel-visual-board--with-singles' if is_top_left else '' }}" style="width: {{ "%.4f"|format(board_w_pct) }}%; height: {{ "%.4f"|format(board_l_pct) }}%; left: {{ "%.4f"|format(left_pct) }}%; top: {{ "%.4f"|format(top_pct) }}%;">
             {% if is_top_left %}
-              <div class="panel-visual-singles-grid" style="grid-template-rows: repeat({{ singles_rows }}, 1fr); grid-template-columns: repeat({{ singles_cols }}, 1fr);">
+              <div class="panel-visual-singles-grid" style="grid-template-rows: repeat({{ singles_cols }}, 1fr); grid-template-columns: repeat({{ singles_rows }}, 1fr);">
                 {% for sr in range(singles_rows) %}
                   {% for sc in range(singles_cols) %}
                     <div class="panel-visual-single" aria-hidden="true"></div>
@@ -43,13 +43,13 @@
           </div>
         {% endfor %}
       {% else %}
-        <div class="panel-visual-fallback-grid" style="grid-template-columns: repeat({{ panel_cols }}, 1fr); grid-template-rows: repeat({{ panel_rows }}, 1fr);">
+        <div class="panel-visual-fallback-grid" style="grid-template-columns: repeat({{ panel_rows }}, 1fr); grid-template-rows: repeat({{ panel_cols }}, 1fr);">
           {% for j in range(panel_rows) %}
             {% for i in range(panel_cols) %}
               {% set is_top_left = (j == 0 and i == 0 and singles_rows and singles_cols) %}
               <div class="panel-visual-board{{ ' panel-visual-board--with-singles' if is_top_left else '' }}">
                 {% if is_top_left %}
-                  <div class="panel-visual-singles-grid" style="grid-template-rows: repeat({{ singles_rows }}, 1fr); grid-template-columns: repeat({{ singles_cols }}, 1fr);">
+                  <div class="panel-visual-singles-grid" style="grid-template-rows: repeat({{ singles_cols }}, 1fr); grid-template-columns: repeat({{ singles_rows }}, 1fr);">
                     {% for sr in range(singles_rows) %}
                       {% for sc in range(singles_cols) %}
                         <div class="panel-visual-single" aria-hidden="true"></div>
@@ -63,7 +63,6 @@
         </div>
       {% endif %}
     </div>
-    <p class="panel-visual-footnote">Schematic scale based on panel and board dimensions; first number denotes rows, second columns. Gaps and margins follow placement data when available.</p>
   </div>
 </section>
 {% endif %}
