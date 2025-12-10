@@ -23,7 +23,7 @@ except ImportError:
 
 # RAG 實例，首次使用時才會初始化 (Lazy Initialization)
 _RAG_ENGINE: Optional[RagEngine] = None
-_RAG_CLASSIFICATION_MODEL = "sonar" # 使用成本較低的模型進行分類
+_RAG_CLASSIFICATION_MODEL = "sonar-reasoning-pro" # 使用成本較低的模型進行分類
 
 
 # -----------------------------------------------------------------------------
@@ -39,8 +39,8 @@ def _is_safety_regulation_query(subject: str, body: str) -> bool:
 
     check_prompt = """
     You are a classification agent.
-    Analyze the incoming email content and subject. Does the user ask about technical standards, 
-    safety regulations (e.g., IEC, UL, EN, compliance), or technical certification?
+    Analyze the incoming email content and subject to justify whether the content mentioned about technically related standards, 
+    safety regulations (e.g., IEC, UL, EN, compliance), or certification?
     
     Respond with exactly one word: YES or NO.
     """
