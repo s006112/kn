@@ -55,8 +55,10 @@
                         {% if is_first_single %}
                           {% set single_w_val = best_row.single_pcb_width_max if best_row.single_pcb_width_max is defined else (panelizer_values.single_pcb_width_max if panelizer_values is defined and panelizer_values.single_pcb_width_max is defined else 0) %}
                           {% set single_l_val = best_row.single_pcb_length_max if best_row.single_pcb_length_max is defined else (panelizer_values.single_pcb_length_max if panelizer_values is defined and panelizer_values.single_pcb_length_max is defined else 0) %}
-                          <div style="position: absolute; top: -6px; left: 50%; transform: translateX(-50%); pointer-events: none;">{{ "%.1f"|format(single_l_val) }}</div>
-                          <div style="position: absolute; top: 50%; left: -6px; transform: translateY(-50%); pointer-events: none;">{{ "%.1f"|format(single_w_val) }}</div>
+                          {% set single_w_label = single_l_val if best_row.single_rot else single_w_val %}
+                          {% set single_l_label = single_w_val if best_row.single_rot else single_l_val %}
+                          <div style="position: absolute; top: -6px; left: 50%; transform: translateX(-50%); pointer-events: none;">{{ "%.1f"|format(single_l_label) }}</div>
+                          <div style="position: absolute; top: 50%; left: -6px; transform: translateY(-50%); pointer-events: none;">{{ "%.1f"|format(single_w_label) }}</div>
                         {% endif %}
                       </div>
                     {% endfor %}
@@ -82,8 +84,10 @@
                             {% if is_first_single %}
                               {% set single_w_val = best_row.single_pcb_width_max if best_row.single_pcb_width_max is defined else (panelizer_values.single_pcb_width_max if panelizer_values is defined and panelizer_values.single_pcb_width_max is defined else 0) %}
                               {% set single_l_val = best_row.single_pcb_length_max if best_row.single_pcb_length_max is defined else (panelizer_values.single_pcb_length_max if panelizer_values is defined and panelizer_values.single_pcb_length_max is defined else 0) %}
-                              <div style="position: absolute; top: -6px; left: 50%; transform: translateX(-50%); pointer-events: none;">{{ "%.1f"|format(single_l_val) }}</div>
-                              <div style="position: absolute; top: 50%; left: -6px; transform: translateY(-50%); pointer-events: none;">{{ "%.1f"|format(single_w_val) }}</div>
+                              {% set single_w_label = single_l_val if best_row.single_rot else single_w_val %}
+                              {% set single_l_label = single_w_val if best_row.single_rot else single_l_val %}
+                              <div style="position: absolute; top: -6px; left: 50%; transform: translateX(-50%); pointer-events: none;">{{ "%.1f"|format(single_l_label) }}</div>
+                              <div style="position: absolute; top: 50%; left: -6px; transform: translateY(-50%); pointer-events: none;">{{ "%.1f"|format(single_w_label) }}</div>
                             {% endif %}
                           </div>
                         {% endfor %}
