@@ -167,7 +167,7 @@ form section .grid {
   border-radius: 8px;
   background: linear-gradient(45deg, #f9fafb 25%, #ffffff 25%, #ffffff 50%, #f9fafb 50%, #f9fafb 75%, #ffffff 75%, #ffffff 100%);
   background-size: 16px 16px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .panel-visual-board {
@@ -183,7 +183,7 @@ form section .grid {
   font-size: 0.85rem;
   min-width: 24px;
   min-height: 24px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .panel-visual-singles-grid {
