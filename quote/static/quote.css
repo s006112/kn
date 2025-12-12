@@ -154,8 +154,8 @@ form section .grid {
   width: 100%;
   max-width: 100%;
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 12px;
+  border-radius: 1px;
+  padding: 1px;
   background: #f9fafb;
 }
 
