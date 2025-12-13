@@ -66,6 +66,8 @@
                     {% endfor %}
                   {% endfor %}
                 </div>
+                <div style="position: absolute; bottom: {{ "%.4f"|format(singles_pad_tb_pct / 2) }}%; left: 50%; transform: translate(-50%, 50%); font-size: 0.75rem; color: #1f2937; pointer-events: none;">{{ "%.1f"|format(board_margin_w) }}</div>
+                <div style="position: absolute; top: 50%; right: {{ "%.4f"|format(singles_pad_lr_pct / 2) }}%; transform: translate(50%, -50%); font-size: 0.75rem; color: #1f2937; pointer-events: none;">{{ "%.1f"|format(board_margin_l) }}</div>
                 <div style="position: absolute; top: 0; left: 50%; transform: translate(-50%, -50%); font-size: 0.75rem; color: #1f2937; pointer-events: none;">{{ "%.1f"|format(best_row.board_l) }}</div>
                 <div style="position: absolute; top: 50%; left: 0; transform: translate(-50%, -50%); font-size: 0.75rem; color: #1f2937; pointer-events: none;">{{ "%.1f"|format(best_row.board_w) }}</div>
               {% endif %}
@@ -95,6 +97,8 @@
                         {% endfor %}
                       {% endfor %}
                     </div>
+                    <div style="position: absolute; bottom: {{ "%.4f"|format(singles_pad_tb_pct / 2) }}%; left: 50%; transform: translate(-50%, 50%); font-size: 0.75rem; color: #1f2937; pointer-events: none;">{{ "%.1f"|format(board_margin_w) }}</div>
+                    <div style="position: absolute; top: 50%; right: {{ "%.4f"|format(singles_pad_lr_pct / 2) }}%; transform: translate(50%, -50%); font-size: 0.75rem; color: #1f2937; pointer-events: none;">{{ "%.1f"|format(board_margin_l) }}</div>
                     <div style="position: absolute; top: 0; left: 50%; transform: translate(-50%, -50%); font-size: 0.75rem; color: #1f2937; pointer-events: none;">{{ "%.1f"|format(best_row.board_l) }}</div>
                     <div style="position: absolute; top: 50%; left: 0; transform: translate(-50%, -50%); font-size: 0.75rem; color: #1f2937; pointer-events: none;">{{ "%.1f"|format(best_row.board_w) }}</div>
                   {% endif %}
