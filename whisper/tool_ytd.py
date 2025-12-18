@@ -6,6 +6,7 @@ Minimal standalone web UI for downloading audio via yt-dlp.
 import argparse
 import html
 import os
+import errno
 import shlex
 import shutil
 import subprocess
@@ -295,15 +296,35 @@ def parse_args():
         "--port",
         type=int,
         default=int(os.environ.get("YTD_PORT", "8765")),
-        help="Port to bind (default: 8765 or YTD_PORT env).",
+        help="Port to bind (default: 8765 or YTD_PORT env). Use 0 to auto-pick a free port.",
     )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    server = ThreadingHTTPServer((args.host, args.port), DownloadHandler)
-    print(f"Serving yt-dlp downloader on http://{args.host}:{args.port}")
+
+    class ReusableThreadingHTTPServer(ThreadingHTTPServer):
+        allow_reuse_address = True
+
+    try:
+        server = ReusableThreadingHTTPServer((args.host, args.port), DownloadHandler)
+    except OSError as exc:
+        if exc.errno == errno.EADDRINUSE:
+            print(
+                "启动失败：端口已被占用（Address already in use）。\n"
+                f"- 当前尝试绑定：{args.host}:{args.port}\n"
+                "- 解决办法：\n"
+                "  1) 换一个端口：`python3 whisper/tool_ytd.py --port 8766`\n"
+                "  2) 或让系统自动选空闲端口：`python3 whisper/tool_ytd.py --port 0`\n"
+                "  3) 或查出是谁占用了端口并结束它：`ss -ltnp | rg ':8765'`（把 8765 换成你的端口）\n"
+                "- 也可能是你之前启动的同一个脚本还在后台运行。"
+            )
+            raise SystemExit(2) from exc
+        raise
+
+    host, port = server.server_address[:2]
+    print(f"Serving yt-dlp downloader on http://{host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
