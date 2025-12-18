@@ -148,7 +148,7 @@ def process_audio_queue(config, *_queues, processing_lock, done_folder_path):
         try:
             scan_audio_files(config)
             if audio_queue.empty():
-                time.sleep(10)
+                time.sleep(60)
                 continue
 
             file_path, folder_path = audio_queue.get()

@@ -12,23 +12,25 @@ from pathlib import Path
 # -------------------------
 # 路径与运行配置
 # -------------------------
-WATCH_FOLDER = Path("/desktop/Sync/Whisper")
+WHISPER_FOLDER = Path("/desktop/Sync/Whisper")
+WATCH_FOLDER = Path("/desktop")
 PATH_CONFIG = {
+    "WHISPER_FOLDER": WHISPER_FOLDER,
     "WATCH_FOLDER": WATCH_FOLDER,
     "AUDIO_WATCH_FOLDERS": (
         WATCH_FOLDER,
-        Path("/desktop/"),
+        WHISPER_FOLDER,
     ),
     "AUDIO_DONE_FOLDER": Path("/desktop/YT1"),
-    "PRETEXT_WATCH_FOLDER": WATCH_FOLDER,
-    "PREMIUM_WATCH_FOLDER": Path("/desktop"),
-    "PRETEXT_DONE_FOLDER": WATCH_FOLDER / "_p",
-    #"PRETEXT_DONE_FOLDER": Path("/desktop"),
-    "ARCHIVE_FOLDER": WATCH_FOLDER / "_p",
-    "ORIGINAL_FOLDER": WATCH_FOLDER / "_p" / "Raw",
-    "EXTRACT_FOLDER": WATCH_FOLDER / "_p" / "Extract",
-    "LINK_BACKUP_FOLDER": WATCH_FOLDER / "_p" / "link_backup",
-    "FAIL_FOLDER": WATCH_FOLDER / "Fail",
+    "PRETEXT_WATCH_FOLDER": WATCH_FOLDER,    # WHISPER_FOLDER, WATCH_FOLDER
+    "PREMIUM_WATCH_FOLDER": WHISPER_FOLDER / "Fail" / "p",
+    "PRETEXT_DONE_FOLDER": WHISPER_FOLDER / "_p",
+    #"PRETEXT_DONE_FOLDER": WATCH_FOLDER,
+    "ARCHIVE_FOLDER": WHISPER_FOLDER / "_p",
+    "ORIGINAL_FOLDER": WHISPER_FOLDER / "_p" / "Raw",
+    "EXTRACT_FOLDER": WHISPER_FOLDER / "_p" / "Extract",
+    "LINK_BACKUP_FOLDER": WHISPER_FOLDER / "_p" / "link_backup",
+    "FAIL_FOLDER": WHISPER_FOLDER / "Fail",
     "OBSIDIAN_SYNC_FOLDER": Path("/desktop/Obsidian/O_2025"),
 }
 

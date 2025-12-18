@@ -188,7 +188,7 @@ def periodic_file_scanner(ctx: PipelineContext) -> None:
 
     while not ctx.shutdown_flag.is_set():
         try:
-            time.sleep(30)
+            time.sleep(60)
 
             current = list_matching_files(
                 watch_folder,
