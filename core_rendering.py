@@ -18,9 +18,10 @@ load_env(dotenv_path=Path(__file__).parent / ".env")
 logger = configure_logging("rendering")
 
 MODEL_OPTIONS = [
-    "gemini-2.5-flash-image",
     "gemini-3-pro-image-preview",
-    "gpt-image-1-mini",
+    "gpt-image-1.5",
+    "gemini-2.5-flash-image",
+    "gpt-image-1-mini",    
     "gpt-image-1",
     "stability-structure",
     "stability-sketch",
@@ -39,6 +40,14 @@ else:
     PROMPT_RENDERING = ""
 
 
+def _compose_prompt(system_prompt: str, user_text: str) -> str:
+    system_prompt = system_prompt.strip()
+    user_text = (user_text or "").strip()
+    if system_prompt and user_text:
+        return f"{system_prompt}\n\n{user_text}"
+    return system_prompt or user_text
+
+
 def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
     """使用指定圖像模型產生渲染結果。
 
@@ -50,7 +59,7 @@ def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
         - 如果未提供，則為 text-to-image。
     - 其他模型（Gemini 等）目前僅支援 text-to-image，會忽略 image_bytes。
     """
-    final_prompt = prompt.strip()
+    final_prompt = _compose_prompt(PROMPT_RENDERING, prompt)
     if not final_prompt:
         raise RuntimeError("Rendering prompt is empty.")
 
