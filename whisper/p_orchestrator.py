@@ -133,8 +133,16 @@ def start_system(cfg: Optional[Dict[str, Any]] = None) -> SystemHandles:
     scan_existing_files(ctx)
 
     observer = Observer()
-    observer.schedule(pretext_handler, os.fspath(cfg["WATCH_FOLDER"]), recursive=False)
-    observer.schedule(extract_handler, os.fspath(cfg["WATCH_FOLDER"]), recursive=False)
+    observer.schedule(
+        pretext_handler,
+        os.fspath(cfg["PRETEXT_WATCH_FOLDER"]),
+        recursive=False,
+    )
+    observer.schedule(
+        extract_handler,
+        os.fspath(cfg["EXTRACT_WATCH_FOLDER"]),
+        recursive=False,
+    )
     observer.schedule(
         premium_extract_handler,
         os.fspath(cfg["PREMIUM_WATCH_FOLDER"]),

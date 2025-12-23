@@ -194,8 +194,8 @@ def process(self, file_path, get_next_available_filename):
 class ExtractHandler(BaseExtractHandler):
     def __init__(self, config, queue):
         model_matrix = config.get('MODEL_EXTRACT_MATRIX', {})
-        models = model_matrix.get('WATCH_FOLDER', [])
-        super().__init__(config, queue, 'WATCH_FOLDER', models, enable_distillation=True)
+        models = model_matrix.get('EXTRACT_WATCH_FOLDER', [])
+        super().__init__(config, queue, 'EXTRACT_WATCH_FOLDER', models, enable_distillation=True)
     process_extract = process
 
 class PremiumExtractHandler(BaseExtractHandler):

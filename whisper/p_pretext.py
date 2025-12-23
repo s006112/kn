@@ -30,7 +30,7 @@ class PretextHandler(FileSystemEventHandler):
 
     def __init__(self, ctx: PipelineContext):
         self.ctx = ctx
-        self.watch_folder = os.path.abspath(os.fspath(ctx.config['WATCH_FOLDER']))
+        self.watch_folder = os.path.abspath(os.fspath(ctx.config['PRETEXT_WATCH_FOLDER']))
 
     def _handle_path(self, path: str) -> None:
         if not _is_pretext_candidate(path, self.watch_folder):

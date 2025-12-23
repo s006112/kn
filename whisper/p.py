@@ -14,9 +14,14 @@ from pathlib import Path
 # -------------------------
 WHISPER_FOLDER = Path("/desktop/Sync/Whisper")
 WATCH_FOLDER = Path("/desktop")
+TTML_WATCH_FOLDER = WATCH_FOLDER
+EXTRACT_WATCH_FOLDER = WATCH_FOLDER
+AUDIO_TRANSCRIBED_TXT_FOLDER = WATCH_FOLDER
 PATH_CONFIG = {
     "WHISPER_FOLDER": WHISPER_FOLDER,
-    "WATCH_FOLDER": WATCH_FOLDER,
+    "TTML_WATCH_FOLDER": TTML_WATCH_FOLDER,
+    "EXTRACT_WATCH_FOLDER": EXTRACT_WATCH_FOLDER,
+    "AUDIO_TRANSCRIBED_TXT_FOLDER": AUDIO_TRANSCRIBED_TXT_FOLDER,
     "AUDIO_WATCH_FOLDERS": (
         WATCH_FOLDER,
         WHISPER_FOLDER,
@@ -40,7 +45,7 @@ PATH_CONFIG = {
 # gpt-5.1, gpt-5, gpt-5-chat-latest, gpt-4.1, gpt-4o, o1, o3,
 MODEL_PRETEXT = "gpt-4.1-mini"
 MODEL_EXTRACT_MATRIX = {
-    "WATCH_FOLDER": [
+    "EXTRACT_WATCH_FOLDER": [
         "gpt-5-mini",
         "gemini-2.5-flash",
         "sonar",

@@ -131,18 +131,19 @@ def list_matching_files(folder: str, predicate: Callable[[str], bool]) -> set[st
 
 def scan_existing_files(ctx: PipelineContext) -> None:
     """启动时补齐遗留文件，保证开机后队列完整。"""
-    watch_folder = os.fspath(ctx.config["WATCH_FOLDER"])
-    premium_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
+    pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
+    extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
+    premium_watch_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
 
-    for filename in os.listdir(watch_folder):
+    for filename in os.listdir(pretext_watch_folder):
         if not filename.lower().endswith(".txt"):
             continue
-        file_path = os.path.join(watch_folder, filename)
+        file_path = os.path.join(pretext_watch_folder, filename)
         if len(os.path.splitext(filename)[0]) > 60:
             base_name = os.path.splitext(filename)[0]
             sanitized_base = sanitize_and_trim_filename(base_name)
             new_name = sanitized_base + ".txt"
-            new_path = os.path.join(watch_folder, new_name)
+            new_path = os.path.join(pretext_watch_folder, new_name)
             try:
                 if not os.path.exists(new_path):
                     safe_rename(file_path, new_path)
@@ -159,14 +160,14 @@ def scan_existing_files(ctx: PipelineContext) -> None:
         ):
             request_pretext_processing(ctx, file_path)
 
-    for filename in os.listdir(watch_folder):
+    for filename in os.listdir(extract_watch_folder):
         if filename.lower().endswith("_p.txt"):
-            file_path = os.path.join(watch_folder, filename)
+            file_path = os.path.join(extract_watch_folder, filename)
             enqueue_if_absent(ctx.extract_queue, file_path)
 
-    for filename in os.listdir(premium_folder):
+    for filename in os.listdir(premium_watch_folder):
         if filename.lower().endswith("_p.txt"):
-            file_path = os.path.join(premium_folder, filename)
+            file_path = os.path.join(premium_watch_folder, filename)
             enqueue_if_absent(ctx.premium_extract_queue, file_path)
 
     logging.info(
@@ -179,11 +180,12 @@ def scan_existing_files(ctx: PipelineContext) -> None:
 
 def periodic_file_scanner(ctx: PipelineContext) -> None:
     """周期扫描文件夹，补漏新增文件。"""
-    watch_folder = os.fspath(ctx.config["WATCH_FOLDER"])
-    premium_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
+    pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
+    extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
+    premium_watch_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
 
     processed = set()
-    pretext_done = set()
+    extract_done = set()
     premium_processed = set()
 
     while not ctx.shutdown_flag.is_set():
@@ -191,7 +193,7 @@ def periodic_file_scanner(ctx: PipelineContext) -> None:
             time.sleep(60)
 
             current = list_matching_files(
-                watch_folder,
+                pretext_watch_folder,
                 lambda f: f.lower().endswith(".txt")
                 and not f.lower().endswith("_p.txt"),
             )
@@ -199,15 +201,15 @@ def periodic_file_scanner(ctx: PipelineContext) -> None:
                 request_pretext_processing(ctx, path)
             processed = current
 
-            pretext_current = list_matching_files(
-                watch_folder, lambda f: f.lower().endswith("_p.txt")
+            extract_current = list_matching_files(
+                extract_watch_folder, lambda f: f.lower().endswith("_p.txt")
             )
-            for path in pretext_current - pretext_done:
+            for path in extract_current - extract_done:
                 enqueue_if_absent(ctx.extract_queue, path)
-            pretext_done = pretext_current
+            extract_done = extract_current
 
             premium_current = list_matching_files(
-                premium_folder, lambda f: f.lower().endswith("_p.txt")
+                premium_watch_folder, lambda f: f.lower().endswith("_p.txt")
             )
             for path in premium_current - premium_processed:
                 enqueue_if_absent(ctx.premium_extract_queue, path)
@@ -235,7 +237,7 @@ def process_audio_pipeline(ctx: PipelineContext) -> None:
 
 def process_ttml_pipeline(ctx: PipelineContext) -> None:
     """字幕（TTML）处理线程。"""
-    watch_folder = os.fspath(ctx.config["WATCH_FOLDER"])
+    watch_folder = os.fspath(ctx.config["TTML_WATCH_FOLDER"])
     original_folder = os.fspath(ctx.config["ORIGINAL_FOLDER"])
 
     while not ctx.shutdown_flag.is_set():
