@@ -15,10 +15,12 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 STABLY_API_KEY = os.getenv("STABLY_API_KEY")
+GROK_API_KEY = os.getenv("GROK_API_KEY")
 
 _OPENAI_CLIENT: Optional[openai.OpenAI] = None
 _PPLX_CLIENT: Optional[Any] = None
 _GEMINI_CLIENT: Optional[Any] = None
+_GROK_CLIENT: Optional[openai.OpenAI] = None
 
 
 
@@ -65,6 +67,15 @@ def get_gemini_client() -> Any:
             raise RuntimeError("GEMINI_API_KEY is missing.")
         _GEMINI_CLIENT = genai.Client(api_key=GEMINI_API_KEY)
     return _GEMINI_CLIENT
+
+
+def get_grok_client() -> openai.OpenAI:
+    global _GROK_CLIENT
+    if _GROK_CLIENT is None:
+        if not GROK_API_KEY:
+            raise RuntimeError("GROK_API_KEY is missing.")
+        _GROK_CLIENT = openai.OpenAI(api_key=GROK_API_KEY, base_url="https://api.x.ai/v1")
+    return _GROK_CLIENT
 
 
 def get_stability_client() -> str:
@@ -133,12 +144,21 @@ def call_openai(client: Any, model: str, payload: Any, timeout: int) -> str:
     return _normalize_output(text)
 
 
-def call_perplexity(client: Any, model: str, payload: Any, timeout: int) -> str:
-    resp = client.chat.completions.create(model=model, messages=payload, timeout=timeout)
+def _chat_completion_text(resp: Any, provider: str) -> str:
     text = getattr(getattr(getattr(resp, "choices", [None])[0], "message", None), "content", None)
     if not text:
-        raise RuntimeError("Perplexity returned empty text.")
+        raise RuntimeError(f"{provider} returned empty text.")
     return _normalize_output(text)
+
+
+def call_perplexity(client: Any, model: str, payload: Any, timeout: int) -> str:
+    resp = client.chat.completions.create(model=model, messages=payload, timeout=timeout)
+    return _chat_completion_text(resp, "Perplexity")
+
+
+def call_grok(client: Any, model: str, payload: Any, timeout: int) -> str:
+    resp = client.chat.completions.create(model=model, messages=payload, timeout=timeout)
+    return _chat_completion_text(resp, "Grok")
 
 
 def call_gemini(client: Any, model: str, payload: Any, timeout: int) -> str:
@@ -163,6 +183,12 @@ _BACKENDS: Dict[str, Dict[str, Any]] = {
         "client_getter": get_gemini_client,
         "payload_builder": build_gemini_payload,
         "call_fn": call_gemini,
+    },
+    "grok": {
+        "match": lambda m: m.lower().startswith("grok-"),
+        "client_getter": get_grok_client,
+        "payload_builder": build_perplexity_payload,
+        "call_fn": call_grok,
     },
     "openai": {
         "match": lambda m: True,
