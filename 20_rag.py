@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 # 引入核心 RAG 邏輯
-from helper_rag_worker import RagEngine
+from helper.helper_rag_worker import RagEngine
 
 # 全局實例，用於首次使用時加載 (Lazy Initialization)
 _RAG_ENGINE: Optional[RagEngine] = None

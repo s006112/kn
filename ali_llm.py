@@ -14,10 +14,10 @@ from helper.utils_imap_types import EmailMessage
 
 # NOTE: Update import path to the new filename
 if TYPE_CHECKING:
-    from helper_rag_worker import RagEngine as RagEngineType
+    from helper.helper_rag_worker import RagEngine as RagEngineType
 
 try:
-    from helper_rag_worker import RagEngine
+    from helper.helper_rag_worker import RagEngine
 except ImportError:
     # 設置警告，RAG 模塊未加載時仍可運行
     RagEngine = None

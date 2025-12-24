@@ -15,7 +15,7 @@ txt_to_splited_txt.py
 from __future__ import annotations
 
 from pathlib import Path
-from helper_std_sanitize import clean_overlay, apply_page_splitting
+from helper.helper_std_sanitize import clean_overlay, apply_page_splitting
 import re
 import sys
 
