@@ -6,13 +6,16 @@ llm_responder.py (Agentic RAG enabled)
 """
 from __future__ import annotations
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from helper.utils_config import load_prompt_text
 from helper.utils_llm import call_llm
 from helper.utils_imap_types import EmailMessage
 
 # NOTE: Update import path to the new filename
+if TYPE_CHECKING:
+    from helper_rag_worker import RagEngine as RagEngineType
+
 try:
     from helper_rag_worker import RagEngine
 except ImportError:
@@ -22,7 +25,7 @@ except ImportError:
 
 
 # RAG 實例，首次使用時才會初始化 (Lazy Initialization)
-_RAG_ENGINE: Optional[RagEngine] = None
+_RAG_ENGINE: Optional["RagEngineType"] = None
 _RAG_CLASSIFICATION_MODEL = "sonar-reasoning-pro" # 使用成本較低的模型進行分類
 
 
@@ -64,18 +67,26 @@ def _is_safety_regulation_query(subject: str, body: str) -> bool:
 # 2. RAG Execution & Retrieval
 # -----------------------------------------------------------------------------
 
+def _load_rag_engine() -> Optional["RagEngineType"]:
+    """延遲加載 RagEngine (Lazy load)."""
+    global _RAG_ENGINE
+    if _RAG_ENGINE is not None:
+        return _RAG_ENGINE
+    if RagEngine is None:
+        return None
+    _RAG_ENGINE = RagEngine()
+    return _RAG_ENGINE
+
+
 def _get_rag_answer_lazy(question: str) -> str:
     """延遲加載並調用 RagEngine"""
-    global _RAG_ENGINE
-    if _RAG_ENGINE is None:
-        if RagEngine is None:
-             return ""
-        # 首次调用时才初始化重型资源 (Lazy load)
-        _RAG_ENGINE = RagEngine()
+    rag_engine = _load_rag_engine()
+    if rag_engine is None:
+        return ""
 
     try:
         # RagEngine.answer_question 返回 (answer, table_str)
-        answer, table_str = _RAG_ENGINE.answer_question(question)
+        answer, table_str = rag_engine.answer_question(question)
         if table_str:
             print("\n[RAG] FAISS similarity table:\n")
             print(table_str)
