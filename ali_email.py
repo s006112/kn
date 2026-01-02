@@ -31,6 +31,12 @@ from helper.utils_imap_types import EmailMessage, SendResult
 from ali_fetch import fetch_new_messages, fetch_sender_replies  # type: ignore
 from ali_llm import generate_review_package, render_review  # type: ignore
 from ali_send import send_reply  # type: ignore
+from ali_mail_parse import extract_top_reply
+from ali_review_proto import (
+    INTERNAL_REVIEW_ANCHOR,
+    REVIEW_SUBJECT_MARKER,
+    REVIEW_SUBJECT_PATTERN,
+)
 
 
 # -----------------------------------------------------------------------------
@@ -44,8 +50,8 @@ _HKT_ZONE = ZoneInfo("Asia/Hong_Kong")
 _DAY_START = dt_time(9, 0)
 _DAY_END = dt_time(18, 0)
 
-_REVIEW_SUBJECT_MARKER = "[vX]"
-_REVIEW_SUBJECT_PATTERN = re.compile(r"\[v\d+\]")
+_REVIEW_SUBJECT_MARKER = REVIEW_SUBJECT_MARKER
+_REVIEW_SUBJECT_PATTERN = REVIEW_SUBJECT_PATTERN
 
 
 def _strip_review_subject_marker(subject: str) -> str:
@@ -145,8 +151,7 @@ def extract_last_review_draft(review_email: EmailMessage) -> str:
     Extract the previous draft from an [ALI REVIEW] email.
     """
     body = _dequote_email_history(_normalize_newlines(review_email.body_text or ""))
-    anchor = "[ALI INTERNAL REVIEW — NOT FOR CUSTOMER]"
-    search_space = _search_space_from_last_anchor(body, anchor)
+    search_space = _search_space_from_last_anchor(body, INTERNAL_REVIEW_ANCHOR)
 
     # v1+ drafts start with: "EDIT VERSION: vX"
     header_match = None
@@ -175,72 +180,45 @@ def extract_last_review_draft(review_email: EmailMessage) -> str:
 
 def extract_last_version(review_email: EmailMessage) -> int:
     body = _dequote_email_history(_normalize_newlines(review_email.body_text or ""))
-    anchor = "[ALI INTERNAL REVIEW — NOT FOR CUSTOMER]"
-    search_space = _search_space_from_last_anchor(body, anchor)
+    search_space = _search_space_from_last_anchor(body, INTERNAL_REVIEW_ANCHOR)
 
     versions = [int(m.group(1)) for m in re.finditer(r"EDIT VERSION:\s*v(\d+)", search_space)]
     return max(versions) if versions else 1
 
-def _extract_override_instructions(body_text: str) -> str:
-    """
-    Extract only the sender's top reply text (override instructions),
-    excluding quoted history.
-    """
-    if not body_text:
-        return ""
-    marker = "-----Original Message-----"
-    if marker in body_text:
-        body_text = body_text.split(marker, 1)[0]
-    return body_text.strip()
-
-
-# -----------------------------------------------------------------------------
-# Pipeline
-# -----------------------------------------------------------------------------
-
-def pipeline_run() -> None:
-    logger = configure_logging("ali_pipeline")
-
-    # ---------------------------------------------------------
-    # Phase 1: New incoming emails → v1 INTERNAL review
-    # ---------------------------------------------------------
+def _phase1_new_messages(*, logger) -> None:
     messages = fetch_new_messages(max_messages=2)
     if not messages:
         logger.info("No new messages to process.")
-    else:
-        for msg in messages:
-            try:
-                logger.info("Processing new email uid=%s subject=%s", msg.uid, msg.subject)
+        return
 
-                # Avoid treating [ALI REVIEW] threads as brand-new inbound messages.
-                # These should be handled in Phase 2 (sender overrides).
-                if _is_review_subject(msg.subject or ""):
-                    logger.info(
-                        "Skipping review-thread message in Phase 1 uid=%s subject=%s",
-                        msg.uid,
-                        msg.subject,
-                    )
-                    continue
+    for msg in messages:
+        try:
+            logger.info("Processing new email uid=%s subject=%s", msg.uid, msg.subject)
 
-                review_obj = generate_review_package(
-                    msg,
-                    system_prompt_path=SYSTEM_PROMPT_PATH,
-                    model=LLM_MODEL,
+            # Avoid treating review threads as brand-new inbound messages.
+            if _is_review_subject(msg.subject or ""):
+                logger.info(
+                    "Skipping review-thread message in Phase 1 uid=%s subject=%s",
+                    msg.uid,
+                    msg.subject,
                 )
-                review_body = render_review(review_obj)
+                continue
 
-                _send_internal_review(msg, review_body, logger=logger)
+            review_obj = generate_review_package(
+                msg,
+                system_prompt_path=SYSTEM_PROMPT_PATH,
+                model=LLM_MODEL,
+            )
+            review_body = render_review(review_obj)
+            _send_internal_review(msg, review_body, logger=logger)
+        except Exception as exc:
+            logger.error("Unhandled error processing uid=%s: %s", msg.uid, exc)
 
-            except Exception as exc:
-                logger.error("Unhandled error processing uid=%s: %s", msg.uid, exc)
 
-    # ---------------------------------------------------------
-    # Phase 2: Sender replies → EDIT v2 / v3 / ...
-    # ---------------------------------------------------------
+def _phase2_sender_replies(*, logger) -> None:
     sender_replies = fetch_sender_replies()
     if not sender_replies:
         logger.info("No sender replies to process.")
-        logger.info("Pipeline run finished.")
         return
 
     for reply_msg in sender_replies:
@@ -251,13 +229,11 @@ def pipeline_run() -> None:
                 reply_msg.subject,
             )
 
-            # Silence check (defensive)
-            override_instructions = _extract_override_instructions(reply_msg.body_text or "")
+            override_instructions = extract_top_reply(reply_msg.body_text or "")
             if not override_instructions:
                 logger.info("Empty reply body detected; treated as REJECT.")
                 continue
 
-            # Parse previous context from the replied ALI REVIEW
             last_review_draft = extract_last_review_draft(reply_msg)
             last_version = extract_last_version(reply_msg)
 
@@ -288,7 +264,6 @@ def pipeline_run() -> None:
                 subject_override=reply_msg.subject,
                 review_version=last_version + 1,
             )
-
         except Exception as exc:
             logger.error(
                 "Unhandled error processing sender reply uid=%s: %s",
@@ -296,6 +271,11 @@ def pipeline_run() -> None:
                 exc,
             )
 
+
+def pipeline_run() -> None:
+    logger = configure_logging("ali_pipeline")
+    _phase1_new_messages(logger=logger)
+    _phase2_sender_replies(logger=logger)
     logger.info("Pipeline run finished.")
 
 
