@@ -50,12 +50,37 @@ _REVIEW_SUBJECT_MARKER = "[ALI REVIEW]"
 def _default_poll_interval_minutes(now: datetime | None = None) -> int:
     current = now or datetime.now(tz=_HKT_ZONE)
     local_time = current.timetz().replace(tzinfo=None)
-    return 1 if _DAY_START <= local_time < _DAY_END else 10
+    return 1 if _DAY_START <= local_time < _DAY_END else 1
 
 
 # -----------------------------------------------------------------------------
 # Internal helpers (NO STATE, PURE PARSING)
 # -----------------------------------------------------------------------------
+
+def _normalize_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _dequote_email_history(body_text: str) -> str:
+    """
+    Many email clients quote history with leading ">" (or ">>", etc.).
+    Dequote for parsing so we can reliably find our own markers.
+    """
+    dequoted_lines: list[str] = []
+    for line in body_text.splitlines():
+        while True:
+            match = re.match(r"^\s*>+\s?(.*)$", line)
+            if not match:
+                break
+            line = match.group(1)
+        dequoted_lines.append(line)
+    return "\n".join(dequoted_lines)
+
+
+def _search_space_from_last_anchor(body_text: str, anchor: str) -> str:
+    start_search_at = body_text.rfind(anchor)
+    return body_text[start_search_at:] if start_search_at != -1 else body_text
+
 
 def _send_internal_review(
     original: EmailMessage,
@@ -102,67 +127,41 @@ def _send_internal_review(
 
 def extract_last_review_draft(review_email: EmailMessage) -> str:
     """
-    Extract the previous PRELIMINARY DRAFT from an [ALI REVIEW] email.
+    Extract the previous draft from an [ALI REVIEW] email.
     """
-    body = (review_email.body_text or "").replace("\r\n", "\n").replace("\r", "\n")
-
-    # Many email clients quote history with leading ">" (or ">>", etc.).
-    # Dequote for parsing so we can reliably find our own markers.
-    dequoted_lines: list[str] = []
-    for line in body.splitlines():
-        while True:
-            match = re.match(r"^\s*>+\s?(.*)$", line)
-            if not match:
-                break
-            line = match.group(1)
-        dequoted_lines.append(line)
-    body = "\n".join(dequoted_lines)
-
+    body = _dequote_email_history(_normalize_newlines(review_email.body_text or ""))
     anchor = "[ALI INTERNAL REVIEW — NOT FOR CUSTOMER]"
-    start_search_at = body.rfind(anchor)
-    search_space = body[start_search_at:] if start_search_at != -1 else body
+    search_space = _search_space_from_last_anchor(body, anchor)
 
-    header = "PRELIMINARY DRAFT (NOT APPROVED)"
-    header_index = search_space.find(header)
-    if header_index == -1:
-        raise ValueError("Cannot locate PRELIMINARY DRAFT header in review email")
+    # v1+ drafts start with: "EDIT VERSION: vX"
+    header_match = None
+    for match in re.finditer(r"^EDIT VERSION:\s*v(\d+)\s*$", search_space, flags=re.MULTILINE):
+        header_match = match
 
-    after_header = search_space[header_index + len(header) :]
+    if header_match is None:
+        raise ValueError("Cannot locate EDIT VERSION header in review email")
 
-    next_section = "REFLECTION / RISK NOTES"
-    next_index = after_header.find(next_section)
-    if next_index == -1:
-        raise ValueError("Cannot locate REFLECTION section after draft")
+    after_header = search_space[header_match.end() :]
 
-    draft_block = after_header[:next_index]
+    after_header = after_header.lstrip("\n")
 
-    # Remove separator lines and trim.
+    # Draft ends at the internal "action required" block (or the first separator line).
     sep_pattern = re.compile(r"^[=]{10,}\s*$")
     kept: list[str] = []
-    for line in draft_block.splitlines():
+    for line in after_header.splitlines():
+        if line.strip() == "SENDER ACTION REQUIRED":
+            break
         if sep_pattern.match(line.strip()):
-            continue
+            break
         kept.append(line)
 
     return "\n".join(kept).strip()
 
 
 def extract_last_version(review_email: EmailMessage) -> int:
-    body = (review_email.body_text or "").replace("\r\n", "\n").replace("\r", "\n")
-
-    dequoted_lines: list[str] = []
-    for line in body.splitlines():
-        while True:
-            match = re.match(r"^\s*>+\s?(.*)$", line)
-            if not match:
-                break
-            line = match.group(1)
-        dequoted_lines.append(line)
-    body = "\n".join(dequoted_lines)
-
+    body = _dequote_email_history(_normalize_newlines(review_email.body_text or ""))
     anchor = "[ALI INTERNAL REVIEW — NOT FOR CUSTOMER]"
-    start_search_at = body.rfind(anchor)
-    search_space = body[start_search_at:] if start_search_at != -1 else body
+    search_space = _search_space_from_last_anchor(body, anchor)
 
     versions = [int(m.group(1)) for m in re.finditer(r"EDIT VERSION:\s*v(\d+)", search_space)]
     return max(versions) if versions else 1

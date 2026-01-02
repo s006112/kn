@@ -9,6 +9,8 @@ ali_llm.py
 """
 
 from __future__ import annotations
+
+import re
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
@@ -148,6 +150,28 @@ def generate_reply(
 # 4. Internal Review Package (v1 rewrite, v2+ edit-only)
 # -----------------------------------------------------------------------------
 
+def _strip_leading_edit_version_headers(text: str) -> str:
+    """
+    Ensure only one "EDIT VERSION: vN" header exists (the wrapper adds it).
+    Removes repeated leading headers commonly produced by the LLM.
+    """
+    if not text:
+        return text
+
+    lines = text.splitlines()
+    i = 0
+
+    while i < len(lines) and lines[i].strip() == "":
+        i += 1
+
+    while i < len(lines) and re.fullmatch(r"EDIT VERSION:\s*v\d+", lines[i].strip(), flags=re.IGNORECASE):
+        i += 1
+        while i < len(lines) and lines[i].strip() == "":
+            i += 1
+
+    return "\n".join(lines[i:])
+
+
 def generate_review_package(
     email: EmailMessage,
     *,
@@ -205,22 +229,7 @@ def generate_review_package(
             file_path=None,
         ).strip()
 
-    # -------------------------
-    # Subject normalization
-    # -------------------------
-
-    original_subject = (email.subject or "").strip()
-    normalized_subject = f"[ALI REVIEW] {original_subject}" if original_subject else "[ALI REVIEW]"
-
-    # -------------------------
-    # Reflection notes (static for now)
-    # -------------------------
-
-    reflection_notes = [
-        "Potential over-commitment risk exists.",
-        "Verify no implicit compliance or certification claims.",
-        "Additional application context may be required.",
-    ]
+    draft = _strip_leading_edit_version_headers(draft)
 
     # -------------------------
     # Assemble review body
