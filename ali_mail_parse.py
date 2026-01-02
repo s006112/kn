@@ -8,7 +8,6 @@ REVIEW_SUBJECT_MARKER = "[vX]"
 REVIEW_SUBJECT_PATTERN = re.compile(r"\[v\d+\]")
 REVIEW_SUBJECT_IMAP_QUERY = REVIEW_SUBJECT_MARKER.replace("X]", "")
 
-ORIGINAL_MESSAGE_MARKER = "-----Original Message-----"
 
 # Be tolerant to mail-client reformatting:
 # - Some clients may keep the "====" separators on the same line as the header/footer.
@@ -33,8 +32,9 @@ def extract_top_reply(body_text: str) -> str:
     """Extract sender's top reply text, excluding quoted history."""
     if not body_text:
         return ""
-    if ORIGINAL_MESSAGE_MARKER in body_text:
-        body_text = body_text.split(ORIGINAL_MESSAGE_MARKER, 1)[0]
+    footer = _FOOTER_RE.search(body_text)
+    if footer:
+        body_text = body_text[: footer.start()]
     return body_text.strip()
 
 
