@@ -27,7 +27,7 @@ CALL FLOW (HIGH LEVEL)
   -> `_phase2_sender_replies()` (UNSEEN replies to prior [ALI REVIEW] threads)
        -> `ali_fetch.fetch_sender_replies()`
        -> `ali_mail_parse.extract_top_reply()` (override instructions)
-       -> `extract_last_review_draft()` + `extract_last_version()` (from quoted history)
+       -> `ali_mail_parse.extract_last_review_draft()` + `ali_mail_parse.extract_last_version()` (from quoted history)
        -> `ali_llm.generate_review_package(previous_draft=..., edit_version=...)`
        -> `_send_internal_review(..., review_version=v+1)` -> `ali_send.send_reply()`
 """
@@ -46,9 +46,8 @@ from helper.utils_imap_types import EmailMessage, SendResult
 from ali_fetch import fetch_new_messages, fetch_sender_replies  # type: ignore
 from ali_llm import generate_review_package, render_review  # type: ignore
 from ali_send import send_reply  # type: ignore
-from ali_mail_parse import extract_top_reply
+from ali_mail_parse import extract_last_review_draft, extract_last_version, extract_top_reply
 from ali_review_proto import (
-    INTERNAL_REVIEW_ANCHOR,
     REVIEW_SUBJECT_MARKER,
     REVIEW_SUBJECT_PATTERN,
 )
@@ -95,37 +94,6 @@ def _default_poll_interval_minutes(now: datetime | None = None) -> int:
     return 1 if _DAY_START <= local_time < _DAY_END else 1
 
 
-# -----------------------------------------------------------------------------
-# Internal helpers (NO STATE, PURE PARSING)
-# -----------------------------------------------------------------------------
-
-def _normalize_newlines(text: str) -> str:
-    """Normalize CRLF/CR newlines to `\\n` for consistent parsing."""
-    return text.replace("\r\n", "\n").replace("\r", "\n")
-
-
-def _dequote_email_history(body_text: str) -> str:
-    """
-    Many email clients quote history with leading ">" (or ">>", etc.).
-    Dequote for parsing so we can reliably find our own markers.
-    """
-    dequoted_lines: list[str] = []
-    for line in body_text.splitlines():
-        while True:
-            match = re.match(r"^\s*>+\s?(.*)$", line)
-            if not match:
-                break
-            line = match.group(1)
-        dequoted_lines.append(line)
-    return "\n".join(dequoted_lines)
-
-
-def _search_space_from_last_anchor(body_text: str, anchor: str) -> str:
-    """Search from the last occurrence of `anchor` to avoid matching older drafts in long threads."""
-    start_search_at = body_text.rfind(anchor)
-    return body_text[start_search_at:] if start_search_at != -1 else body_text
-
-
 def _send_internal_review(
     original: EmailMessage,
     review_body: str,
@@ -169,51 +137,6 @@ def _send_internal_review(
             result.error_message or "unknown error",
         )
 
-
-def extract_last_review_draft(review_email: EmailMessage) -> str:
-    """
-    Extract the most recent draft text from a replied-to `[ALI REVIEW]` email.
-
-    Strategy:
-    - Normalize/dequote the body to make markers easier to find.
-    - Narrow to the text after the last `INTERNAL_REVIEW_ANCHOR` to avoid older versions.
-    - Locate the last `EDIT VERSION: vX` header; return the draft block beneath it.
-    """
-    body = _dequote_email_history(_normalize_newlines(review_email.body_text or ""))
-    search_space = _search_space_from_last_anchor(body, INTERNAL_REVIEW_ANCHOR)
-
-    # v1+ drafts start with: "EDIT VERSION: vX"
-    header_match = None
-    for match in re.finditer(r"^EDIT VERSION:\s*v(\d+)\s*$", search_space, flags=re.MULTILINE):
-        header_match = match
-
-    if header_match is None:
-        raise ValueError("Cannot locate EDIT VERSION header in review email")
-
-    after_header = search_space[header_match.end() :]
-
-    after_header = after_header.lstrip("\n")
-
-    # Draft ends at the internal "action required" block (or the first separator line).
-    sep_pattern = re.compile(r"^[=]{10,}\s*$")
-    kept: list[str] = []
-    for line in after_header.splitlines():
-        if line.strip() == "SENDER ACTION REQUIRED":
-            break
-        if sep_pattern.match(line.strip()):
-            break
-        kept.append(line)
-
-    return "\n".join(kept).strip()
-
-
-def extract_last_version(review_email: EmailMessage) -> int:
-    """Return the highest `EDIT VERSION: vX` found in the (dequoted) email history."""
-    body = _dequote_email_history(_normalize_newlines(review_email.body_text or ""))
-    search_space = _search_space_from_last_anchor(body, INTERNAL_REVIEW_ANCHOR)
-
-    versions = [int(m.group(1)) for m in re.finditer(r"EDIT VERSION:\s*v(\d+)", search_space)]
-    return max(versions) if versions else 1
 
 def _phase1_new_messages(*, logger) -> None:
     """Phase 1: process brand-new inbound messages (non-review threads) into initial v1 drafts."""

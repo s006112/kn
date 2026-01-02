@@ -257,4 +257,12 @@ SENDER ACTION REQUIRED
 
 
 def render_review(review_obj: dict[str, str | list[str]]) -> str:
+    """
+    Render the review package into the final email body.
+
+    Today this is intentionally a thin wrapper that returns `review_obj["draft"]`.
+    Keeping a dedicated function gives us a single place to evolve formatting later
+    (e.g., include `review_id`, allowed actions, extra headers/sections) without
+    changing call sites such as `ali_email.py`.
+    """
     return review_obj["draft"]
