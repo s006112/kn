@@ -26,7 +26,7 @@ except ImportError:
 
 # RAG 實例，首次使用時才會初始化 (Lazy Initialization)
 _RAG_ENGINE: Optional["RagEngineType"] = None
-_RAG_CLASSIFICATION_MODEL = "sonar-reasoning-pro" # 使用成本較低的模型進行分類
+_RAG_CLASSIFICATION_MODEL = "gpt-4.1-mini" # 使用成本較低的模型進行分類
 
 
 # -----------------------------------------------------------------------------
