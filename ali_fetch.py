@@ -16,6 +16,7 @@ from helper.utils_text_processing import extract_email_body  # type: ignore
 
 
 _ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"
+_REVIEW_SUBJECT_MARKER = "[ALI REVIEW]"
 
 
 # ------------------------------------------------------------
@@ -60,6 +61,15 @@ def _record_to_email(record: RawFetchedRecord) -> EmailMessage:
         body_text=extract_email_body(msg),
         raw_bytes=record.raw_bytes,
     )
+
+
+def _extract_reply_body(body_text: str) -> str:
+    if not body_text:
+        return ""
+    marker = "-----Original Message-----"
+    if marker in body_text:
+        body_text = body_text.split(marker, 1)[0]
+    return body_text.strip()
 
 
 # ------------------------------------------------------------
@@ -176,5 +186,55 @@ def fetch_new_messages(
                 )
 
         return allowed_messages
+    finally:
+        client.disconnect()
+
+
+def fetch_sender_replies(
+    *,
+    max_messages: Optional[int] = None,
+) -> List[EmailMessage]:
+    """
+    Fetch unread sender replies to ALI review messages.
+    Returns only replies with non-empty body text.
+    """
+    client, imap_cfg, logger = _init_imap_client()
+
+    try:
+        criteria = ["UNSEEN", "SUBJECT", f'"{_REVIEW_SUBJECT_MARKER}"']
+        uids = client.search_uids(imap_cfg.folder, criteria)
+
+        if not uids:
+            if logger:
+                logger.info("No unread sender replies found.")
+            return []
+
+        if max_messages is not None:
+            uids = uids[:max_messages]
+
+        records = client.fetch_batch(imap_cfg.folder, uids)
+        replies: list[EmailMessage] = []
+        for record in records:
+            msg = _record_to_email(record)
+            reply_body = _extract_reply_body(msg.body_text)
+            if not reply_body.strip():
+                continue
+            replies.append(
+                EmailMessage(
+                    uid=msg.uid,
+                    message_id=msg.message_id,
+                    from_addr=msg.from_addr,
+                    to_addrs=msg.to_addrs,
+                    cc_addrs=msg.cc_addrs,
+                    subject=msg.subject,
+                    body_text=reply_body,
+                    raw_bytes=msg.raw_bytes,
+                )
+            )
+
+        if logger:
+            logger.info("Fetched %d sender replies.", len(replies))
+
+        return replies
     finally:
         client.disconnect()

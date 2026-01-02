@@ -1,11 +1,13 @@
-# ali_llm.py (Modified: Agentic Router + Internal Review Package)
 #!/usr/bin/env python3
 """
 ali_llm.py
 
 - Preserve existing Agentic Router + Lazy RAG behavior
-- Add INTERNAL review package generation for engineer-only workflow
+- Support INTERNAL review generation (v1 rewrite)
+- Support EDIT-ONLY override workflow (v2, v3, ...)
+- No rewrite fallback in override path
 """
+
 from __future__ import annotations
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
@@ -94,7 +96,7 @@ def _get_rag_answer_lazy(question: str) -> str:
 
 
 # -----------------------------------------------------------------------------
-# 3. Original generation logic (PRESERVED)
+# 3. Original generation logic (PRESERVED for v1)
 # -----------------------------------------------------------------------------
 
 def generate_reply(
@@ -104,9 +106,9 @@ def generate_reply(
     model: str,
 ) -> str:
     """
-    Original behavior:
+    v1 behavior:
     Generate a raw reply body based on email content.
-    (This output is NOT considered customer-approved.)
+    (This output is NOT customer-approved.)
     """
     system_prompt = load_prompt_text(system_prompt_path.parent, system_prompt_path.name)
     if system_prompt is None:
@@ -143,7 +145,7 @@ def generate_reply(
 
 
 # -----------------------------------------------------------------------------
-# 4. NEW: Internal Review Package (Minimal Advanced Step)
+# 4. Internal Review Package (v1 rewrite, v2+ edit-only)
 # -----------------------------------------------------------------------------
 
 def generate_review_package(
@@ -151,38 +153,85 @@ def generate_review_package(
     *,
     system_prompt_path: Path,
     model: str,
+    previous_draft: str | None = None,
+    edit_version: int = 1,
 ) -> dict[str, str | list[str]]:
     """
-    Generate an INTERNAL review package for engineer only.
+    INTERNAL review generator.
 
-    - Reuses existing generate_reply()
-    - Adds minimal reflection + explicit human gate
-    - ANY reply implies OVERRIDE instructions; silence means REJECT
-    - NEVER represents a customer-approved response
+    Rules:
+    - v1  : rewrite using generate_reply()
+    - v2+ : EDIT ONLY previous_draft using edit-only prompt
+    - Any reply implies OVERRIDE; silence implies REJECT
     """
 
-    # Step 1: get preliminary draft (existing capability)
-    draft = generate_reply(
-        email,
-        system_prompt_path=system_prompt_path,
-        model=model,
-    )
+    # -------------------------
+    # Draft generation
+    # -------------------------
 
-    subject = (email.subject or "").strip()
+    if previous_draft is None:
+        # v1 — rewrite
+        draft = generate_reply(
+            email,
+            system_prompt_path=system_prompt_path,
+            model=model,
+        )
+    else:
+        # v2+ — edit-only (NO rewrite fallback)
+        edit_prompt_path = (
+            system_prompt_path.parent / "prompt_edit_only_override_p.txt"
+        )
+        edit_system_prompt = load_prompt_text(
+            edit_prompt_path.parent, edit_prompt_path.name
+        )
+        if edit_system_prompt is None:
+            raise FileNotFoundError(
+                f"Edit-only prompt not found: {edit_prompt_path}"
+            )
 
-    # Step 2: minimal reflection (deliberately simple for step 1)
+        user_text = (
+            "previous_draft:\n"
+            "----------------\n"
+            f"{previous_draft}\n\n"
+            "override_instructions:\n"
+            "----------------------\n"
+            f"{(email.body_text or '').strip()}"
+        )
+
+        draft = call_llm(
+            model=model,
+            system_prompt=edit_system_prompt,
+            user_text=user_text,
+            file_path=None,
+        ).strip()
+
+    # -------------------------
+    # Subject normalization
+    # -------------------------
+
+    original_subject = (email.subject or "").strip()
+    normalized_subject = f"[ALI REVIEW] {original_subject}" if original_subject else "[ALI REVIEW]"
+
+    # -------------------------
+    # Reflection notes (static for now)
+    # -------------------------
+
     reflection_notes = [
         "Potential over-commitment risk exists.",
         "Verify no implicit compliance or certification claims.",
         "Additional application context may be required.",
     ]
 
-    # Step 3: assemble engineer-facing review package
+    # -------------------------
+    # Assemble review body
+    # -------------------------
+
     review_body = f"""
 [ALI INTERNAL REVIEW — NOT FOR CUSTOMER]
+EDIT VERSION: v{edit_version}
 
 Original Subject:
-{subject}
+{normalized_subject}
 
 ==================================================
 PRELIMINARY DRAFT (NOT APPROVED)
@@ -197,9 +246,11 @@ REFLECTION / RISK NOTES
 - {reflection_notes[2]}
 
 ==================================================
-ENGINEER ACTION REQUIRED
+SENDER ACTION REQUIRED
 ==================================================
-If you reply, your entire reply body is treated as OVERRIDE instructions.
+If you reply, your entire reply body is treated as EDIT instructions
+applied strictly to the previous draft.
+
 If you do not reply, this is treated as REJECT and will not proceed.
 
 (Do NOT forward this draft to customer without manual approval.)
