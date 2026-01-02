@@ -1,5 +1,28 @@
 from __future__ import annotations
 
+"""
+ali_fetch.py
+
+IMAP FETCH ROUTINES (ARROW VIEW)
+
+`fetch_new_messages()`
+  -> `_init_imap_client()` (load env + config + connect)
+  -> `fetch_new_messages_with_client()` (pure-ish core: search UNSEEN -> fetch -> parse)
+  -> (post-filter) allow only `_ALLOWED_DOMAIN_SUFFIX` senders
+       -> move disallowed messages to `IMAP_TRASH_FOLDER`
+  -> disconnect
+
+`fetch_sender_replies()`
+  -> `_init_imap_client()`
+  -> search UNSEEN with review-subject query
+  -> fetch -> parse -> `extract_top_reply()` (must be non-empty override instructions)
+  -> disconnect
+
+Notes
+- `_record_to_email()` keeps the full raw bytes and full `body_text` (including quoted history)
+  so downstream code can re-parse prior drafts/versions from a replied review email.
+"""
+
 from email import message_from_bytes
 from email.header import decode_header, make_header
 from email.message import Message
@@ -26,6 +49,7 @@ _ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"
 # ------------------------------------------------------------
 
 class StateStoreLike(Protocol):
+    """Minimal interface for stateful de-duplication (e.g. "already processed uid")."""
     def has_processed(self, uid: int) -> bool:
         ...
 
@@ -35,6 +59,7 @@ class StateStoreLike(Protocol):
 # ------------------------------------------------------------
 
 def _extract_addresses(header_value: Optional[str]) -> List[str]:
+    """Parse an address header value into a list of email addrs (drops display names)."""
     if not header_value:
         return []
     parsed = getaddresses([header_value])
@@ -42,6 +67,7 @@ def _extract_addresses(header_value: Optional[str]) -> List[str]:
 
 
 def _get_header(msg: Message, name: str) -> str:
+    """Read and best-effort decode a header from an email.message.Message."""
     raw_value = (msg.get(name) or "").strip()
     if not raw_value:
         return ""
@@ -52,6 +78,7 @@ def _get_header(msg: Message, name: str) -> str:
 
 
 def _record_to_email(record: RawFetchedRecord) -> EmailMessage:
+    """Convert a low-level IMAP fetch record into the project `EmailMessage` DTO."""
     msg = message_from_bytes(record.raw_bytes, policy=default)
     return EmailMessage(
         uid=record.uid,
@@ -78,7 +105,12 @@ def fetch_new_messages_with_client(
     logger=None,
 ) -> List[EmailMessage]:
     """
-    純邏輯版本：不建立 client、不 touch env、不做 connect/disconnect。
+    Core fetch routine using an already-connected `ImapClient`.
+
+    Design goal: keep this function "pure-ish" for easier testing/reuse:
+    - Does NOT load env vars
+    - Does NOT connect/disconnect
+    - Only performs IMAP ops via the provided client
     """
     uids = client.search_uids(folder, ["UNSEEN"])
 
@@ -110,6 +142,7 @@ def fetch_new_messages_with_client(
 # ------------------------------------------------------------
 
 def _init_imap_client():
+    """Initialize and connect an IMAP client using env-driven config."""
     load_env()
     logger = configure_logging("email_fetcher")
     imap_cfg = load_imap_config("IMAP_FOLDER", "INBOX", require_credentials=True)
@@ -135,7 +168,7 @@ def fetch_new_messages(
     max_messages: Optional[int] = None,
 ) -> List[EmailMessage]:
     """
-    Public API：建立 client → 呼叫 core → disconnect。
+    Public API wrapper: init client -> core fetch -> domain filter -> disconnect.
     """
     client, imap_cfg, logger = _init_imap_client()
 
@@ -170,6 +203,8 @@ def fetch_new_messages(
                         msg.from_addr or "<unknown>",
                         trash_folder,
                     )
+                # We "quarantine" disallowed senders by moving them out of the inbox,
+                # so they won't be re-fetched as UNSEEN in the next poll loop.
                 move_imap_message_with_client(
                     client,
                     imap_cfg.folder,

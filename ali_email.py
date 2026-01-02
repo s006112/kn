@@ -15,6 +15,21 @@ SYSTEM INVARIANTS (NON-NEGOTIABLE)
 3. Any Reply Is an Override
    Any non-empty reply from the email-sender MUST be interpreted as override instructions
    and MUST trigger a regenerated internal review using that reply as hard constraints.
+
+CALL FLOW (HIGH LEVEL)
+
+`pipeline_run()`
+  -> `_phase1_new_messages()` (inbound UNSEEN emails, non-review threads)
+       -> `ali_fetch.fetch_new_messages()`
+       -> `ali_llm.generate_review_package()`
+       -> `ali_llm.render_review()`
+       -> `_send_internal_review()` -> `ali_send.send_reply()`
+  -> `_phase2_sender_replies()` (UNSEEN replies to prior [ALI REVIEW] threads)
+       -> `ali_fetch.fetch_sender_replies()`
+       -> `ali_mail_parse.extract_top_reply()` (override instructions)
+       -> `extract_last_review_draft()` + `extract_last_version()` (from quoted history)
+       -> `ali_llm.generate_review_package(previous_draft=..., edit_version=...)`
+       -> `_send_internal_review(..., review_version=v+1)` -> `ali_send.send_reply()`
 """
 
 from __future__ import annotations
@@ -55,22 +70,26 @@ _REVIEW_SUBJECT_PATTERN = REVIEW_SUBJECT_PATTERN
 
 
 def _strip_review_subject_marker(subject: str) -> str:
+    """Normalize a subject line by removing our version marker and repeated `Re:` prefixes."""
     cleaned = re.sub(r"\[v\d+\]", "", subject or "", flags=re.IGNORECASE)
     cleaned = re.sub(r"^(?:\s*re:\s*)+", "", cleaned, flags=re.IGNORECASE)
     return " ".join(cleaned.split())
 
 
 def _build_review_subject(subject: str, version: int) -> str:
+    """Build the outbound review subject with `[vX]` marker and a cleaned base subject."""
     marker = _REVIEW_SUBJECT_MARKER.replace("X", str(version))
     base_subject = _strip_review_subject_marker(subject)
     return f"{marker} {base_subject}".strip() if base_subject else marker
 
 
 def _is_review_subject(subject: str) -> bool:
+    """True if the subject appears to be an ALI review thread (contains our review marker)."""
     return bool(_REVIEW_SUBJECT_PATTERN.search(subject or ""))
 
 
 def _default_poll_interval_minutes(now: datetime | None = None) -> int:
+    """Return the default polling interval (in minutes) based on local HKT business hours."""
     current = now or datetime.now(tz=_HKT_ZONE)
     local_time = current.timetz().replace(tzinfo=None)
     return 1 if _DAY_START <= local_time < _DAY_END else 1
@@ -81,6 +100,7 @@ def _default_poll_interval_minutes(now: datetime | None = None) -> int:
 # -----------------------------------------------------------------------------
 
 def _normalize_newlines(text: str) -> str:
+    """Normalize CRLF/CR newlines to `\\n` for consistent parsing."""
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
@@ -101,6 +121,7 @@ def _dequote_email_history(body_text: str) -> str:
 
 
 def _search_space_from_last_anchor(body_text: str, anchor: str) -> str:
+    """Search from the last occurrence of `anchor` to avoid matching older drafts in long threads."""
     start_search_at = body_text.rfind(anchor)
     return body_text[start_search_at:] if start_search_at != -1 else body_text
 
@@ -114,7 +135,10 @@ def _send_internal_review(
     review_version: int = 1,
 ) -> None:
     """
-    Send INTERNAL review back to the email sender only.
+    Send the INTERNAL review back to the sender only (self-addressed).
+
+    This is deliberately not sent to original recipients/CCs; it is an internal drafting loop
+    between the system and the reviewer mailbox.
     """
     reviewer = original.from_addr
     if not reviewer:
@@ -148,7 +172,12 @@ def _send_internal_review(
 
 def extract_last_review_draft(review_email: EmailMessage) -> str:
     """
-    Extract the previous draft from an [ALI REVIEW] email.
+    Extract the most recent draft text from a replied-to `[ALI REVIEW]` email.
+
+    Strategy:
+    - Normalize/dequote the body to make markers easier to find.
+    - Narrow to the text after the last `INTERNAL_REVIEW_ANCHOR` to avoid older versions.
+    - Locate the last `EDIT VERSION: vX` header; return the draft block beneath it.
     """
     body = _dequote_email_history(_normalize_newlines(review_email.body_text or ""))
     search_space = _search_space_from_last_anchor(body, INTERNAL_REVIEW_ANCHOR)
@@ -179,6 +208,7 @@ def extract_last_review_draft(review_email: EmailMessage) -> str:
 
 
 def extract_last_version(review_email: EmailMessage) -> int:
+    """Return the highest `EDIT VERSION: vX` found in the (dequoted) email history."""
     body = _dequote_email_history(_normalize_newlines(review_email.body_text or ""))
     search_space = _search_space_from_last_anchor(body, INTERNAL_REVIEW_ANCHOR)
 
@@ -186,6 +216,7 @@ def extract_last_version(review_email: EmailMessage) -> int:
     return max(versions) if versions else 1
 
 def _phase1_new_messages(*, logger) -> None:
+    """Phase 1: process brand-new inbound messages (non-review threads) into initial v1 drafts."""
     messages = fetch_new_messages(max_messages=2)
     if not messages:
         logger.info("No new messages to process.")
@@ -216,6 +247,7 @@ def _phase1_new_messages(*, logger) -> None:
 
 
 def _phase2_sender_replies(*, logger) -> None:
+    """Phase 2: process sender replies to review threads as explicit override instructions."""
     sender_replies = fetch_sender_replies()
     if not sender_replies:
         logger.info("No sender replies to process.")
@@ -273,6 +305,7 @@ def _phase2_sender_replies(*, logger) -> None:
 
 
 def pipeline_run() -> None:
+    """Run one polling cycle: handle new inbound messages, then handle review-thread replies."""
     logger = configure_logging("ali_pipeline")
     _phase1_new_messages(logger=logger)
     _phase2_sender_replies(logger=logger)
