@@ -157,6 +157,7 @@ def generate_review_package(
 
     - Reuses existing generate_reply()
     - Adds minimal reflection + explicit human gate
+    - ANY reply implies OVERRIDE instructions; silence means REJECT
     - NEVER represents a customer-approved response
     """
 
@@ -198,11 +199,8 @@ REFLECTION / RISK NOTES
 ==================================================
 ENGINEER ACTION REQUIRED
 ==================================================
-Reply with ONE of the following:
-
-ACCEPT
-OVERRIDE: <instructions>
-REJECT
+If you reply, your entire reply body is treated as OVERRIDE instructions.
+If you do not reply, this is treated as REJECT and will not proceed.
 
 (Do NOT forward this draft to customer without manual approval.)
 """.strip()
@@ -212,7 +210,7 @@ REJECT
     return {
         "review_id": review_id,
         "draft": review_body,
-        "allowed_actions": ["ACCEPT", "OVERRIDE", "REJECT"],
+        "allowed_actions": ["OVERRIDE", "REJECT"],
     }
 
 

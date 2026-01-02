@@ -1,3 +1,20 @@
+"""
+SYSTEM INVARIANTS (NON-NEGOTIABLE)
+
+1. No Autonomous Action
+   The system MUST NOT send any message to customers or third parties autonomously.
+   All generated content is internal-only unless a human explicitly copies and sends it.
+
+2. Silence Means Termination
+   If the engineer does not reply with any non-empty content,
+   the system MUST treat the review as rejected and MUST NOT continue processing.
+
+3. Any Reply Is an Override
+   Any non-empty reply from the engineer MUST be interpreted as override instructions
+   and MUST trigger a regenerated internal review using that reply as hard constraints.
+"""
+
+
 from __future__ import annotations
 
 import time
