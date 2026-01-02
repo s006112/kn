@@ -215,10 +215,9 @@ def generate_review_package(
 
         user_text = (
             "previous_draft:\n"
-            "----------------\n"
             f"{previous_draft}\n\n"
+            "---\n"
             "override_instructions:\n"
-            "----------------------\n"
             f"{(email.body_text or '').strip()}"
         )
 
@@ -238,11 +237,11 @@ def generate_review_package(
     review_body = f"""
 
 
-ALI'S RESPONSE - VERSION {edit_version}   =================
+=================   ALI'S RESPONSE - VERSION {edit_version}   =================
 
 {draft}
 
-ALI'S RESPONSE ENDED   =======================
+=================   ALI'S RESPONSE ENDED   =======================
 
 """.strip()
 
