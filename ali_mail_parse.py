@@ -4,7 +4,38 @@ import re
 
 from helper.utils_imap_types import EmailMessage  # type: ignore
 
-from ali_review_proto import INTERNAL_REVIEW_ANCHOR, ORIGINAL_MESSAGE_MARKER
+REVIEW_SUBJECT_MARKER = "[vX]"
+REVIEW_SUBJECT_PATTERN = re.compile(r"\[v\d+\]")
+REVIEW_SUBJECT_IMAP_QUERY = REVIEW_SUBJECT_MARKER.replace("X]", "")
+
+INTERNAL_REVIEW_ANCHOR = "ALI'S RESPONSE - VERSION"
+ORIGINAL_MESSAGE_MARKER = "-----Original Message-----"
+
+# Be tolerant to mail-client reformatting:
+# - Some clients may keep the "====" separators on the same line as the header/footer.
+# - Some clients may trim/alter surrounding whitespace.
+_HEADER_RE = re.compile(
+    r"^\s*=*\s*ALI'S RESPONSE - VERSION\s+(\d+)\s*=*\s*$",
+    flags=re.MULTILINE,
+)
+_FOOTER_RE = re.compile(r"^\s*=*\s*ALI'S RESPONSE ENDED\s*=*\s*$", flags=re.MULTILINE)
+
+
+def _search_space_from_last_anchor(body_text: str, anchors: tuple[str, ...]) -> str:
+    """
+    Search from the last occurrence of any anchor.
+
+    This lets us reliably extract the most recent review block even in long threads,
+    and keeps backward compatibility when the wire format changes.
+    """
+    last = -1
+    for anchor in anchors:
+        if not anchor:
+            continue
+        idx = body_text.rfind(anchor)
+        if idx > last:
+            last = idx
+    return body_text[last:] if last != -1 else body_text
 
 def extract_top_reply(body_text: str) -> str:
     """Extract sender's top reply text, excluding quoted history."""
@@ -36,12 +67,6 @@ def _dequote_email_history(body_text: str) -> str:
     return "\n".join(dequoted_lines)
 
 
-def _search_space_from_last_anchor(body_text: str, anchor: str) -> str:
-    """Search from the last occurrence of `anchor` to avoid matching older drafts in long threads."""
-    start_search_at = body_text.rfind(anchor)
-    return body_text[start_search_at:] if start_search_at != -1 else body_text
-
-
 def extract_last_review_draft(review_email: EmailMessage) -> str:
     """
     Extract the most recent draft text from a replied-to `[ALI REVIEW]` email.
@@ -49,38 +74,32 @@ def extract_last_review_draft(review_email: EmailMessage) -> str:
     Strategy:
     - Normalize/dequote the body to make markers easier to find.
     - Narrow to the text after the last `INTERNAL_REVIEW_ANCHOR` to avoid older versions.
-    - Locate the last `EDIT VERSION: vX` header; return the draft block beneath it.
+    - Locate the last "ALI'S RESPONSE - VERSION N" header and return the block until
+      "ALI'S RESPONSE ENDED" (or end of message if footer is missing).
     """
     body = _dequote_email_history(_normalize_newlines(review_email.body_text or ""))
-    search_space = _search_space_from_last_anchor(body, INTERNAL_REVIEW_ANCHOR)
+    search_space = _search_space_from_last_anchor(
+        body,
+        (INTERNAL_REVIEW_ANCHOR,),
+    )
 
-    header_match = None
-    for match in re.finditer(r"^EDIT VERSION:\s*v(\d+)\s*$", search_space, flags=re.MULTILINE):
-        header_match = match
+    headers = list(_HEADER_RE.finditer(search_space))
+    if not headers:
+        raise ValueError("Cannot locate review header in review email")
 
-    if header_match is None:
-        raise ValueError("Cannot locate EDIT VERSION header in review email")
-
-    after_header = search_space[header_match.end() :]
-    after_header = after_header.lstrip("\n")
-
-    sep_pattern = re.compile(r"^[=]{10,}\s*$")
-    kept: list[str] = []
-    for line in after_header.splitlines():
-        if line.strip() == "SENDER ACTION REQUIRED":
-            break
-        if sep_pattern.match(line.strip()):
-            break
-        kept.append(line)
-
-    return "\n".join(kept).strip()
+    header = headers[-1]
+    after_header = search_space[header.end() :].lstrip("\n")
+    footer = _FOOTER_RE.search(after_header)
+    return (after_header[: footer.start()] if footer else after_header).strip()
 
 
 def extract_last_version(review_email: EmailMessage) -> int:
-    """Return the highest `EDIT VERSION: vX` found in the (dequoted) email history."""
+    """Return the highest version found in the (dequoted) email history."""
     body = _dequote_email_history(_normalize_newlines(review_email.body_text or ""))
-    search_space = _search_space_from_last_anchor(body, INTERNAL_REVIEW_ANCHOR)
+    search_space = _search_space_from_last_anchor(
+        body,
+        (INTERNAL_REVIEW_ANCHOR,),
+    )
 
-    versions = [int(m.group(1)) for m in re.finditer(r"EDIT VERSION:\s*v(\d+)", search_space)]
+    versions = [int(m.group(1)) for m in _HEADER_RE.finditer(search_space)]
     return max(versions) if versions else 1
-

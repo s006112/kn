@@ -37,8 +37,7 @@ from helper.utils_imap_ops import move_imap_message_with_client  # type: ignore
 from helper.utils_imap_types import EmailMessage
 from helper.utils_text_processing import extract_email_body  # type: ignore
 
-from ali_mail_parse import extract_top_reply
-from ali_review_proto import REVIEW_SUBJECT_IMAP_QUERY, REVIEW_SUBJECT_PATTERN
+from ali_mail_parse import REVIEW_SUBJECT_IMAP_QUERY, REVIEW_SUBJECT_PATTERN, extract_top_reply
 
 
 _ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"

@@ -237,13 +237,12 @@ def generate_review_package(
 
     review_body = f"""
 
-EDIT VERSION: v{edit_version}
+
+ALI'S RESPONSE - VERSION {edit_version}   =================
 
 {draft}
 
-==================================================
-SENDER ACTION REQUIRED
-==================================================
+ALI'S RESPONSE ENDED   ======================
 
 """.strip()
 

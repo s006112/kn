@@ -46,10 +46,12 @@ from helper.utils_imap_types import EmailMessage, SendResult
 from ali_fetch import fetch_new_messages, fetch_sender_replies  # type: ignore
 from ali_llm import generate_review_package, render_review  # type: ignore
 from ali_send import send_reply  # type: ignore
-from ali_mail_parse import extract_last_review_draft, extract_last_version, extract_top_reply
-from ali_review_proto import (
+from ali_mail_parse import (
     REVIEW_SUBJECT_MARKER,
     REVIEW_SUBJECT_PATTERN,
+    extract_last_review_draft,
+    extract_last_version,
+    extract_top_reply,
 )
 
 
