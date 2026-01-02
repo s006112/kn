@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from helper.utils_config import configure_logging, get_env_int  # type: ignore
 from ali_fetch import fetch_new_messages  # type: ignore
-from ali_llm import generate_review_package  # type: ignore
+from ali_llm import generate_review_package, render_review  # type: ignore
 from ali_send import send_reply  # type: ignore
 from helper.utils_imap_types import EmailMessage, SendResult
 
@@ -43,11 +43,12 @@ def pipeline_run() -> None:
             logger.info("Processing uid=%s subject=%s", msg.uid, msg.subject)
 
             # 1) 生成 INTERNAL review 内容（这是 reply_body）
-            reply_body = generate_review_package(
+            review_obj = generate_review_package(
                 msg,
                 system_prompt_path=SYSTEM_PROMPT_PATH,
                 model=LLM_MODEL,
             )
+            reply_body = render_review(review_obj)
 
             # 2) reviewer 永远是 forward 的人
             reviewer = msg.from_addr

@@ -151,7 +151,7 @@ def generate_review_package(
     *,
     system_prompt_path: Path,
     model: str,
-) -> str:
+) -> dict[str, str | list[str]]:
     """
     Generate an INTERNAL review package for engineer only.
 
@@ -207,4 +207,14 @@ REJECT
 (Do NOT forward this draft to customer without manual approval.)
 """.strip()
 
-    return review_body
+    review_id = (email.message_id or "").strip() or str(email.uid)
+
+    return {
+        "review_id": review_id,
+        "draft": review_body,
+        "allowed_actions": ["ACCEPT", "OVERRIDE", "REJECT"],
+    }
+
+
+def render_review(review_obj: dict[str, str | list[str]]) -> str:
+    return review_obj["draft"]
