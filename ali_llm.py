@@ -227,33 +227,15 @@ def generate_review_package(
     # -------------------------
 
     review_body = f"""
-[ALI INTERNAL REVIEW — NOT FOR CUSTOMER]
+
 EDIT VERSION: v{edit_version}
 
-Original Subject:
-{normalized_subject}
-
-==================================================
-PRELIMINARY DRAFT (NOT APPROVED)
-==================================================
 {draft}
-
-==================================================
-REFLECTION / RISK NOTES
-==================================================
-- {reflection_notes[0]}
-- {reflection_notes[1]}
-- {reflection_notes[2]}
 
 ==================================================
 SENDER ACTION REQUIRED
 ==================================================
-If you reply, your entire reply body is treated as EDIT instructions
-applied strictly to the previous draft.
 
-If you do not reply, this is treated as REJECT and will not proceed.
-
-(Do NOT forward this draft to customer without manual approval.)
 """.strip()
 
     review_id = (email.message_id or "").strip() or str(email.uid)
