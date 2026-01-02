@@ -242,7 +242,7 @@ ALI'S RESPONSE - VERSION {edit_version}   =================
 
 {draft}
 
-ALI'S RESPONSE ENDED   ======================
+ALI'S RESPONSE ENDED   =======================
 
 """.strip()
 
