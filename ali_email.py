@@ -19,6 +19,7 @@ SYSTEM INVARIANTS (NON-NEGOTIABLE)
 
 from __future__ import annotations
 
+import re
 import time
 from datetime import datetime, time as dt_time
 from pathlib import Path
@@ -42,6 +43,8 @@ SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent / "prompt" / "prompt_ali_sy
 _HKT_ZONE = ZoneInfo("Asia/Hong_Kong")
 _DAY_START = dt_time(9, 0)
 _DAY_END = dt_time(18, 0)
+
+_REVIEW_SUBJECT_MARKER = "[ALI REVIEW]"
 
 
 def _default_poll_interval_minutes(now: datetime | None = None) -> int:
@@ -101,35 +104,80 @@ def extract_last_review_draft(review_email: EmailMessage) -> str:
     """
     Extract the previous PRELIMINARY DRAFT from an [ALI REVIEW] email.
     """
-    body = review_email.body_text or ""
-    marker = (
-        "==================================================\n"
-        "PRELIMINARY DRAFT (NOT APPROVED)\n"
-        "=================================================="
-    )
+    body = (review_email.body_text or "").replace("\r\n", "\n").replace("\r", "\n")
 
-    if marker not in body:
-        raise ValueError("Cannot locate previous draft in review email")
+    # Many email clients quote history with leading ">" (or ">>", etc.).
+    # Dequote for parsing so we can reliably find our own markers.
+    dequoted_lines: list[str] = []
+    for line in body.splitlines():
+        while True:
+            match = re.match(r"^\s*>+\s?(.*)$", line)
+            if not match:
+                break
+            line = match.group(1)
+        dequoted_lines.append(line)
+    body = "\n".join(dequoted_lines)
 
-    return body.split(marker, 1)[1].strip()
+    anchor = "[ALI INTERNAL REVIEW — NOT FOR CUSTOMER]"
+    start_search_at = body.rfind(anchor)
+    search_space = body[start_search_at:] if start_search_at != -1 else body
+
+    header = "PRELIMINARY DRAFT (NOT APPROVED)"
+    header_index = search_space.find(header)
+    if header_index == -1:
+        raise ValueError("Cannot locate PRELIMINARY DRAFT header in review email")
+
+    after_header = search_space[header_index + len(header) :]
+
+    next_section = "REFLECTION / RISK NOTES"
+    next_index = after_header.find(next_section)
+    if next_index == -1:
+        raise ValueError("Cannot locate REFLECTION section after draft")
+
+    draft_block = after_header[:next_index]
+
+    # Remove separator lines and trim.
+    sep_pattern = re.compile(r"^[=]{10,}\s*$")
+    kept: list[str] = []
+    for line in draft_block.splitlines():
+        if sep_pattern.match(line.strip()):
+            continue
+        kept.append(line)
+
+    return "\n".join(kept).strip()
 
 
 def extract_last_version(review_email: EmailMessage) -> int:
-    body = review_email.body_text or ""
-    versions = []
+    body = (review_email.body_text or "").replace("\r\n", "\n").replace("\r", "\n")
 
+    dequoted_lines: list[str] = []
     for line in body.splitlines():
-        line = line.strip()
-        if line.startswith("EDIT VERSION: v"):
-            try:
-                versions.append(int(line.split("v", 1)[1]))
-            except ValueError:
-                pass
+        while True:
+            match = re.match(r"^\s*>+\s?(.*)$", line)
+            if not match:
+                break
+            line = match.group(1)
+        dequoted_lines.append(line)
+    body = "\n".join(dequoted_lines)
 
-    if not versions:
-        return 1
+    anchor = "[ALI INTERNAL REVIEW — NOT FOR CUSTOMER]"
+    start_search_at = body.rfind(anchor)
+    search_space = body[start_search_at:] if start_search_at != -1 else body
 
-    return max(versions)
+    versions = [int(m.group(1)) for m in re.finditer(r"EDIT VERSION:\s*v(\d+)", search_space)]
+    return max(versions) if versions else 1
+
+def _extract_override_instructions(body_text: str) -> str:
+    """
+    Extract only the sender's top reply text (override instructions),
+    excluding quoted history.
+    """
+    if not body_text:
+        return ""
+    marker = "-----Original Message-----"
+    if marker in body_text:
+        body_text = body_text.split(marker, 1)[0]
+    return body_text.strip()
 
 
 # -----------------------------------------------------------------------------
@@ -149,6 +197,16 @@ def pipeline_run() -> None:
         for msg in messages:
             try:
                 logger.info("Processing new email uid=%s subject=%s", msg.uid, msg.subject)
+
+                # Avoid treating [ALI REVIEW] threads as brand-new inbound messages.
+                # These should be handled in Phase 2 (sender overrides).
+                if _REVIEW_SUBJECT_MARKER in (msg.subject or ""):
+                    logger.info(
+                        "Skipping review-thread message in Phase 1 uid=%s subject=%s",
+                        msg.uid,
+                        msg.subject,
+                    )
+                    continue
 
                 review_obj = generate_review_package(
                     msg,
@@ -180,7 +238,8 @@ def pipeline_run() -> None:
             )
 
             # Silence check (defensive)
-            if not (reply_msg.body_text or "").strip():
+            override_instructions = _extract_override_instructions(reply_msg.body_text or "")
+            if not override_instructions:
                 logger.info("Empty reply body detected; treated as REJECT.")
                 continue
 
@@ -195,7 +254,7 @@ def pipeline_run() -> None:
                 to_addrs=reply_msg.to_addrs,
                 cc_addrs=reply_msg.cc_addrs,
                 subject=reply_msg.subject,
-                body_text=reply_msg.body_text,
+                body_text=override_instructions,
                 raw_bytes=reply_msg.raw_bytes,
             )
 

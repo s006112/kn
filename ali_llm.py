@@ -179,7 +179,7 @@ def generate_review_package(
     else:
         # v2+ — edit-only (NO rewrite fallback)
         edit_prompt_path = (
-            system_prompt_path.parent / "prompt_edit_only_override_p.txt"
+            system_prompt_path.parent / "prompt_edit_only_override.txt"
         )
         edit_system_prompt = load_prompt_text(
             edit_prompt_path.parent, edit_prompt_path.name

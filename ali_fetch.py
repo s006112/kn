@@ -196,7 +196,11 @@ def fetch_sender_replies(
 ) -> List[EmailMessage]:
     """
     Fetch unread sender replies to ALI review messages.
-    Returns only replies with non-empty body text.
+    Returns unread emails whose SUBJECT contains the review marker and whose
+    extracted override instructions (top reply section) are non-empty.
+
+    Note: We intentionally keep the FULL body_text (including quoted history)
+    so the caller can parse prior drafts/version from the replied review email.
     """
     client, imap_cfg, logger = _init_imap_client()
 
@@ -216,21 +220,11 @@ def fetch_sender_replies(
         replies: list[EmailMessage] = []
         for record in records:
             msg = _record_to_email(record)
-            reply_body = _extract_reply_body(msg.body_text)
-            if not reply_body.strip():
+            override_instructions = _extract_reply_body(msg.body_text)
+            if not override_instructions.strip():
                 continue
-            replies.append(
-                EmailMessage(
-                    uid=msg.uid,
-                    message_id=msg.message_id,
-                    from_addr=msg.from_addr,
-                    to_addrs=msg.to_addrs,
-                    cc_addrs=msg.cc_addrs,
-                    subject=msg.subject,
-                    body_text=reply_body,
-                    raw_bytes=msg.raw_bytes,
-                )
-            )
+            # Keep full body_text for downstream parsing (previous draft/version).
+            replies.append(msg)
 
         if logger:
             logger.info("Fetched %d sender replies.", len(replies))
