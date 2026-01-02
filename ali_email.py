@@ -44,7 +44,24 @@ _HKT_ZONE = ZoneInfo("Asia/Hong_Kong")
 _DAY_START = dt_time(9, 0)
 _DAY_END = dt_time(18, 0)
 
-_REVIEW_SUBJECT_MARKER = "[ALI REVIEW]"
+_REVIEW_SUBJECT_MARKER = "[vX]"
+_REVIEW_SUBJECT_PATTERN = re.compile(r"\[v\d+\]")
+
+
+def _strip_review_subject_marker(subject: str) -> str:
+    cleaned = re.sub(r"\[v\d+\]", "", subject or "", flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(?:\s*re:\s*)+", "", cleaned, flags=re.IGNORECASE)
+    return " ".join(cleaned.split())
+
+
+def _build_review_subject(subject: str, version: int) -> str:
+    marker = _REVIEW_SUBJECT_MARKER.replace("X", str(version))
+    base_subject = _strip_review_subject_marker(subject)
+    return f"{marker} {base_subject}".strip() if base_subject else marker
+
+
+def _is_review_subject(subject: str) -> bool:
+    return bool(_REVIEW_SUBJECT_PATTERN.search(subject or ""))
 
 
 def _default_poll_interval_minutes(now: datetime | None = None) -> int:
@@ -88,6 +105,7 @@ def _send_internal_review(
     *,
     logger,
     subject_override: str | None = None,
+    review_version: int = 1,
 ) -> None:
     """
     Send INTERNAL review back to the email sender only.
@@ -96,11 +114,8 @@ def _send_internal_review(
     if not reviewer:
         raise RuntimeError("Missing reviewer (msg.from_addr is empty)")
 
-    subject = (
-        subject_override
-        if subject_override is not None
-        else f"[ALI REVIEW] {original.subject or ''}".strip()
-    )
+    base_subject = subject_override if subject_override is not None else (original.subject or "")
+    subject = _build_review_subject(base_subject, review_version)
 
     review_msg = EmailMessage(
         uid=original.uid,
@@ -199,7 +214,7 @@ def pipeline_run() -> None:
 
                 # Avoid treating [ALI REVIEW] threads as brand-new inbound messages.
                 # These should be handled in Phase 2 (sender overrides).
-                if _REVIEW_SUBJECT_MARKER in (msg.subject or ""):
+                if _is_review_subject(msg.subject or ""):
                     logger.info(
                         "Skipping review-thread message in Phase 1 uid=%s subject=%s",
                         msg.uid,
@@ -271,6 +286,7 @@ def pipeline_run() -> None:
                 review_body,
                 logger=logger,
                 subject_override=reply_msg.subject,
+                review_version=last_version + 1,
             )
 
         except Exception as exc:

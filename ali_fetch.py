@@ -6,6 +6,7 @@ from email.message import Message
 from email.policy import default
 from email.utils import getaddresses
 from typing import List, Optional, Protocol
+import re
 
 from helper.utils_config import configure_logging, get_env_str, load_env  # type: ignore
 from helper.utils_imap_client import ImapClient, RawFetchedRecord  # type: ignore
@@ -16,7 +17,9 @@ from helper.utils_text_processing import extract_email_body  # type: ignore
 
 
 _ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"
-_REVIEW_SUBJECT_MARKER = "[ALI REVIEW]"
+_REVIEW_SUBJECT_MARKER = "[vX]"
+_REVIEW_SUBJECT_PATTERN = re.compile(r"\[v\d+\]")
+_REVIEW_SUBJECT_IMAP_QUERY = _REVIEW_SUBJECT_MARKER.replace("X]", "")
 
 
 # ------------------------------------------------------------
@@ -205,7 +208,7 @@ def fetch_sender_replies(
     client, imap_cfg, logger = _init_imap_client()
 
     try:
-        criteria = ["UNSEEN", "SUBJECT", f'"{_REVIEW_SUBJECT_MARKER}"']
+        criteria = ["UNSEEN", "SUBJECT", f'"{_REVIEW_SUBJECT_IMAP_QUERY}"']
         uids = client.search_uids(imap_cfg.folder, criteria)
 
         if not uids:
@@ -220,6 +223,8 @@ def fetch_sender_replies(
         replies: list[EmailMessage] = []
         for record in records:
             msg = _record_to_email(record)
+            if not _REVIEW_SUBJECT_PATTERN.search(msg.subject or ""):
+                continue
             override_instructions = _extract_reply_body(msg.body_text)
             if not override_instructions.strip():
                 continue
