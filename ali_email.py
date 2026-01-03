@@ -75,7 +75,7 @@ def _default_poll_interval_minutes(now: datetime | None = None) -> int:
 def _build_review_subject(subject: str, version: int) -> str:
     """Build the outbound review subject with `[vX]` marker appended to a cleaned base subject."""
     marker = REVIEW_SUBJECT_MARKER.replace("X", str(version))
-    cleaned = re.sub(r"\[v\d+\]", "", subject or "", flags=re.IGNORECASE)  # remove existing [vN]
+    cleaned = REVIEW_SUBJECT_PATTERN.sub("", subject or "")  # remove existing [REVIEW_SUBJECT_PATTERN]
     cleaned = re.sub(r"^(?:\s*re:\s*)+", "", cleaned, flags=re.IGNORECASE)  # drop repeated leading Re:
     cleaned = " ".join(cleaned.split())  # normalize whitespace
     return f"{cleaned} {marker}".strip() if cleaned else marker
