@@ -42,6 +42,7 @@ from zoneinfo import ZoneInfo
 
 from helper.utils_config import configure_logging, get_env_int  # type: ignore
 from helper.utils_imap_types import EmailMessage, SendResult
+from helper.utils_imap_ops import mark_imap_message_seen  # type: ignore
 
 from ali_fetch import fetch_new_messages, fetch_sender_replies  # type: ignore
 from ali_llm import generate_review_package, render_review  # type: ignore
@@ -120,6 +121,10 @@ def _send_internal_review(
 
     if result.ok:
         logger.info("Internal review sent to %s (uid=%s)", reviewer, original.uid)
+
+        # Mark original inbound email as SEEN
+        mark_imap_message_seen(original.uid, logger)
+
     else:
         logger.error(
             "Send failed for uid=%s: %s",
