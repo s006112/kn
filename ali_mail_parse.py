@@ -77,21 +77,19 @@ def extract_last_review_state(review_email: EmailMessage) -> ReviewState:
 
     Semantics:
     - Dequote the email body.
-    - Locate the LAST 'ALI'S RESPONSE - VERSION N' header.
+    - Locate the highest-version 'ALI'S RESPONSE - VERSION N' header.
     - Extract its version and corresponding draft block.
     """
     body = _review_body_for_parsing(review_email)
 
-    last_header: re.Match | None = None
-    for match in _HEADER_RE.finditer(body):
-        last_header = match
-
-    if last_header is None:
+    headers = list(_HEADER_RE.finditer(body))
+    if not headers:
         raise ValueError("Cannot locate review header in review email")
 
-    version = int(last_header.group(1))
+    best_header = max(headers, key=lambda match: int(match.group(1)))
+    version = int(best_header.group(1))
 
-    remainder = body[last_header.end():].lstrip("\n")
+    remainder = body[best_header.end():].lstrip("\n")
     footer = _FOOTER_RE.search(remainder)
 
     draft = (
