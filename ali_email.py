@@ -122,8 +122,7 @@ def _send_internal_review(
     if result.ok:
         logger.info("Internal review sent to %s (uid=%s)", reviewer, original.uid)
 
-        # Mark original inbound email as SEEN
-        mark_imap_message_seen(original.uid, logger)
+
 
     else:
         logger.error(
@@ -160,6 +159,7 @@ def _phase1_new_messages(*, logger) -> None:
             )
             review_body = render_review(review_obj)
             _send_internal_review(msg, review_body, logger=logger)
+            mark_imap_message_seen(msg.uid, logger=logger)
         except Exception as exc:
             logger.error("Unhandled error processing uid=%s: %s", msg.uid, exc)
 
@@ -214,6 +214,7 @@ def _phase2_sender_replies(*, logger) -> None:
                 subject_override=reply_msg.subject,
                 review_version=last_version + 1,
             )
+            mark_imap_message_seen(reply_msg.uid, logger=logger)
         except Exception as exc:
             logger.error(
                 "Unhandled error processing sender reply uid=%s: %s",
