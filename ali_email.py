@@ -66,10 +66,6 @@ _HKT_ZONE = ZoneInfo("Asia/Hong_Kong")
 _DAY_START = dt_time(9, 0)
 _DAY_END = dt_time(18, 0)
 
-_REVIEW_SUBJECT_MARKER = REVIEW_SUBJECT_MARKER
-_REVIEW_SUBJECT_PATTERN = REVIEW_SUBJECT_PATTERN
-
-
 def _strip_review_subject_marker(subject: str) -> str:
     """Normalize a subject line by removing our version marker and repeated `Re:` prefixes."""
     cleaned = re.sub(r"\[v\d+\]", "", subject or "", flags=re.IGNORECASE)
@@ -79,14 +75,14 @@ def _strip_review_subject_marker(subject: str) -> str:
 
 def _build_review_subject(subject: str, version: int) -> str:
     """Build the outbound review subject with `[vX]` marker and a cleaned base subject."""
-    marker = _REVIEW_SUBJECT_MARKER.replace("X", str(version))
+    marker = REVIEW_SUBJECT_MARKER.replace("X", str(version))
     base_subject = _strip_review_subject_marker(subject)
     return f"{marker} {base_subject}".strip() if base_subject else marker
 
 
 def _is_review_subject(subject: str) -> bool:
     """True if the subject appears to be an ALI review thread (contains our review marker)."""
-    return bool(_REVIEW_SUBJECT_PATTERN.search(subject or ""))
+    return bool(REVIEW_SUBJECT_PATTERN.search(subject or ""))
 
 
 def _default_poll_interval_minutes(now: datetime | None = None) -> int:
