@@ -14,7 +14,11 @@ Non-responsibilities (intentionally delegated):
 - IMAP connect / reconnect / retry logic
 - UID FETCH parsing
 - SSL / legacy TLS handling
-- Marking seen / moving messages implementation details
+- Marking messages as SEEN (done by pipeline after successful processing)
+
+System assumptions (EXPLICIT):
+- "[ALI:v" is a RESERVED subject namespace used exclusively for ALI review threads.
+  It MUST NOT appear in any non-review subject lines.
 """
 
 from __future__ import annotations
@@ -29,7 +33,10 @@ from helper.utils_imap_client import ImapClient, RawFetchedRecord  # type: ignor
 from helper.utils_imap_config import load_imap_config  # type: ignore
 from helper.utils_imap_types import EmailMessage  # type: ignore
 
-from ali_mail_parse import REVIEW_SUBJECT_IMAP_QUERY, REVIEW_SUBJECT_PATTERN  # review-thread detection
+from ali_mail_parse import (
+    REVIEW_SUBJECT_IMAP_QUERY,
+    REVIEW_SUBJECT_PATTERN,
+)  # review-thread detection
 
 
 # ---------------------------------------------------------------------
@@ -71,7 +78,15 @@ def _raw_to_email_message(rec: RawFetchedRecord) -> EmailMessage:
     """
     Convert a RawFetchedRecord into internal EmailMessage.
 
-    This is the *only* place where MIME parsing happens.
+    This is the ONLY place where MIME parsing happens.
+
+    Assumption:
+    - All inbound emails are FORWARDED by a human reviewer.
+    - Therefore, `from_addr` is expected to be the reviewer,
+      NOT the original customer.
+
+    Emails that violate this assumption are intentionally
+    handled downstream (e.g. rejected by ali_send).
     """
     msg = message_from_bytes(rec.raw_bytes, policy=email_default_policy)
 
@@ -79,14 +94,6 @@ def _raw_to_email_message(rec: RawFetchedRecord) -> EmailMessage:
         if not header:
             return []
         return [parseaddr(part)[1] for part in header.split(",") if part.strip()]
-
-    # NOTE:
-    # The system assumes the email is FORWARDED by a human reviewer.
-    # Therefore, `from_addr` is expected to be the reviewer, not the original customer.
-    #
-    # Emails generated or resent by CRM systems that rewrite the From address
-    # (e.g. setting From=customer) are intentionally unsupported and will be
-    # rejected later by ali_send for safety reasons.
 
     return EmailMessage(
         uid=rec.uid,
@@ -109,6 +116,10 @@ def _fetch_records(
 ) -> List[RawFetchedRecord]:
     """
     Search and fetch all matching records for given IMAP criteria.
+
+    Note:
+    - This function does NOT mark messages as SEEN.
+    - Consumption semantics are handled by the pipeline layer.
     """
     uids = client.search_uids(folder, list(criteria))
     if not uids:
@@ -122,12 +133,18 @@ def _fetch_records(
 
 def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
     """
-    Fetch brand-new inbound messages (non-review threads).
+    Fetch brand-new inbound messages (Phase 1).
 
     Rules:
-    - Only UNSEEN messages.
-    - Review-thread subjects are ignored here.
-    - Messages are marked as SEEN once accepted.
+    - Only UNSEEN messages are fetched from IMAP.
+    - Review-thread messages are EXCLUDED at the application layer
+      using REVIEW_SUBJECT_PATTERN.
+    - Messages are marked as SEEN by the pipeline AFTER successful processing.
+
+    Design note:
+    - Review-thread exclusion is intentionally enforced at the application layer
+      (not via IMAP SUBJECT filters) to keep IMAP criteria minimal and robust
+      across servers.
     """
     logger = configure_logging("ali_fetch")
     client, folder = _build_client(logger, require_credentials=True)
@@ -139,7 +156,7 @@ def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
         for rec in records:
             email = _raw_to_email_message(rec)
 
-            # Skip review threads in Phase 1 (protocol-based, single source of truth)
+            # Skip review threads in Phase 1 (single source of truth)
             if REVIEW_SUBJECT_PATTERN.search(email.subject or ""):
                 logger.debug(
                     "Skipping review-thread message uid=%s subject=%s",
@@ -161,12 +178,16 @@ def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
 
 def fetch_sender_replies() -> List[EmailMessage]:
     """
-    Fetch sender replies to existing review threads.
+    Fetch sender replies to existing review threads (Phase 2).
 
     Rules:
-    - Only UNSEEN messages.
-    - Subject must match review-thread marker.
-    - Messages are marked as SEEN after fetching.
+    - Only UNSEEN messages are fetched.
+    - Subject MUST match the reserved review-thread marker.
+    - Messages are marked as SEEN by the pipeline AFTER successful processing.
+
+    Assumption:
+    - REVIEW_SUBJECT_IMAP_QUERY ("[ALI:v") is a reserved namespace and uniquely
+      identifies ALI review threads.
     """
     logger = configure_logging("ali_fetch")
     client, folder = _build_client(logger, require_credentials=True)

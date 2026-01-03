@@ -6,41 +6,53 @@ SYSTEM INVARIANTS (NON-NEGOTIABLE)
 
 1. No Autonomous Action
    The system MUST NOT send any message to customers or third parties autonomously.
-   All generated content is internal-only unless a human explicitly copies and sends it.
+   All generated content is INTERNAL-ONLY unless a human explicitly copies and sends it.
 
 2. Silence Means Termination
-   If the email-sender does not reply with any non-empty content,
-   the system MUST treat the review as rejected and MUST NOT continue processing.
+   If the email-sender does NOT reply with any non-empty content,
+   the system MUST treat the review as REJECTED and MUST NOT continue processing.
 
 3. Any Reply Is an Override
-   Any non-empty reply from the email-sender MUST be interpreted as override instructions
-   and MUST trigger a regenerated internal review using that reply as hard constraints.
+   Any NON-EMPTY reply from the email-sender MUST be interpreted as OVERRIDE instructions
+   and MUST trigger a regenerated INTERNAL review using that reply as hard constraints.
+
 4. FORWARD-ONLY INPUT MODEL (CRITICAL)
    The system ONLY accepts emails that are FORWARDED by a human reviewer.
 
    - The reviewer MUST forward the original email to ALI.
    - The email's From address MUST belong to the reviewer.
-   - Emails sent on behalf of customers (e.g. CRM-generated, rewritten From)
-     are intentionally rejected for safety reasons.
+   - Emails sent on behalf of customers (e.g. CRM-generated emails,
+     rewritten From headers, delegated senders) are intentionally REJECTED.
 
    Rationale:
-   This invariant guarantees that ALI never replies directly to customers,
-   and that all outbound content is explicitly mediated by a human reviewer.
-   
+   This invariant guarantees that ALI NEVER replies directly to customers,
+   and that ALL outbound content is explicitly mediated by a human reviewer.
+
+
 CALL FLOW (HIGH LEVEL)
 
-`pipeline_run()`
-  -> `_phase1_new_messages()` (inbound UNSEEN emails, non-review threads)
-       -> `ali_fetch.fetch_new_messages()`
-       -> `ali_llm.generate_review_package()`
-       -> `ali_llm.render_review()`
-       -> `_send_internal_review()` -> `ali_send.send_reply()`
-  -> `_phase2_sender_replies()` (UNSEEN replies to prior [ALI REVIEW] threads)
-       -> `ali_fetch.fetch_sender_replies()`
-       -> `ali_mail_parse.extract_top_reply()` (override instructions)
-       -> `ali_mail_parse.extract_last_review_draft()` + `ali_mail_parse.extract_last_version()` (from quoted history)
-       -> `ali_llm.generate_review_package(previous_draft=..., edit_version=...)`
-       -> `_send_internal_review(..., review_version=v+1)` -> `ali_send.send_reply()`
+pipeline_run()
+  -> _phase1_new_messages()
+       (Inbound UNSEEN emails, NON-review threads)
+       -> ali_fetch.fetch_new_messages()
+       -> ali_llm.generate_review_package()          # v1 rewrite
+       -> ali_llm.render_review()
+       -> _send_internal_review()
+       -> ali_send.send_reply()
+
+  -> _phase2_sender_replies()
+       (UNSEEN replies to prior [ALI:vN] review threads)
+       -> ali_fetch.fetch_sender_replies()
+       -> ali_mail_parse.extract_sender_override()
+            (sender-written override instructions only)
+       -> ali_mail_parse.extract_last_review_state()
+            (canonical LAST review version + draft from quoted history)
+       -> ali_llm.generate_review_package(
+              previous_draft = state.draft,
+              edit_version   = state.version + 1
+          )
+       -> _send_internal_review(review_version = state.version + 1)
+       -> ali_send.send_reply()
 """
 
 from __future__ import annotations
@@ -61,11 +73,9 @@ from ali_send import send_reply  # type: ignore
 from ali_mail_parse import (
     REVIEW_SUBJECT_MARKER,
     REVIEW_SUBJECT_PATTERN,
-    extract_last_review_draft,
-    extract_last_version,
-    extract_top_reply,
+    extract_last_review_state,
+    extract_sender_override,
 )
-
 
 # -----------------------------------------------------------------------------
 # Config
@@ -78,23 +88,25 @@ _HKT_ZONE = ZoneInfo("Asia/Hong_Kong")
 _DAY_START = dt_time(9, 0)
 _DAY_END = dt_time(18, 0)
 
+
 def _default_poll_interval_minutes(now: datetime | None = None) -> int:
-    """Return the default polling interval (in minutes) based on local HKT business hours."""
-    current = now or datetime.now(tz=_HKT_ZONE)
-    local_time = current.timetz().replace(tzinfo=None)
-    return 1 if _DAY_START <= local_time < _DAY_END else 1
+    """Return the default polling interval (in minutes)."""
+    return 1
+
 
 def _build_review_subject(subject: str, version: int) -> str:
-    """Build the outbound review subject with `[REVIEW_SUBJECT_MARKER]` marker appended to a cleaned base subject."""
+    """Build outbound review subject with review marker appended."""
     marker = REVIEW_SUBJECT_MARKER.replace("X", str(version))
-    cleaned = REVIEW_SUBJECT_PATTERN.sub("", subject or "")  # remove existing [REVIEW_SUBJECT_PATTERN]
-    cleaned = re.sub(r"^(?:\s*re:\s*)+", "", cleaned, flags=re.IGNORECASE)  # drop repeated leading Re:
-    cleaned = " ".join(cleaned.split())  # normalize whitespace
+    cleaned = REVIEW_SUBJECT_PATTERN.sub("", subject or "")
+    cleaned = re.sub(r"^(?:\s*re:\s*)+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = " ".join(cleaned.split())
     return f"{cleaned} {marker}".strip() if cleaned else marker
 
+
 def _is_review_subject(subject: str) -> bool:
-    """True if the subject appears to be an ALI review thread (contains our review marker)."""
+    """True if subject belongs to an ALI review thread."""
     return bool(REVIEW_SUBJECT_PATTERN.search(subject or ""))
+
 
 def _send_internal_review(
     original: EmailMessage,
@@ -104,12 +116,7 @@ def _send_internal_review(
     subject_override: str | None = None,
     review_version: int = 1,
 ) -> None:
-    """
-    Send the INTERNAL review back to the sender only (self-addressed).
-
-    This is deliberately not sent to original recipients/CCs; it is an internal drafting loop
-    between the system and the reviewer mailbox.
-    """
+    """Send internal review back to reviewer only."""
     reviewer = original.from_addr
     if not reviewer:
         raise RuntimeError("Missing reviewer (msg.from_addr is empty)")
@@ -132,9 +139,6 @@ def _send_internal_review(
 
     if result.ok:
         logger.info("Internal review sent to %s (uid=%s)", reviewer, original.uid)
-
-
-
     else:
         logger.error(
             "Send failed for uid=%s: %s",
@@ -143,8 +147,12 @@ def _send_internal_review(
         )
 
 
+# -----------------------------------------------------------------------------
+# Phase 1
+# -----------------------------------------------------------------------------
+
 def _phase1_new_messages(*, logger) -> None:
-    """Phase 1: process brand-new inbound messages (non-review threads) into initial v1 drafts."""
+    """Process brand-new inbound messages into initial v1 drafts."""
     messages = fetch_new_messages(max_messages=2)
     if not messages:
         logger.info("No new messages to process.")
@@ -154,13 +162,8 @@ def _phase1_new_messages(*, logger) -> None:
         try:
             logger.info("Processing new email uid=%s subject=%s", msg.uid, msg.subject)
 
-            # Avoid treating review threads as brand-new inbound messages.
             if _is_review_subject(msg.subject or ""):
-                logger.info(
-                    "Skipping review-thread message in Phase 1 uid=%s subject=%s",
-                    msg.uid,
-                    msg.subject,
-                )
+                logger.info("Skipping review-thread message uid=%s", msg.uid)
                 continue
 
             review_obj = generate_review_package(
@@ -169,14 +172,20 @@ def _phase1_new_messages(*, logger) -> None:
                 model=LLM_MODEL,
             )
             review_body = render_review(review_obj)
+
             _send_internal_review(msg, review_body, logger=logger)
             mark_imap_message_seen(msg.uid, logger=logger)
-        except Exception as exc:
-            logger.error("Unhandled error processing uid=%s: %s", msg.uid, exc)
 
+        except Exception as exc:
+            logger.exception("Unhandled error processing uid=%s", msg.uid)
+
+
+# -----------------------------------------------------------------------------
+# Phase 2
+# -----------------------------------------------------------------------------
 
 def _phase2_sender_replies(*, logger) -> None:
-    """Phase 2: process sender replies to review threads as explicit override instructions."""
+    """Process sender replies as explicit override instructions."""
     sender_replies = fetch_sender_replies()
     if not sender_replies:
         logger.info("No sender replies to process.")
@@ -190,13 +199,12 @@ def _phase2_sender_replies(*, logger) -> None:
                 reply_msg.subject,
             )
 
-            override_instructions = extract_top_reply(reply_msg.body_text or "")
+            override_instructions = extract_sender_override(reply_msg.body_text or "")
             if not override_instructions:
-                logger.info("Empty reply body detected; treated as REJECT.")
+                logger.info("Empty reply detected; treated as REJECT.")
                 continue
 
-            last_review_draft = extract_last_review_draft(reply_msg)
-            last_version = extract_last_version(reply_msg)
+            state = extract_last_review_state(reply_msg)
 
             override_input = EmailMessage(
                 uid=reply_msg.uid,
@@ -205,16 +213,18 @@ def _phase2_sender_replies(*, logger) -> None:
                 to_addrs=reply_msg.to_addrs,
                 cc_addrs=reply_msg.cc_addrs,
                 subject=reply_msg.subject,
-                body_text=override_instructions,   # Key change
+                body_text=override_instructions,
                 raw_bytes=reply_msg.raw_bytes,
             )
+
+            next_version = state.version + 1
 
             review_obj = generate_review_package(
                 override_input,
                 system_prompt_path=SYSTEM_PROMPT_PATH,
                 model=LLM_MODEL,
-                previous_draft=last_review_draft,
-                edit_version=last_version + 1,
+                previous_draft=state.draft,
+                edit_version=next_version,
             )
             review_body = render_review(review_obj)
 
@@ -223,19 +233,23 @@ def _phase2_sender_replies(*, logger) -> None:
                 review_body,
                 logger=logger,
                 subject_override=reply_msg.subject,
-                review_version=last_version + 1,
-            )
-            mark_imap_message_seen(reply_msg.uid, logger=logger)
-        except Exception as exc:
-            logger.error(
-                "Unhandled error processing sender reply uid=%s: %s",
-                reply_msg.uid,
-                exc,
+                review_version=next_version,
             )
 
+            mark_imap_message_seen(reply_msg.uid, logger=logger)
+
+        except Exception as exc:
+            logger.exception(
+                "Unhandled error processing sender reply uid=%s",
+                reply_msg.uid,
+            )
+
+
+# -----------------------------------------------------------------------------
+# Pipeline
+# -----------------------------------------------------------------------------
 
 def pipeline_run() -> None:
-    """Run one polling cycle: handle new inbound messages, then handle review-thread replies."""
     logger = configure_logging("ali_pipeline")
     _phase1_new_messages(logger=logger)
     _phase2_sender_replies(logger=logger)

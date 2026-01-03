@@ -1,56 +1,119 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from helper.utils_imap_types import EmailMessage  # type: ignore
+
+
+# =============================================================================
+# Review subject protocol (cross-module contract)
+# =============================================================================
 
 REVIEW_SUBJECT_MARKER = "[ALI:vX]"
 REVIEW_SUBJECT_PATTERN = re.compile(r"\[ALI:v\d+\]", flags=re.IGNORECASE)
 REVIEW_SUBJECT_IMAP_QUERY = REVIEW_SUBJECT_MARKER.replace("X]", "")
 
 
+# =============================================================================
+# Parsing regex (implementation details)
+# =============================================================================
+
 # Be tolerant to mail-client reformatting:
-# - Some clients may keep the "====" separators on the same line as the header/footer.
-# - Some clients may trim/alter surrounding whitespace.
-_HEADER_RE = re.compile(r"^\s*=*\s*ALI'S RESPONSE - VERSION\s+(\d+)\s*=*\s*$", flags=re.MULTILINE)
-_FOOTER_RE = re.compile(r"^\s*=*\s*ALI'S RESPONSE ENDED\s*=*\s*$", flags=re.MULTILINE)
+# - "====" separators may be on the same line as header/footer
+# - surrounding whitespace may be trimmed or altered
+_HEADER_RE = re.compile(
+    r"^\s*=*\s*ALI'S RESPONSE - VERSION\s+(\d+)\s*=*\s*$",
+    flags=re.MULTILINE,
+)
+_FOOTER_RE = re.compile(
+    r"^\s*=*\s*ALI'S RESPONSE ENDED\s*=*\s*$",
+    flags=re.MULTILINE,
+)
 _QUOTE_PREFIX_RE = re.compile(r"^\s*>+\s?(.*)$")
 
 
-def _search_space_from_last_header(body_text: str) -> str:
-    """Return the text starting at the last review header, or full text if none."""
-    last_header = None
-    for match in _HEADER_RE.finditer(body_text):
-        last_header = match
-    return body_text[last_header.start() :] if last_header else body_text
-
+# =============================================================================
+# Internal helpers
+# =============================================================================
 
 def _review_body_for_parsing(review_email: EmailMessage) -> str:
-    """Normalize and dequote for consistent marker parsing."""
+    """
+    Normalize line endings and fully dequote email body
+    for consistent marker parsing.
+    """
     body_text = (review_email.body_text or "").replace("\r\n", "\n").replace("\r", "\n")
+
     dequoted_lines: list[str] = []
     for line in body_text.splitlines():
+        # strip all leading quote prefixes (>, >>, etc.)
         while True:
             match = _QUOTE_PREFIX_RE.match(line)
             if not match:
                 break
             line = match.group(1)
         dequoted_lines.append(line)
+
     return "\n".join(dequoted_lines)
 
-def extract_last_version(review_email: EmailMessage) -> int:
-    """Return the highest version found in the (dequoted) email history."""
-    body = _review_body_for_parsing(review_email)
-    versions = [int(m.group(1)) for m in _HEADER_RE.finditer(body)]
-    return max(versions) if versions else 1
 
-def extract_top_reply(body_text: str) -> str:
+# =============================================================================
+# Public parsing API
+# =============================================================================
+
+@dataclass(frozen=True)
+class ReviewState:
     """
-    Extract sender's top reply text, excluding quoted history.
+    Canonical representation of the LAST review state
+    found in an email thread.
+    """
+    version: int
+    draft: str
 
-    >>> extract_top_reply("> old line\\n> another old line")
+
+def extract_last_review_state(review_email: EmailMessage) -> ReviewState:
+    """
+    Extract the canonical last review state from a review email.
+
+    Semantics:
+    - Dequote the email body.
+    - Locate the LAST 'ALI'S RESPONSE - VERSION N' header.
+    - Extract its version and corresponding draft block.
+    """
+    body = _review_body_for_parsing(review_email)
+
+    last_header: re.Match | None = None
+    for match in _HEADER_RE.finditer(body):
+        last_header = match
+
+    if last_header is None:
+        raise ValueError("Cannot locate review header in review email")
+
+    version = int(last_header.group(1))
+
+    remainder = body[last_header.end():].lstrip("\n")
+    footer = _FOOTER_RE.search(remainder)
+
+    draft = (
+        remainder[: footer.start()] if footer else remainder
+    ).strip()
+
+    return ReviewState(version=version, draft=draft)
+
+
+def extract_sender_override(body_text: str) -> str:
+    """
+    Extract sender-written override instructions.
+
+    Rules:
+    - Only consider text ABOVE quoted history.
+    - Quoted lines ("> ...") mark the start of history.
+    - Footer markers are ignored if present.
+
+    Examples:
+    >>> extract_sender_override("> old line\\n> another old line")
     ''
-    >>> extract_top_reply("Please make it more formal.\\n\\n> old content")
+    >>> extract_sender_override("Please make it more formal.\\n\\n> old content")
     'Please make it more formal.'
     """
     if not body_text:
@@ -72,42 +135,3 @@ def extract_top_reply(body_text: str) -> str:
         text = text[: footer.start()]
 
     return text.strip()
-
-
-def extract_last_review_draft(review_email: EmailMessage) -> str:
-    """
-    Extract the most recent draft text from a replied-to `[ALI REVIEW]` email.
-
-    >>> msg = EmailMessage(
-    ...     uid=1,
-    ...     message_id="m1",
-    ...     from_addr="a@b.com",
-    ...     to_addrs=[],
-    ...     cc_addrs=[],
-    ...     subject="[ALI:v2] Hi",
-    ...     body_text=(
-    ...         "> ==============================\\n"
-    ...         "> ALI'S RESPONSE - VERSION 1\\n"
-    ...         "> first draft\\n"
-    ...         "> ALI'S RESPONSE ENDED\\n"
-    ...         "> ==============================\\n"
-    ...         "> ALI'S RESPONSE - VERSION 2\\n"
-    ...         "> second draft\\n"
-    ...         "> ALI'S RESPONSE ENDED\\n"
-    ...     ),
-    ...     raw_bytes=b"",
-    ... )
-    >>> extract_last_review_draft(msg)
-    'second draft'
-    """
-    body = _review_body_for_parsing(review_email)
-    search_space = _search_space_from_last_header(body)
-    header = None
-    for match in _HEADER_RE.finditer(search_space):
-        header = match
-    if not header:
-        raise ValueError("Cannot locate review header in review email")
-
-    after_header = search_space[header.end() :].lstrip("\n")
-    footer = _FOOTER_RE.search(after_header)
-    return (after_header[: footer.start()] if footer else after_header).strip()
