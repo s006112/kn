@@ -29,7 +29,7 @@ from helper.utils_imap_client import ImapClient, RawFetchedRecord  # type: ignor
 from helper.utils_imap_config import load_imap_config  # type: ignore
 from helper.utils_imap_types import EmailMessage  # type: ignore
 
-from ali_mail_parse import REVIEW_SUBJECT_IMAP_QUERY  # review-thread detection
+from ali_mail_parse import REVIEW_SUBJECT_IMAP_QUERY, REVIEW_SUBJECT_PATTERN  # review-thread detection
 
 
 # ---------------------------------------------------------------------
@@ -131,8 +131,8 @@ def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
         for rec in records:
             email = _raw_to_email_message(rec)
 
-            # Skip review threads in Phase 1
-            if REVIEW_SUBJECT_IMAP_QUERY and REVIEW_SUBJECT_IMAP_QUERY in (email.subject or ""):
+            # Skip review threads in Phase 1 (protocol-based, single source of truth)
+            if REVIEW_SUBJECT_PATTERN.search(email.subject or ""):
                 logger.debug(
                     "Skipping review-thread message uid=%s subject=%s",
                     rec.uid,

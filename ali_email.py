@@ -74,7 +74,7 @@ def _default_poll_interval_minutes(now: datetime | None = None) -> int:
     return 1 if _DAY_START <= local_time < _DAY_END else 1
 
 def _build_review_subject(subject: str, version: int) -> str:
-    """Build the outbound review subject with `[vX]` marker appended to a cleaned base subject."""
+    """Build the outbound review subject with `[REVIEW_SUBJECT_MARKER]` marker appended to a cleaned base subject."""
     marker = REVIEW_SUBJECT_MARKER.replace("X", str(version))
     cleaned = REVIEW_SUBJECT_PATTERN.sub("", subject or "")  # remove existing [REVIEW_SUBJECT_PATTERN]
     cleaned = re.sub(r"^(?:\s*re:\s*)+", "", cleaned, flags=re.IGNORECASE)  # drop repeated leading Re:
@@ -194,7 +194,7 @@ def _phase2_sender_replies(*, logger) -> None:
                 to_addrs=reply_msg.to_addrs,
                 cc_addrs=reply_msg.cc_addrs,
                 subject=reply_msg.subject,
-                body_text=override_instructions,
+                body_text=override_instructions,   # Key change
                 raw_bytes=reply_msg.raw_bytes,
             )
 
