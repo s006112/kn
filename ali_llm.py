@@ -19,7 +19,7 @@ from helper.utils_llm import call_llm
 from helper.utils_imap_types import EmailMessage
 
 # -----------------------------------------------------------------------------
-# RAG imports (unchanged)
+# RAG imports 
 # -----------------------------------------------------------------------------
 if TYPE_CHECKING:
     from helper.helper_rag_worker import RagEngine as RagEngineType
@@ -34,7 +34,7 @@ _RAG_ENGINE: Optional["RagEngineType"] = None
 _RAG_CLASSIFICATION_MODEL = "gpt-4.1-mini"
 
 # -----------------------------------------------------------------------------
-# 1. Router Logic (unchanged)
+# 1. Router Logic 
 # -----------------------------------------------------------------------------
 
 def _is_safety_regulation_query(subject: str, body: str) -> bool:
@@ -66,7 +66,7 @@ def _is_safety_regulation_query(subject: str, body: str) -> bool:
 
 
 # -----------------------------------------------------------------------------
-# 2. RAG Execution (unchanged)
+# 2. RAG Execution 
 # -----------------------------------------------------------------------------
 
 def _load_rag_engine() -> Optional["RagEngineType"]:

@@ -74,10 +74,10 @@ def _strip_review_subject_marker(subject: str) -> str:
 
 
 def _build_review_subject(subject: str, version: int) -> str:
-    """Build the outbound review subject with `[vX]` marker and a cleaned base subject."""
+    """Build the outbound review subject with `[vX]` marker appended to a cleaned base subject."""
     marker = REVIEW_SUBJECT_MARKER.replace("X", str(version))
     base_subject = _strip_review_subject_marker(subject)
-    return f"{marker} {base_subject}".strip() if base_subject else marker
+    return f"{base_subject} {marker}".strip() if base_subject else marker
 
 
 def _is_review_subject(subject: str) -> bool:
