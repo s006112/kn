@@ -4,8 +4,8 @@ import re
 
 from helper.utils_imap_types import EmailMessage  # type: ignore
 
-REVIEW_SUBJECT_MARKER = "[vX]"
-REVIEW_SUBJECT_PATTERN = re.compile(r"\[v\d+\]", flags=re.IGNORECASE)
+REVIEW_SUBJECT_MARKER = "[ALI:vX]"
+REVIEW_SUBJECT_PATTERN = re.compile(r"\[ALI:v\d+\]", flags=re.IGNORECASE)
 REVIEW_SUBJECT_IMAP_QUERY = REVIEW_SUBJECT_MARKER.replace("X]", "")
 
 
