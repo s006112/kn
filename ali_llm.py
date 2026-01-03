@@ -33,7 +33,6 @@ except ImportError:
 _RAG_ENGINE: Optional["RagEngineType"] = None
 _RAG_CLASSIFICATION_MODEL = "gpt-4.1-mini"
 
-
 # -----------------------------------------------------------------------------
 # 1. Router Logic (unchanged)
 # -----------------------------------------------------------------------------
@@ -150,28 +149,6 @@ def generate_reply(
 # 4. Internal Review Package (v1 rewrite, v2+ edit-only)
 # -----------------------------------------------------------------------------
 
-def _strip_leading_edit_version_headers(text: str) -> str:
-    """
-    Ensure only one "EDIT VERSION: vN" header exists (the wrapper adds it).
-    Removes repeated leading headers commonly produced by the LLM.
-    """
-    if not text:
-        return text
-
-    lines = text.splitlines()
-    i = 0
-
-    while i < len(lines) and lines[i].strip() == "":
-        i += 1
-
-    while i < len(lines) and re.fullmatch(r"EDIT VERSION:\s*v\d+", lines[i].strip(), flags=re.IGNORECASE):
-        i += 1
-        while i < len(lines) and lines[i].strip() == "":
-            i += 1
-
-    return "\n".join(lines[i:])
-
-
 def generate_review_package(
     email: EmailMessage,
     *,
@@ -227,8 +204,6 @@ def generate_review_package(
             user_text=user_text,
             file_path=None,
         ).strip()
-
-    draft = _strip_leading_edit_version_headers(draft)
 
     # -------------------------
     # Assemble review body
