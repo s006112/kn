@@ -14,6 +14,7 @@ REVIEW_SUBJECT_IMAP_QUERY = REVIEW_SUBJECT_MARKER.replace("X]", "")
 # - Some clients may trim/alter surrounding whitespace.
 _HEADER_RE = re.compile(r"^\s*=*\s*ALI'S RESPONSE - VERSION\s+(\d+)\s*=*\s*$", flags=re.MULTILINE)
 _FOOTER_RE = re.compile(r"^\s*=*\s*ALI'S RESPONSE ENDED\s*=*\s*$", flags=re.MULTILINE)
+_QUOTE_PREFIX_RE = re.compile(r"^\s*>+\s?(.*)$")
 
 
 def _search_space_from_last_header(body_text: str) -> str:
@@ -26,37 +27,31 @@ def _search_space_from_last_header(body_text: str) -> str:
 
 def _review_body_for_parsing(review_email: EmailMessage) -> str:
     """Normalize and dequote for consistent marker parsing."""
-    return _dequote_email_history(_normalize_newlines(review_email.body_text or ""))
-
-def extract_top_reply(body_text: str) -> str:
-    """Extract sender's top reply text, excluding quoted history."""
-    if not body_text:
-        return ""
-    footer = _FOOTER_RE.search(body_text)
-    if footer:
-        body_text = body_text[: footer.start()]
-    return body_text.strip()
-
-
-def _normalize_newlines(text: str) -> str:
-    """Normalize CRLF/CR newlines to `\\n` for consistent parsing."""
-    return text.replace("\r\n", "\n").replace("\r", "\n")
-
-
-def _dequote_email_history(body_text: str) -> str:
-    """
-    Many email clients quote history with leading ">" (or ">>", etc.).
-    Dequote for parsing so we can reliably find our own markers.
-    """
+    body_text = (review_email.body_text or "").replace("\r\n", "\n").replace("\r", "\n")
     dequoted_lines: list[str] = []
     for line in body_text.splitlines():
         while True:
-            match = re.match(r"^\s*>+\s?(.*)$", line)
+            match = _QUOTE_PREFIX_RE.match(line)
             if not match:
                 break
             line = match.group(1)
         dequoted_lines.append(line)
     return "\n".join(dequoted_lines)
+
+def extract_top_reply(body_text: str) -> str:
+    if not body_text:
+        return ""
+
+    for i, line in enumerate(body_text.replace("\r\n", "\n").replace("\r", "\n").splitlines()):
+        if _QUOTE_PREFIX_RE.match(line):
+            body_text = "\n".join(body_text.splitlines()[:i])
+            break
+
+    footer = _FOOTER_RE.search(body_text)
+    if footer:
+        body_text = body_text[: footer.start()]
+
+    return body_text.strip()
 
 
 def extract_last_review_draft(review_email: EmailMessage) -> str:
