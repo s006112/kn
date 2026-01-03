@@ -212,11 +212,11 @@ def generate_review_package(
     review_body = f"""
 
 
-=================   ALI'S RESPONSE - VERSION {edit_version}   =================
+=================   ALI'S RESPONSE - VERSION {edit_version}   ==================
 
 {draft}
 
-=================   ALI'S RESPONSE ENDED   =======================
+====================   ALI'S RESPONSE ENDED   =====================
 
 """.strip()
 

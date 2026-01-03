@@ -80,6 +80,14 @@ def _raw_to_email_message(rec: RawFetchedRecord) -> EmailMessage:
             return []
         return [parseaddr(part)[1] for part in header.split(",") if part.strip()]
 
+    # NOTE:
+    # The system assumes the email is FORWARDED by a human reviewer.
+    # Therefore, `from_addr` is expected to be the reviewer, not the original customer.
+    #
+    # Emails generated or resent by CRM systems that rewrite the From address
+    # (e.g. setting From=customer) are intentionally unsupported and will be
+    # rejected later by ali_send for safety reasons.
+
     return EmailMessage(
         uid=rec.uid,
         message_id=msg.get("Message-ID", ""),

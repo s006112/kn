@@ -15,7 +15,18 @@ SYSTEM INVARIANTS (NON-NEGOTIABLE)
 3. Any Reply Is an Override
    Any non-empty reply from the email-sender MUST be interpreted as override instructions
    and MUST trigger a regenerated internal review using that reply as hard constraints.
+4. FORWARD-ONLY INPUT MODEL (CRITICAL)
+   The system ONLY accepts emails that are FORWARDED by a human reviewer.
 
+   - The reviewer MUST forward the original email to ALI.
+   - The email's From address MUST belong to the reviewer.
+   - Emails sent on behalf of customers (e.g. CRM-generated, rewritten From)
+     are intentionally rejected for safety reasons.
+
+   Rationale:
+   This invariant guarantees that ALI never replies directly to customers,
+   and that all outbound content is explicitly mediated by a human reviewer.
+   
 CALL FLOW (HIGH LEVEL)
 
 `pipeline_run()`

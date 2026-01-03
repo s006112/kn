@@ -35,29 +35,44 @@ from helper.utils_imap_ops import append_to_imap_sent  # type: ignore
 
 def _require_reply_to_forward_sender(original_from: str, to_addr: str) -> None:
     """
-    Hard safety guard.
+    HARD SAFETY GUARD — FORWARD-ONLY POLICY (NON-NEGOTIABLE)
 
-    Enforces that ALI can ONLY reply to the email-sender who forwarded the email.
-    Comparison is done on the actual email address (addr-spec),
-    NOT on the display name.
+    Enforces that ALI may ONLY reply to the human reviewer who
+    FORWARDED the email to ALI.
+
+    - Comparison is done strictly on addr-spec (email address),
+      NOT on display names.
+    - Any attempt to reply to a non-forward-sender is intentionally blocked.
+    - This is a security policy, NOT a recoverable error.
+
+    Rationale:
+    This invariant guarantees that ALI never replies directly to customers
+    and that all outbound communication is explicitly mediated by a human.
     """
     if not original_from or not to_addr:
-        raise RuntimeError("Missing sender or recipient address")
+        raise RuntimeError(
+            "SECURITY REJECTED (FORWARD-ONLY POLICY): "
+            "Missing sender or recipient address."
+        )
 
     _, original_email = parseaddr(original_from)
     _, to_email = parseaddr(to_addr)
 
     if not original_email or not to_email:
         raise RuntimeError(
-            f"Unable to parse email address: "
-            f"from={original_from}, to={to_addr}"
+            "SECURITY REJECTED (FORWARD-ONLY POLICY): "
+            f"Unable to parse email address "
+            f"(from={original_from}, to={to_addr})."
         )
 
     if original_email.strip().lower() != to_email.strip().lower():
         raise RuntimeError(
-            f"Illegal recipient blocked: {to_email}. "
-            f"Only forward sender {original_email} is allowed."
+            "SECURITY REJECTED (FORWARD-ONLY POLICY): "
+            f"Outbound recipient mismatch. "
+            f"Expected To={original_email}, but got To={to_email}. "
+            "Only the forwarding reviewer is allowed as recipient."
         )
+
 
 
 # ------------------------------------------------------------
