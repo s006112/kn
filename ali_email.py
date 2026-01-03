@@ -66,31 +66,23 @@ _HKT_ZONE = ZoneInfo("Asia/Hong_Kong")
 _DAY_START = dt_time(9, 0)
 _DAY_END = dt_time(18, 0)
 
-def _strip_review_subject_marker(subject: str) -> str:
-    """Normalize a subject line by removing our version marker and repeated `Re:` prefixes."""
-    cleaned = re.sub(r"\[v\d+\]", "", subject or "", flags=re.IGNORECASE)
-    cleaned = re.sub(r"^(?:\s*re:\s*)+", "", cleaned, flags=re.IGNORECASE)
-    return " ".join(cleaned.split())
-
-
-def _build_review_subject(subject: str, version: int) -> str:
-    """Build the outbound review subject with `[vX]` marker appended to a cleaned base subject."""
-    marker = REVIEW_SUBJECT_MARKER.replace("X", str(version))
-    base_subject = _strip_review_subject_marker(subject)
-    return f"{base_subject} {marker}".strip() if base_subject else marker
-
-
-def _is_review_subject(subject: str) -> bool:
-    """True if the subject appears to be an ALI review thread (contains our review marker)."""
-    return bool(REVIEW_SUBJECT_PATTERN.search(subject or ""))
-
-
 def _default_poll_interval_minutes(now: datetime | None = None) -> int:
     """Return the default polling interval (in minutes) based on local HKT business hours."""
     current = now or datetime.now(tz=_HKT_ZONE)
     local_time = current.timetz().replace(tzinfo=None)
     return 1 if _DAY_START <= local_time < _DAY_END else 1
 
+def _build_review_subject(subject: str, version: int) -> str:
+    """Build the outbound review subject with `[vX]` marker appended to a cleaned base subject."""
+    marker = REVIEW_SUBJECT_MARKER.replace("X", str(version))
+    cleaned = re.sub(r"\[v\d+\]", "", subject or "", flags=re.IGNORECASE)  # remove existing [vN]
+    cleaned = re.sub(r"^(?:\s*re:\s*)+", "", cleaned, flags=re.IGNORECASE)  # drop repeated leading Re:
+    cleaned = " ".join(cleaned.split())  # normalize whitespace
+    return f"{cleaned} {marker}".strip() if cleaned else marker
+
+def _is_review_subject(subject: str) -> bool:
+    """True if the subject appears to be an ALI review thread (contains our review marker)."""
+    return bool(REVIEW_SUBJECT_PATTERN.search(subject or ""))
 
 def _send_internal_review(
     original: EmailMessage,
