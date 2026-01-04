@@ -35,6 +35,15 @@
       {% set board_margin_l = board_margin_w_raw if best_row.board_rot else board_margin_l_raw %}
       {% set singles_pad_tb_pct = (board_margin_w / best_row.board_w * 100) if best_row.board_w else 0 %}
       {% set singles_pad_lr_pct = (board_margin_l / best_row.board_l * 100) if best_row.board_l else 0 %}
+      {% set single_gap_w = best_row.inter_single_gap_w if best_row.inter_single_gap_w is defined else (panelizer_values.inter_single_gap_w if panelizer_values is defined and panelizer_values.inter_single_gap_w is defined else 0) %}
+      {% set single_gap_l = best_row.inter_single_gap_l if best_row.inter_single_gap_l is defined else (panelizer_values.inter_single_gap_l if panelizer_values is defined and panelizer_values.inter_single_gap_l is defined else 0) %}
+      {% set inner_board_w = (best_row.board_w - 2.0 * board_margin_w) if best_row.board_w else 0 %}
+      {% set inner_board_l = (best_row.board_l - 2.0 * board_margin_l) if best_row.board_l else 0 %}
+      {% set inner_board_w = inner_board_w if inner_board_w > 0 else best_row.board_w %}
+      {% set inner_board_l = inner_board_l if inner_board_l > 0 else best_row.board_l %}
+      {% set singles_gap_tb_pct = (single_gap_w / inner_board_w * 100) if inner_board_w else 0 %}
+      {% set singles_gap_lr_pct = (single_gap_l / inner_board_l * 100) if inner_board_l else 0 %}
+      {% set singles_gap_style = "row-gap: %.4f%%; column-gap: %.4f%%;"|format(singles_gap_tb_pct, singles_gap_lr_pct) %}
       {% set board_positions = best_row.placements.boards if best_row.placements is defined and best_row.placements.boards is defined else [] %}
         <div style="position: absolute; top: {{ "%.4f"|format(pad_top_bottom_pct) }}%; left: 50%; transform: translate(-50%, -100%); font-size: 0.75rem; color: #1f2937; pointer-events: none;">{{ "%.1f"|format(panel_margin_w) }}</div>
         <div style="position: absolute; top: 50%; left: {{ "%.4f"|format(pad_left_right_pct) }}%; transform: translate(-100%, -50%); font-size: 0.75rem; color: #1f2937; pointer-events: none;">{{ "%.1f"|format(panel_margin_l) }}</div>
@@ -49,7 +58,7 @@
             {% set is_top_left = (row_index0 == 0 and col_index0 == 0 and singles_rows and singles_cols) %}
             <div class="panel-visual-board{{ ' panel-visual-board--with-singles' if is_top_left else '' }}" style="width: {{ "%.4f"|format(board_w_pct) }}%; height: {{ "%.4f"|format(board_l_pct) }}%; left: {{ "%.4f"|format(left_pct) }}%; top: {{ "%.4f"|format(top_pct) }}%;">
               {% if is_top_left %}
-                <div class="panel-visual-singles-grid" style="grid-template-rows: repeat({{ singles_cols }}, 1fr); grid-template-columns: repeat({{ singles_rows }}, 1fr); position: absolute; inset: {{ "%.4f"|format(singles_pad_tb_pct) }}% {{ "%.4f"|format(singles_pad_lr_pct) }}% {{ "%.4f"|format(singles_pad_tb_pct) }}% {{ "%.4f"|format(singles_pad_lr_pct) }}%;">
+                <div class="panel-visual-singles-grid" style="grid-template-rows: repeat({{ singles_cols }}, 1fr); grid-template-columns: repeat({{ singles_rows }}, 1fr); position: absolute; inset: {{ "%.4f"|format(singles_pad_tb_pct) }}% {{ "%.4f"|format(singles_pad_lr_pct) }}% {{ "%.4f"|format(singles_pad_tb_pct) }}% {{ "%.4f"|format(singles_pad_lr_pct) }}%; {{ singles_gap_style }}">
                   {% for sr in range(singles_rows) %}
                     {% for sc in range(singles_cols) %}
                       {% set is_first_single = (sr == (singles_rows - 1) and sc == (singles_cols - 1)) %}
@@ -80,7 +89,7 @@
                 {% set is_top_left = (j == 0 and i == 0 and singles_rows and singles_cols) %}
                 <div class="panel-visual-board{{ ' panel-visual-board--with-singles' if is_top_left else '' }}">
                   {% if is_top_left %}
-                    <div class="panel-visual-singles-grid" style="grid-template-rows: repeat({{ singles_cols }}, 1fr); grid-template-columns: repeat({{ singles_rows }}, 1fr); position: absolute; inset: {{ "%.4f"|format(singles_pad_tb_pct) }}% {{ "%.4f"|format(singles_pad_lr_pct) }}% {{ "%.4f"|format(singles_pad_tb_pct) }}% {{ "%.4f"|format(singles_pad_lr_pct) }}%;">
+                    <div class="panel-visual-singles-grid" style="grid-template-rows: repeat({{ singles_cols }}, 1fr); grid-template-columns: repeat({{ singles_rows }}, 1fr); position: absolute; inset: {{ "%.4f"|format(singles_pad_tb_pct) }}% {{ "%.4f"|format(singles_pad_lr_pct) }}% {{ "%.4f"|format(singles_pad_tb_pct) }}% {{ "%.4f"|format(singles_pad_lr_pct) }}%; {{ singles_gap_style }}">
                       {% for sr in range(singles_rows) %}
                         {% for sc in range(singles_cols) %}
                           {% set is_first_single = (sr == (singles_rows - 1) and sc == (singles_cols - 1)) %}
