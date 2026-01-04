@@ -90,8 +90,11 @@ _DAY_END = dt_time(18, 0)
 
 
 def _default_poll_interval_minutes(now: datetime | None = None) -> int:
-    """Return the default polling interval (in minutes)."""
-    return 1
+    """Return the default polling interval (in minutes) based on local HKT business hours."""
+    current = now or datetime.now(tz=_HKT_ZONE)
+    local_time = current.timetz().replace(tzinfo=None)
+    return 0.5 if _DAY_START <= local_time < _DAY_END else 1
+
 
 
 def _build_review_subject(subject: str, version: int) -> str:
