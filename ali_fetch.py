@@ -38,10 +38,21 @@ from ali_mail_parse import (
     REVIEW_SUBJECT_PATTERN,
 )  # review-thread detection
 
+_ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"
+
 
 # ---------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------
+
+def _is_allowed_sender(from_addr: str) -> bool:
+    """
+    Safety-critical guard: ONLY internal reviewers from @ampco.com.hk may enter
+    the pipeline. All other senders MUST be rejected and moved to IMAP Trash.
+    Do not remove.
+    """
+    return (from_addr or "").lower().endswith(_ALLOWED_DOMAIN_SUFFIX)
+
 
 def _build_client(logger, *, require_credentials: bool) -> tuple[ImapClient, str]:
     """
@@ -156,6 +167,15 @@ def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
         for rec in records:
             email = _raw_to_email_message(rec)
 
+            if not _is_allowed_sender(email.from_addr):
+                logger.warning(
+                    "Rejecting non-allowlisted sender uid=%s from=%s",
+                    rec.uid,
+                    email.from_addr,
+                )
+                client.move_message(folder, rec.uid, "Trash")
+                continue
+
             # Skip review threads in Phase 1 (single source of truth)
             if REVIEW_SUBJECT_PATTERN.search(email.subject or ""):
                 logger.debug(
@@ -206,6 +226,14 @@ def fetch_sender_replies() -> List[EmailMessage]:
 
         for rec in records:
             email = _raw_to_email_message(rec)
+            if not _is_allowed_sender(email.from_addr):
+                logger.warning(
+                    "Rejecting non-allowlisted sender uid=%s from=%s",
+                    rec.uid,
+                    email.from_addr,
+                )
+                client.move_message(folder, rec.uid, "Trash")
+                continue
             replies.append(email)
 
         return replies
