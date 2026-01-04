@@ -45,8 +45,8 @@
       {% set singles_gap_lr_pct = (single_gap_l / inner_board_l * 100) if inner_board_l else 0 %}
       {% set singles_gap_style = "row-gap: %.4f%%; column-gap: %.4f%%;"|format(singles_gap_tb_pct, singles_gap_lr_pct) %}
       {% set board_positions = best_row.placements.boards if best_row.placements is defined and best_row.placements.boards is defined else [] %}
-        <div style="position: absolute; top: {{ "%.4f"|format(pad_top_bottom_pct) }}%; left: 50%; transform: translate(-50%, -100%); font-size: 0.75rem; color: #1f2937; pointer-events: none;">{{ "%.1f"|format(panel_margin_w) }}</div>
-        <div style="position: absolute; top: 50%; left: {{ "%.4f"|format(pad_left_right_pct) }}%; transform: translate(-100%, -50%); font-size: 0.75rem; color: #1f2937; pointer-events: none;">{{ "%.1f"|format(panel_margin_l) }}</div>
+        <div style="position: absolute; bottom: {{ "%.4f"|format(pad_top_bottom_pct) }}%; left: 50%; transform: translate(-50%, 100%); font-size: 0.75rem; color: #1f2937; pointer-events: none;">{{ "%.1f"|format(panel_margin_w) }}</div>
+        <div style="position: absolute; top: 50%; right: {{ "%.4f"|format(pad_left_right_pct) }}%; transform: translate(100%, -50%); font-size: 0.75rem; color: #1f2937; pointer-events: none;">{{ "%.1f"|format(panel_margin_l) }}</div>
       <div class="panel-visual-inner" style="position: absolute; inset: {{ "%.4f"|format(pad_top_bottom_pct) }}% {{ "%.4f"|format(pad_left_right_pct) }}% {{ "%.4f"|format(pad_top_bottom_pct) }}% {{ "%.4f"|format(pad_left_right_pct) }}%;">
         {% if board_positions %}
           {# Row/col mapping: rows follow panel length axis (nbl), cols follow width (nbw). Only the top-left board shows singles. #}
