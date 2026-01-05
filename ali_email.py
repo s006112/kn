@@ -128,7 +128,7 @@ from ali_mail_parse import (
 # Config
 # -----------------------------------------------------------------------------
 
-LLM_MODEL = "gpt-4.1-mini"
+LLM_MODEL = "sonar"
 SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent / "prompt" / "prompt_ali_system.txt"
 
 _HKT_ZONE = ZoneInfo("Asia/Hong_Kong")

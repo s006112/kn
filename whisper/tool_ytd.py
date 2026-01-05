@@ -58,8 +58,13 @@ FORM_HTML = """<!doctype html>
       <input type="text" name="url" placeholder="https://example.com/video (720p)" required>
       <button type="submit">720p</button>
     </form>
+    <form method="post">
+      <input type="hidden" name="mode" value="mp3">
+      <input type="text" name="url" placeholder="https://youtube.com/watch?v=... (MP3)" required>
+      <button type="submit">MP3</button>
+    </form>
     {status}
-    <small>Top form runs <code>yt-dlp -f &quot;(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst&quot;</code>; the 720p form runs <code>yt-dlp -f &quot;(bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a])/(bestvideo[height=720]+bestaudio)/(bestvideo[ext=mp4][height&lt;=720]+bestaudio[ext=m4a])/(bestvideo[height&lt;=720]+bestaudio)/best[height&lt;=720]&quot; --merge-output-format mp4</code>. Files are removed after each request.</small>
+    <small>Top form runs <code>yt-dlp -f &quot;(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst&quot;</code>; the 720p form runs <code>yt-dlp -f &quot;(bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a])/(bestvideo[height=720]+bestaudio)/(bestvideo[ext=mp4][height&lt;=720]+bestaudio[ext=m4a])/(bestvideo[height&lt;=720]+bestaudio)/best[height&lt;=720]&quot; --merge-output-format mp4</code>; the MP3 form runs <code>yt-dlp -x --audio-format mp3 -f &quot;bestaudio/best&quot;</code>. Files are removed after each request.</small>
   </main>
 </body>
 </html>
@@ -162,30 +167,12 @@ class DownloadHandler(BaseHTTPRequestHandler):
         if not url:
             return None, None, "Please enter a URL."
         mode = params.get("mode", ["worst"])[0].strip().lower()
-        if mode not in {"worst", "720p"}:
+        if mode not in {"worst", "720p", "mp3"}:
             mode = "worst"
         return url, mode, None
 
-    def _download_with_yt_dlp(self, url, mode):
-        temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
-        is_720p = mode == "720p"
-        # Keep the Fetch action intentionally small by forcing the worst
-        # available muxed video+audio combination. The 720p action attempts an
-        # exact 720p grab first before falling back to any format at or below
-        # 720p so that users get the intended resolution when available.
-        format_selector = (
-            "(bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a])/"
-            "(bestvideo[height=720]+bestaudio)/"
-            "(bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a])/"
-            "(bestvideo[height<=720]+bestaudio)/"
-            "best[height<=720]"
-            if is_720p
-            else "(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst"
-        )
-        cmd = ["yt-dlp", "-f", format_selector]
-        if is_720p:
-            cmd += ["--merge-output-format", "mp4"]
-        cmd += ["-o", "%(title).50s.%(ext)s"]
+    def _yt_dlp_common_args(self):
+        cmd = []
         if JS_RUNTIME:
             cmd += ["--js-runtimes", JS_RUNTIME]
         if REMOTE_COMPONENTS:
@@ -198,6 +185,33 @@ class DownloadHandler(BaseHTTPRequestHandler):
             cmd += ["--cookies-from-browser", COOKIES_FROM_BROWSER]
         if EXTRA_ARGS:
             cmd += EXTRA_ARGS
+        return cmd
+
+    def _download_with_yt_dlp(self, url, mode):
+        temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
+        if mode == "mp3":
+            cmd = ["yt-dlp", "-x", "--audio-format", "mp3", "-f", "bestaudio/best"]
+        else:
+            is_720p = mode == "720p"
+            # Keep the Fetch action intentionally small by forcing the worst
+            # available muxed video+audio combination. The 720p action attempts an
+            # exact 720p grab first before falling back to any format at or below
+            # 720p so that users get the intended resolution when available.
+            format_selector = (
+                "(bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a])/"
+                "(bestvideo[height=720]+bestaudio)/"
+                "(bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a])/"
+                "(bestvideo[height<=720]+bestaudio)/"
+                "best[height<=720]"
+                if is_720p
+                else "(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst"
+            )
+            cmd = ["yt-dlp", "-f", format_selector]
+            if is_720p:
+                cmd += ["--merge-output-format", "mp4"]
+
+        cmd += ["-o", "%(title).50s.%(ext)s"]
+        cmd += self._yt_dlp_common_args()
         cmd.append(url)
         self.log_message("Starting yt-dlp process: %s", " ".join(cmd))
 
