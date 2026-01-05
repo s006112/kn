@@ -31,6 +31,30 @@ class BaseExtractHandler(FileSystemEventHandler):
         self.processed_files = set()
         self.enable_distillation = enable_distillation
 
+    def finalize_success(self, filename: str, base_name: str, md_path: str | None) -> None:
+        if getattr(self, "enable_distillation", True):
+            distill_model = (self.config.get("MODEL_DISTILL") or "").strip()
+            if distill_model:
+                logging.info(
+                    f"{self.__class__.__name__}: Distillation with {distill_model} for {filename}"
+                )
+                distill_path = run_distillation(
+                    self.config,
+                    base_name=base_name,
+                    md_path=md_path,
+                )
+                logging.info(
+                    f"{self.__class__.__name__}: Distillation completed for {filename} ({distill_path or 'skipped'})"
+                )
+            else:
+                logging.info(
+                    f"{self.__class__.__name__}: Distillation skipped for {filename} (MODEL_DISTILL disabled)"
+                )
+        else:
+            logging.info(
+                f"{self.__class__.__name__}: Distillation bypassed for {filename} (premium pipeline)"
+            )
+
     def _queue_file(self, file_path):
         cond = (
             os.path.abspath(os.path.dirname(file_path)) == os.path.abspath(self.watch_folder)
@@ -130,24 +154,7 @@ def process(self, file_path, get_next_available_filename):
         if any_failure:
             raise RuntimeError("One or more extraction models failed")
 
-        if getattr(self, 'enable_distillation', True):
-            distill_model = (self.config.get('MODEL_DISTILL') or "").strip()
-            if distill_model:
-                logging.info(
-                    f"{self.__class__.__name__}: Distillation with {distill_model} for {filename}"
-                )
-                distill_path = run_distillation(
-                    self.config,
-                    base_name=base,
-                    md_path=md_path,
-                )
-                logging.info(
-                    f"{self.__class__.__name__}: Distillation completed for {filename} ({distill_path or 'skipped'})"
-                )
-            else:
-                logging.info(f"{self.__class__.__name__}: Distillation skipped for {filename} (MODEL_DISTILL disabled)")
-        else:
-            logging.info(f"{self.__class__.__name__}: Distillation bypassed for {filename} (premium pipeline)")
+        self.finalize_success(filename=filename, base_name=base, md_path=md_path)
 
         # All models succeeded (minimal change: override dest for premium)
         dest_dir = self.config['PRETEXT_DONE_FOLDER']
@@ -203,4 +210,8 @@ class PremiumExtractHandler(BaseExtractHandler):
         model_matrix = config.get('MODEL_EXTRACT_MATRIX', {})
         models = model_matrix.get('PREMIUM_WATCH_FOLDER', [])
         super().__init__(config, queue, 'PREMIUM_WATCH_FOLDER', models, enable_distillation=False)
+
+    def finalize_success(self, filename: str, base_name: str, md_path: str | None) -> None:
+        return
+
     process_premium_extract = process

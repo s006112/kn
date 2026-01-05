@@ -64,7 +64,7 @@ FORM_HTML = """<!doctype html>
       <button type="submit">MP3</button>
     </form>
     {status}
-    <small>Top form runs <code>yt-dlp -f &quot;(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst&quot;</code>; the 720p form runs <code>yt-dlp -f &quot;(bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a])/(bestvideo[height=720]+bestaudio)/(bestvideo[ext=mp4][height&lt;=720]+bestaudio[ext=m4a])/(bestvideo[height&lt;=720]+bestaudio)/best[height&lt;=720]&quot; --merge-output-format mp4</code>; the MP3 form runs <code>yt-dlp -x --audio-format mp3 -f &quot;bestaudio/best&quot;</code>. Files are removed after each request.</small>
+    <small>Top form runs.  Files are removed after each request.</small>
   </main>
 </body>
 </html>
