@@ -51,7 +51,7 @@ FORM_HTML = """<!doctype html>
     <form method="post">
       <input type="hidden" name="mode" value="worst">
       <input type="text" name="url" placeholder="https://example.com/video" required>
-      <button type="submit">Fetch</button>
+      <button type="submit">Basic</button>
     </form>
     <form method="post">
       <input type="hidden" name="mode" value="720p">
