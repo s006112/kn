@@ -11,11 +11,13 @@ from transformers import AutoTokenizer, AutoModel
 # ============================================================
 # Model: BGE-M3 (MIT license, commercial friendly)
 # ============================================================
-MODEL_NAME = "BAAI/bge-m3"
+MODEL_PATH = "/root/.cache/huggingface/hub/models--BAAI--bge-m3/snapshots/5617a9f61b028005a4858fdac845db406aefb181"
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
-print(f"Loading embedding model: {MODEL_NAME}")
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModel.from_pretrained(MODEL_NAME).cuda()  # assume GPU exists
+print(f"Loading embedding model: {MODEL_PATH}")
+tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True)
+model = AutoModel.from_pretrained(MODEL_PATH, local_files_only=True).cuda()  # assume GPU exists
 
 
 def embed(texts):
@@ -39,8 +41,9 @@ def embed(texts):
 # Paths
 # ============================================================
 # 改成指向存放 *.page_blocks.jsonl 的目錄
-DATA_DIR = "data/json"
-INDEX_DIR = "data/index"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data/json")
+INDEX_DIR = os.path.join(BASE_DIR, "data/index")
 PAGE_BLOCK_SUFFIX = ".page_blocks.jsonl"
 
 os.makedirs(INDEX_DIR, exist_ok=True)
