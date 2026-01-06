@@ -124,6 +124,7 @@ def _fetch_records(
     client: ImapClient,
     folder: str,
     criteria: Iterable[str],
+    limit: int | None = None,
 ) -> List[RawFetchedRecord]:
     """
     Search and fetch all matching records for given IMAP criteria.
@@ -135,6 +136,8 @@ def _fetch_records(
     uids = client.search_uids(folder, list(criteria))
     if not uids:
         return []
+    if limit is not None:
+        uids = uids[:limit]
     return client.fetch_batch(folder, uids)
 
 
@@ -161,7 +164,7 @@ def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
     client, folder = _build_client(logger, require_credentials=True)
 
     try:
-        records = _fetch_records(client, folder, ["UNSEEN"])
+        records = _fetch_records(client, folder, ["UNSEEN"], limit=max_messages)
         messages: List[EmailMessage] = []
 
         for rec in records:
