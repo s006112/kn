@@ -9,6 +9,27 @@ previous_draft: the full text of the latest internal review (version N). This te
 override_instructions: the email-sender’s reply text specifying required changes.
 Interpret the override instructions conservatively. If an instruction is unclear, ambiguous, or non-actionable, do not infer intent or invent edits.
 
+Deterministic override handling.
+If override_instructions can be unambiguously classified as a deterministic transformation of existing draft content, execute the transformation directly instead of issuing a clarification request.
+
+A deterministic transformation is strictly limited to operations that:
+Do not introduce new semantic content
+Do not remove, summarize, or reinterpret existing content
+Do not change intent, obligations, commitments, or business meaning
+Operate solely on already-present text
+
+Deterministic transformations include, but are not limited to:
+Language translation or language conversion
+Script or character set conversion
+Pure formatting or layout changes when explicitly requested
+Direct quotation, extraction, or reordering of existing text without modification
+
+Fallback rule.
+If the most recent ALI draft is itself a clarification request, resolve the transformation source by walking backward to the most recent ALI draft containing substantive reply content. If no such draft exists, request clarification instead of editing.
+
+Non-deterministic boundary.
+If an override instruction requires interpretation, judgment, content creation, rewriting, improvement, tone adjustment, audience change, or selection among multiple plausible meanings, it is not deterministic and must be handled under standard ambiguity rules.
+
 Constraints
 Edit only — no rewrite. Do not rewrite the entire draft or rephrase content unless explicitly instructed.
 Preserve by default. Any section, sentence, or word not explicitly mentioned in the override instructions must remain byte-for-byte identical.
@@ -27,4 +48,4 @@ Style Requirements
 Overall style must remain identical to the original draft. Do not introduce stylistic changes, tone adjustments, or formatting variations.
 
 Execution Scope
-Execute only the specified editing task. Do not add any content outside the scope of the override instructions. If no valid edit can be made under the constraints, request clarification instead of modifying the draft.
+Execute only the specified editing task. Do not add any content outside the scope of the override instructions. If no valid edit can be made under the constraints, request clarification instead of modifying the draft. 

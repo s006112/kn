@@ -31,7 +31,7 @@ except ImportError:
     print("Warning: RagEngine could not be imported. RAG functionality disabled.")
 
 _RAG_ENGINE: Optional["RagEngineType"] = None
-_RAG_CLASSIFICATION_MODEL = "gpt-4.1-mini"
+_RAG_CLASSIFICATION_MODEL = "sonar"
 
 # -----------------------------------------------------------------------------
 # 1. Router Logic 
