@@ -277,7 +277,8 @@ def _phase2_sender_replies(*, logger) -> None:
 
             override_instructions = extract_sender_override(reply_msg.body_text or "")
             if not override_instructions:
-                logger.info("Empty reply detected; treated as REJECT.")
+                logger.info("Empty reply detected; treated as REJECT. Marking as SEEN.")
+                mark_imap_message_seen(reply_msg.uid, logger=logger)
                 return
 
             state = extract_last_review_state(reply_msg)

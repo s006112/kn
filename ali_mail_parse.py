@@ -17,11 +17,17 @@ REVIEW_SUBJECT_IMAP_QUERY = REVIEW_SUBJECT_MARKER.replace("X]", "")
 
 # =============================================================================
 # Parsing regex (implementation details)
+#
+# NOTE:
+# This module is intentionally optimized ONLY for:
+# - Mozilla Thunderbird
+# - Apple Mail (macOS / iOS)
+#
+# Other client formats (e.g. Outlook, Gmail Web UI) are handled
+# on a best-effort basis ONLY. Do NOT expand regex coverage unless
+# a real reviewer uses that client.
 # =============================================================================
 
-# Be tolerant to mail-client reformatting:
-# - "====" separators may be on the same line as header/footer
-# - surrounding whitespace may be trimmed or altered
 _HEADER_RE = re.compile(
     r"^\s*=*\s*ALI'S RESPONSE - VERSION\s+(\d+)\s*=*\s*$",
     flags=re.MULTILINE,
@@ -31,30 +37,39 @@ _FOOTER_RE = re.compile(
     flags=re.MULTILINE,
 )
 _QUOTE_PREFIX_RE = re.compile(r"^\s*>+\s?(.*)$")
+_SIGNATURE_DELIM_RE = re.compile(r"^\s*--\s*$")
+_WROTE_RE = re.compile(r"^\s*On .+wrote:\s*$", flags=re.IGNORECASE)
+_FORWARDED_RE = re.compile(
+    r"^\s*(?:Begin forwarded message:|-{2,}\s*(?:Original Message|Forwarded message)\s*-{2,})\s*$",
+    flags=re.IGNORECASE,
+)
 
 
 # =============================================================================
 # Internal helpers
 # =============================================================================
 
+def _normalize_body(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def _review_body_for_parsing(review_email: EmailMessage) -> str:
     """
     Normalize line endings and fully dequote email body
     for consistent marker parsing.
     """
-    body_text = (review_email.body_text or "").replace("\r\n", "\n").replace("\r", "\n")
+    body = _normalize_body(review_email.body_text or "")
+    dequoted: list[str] = []
 
-    dequoted_lines: list[str] = []
-    for line in body_text.splitlines():
-        # strip all leading quote prefixes (>, >>, etc.)
+    for line in body.splitlines():
         while True:
-            match = _QUOTE_PREFIX_RE.match(line)
-            if not match:
+            m = _QUOTE_PREFIX_RE.match(line)
+            if not m:
                 break
-            line = match.group(1)
-        dequoted_lines.append(line)
+            line = m.group(1)
+        dequoted.append(line)
 
-    return "\n".join(dequoted_lines)
+    return "\n".join(dequoted)
 
 
 # =============================================================================
@@ -63,10 +78,6 @@ def _review_body_for_parsing(review_email: EmailMessage) -> str:
 
 @dataclass(frozen=True)
 class ReviewState:
-    """
-    Canonical representation of the LAST review state
-    found in an email thread.
-    """
     version: int
     draft: str
 
@@ -74,11 +85,6 @@ class ReviewState:
 def extract_last_review_state(review_email: EmailMessage) -> ReviewState:
     """
     Extract the canonical last review state from a review email.
-
-    Semantics:
-    - Dequote the email body.
-    - Locate the highest-version 'ALI'S RESPONSE - VERSION N' header.
-    - Extract its version and corresponding draft block.
     """
     body = _review_body_for_parsing(review_email)
 
@@ -86,16 +92,13 @@ def extract_last_review_state(review_email: EmailMessage) -> ReviewState:
     if not headers:
         raise ValueError("Cannot locate review header in review email")
 
-    best_header = max(headers, key=lambda match: int(match.group(1)))
-    version = int(best_header.group(1))
+    best = max(headers, key=lambda m: int(m.group(1)))
+    version = int(best.group(1))
 
-    remainder = body[best_header.end():].lstrip("\n")
+    remainder = body[best.end():].lstrip("\n")
     footer = _FOOTER_RE.search(remainder)
 
-    draft = (
-        remainder[: footer.start()] if footer else remainder
-    ).strip()
-
+    draft = (remainder[: footer.start()] if footer else remainder).strip()
     return ReviewState(version=version, draft=draft)
 
 
@@ -103,26 +106,22 @@ def extract_sender_override(body_text: str) -> str:
     """
     Extract sender-written override instructions.
 
-    Rules:
-    - Only consider text ABOVE quoted history.
-    - Quoted lines ("> ...") mark the start of history.
-    - Footer markers are ignored if present.
-
-    Examples:
-    >>> extract_sender_override("> old line\\n> another old line")
-    ''
-    >>> extract_sender_override("Please make it more formal.\\n\\n> old content")
-    'Please make it more formal.'
+    Semantics:
+    - Only consider text ABOVE quoted / forwarded history.
+    - Empty or auto-signature-only replies are treated as REJECT.
     """
     if not body_text:
         return ""
 
-    text = body_text.replace("\r\n", "\n").replace("\r", "\n")
-    lines = text.splitlines()
+    lines = _normalize_body(body_text).splitlines()
 
     cut = len(lines)
     for i, line in enumerate(lines):
-        if _QUOTE_PREFIX_RE.match(line):
+        if (
+            _QUOTE_PREFIX_RE.match(line)
+            or _WROTE_RE.match(line)
+            or _FORWARDED_RE.match(line)
+        ):
             cut = i
             break
 
@@ -132,4 +131,28 @@ def extract_sender_override(body_text: str) -> str:
     if footer:
         text = text[: footer.start()]
 
-    return text.strip()
+    extracted = text.strip()
+    if not extracted:
+        return ""
+
+    # Strip RFC 3676-style signature
+    out_lines = []
+    for line in extracted.splitlines():
+        if _SIGNATURE_DELIM_RE.match(line):
+            break
+        out_lines.append(line)
+
+    extracted = "\n".join(out_lines).strip()
+    if not extracted:
+        return ""
+
+    # Common Apple auto-signatures → treated as empty (REJECT)
+    if extracted.lower() in {
+        "sent from my iphone",
+        "sent from my ipad",
+        "sent from my ipod",
+        "sent from my mac",
+    }:
+        return ""
+
+    return extracted
