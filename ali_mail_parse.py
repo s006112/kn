@@ -7,12 +7,18 @@ from helper.utils_imap_types import EmailMessage  # type: ignore
 
 
 # =============================================================================
-# Review subject protocol (cross-module contract)
+# Review protocol constants (cross-module contract)
 # =============================================================================
 
 REVIEW_SUBJECT_MARKER = "[ALI:vX]"
 REVIEW_SUBJECT_PATTERN = re.compile(r"\[ALI:v\d+\]", flags=re.IGNORECASE)
 REVIEW_SUBJECT_IMAP_QUERY = REVIEW_SUBJECT_MARKER.replace("X]", "")
+REVIEW_HEADER_LABEL = "ALI'S RESPONSE - VERSION"
+REVIEW_FOOTER_LABEL = "ALI'S RESPONSE ENDED"
+REVIEW_HEADER_LINE_TEMPLATE = (
+    "=================   ALI'S RESPONSE - VERSION {version}   =================="
+)
+REVIEW_FOOTER_LINE = "====================   ALI'S RESPONSE ENDED   ====================="
 
 
 # =============================================================================
@@ -29,11 +35,11 @@ REVIEW_SUBJECT_IMAP_QUERY = REVIEW_SUBJECT_MARKER.replace("X]", "")
 # =============================================================================
 
 _HEADER_RE = re.compile(
-    r"^\s*=*\s*ALI'S RESPONSE - VERSION\s+(\d+)\s*=*\s*$",
+    rf"^\s*=*\s*{re.escape(REVIEW_HEADER_LABEL)}\s+(\d+)\s*=*\s*$",
     flags=re.MULTILINE,
 )
 _FOOTER_RE = re.compile(
-    r"^\s*=*\s*ALI'S RESPONSE ENDED\s*=*\s*$",
+    rf"^\s*=*\s*{re.escape(REVIEW_FOOTER_LABEL)}\s*=*\s*$",
     flags=re.MULTILINE,
 )
 _QUOTE_PREFIX_RE = re.compile(r"^\s*>+\s?(.*)$")

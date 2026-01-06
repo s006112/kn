@@ -18,6 +18,11 @@ from helper.utils_config import load_prompt_text
 from helper.utils_llm import call_llm
 from helper.utils_imap_types import EmailMessage
 
+from ali_mail_parse import (
+    REVIEW_FOOTER_LINE,
+    REVIEW_HEADER_LINE_TEMPLATE,
+)
+
 # -----------------------------------------------------------------------------
 # RAG imports 
 # -----------------------------------------------------------------------------
@@ -210,14 +215,11 @@ def generate_review_package(
     # -------------------------
 
     review_body = f"""
-
-
-=================   ALI'S RESPONSE - VERSION {edit_version}   ==================
+{REVIEW_HEADER_LINE_TEMPLATE.format(version=edit_version)}
 
 {draft}
 
-====================   ALI'S RESPONSE ENDED   =====================
-
+{REVIEW_FOOTER_LINE}
 """.strip()
 
     review_id = (email.message_id or "").strip() or str(email.uid)
