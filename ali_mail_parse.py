@@ -108,7 +108,7 @@ def extract_last_review_state(review_email: EmailMessage) -> ReviewState:
     return ReviewState(version=version, draft=draft)
 
 
-def extract_sender_override(body_text: str) -> str:
+def extract_sender_override(body_text: str) -> str | None:
     """
     Extract sender-written override instructions.
 
@@ -160,5 +160,22 @@ def extract_sender_override(body_text: str) -> str:
         "sent from my mac",
     }:
         return ""
+
+    # Hard reject: header-like lines or heavy quoted density.
+    header_like_re = re.compile(
+        r"^(from:|sent:|to:|subject:|-{2,}\s*original message\s*-{2,})",
+        flags=re.IGNORECASE,
+    )
+    header_like = 0
+    lines = extracted.splitlines()
+    for line in lines:
+        if header_like_re.match(line.strip()):
+            header_like += 1
+            if header_like >= 2:
+                return None
+    if lines:
+        quote_lines = sum(1 for line in lines if line.lstrip().startswith(">"))
+        if quote_lines / len(lines) > 0.4:
+            return None
 
     return extracted
