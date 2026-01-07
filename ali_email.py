@@ -1,106 +1,64 @@
 #!/usr/bin/env python3
 """
-ali_email.py
+ali_email.py — Orchestration Layer (STABLE)
 
 SYSTEM INVARIANTS (NON-NEGOTIABLE)
-
 1. No Autonomous Action
-   The system MUST NOT send any message to customers or third parties autonomously.
-   All generated content is INTERNAL-ONLY and sent back ONLY to the human reviewer.
-   Any outbound content requires explicit human forwarding outside this system.
+   All generated content is INTERNAL-ONLY and sent exclusively to the reviewer.
+   ali_email.py MUST NEVER send messages to customers or third parties.
 
 2. Silence Means Termination
-   If the reviewer replies with NO non-empty, non-quoted content,
-   the review is treated as REJECTED and processing MUST stop.
+   An empty reviewer reply is treated as REJECT.
+   Processing MUST stop immediately after marking the message as SEEN.
 
 3. Any Reply Is an Override
-   Any NON-EMPTY reply content written by the reviewer
-   (after removing quoted history) is treated as OVERRIDE instructions
+   Any non-empty reviewer reply is interpreted as override instructions
    and MUST trigger a regenerated INTERNAL review.
 
-4. FORWARD-ONLY INPUT MODEL (CRITICAL)
-   The system ONLY accepts emails that are explicitly FORWARDED by a human reviewer.
+4. Forward-Only Input Model
+   Only emails explicitly forwarded by a human reviewer are accepted.
+   All outbound messages are reviewer-only.
 
-   Enforcement:
-   - The email's From address MUST belong to the reviewer.
-   - The system replies ONLY to the reviewer (never to original customers).
-   - Emails sent on behalf of customers, rewritten From headers,
-     delegated senders, or CRM-originated messages are intentionally REJECTED.
-
-   Rationale:
-   This invariant guarantees:
-   - ALI never communicates directly with customers
-   - All external communication remains explicitly human-mediated
-
-
-CALL FLOW (ACTUAL EXECUTION PATH)
+CALL FLOW (AUTHORITATIVE EXECUTION PATH)
 
 pipeline_run()
-  -> _phase1_new_messages()
-       Purpose:
-         Generate initial INTERNAL review drafts (v1) for new inbound emails.
+  ├─ Phase 1: New Incoming Messages
+  │    ├─ fetch_new_messages(max_messages=2)
+  │    ├─ skip review-thread subjects (REVIEW_SUBJECT_PATTERN)
+  │    ├─ generate_review_package() → render_review()
+  │    ├─ _send_internal_review() → send_reply()
+  │    └─ mark_imap_message_seen()
+  │
+  └─ Phase 2: Reviewer Replies
+       ├─ fetch_sender_replies()
+       ├─ empty reply → REJECT, mark seen
+       ├─ extract_last_review_state()
+       ├─ generate_review_package(previous_draft, edit_version) → render_review()
+       ├─ _send_internal_review(review_version=next_version) → send_reply()
+       └─ mark_imap_message_seen()
 
-       Input:
-         - UNSEEN emails
-         - NON-review threads (subject does NOT match REVIEW_SUBJECT_PATTERN)
+DESIGN SCOPE (INTENTIONALLY LIMITED)
 
-       Steps:
-         -> ali_fetch.fetch_new_messages()
-         -> ali_llm.generate_review_package()        # v1 rewrite
-         -> ali_llm.render_review()
-         -> _send_internal_review()                  # reviewer-only
-         -> ali_send.send_reply()
-         -> mark_imap_message_seen()
+- This module is orchestration ONLY.
+- It defines sequencing, safety boundaries, and lifecycle control.
+- It MUST NOT contain:
+  - routing or classification logic
+  - parsing of quoted history
+  - RAG or retrieval logic
+  - LLM prompt construction
+  - content-level decision making
 
-  -> _phase2_sender_replies()
-       Purpose:
-         Process reviewer replies as explicit override instructions.
+RESPONSIBILITY BOUNDARIES
 
-       Input:
-         - UNSEEN replies to prior review threads ([ALI:vN])
+- ali_fetch       : message retrieval
+- ali_mail_parse : review state parsing
+- ali_llm        : generation logic (Steps 0–3)
+- ali_send       : outbound delivery
 
-       Steps:
-         -> ali_fetch.fetch_sender_replies()
-         -> ali_mail_parse.extract_sender_override()
-              (removes quoted history; extracts reviewer-written content only)
-         -> ali_mail_parse.extract_last_review_state()
-              (canonical LAST review version + draft)
-         -> ali_llm.generate_review_package(
-                previous_draft = state.draft,
-                edit_version   = state.version + 1
-            )                                      # edit-only, no rewrite fallback
-         -> ali_llm.render_review()
-         -> _send_internal_review(review_version = state.version + 1)
-         -> ali_send.send_reply()
-         -> mark_imap_message_seen()
-
-
-ERROR HANDLING MODEL
-
-- Each email (Phase 1) or reply (Phase 2) is processed independently.
-- Exceptions are logged with full traceback.
-- A failure on one message MUST NOT stop processing of subsequent messages.
-- Failed messages remain UNSEEN for future inspection or retry.
-
-
-DESIGN INTENT
-
-This module is the orchestration layer.
-It enforces system invariants, sequencing, and safety boundaries.
-
-It does NOT:
-- Perform IMAP fetching logic
-- Parse email bodies or quoted history
-- Implement LLM prompting or RAG logic
-- Send messages to external recipients
-
-Those responsibilities are delegated to:
-- ali_fetch
-- ali_mail_parse
-- ali_llm
-- ali_send
+This file is considered STABLE.
+Changes should be limited to bug fixes or invariant enforcement.
+Feature development MUST occur in downstream modules.
 """
-
 
 from __future__ import annotations
 
@@ -181,10 +139,6 @@ def _build_review_subject(subject: str, version: int) -> str:
     return f"{cleaned} {marker}".strip() if cleaned else marker
 
 
-def _is_review_subject(subject: str) -> bool:
-    return bool(REVIEW_SUBJECT_PATTERN.search(subject or ""))
-
-
 def _send_internal_review(
     original: EmailMessage,
     review_body: str,
@@ -233,7 +187,7 @@ def _phase1_new_messages(*, logger) -> None:
         def _work() -> None:
             logger.info("Processing new email uid=%s subject=%s", msg.uid, msg.subject)
 
-            if _is_review_subject(msg.subject or ""):
+            if REVIEW_SUBJECT_PATTERN.search(msg.subject or ""):
                 logger.info("Skipping review-thread message uid=%s", msg.uid)
                 return
 
@@ -283,7 +237,6 @@ def _phase2_sender_replies(*, logger) -> None:
             state = extract_last_review_state(reply_msg)
             next_version = state.version + 1
 
-            # Pass full body through; Step0 in ali_llm will extract override instructions
             override_input = EmailMessage(
                 uid=reply_msg.uid,
                 message_id=reply_msg.message_id,
