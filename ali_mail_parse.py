@@ -49,6 +49,13 @@ _FORWARDED_RE = re.compile(
     r"^\s*(?:Begin forwarded message:|-{2,}\s*(?:Original Message|Forwarded message)\s*-{2,})\s*$",
     flags=re.IGNORECASE,
 )
+_STEP0_WROTE_RE = re.compile(r"^On .* wrote:\s*$")
+_STEP0_FORWARD_MARKERS = {
+    "-----Original Message-----",
+    "Begin forwarded message",
+    "Forwarded message",
+}
+_STEP0_HEADER_PREFIXES = ("From:", "Sent:", "To:", "Subject:")
 
 
 # =============================================================================
@@ -76,6 +83,62 @@ def _review_body_for_parsing(review_email: EmailMessage) -> str:
         dequoted.append(line)
 
     return "\n".join(dequoted)
+
+
+# =============================================================================
+# Step 0 helpers (input normalization + conservative override extraction)
+# =============================================================================
+
+def normalize_email_input(
+    email: EmailMessage,
+    *,
+    max_body_len: int | None = 12000,
+) -> tuple[str, str]:
+    subject_norm = (email.subject or "").strip()
+    body_norm = _normalize_body((email.body_text or "").strip())
+
+    if body_norm:
+        lines = body_norm.split("\n")
+        start = 0
+        end = len(lines)
+        while start < end and lines[start].strip() == "":
+            start += 1
+        while end > start and lines[end - 1].strip() == "":
+            end -= 1
+        body_norm = "\n".join(lines[start:end])
+
+    if max_body_len is not None and len(body_norm) > max_body_len:
+        body_norm = body_norm[:max_body_len]
+
+    return subject_norm, body_norm
+
+
+def extract_override_instructions(body_norm: str) -> str:
+    if not body_norm:
+        return ""
+
+    lines = body_norm.split("\n")
+    header_run_start = 0
+    header_run_len = 0
+
+    for i, line in enumerate(lines):
+        if line.startswith(">"):
+            return "\n".join(lines[:i])
+        if _STEP0_WROTE_RE.match(line):
+            return "\n".join(lines[:i])
+        if line in _STEP0_FORWARD_MARKERS:
+            return "\n".join(lines[:i])
+
+        if line.startswith(_STEP0_HEADER_PREFIXES):
+            if header_run_len == 0:
+                header_run_start = i
+            header_run_len += 1
+            if header_run_len >= 2:
+                return "\n".join(lines[:header_run_start])
+        else:
+            header_run_len = 0
+
+    return body_norm
 
 
 # =============================================================================

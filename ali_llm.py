@@ -21,6 +21,8 @@ from helper.utils_imap_types import EmailMessage
 from ali_mail_parse import (
     REVIEW_FOOTER_LINE,
     REVIEW_HEADER_LINE_TEMPLATE,
+    extract_override_instructions,
+    normalize_email_input,
 )
 
 # -----------------------------------------------------------------------------
@@ -170,6 +172,7 @@ def generate_review_package(
     - v2+ : EDIT ONLY previous_draft using edit-only prompt
     - Any reply implies OVERRIDE; silence implies REJECT
     """
+    subject_norm, body_norm = normalize_email_input(email)
 
     # -------------------------
     # Draft generation
@@ -177,8 +180,20 @@ def generate_review_package(
 
     if previous_draft is None:
         # v1 — rewrite
+        normalized_email = email
+        if body_norm != (email.body_text or "").strip():
+            normalized_email = EmailMessage(
+                uid=email.uid,
+                message_id=email.message_id,
+                from_addr=email.from_addr,
+                to_addrs=email.to_addrs,
+                cc_addrs=email.cc_addrs,
+                subject=subject_norm,
+                body_text=body_norm,
+                raw_bytes=email.raw_bytes,
+            )
         draft = generate_reply(
-            email,
+            normalized_email,
             system_prompt_path=system_prompt_path,
             model=model,
         )
@@ -195,12 +210,13 @@ def generate_review_package(
                 f"Edit-only prompt not found: {edit_prompt_path}"
             )
 
+        override_text = extract_override_instructions(body_norm)
         user_text = (
             "previous_draft:\n"
             f"{previous_draft}\n\n"
             "---\n"
             "override_instructions:\n"
-            f"{(email.body_text or '').strip()}"
+            f"{override_text}"
         )
 
         draft = call_llm(
