@@ -1,7 +1,6 @@
 # ARCHITECTURE.md
 
-ARCHITECTURE.md
-只写：
+ARCHITECTURE.md 定位是系统宪法，不是施工图。只写：
 - Step 的职责
 - 不能做什么
 - 与其他 Step 的关系

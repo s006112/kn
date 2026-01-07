@@ -167,34 +167,57 @@ def generate_review_package(
             file_path=None,
         ).strip()
 
-    # -------------------------
-    # Assemble review body
-    # -------------------------
-
-    review_body = f"""
-{REVIEW_HEADER_LINE_TEMPLATE.format(version=edit_version)}
-
-{draft}
-
-{REVIEW_FOOTER_LINE}
-""".strip()
+    # Step4 — reflection (currently disabled, NO-OP)
+    draft = step4_reflect(draft, enabled=False)
 
     review_id = (email.message_id or "").strip() or str(email.uid)
 
     return {
         "review_id": review_id,
-        "draft": review_body,
+        "draft": draft,
         "allowed_actions": ["OVERRIDE", "REJECT"],
+        "version": edit_version,
     }
 
+# -----------------------------------------------------------------------------
+# Step4: Reflection (EMPTY SHELL)
+# -----------------------------------------------------------------------------
 
-def render_review(review_obj: dict[str, str | list[str]]) -> str:
+def step4_reflect(
+    draft: str,
+    *,
+    enabled: bool = False,
+) -> str:
+    """
+    # IMPORTANT:
+    # Step4 must remain a pure post-processing hook.
+    # Do NOT move routing, retrieval, or generation logic here.
+
+    Currently a NO-OP placeholder.
+    When disabled (default), returns draft unchanged.
+
+    This function MUST:
+    - NOT modify routing or retrieval
+    - NOT call LLM
+    - NOT introduce new content
+    """
+    if not enabled:
+        return draft
+
+    # Future reflection logic will be inserted here.
+    return draft
+
+
+
+def render_review(
+    review_obj: dict[str, str | list[str] | int],
+) -> str:
     """
     Render the review package into the final email body.
 
-    Today this is intentionally a thin wrapper that returns `review_obj["draft"]`.
-    Keeping a dedicated function gives us a single place to evolve formatting later
-    (e.g., include `review_id`, allowed actions, extra headers/sections) without
-    changing call sites such as `ali_email.py`.
+    Today this is intentionally a thin wrapper that formats the review protocol
+    around `review_obj["draft"]`.
     """
-    return review_obj["draft"]
+    header = REVIEW_HEADER_LINE_TEMPLATE.format(version=review_obj["version"])
+    footer = REVIEW_FOOTER_LINE
+    return f"{header}\n{review_obj['draft']}\n{footer}"
