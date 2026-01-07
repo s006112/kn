@@ -1,3 +1,39 @@
+"""
+Routing invariants (NON-NEGOTIABLE):
+
+- Routing selects the execution routine and its constraints ONLY.
+- Routing NEVER decides content, wording, or final answers.
+- Routing MUST be deterministic and side-effect free.
+- Routing output is read-only for all downstream steps.
+
+Any logic that generates text, calls LLMs, or applies policy
+MUST NOT be added to this module.
+"""
+# -----------------------------------------------------------------------------
+# Execution routines (semantic contract)
+#
+# Routine A: safety_regulation
+#   - allow RAG
+#   - strict factual grounding
+#   - reflection enabled
+#
+# Routine B: technical / commercial
+#   - no RAG by default
+#   - concise, factual generation
+#
+# Routine C: casual
+#   - direct generation
+#   - no reflection
+#
+# Routine D: unknown
+#   - conservative default behavior
+#
+# NOTE:
+# This table defines ALLOWED capabilities per routine.
+# It does NOT define how those capabilities are implemented.
+# -----------------------------------------------------------------------------
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass
