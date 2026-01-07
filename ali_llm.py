@@ -11,13 +11,14 @@ ali_llm.py
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 from helper.utils_config import load_prompt_text
 from helper.utils_llm import call_llm
 from helper.utils_imap_types import EmailMessage
-
+from ali_router import RouteResult
 from ali_mail_parse import (
     REVIEW_FOOTER_LINE,
     REVIEW_HEADER_LINE_TEMPLATE,
@@ -39,6 +40,23 @@ except ImportError:
 
 _RAG_ENGINE: Optional["RagEngineType"] = None
 _RAG_CLASSIFICATION_MODEL = "sonar"
+
+
+@dataclass(frozen=True)
+class RetrievalResult:
+    used: bool
+    context: str | None
+    source: str | None
+
+
+def step2_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalResult:
+    if route.category != "safety_regulation":
+        return RetrievalResult(used=False, context=None, source=None)
+
+    rag_answer = _get_rag_answer_lazy(body)
+    if rag_answer:
+        return RetrievalResult(used=True, context=rag_answer, source="rag")
+    return RetrievalResult(used=False, context=None, source=None)
 
 # -----------------------------------------------------------------------------
 # 1. Router Logic 
