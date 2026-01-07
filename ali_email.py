@@ -121,7 +121,6 @@ from ali_mail_parse import (
     REVIEW_SUBJECT_MARKER,
     REVIEW_SUBJECT_PATTERN,
     extract_last_review_state,
-    extract_sender_override,
 )
 
 # -----------------------------------------------------------------------------
@@ -275,15 +274,16 @@ def _phase2_sender_replies(*, logger) -> None:
                 reply_msg.subject,
             )
 
-            override_instructions = extract_sender_override(reply_msg.body_text or "")
-            if not override_instructions:
+            raw_body = (reply_msg.body_text or "").strip()
+            if not raw_body:
                 logger.info("Empty reply detected; treated as REJECT. Marking as SEEN.")
                 mark_imap_message_seen(reply_msg.uid, logger=logger)
                 return
-
+            
             state = extract_last_review_state(reply_msg)
             next_version = state.version + 1
 
+            # Pass full body through; Step0 in ali_llm will extract override instructions
             override_input = EmailMessage(
                 uid=reply_msg.uid,
                 message_id=reply_msg.message_id,
@@ -291,7 +291,7 @@ def _phase2_sender_replies(*, logger) -> None:
                 to_addrs=reply_msg.to_addrs,
                 cc_addrs=reply_msg.cc_addrs,
                 subject=reply_msg.subject,
-                body_text=override_instructions,
+                body_text=raw_body,
                 raw_bytes=reply_msg.raw_bytes,
             )
 
