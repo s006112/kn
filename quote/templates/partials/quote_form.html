@@ -134,10 +134,10 @@
         <span id="plating-price-label">{{ (values.plating or defaults.plating) }}</span>
         <input name="plating_price" id="plating-price-input" type="number" step="1" value="{{ plating_price_value }}">
       </label>
-      <label>每锣寸
+      <label>每锣英寸
         <input name="routing_per_inch" type="number" step="0.0001" min="0" value="{{ params_values.routing_per_inch }}">
       </label>
-      <label>锣程 (寸)
+      <label>锣程 (英寸)
         <input name="routing_length" type="number" step="1" min="0" value="{{ values.routing_length }}">
       </label>
       <label>啤板

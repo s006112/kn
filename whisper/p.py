@@ -52,7 +52,7 @@ MODEL_EXTRACT_MATRIX = {
         "grok-4-1-fast-non-reasoning",
     ],
     "PREMIUM_WATCH_FOLDER": [
-        "o3",
+        "gpt-5.1",
     ],
 }
 MODEL_DISTILL = "o3"
