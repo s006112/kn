@@ -113,7 +113,7 @@ class WikilinkCleaner:
             "errors": 0,
         }
 
-        self.wikilink_pattern = re.compile(r"\[\[([^\]]+)\]\]")
+        self.wikilink_pattern = re.compile(r"(?<!\!)\[\[([^\]]+)\]\]")
 
         if self.backup_enabled:
             self.backup_dir.mkdir(parents=True, exist_ok=True)
