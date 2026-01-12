@@ -62,20 +62,26 @@ Feature development MUST occur in downstream modules.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import re
 import time
 from datetime import datetime, time as dt_time
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from helper.utils_config import configure_logging, get_env_int  # type: ignore
 from helper.utils_imap_types import EmailMessage, SendResult
 from helper.utils_imap_ops import mark_imap_message_seen  # type: ignore
 
-from ali_fetch import fetch_new_messages, fetch_sender_replies  # type: ignore
-from ali_llm import generate_review_package, render_review  # type: ignore
-from ali_send import send_reply  # type: ignore
-from ali_mail_parse import (
+from ali_email.ali_fetch import fetch_new_messages, fetch_sender_replies  # type: ignore
+from ali_email.ali_llm import generate_review_package, render_review  # type: ignore
+from ali_email.ali_send import send_reply  # type: ignore
+from ali_email.ali_mail_parse import (
     REVIEW_SUBJECT_MARKER,
     REVIEW_SUBJECT_PATTERN,
     extract_last_review_state,
@@ -86,7 +92,9 @@ from ali_mail_parse import (
 # -----------------------------------------------------------------------------
 
 LLM_MODEL = "sonar-pro"
-SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent / "prompt" / "prompt_ali_system.txt"
+SYSTEM_PROMPT_PATH = (
+    Path(__file__).resolve().parents[1] / "prompt" / "prompt_ali_system.txt"
+)
 
 _HKT_ZONE = ZoneInfo("Asia/Hong_Kong")
 _DAY_START = dt_time(9, 0)

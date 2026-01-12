@@ -55,7 +55,7 @@ MODEL_EXTRACT_MATRIX = {
         "gpt-5.1",
     ],
 }
-MODEL_DISTILL = "o3"
+MODEL_DISTILL = "o3-mini"
 
 RETRY_CONFIG = {
     "MAX_RETRIES": 1,

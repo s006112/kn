@@ -21,9 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ali_fetch import fetch_new_messages
-from ali_llm import generate_reply
-from ali_send import send_reply
+from ali_email.ali_fetch import fetch_new_messages
+from ali_email.ali_llm import generate_reply
+from ali_email.ali_send import send_reply
 from ali_email import LLM_MODEL, SYSTEM_PROMPT_PATH
 
 

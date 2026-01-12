@@ -11,8 +11,8 @@ from helper.utils_config import configure_logging, load_env
 #LLM_MODEL = "gemini-2.5-pro"
 #LLM_MODEL = "sonar"
 #LLM_MODEL = "gemini-2.0-flash"
-LLM_MODEL = "gemini-3-pro-preview"
-#LLM_MODEL = "gpt-4.1-mini"
+#LLM_MODEL = "gemini-3-pro-preview"
+LLM_MODEL = "gpt-5.1"
 #LLM_MODEL = "sonar, gemini-2.5-flash, gemini-3-pro-preview"
 
 load_env()

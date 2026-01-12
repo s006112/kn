@@ -77,12 +77,12 @@ Step0 → Step1 → Step2 → Step3 → Step4 → Step5
 
 | Module            | Responsibility                                  |
 |-------------------|--------------------------------------------------|
-| `ali_email.py`    | Orchestration, sequencing, invariants enforcement |
-| `ali_fetch.py`    | IMAP fetching only                               |
-| `ali_mail_parse.py` | Parsing, normalization, review state extraction |
-| `ali_router.py`   | Routing (routine selection only)                 |
-| `ali_llm.py`      | Steps 0–3 generation logic                       |
-| `ali_send.py`     | Outbound delivery (reviewer-only)                |
+| `ali_email/ali_email.py`    | Orchestration, sequencing, invariants enforcement |
+| `ali_email/ali_fetch.py`    | IMAP fetching only                               |
+| `ali_email/ali_mail_parse.py` | Parsing, normalization, review state extraction |
+| `ali_email/ali_router.py`   | Routing (routine selection only)                 |
+| `ali_email/ali_llm.py`      | Steps 0–3 generation logic                       |
+| `ali_email/ali_send.py`     | Outbound delivery (reviewer-only)                |
 
 **Logic MUST NOT migrate upward.**  
 Orchestration MUST remain thin and stable.
@@ -106,14 +106,14 @@ If routing output is mocked, the rest of the pipeline MUST still function.
 
 ## Evolution Rules
 
-- `ali_email.py` is considered **STABLE**
+- `ali_email/ali_email.py` is considered **STABLE**
   - Bug fixes only
   - No new features
   - No new logic
 
 - Feature evolution MUST occur in:
-  - `ali_router.py`
-  - `ali_llm.py`
+  - `ali_email/ali_router.py`
+  - `ali_email/ali_llm.py`
   - Future Step4 modules
 
 - Legacy code may exist ONLY if:

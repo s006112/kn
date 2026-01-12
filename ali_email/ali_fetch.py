@@ -23,6 +23,13 @@ System assumptions (EXPLICIT):
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from email import message_from_bytes
 from email.policy import default as email_default_policy
 from email.utils import parseaddr
@@ -33,7 +40,7 @@ from helper.utils_imap_client import ImapClient, RawFetchedRecord  # type: ignor
 from helper.utils_imap_config import load_imap_config  # type: ignore
 from helper.utils_imap_types import EmailMessage  # type: ignore
 
-from ali_mail_parse import (
+from ali_email.ali_mail_parse import (
     REVIEW_SUBJECT_IMAP_QUERY,
     REVIEW_SUBJECT_PATTERN,
 )  # review-thread detection

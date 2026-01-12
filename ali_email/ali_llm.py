@@ -9,15 +9,20 @@ ali_llm.py
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from helper.utils_config import load_prompt_text
 from helper.utils_llm import call_llm
 from helper.utils_imap_types import EmailMessage
-from ali_router import RouteResult, route_email
-from ali_mail_parse import (
+from ali_email.ali_router import RouteResult, route_email
+from ali_email.ali_mail_parse import (
     REVIEW_FOOTER_LINE,
     REVIEW_HEADER_LINE_TEMPLATE,
     extract_override_instructions,

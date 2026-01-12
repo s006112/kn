@@ -9,30 +9,18 @@ All core logic now resides in helper_rag_worker.py.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Tuple
 
 # 引入核心 RAG 邏輯
 from helper.helper_rag_worker import RagEngine
 
-# 全局實例，用於首次使用時加載 (Lazy Initialization)
-_RAG_ENGINE: Optional[RagEngine] = None
-
-def get_rag_engine() -> RagEngine:
-    """Helper to lazily load and return the RagEngine instance."""
-    global _RAG_ENGINE
-    if _RAG_ENGINE is None:
-        _RAG_ENGINE = RagEngine()
-    return _RAG_ENGINE
-
-
 # 保持原有的對外函數簽名 (Preserve original function signature)
-# 這是為了確保 ali_email.py 等如果直接調用此函數，仍可工作
 def answer_standard_question(question: str) -> Tuple[str, str]:
     """
     Finds the answer to a standard/regulation question using RAG.
     NOTE: This is a wrapper for RagEngine.answer_question.
     """
-    engine = get_rag_engine()
+    engine = RagEngine()
     # 調用封裝的 RagEngine 邏輯
     answer, sources = engine.answer_question(question)
     

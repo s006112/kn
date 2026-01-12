@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ali_send import send_reply
+from ali_email.ali_send import send_reply
 from helper.utils_config import load_env
 from helper.utils_imap_types import EmailMessage
 
