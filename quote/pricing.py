@@ -124,18 +124,21 @@ def price_quote(inp: Inputs, prm: Params) -> dict[str, Any]:
     treatment_cost = _component_total(treatment_components)
 
     cnc_rate = _non_negative(prm.cnc_pth_per_hole)
+    cnc_holes_single = max(0, int(inp.cnc_pth_holes))
+    cnc_holes_panel = cnc_holes_single * boards_per_panel
     cnc_components = {
-        "cnc_pth": cnc_rate * max(0, inp.cnc_pth_holes),
+        "cnc_pth": cnc_rate * cnc_holes_panel,
     }
     cnc_stack_cost = _component_total(cnc_components)
     cnd_cost_panel = cnc_stack_cost / stack_qty if stack_qty else cnc_stack_cost
     cnc_cost = cnd_cost_panel
 
-    routing_length = _non_negative(inp.routing_length)
+    routing_length_single = _non_negative(inp.routing_length)
+    routing_length_panel = routing_length_single * boards_per_panel
     routing_rate = _non_negative(prm.routing_per_inch)
     process_components = {
         "plating": prm.plating_costs.get(inp.plating, 0.0),
-        "routing": routing_length * routing_rate,
+        "routing": routing_length_panel * routing_rate,
         "stamping": _non_negative(inp.stamping_cost),
         "post_process": _non_negative(inp.post_process_cost),
     }
@@ -184,9 +187,13 @@ def price_quote(inp: Inputs, prm: Params) -> dict[str, Any]:
             "total": round(cnc_cost, 1),
             "cnd_cost_panel": round(cnd_cost_panel, 1),
             "stack_qty": stack_qty,
+            "cnc_holes_single": cnc_holes_single,
+            "cnc_holes_panel": cnc_holes_panel,
             "components": _rounded(cnc_components, 1),
         },
         "process": _component_section(process_cost, process_components, 1),
+        "routing_length_single": round(routing_length_single, 4),
+        "routing_length_panel": round(routing_length_panel, 4),
         "overhead": overhead_section,
         "others": rounded_others,
         "boards_per_panel": boards_per_panel,

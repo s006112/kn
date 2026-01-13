@@ -39,12 +39,14 @@
         </li>
         <li>CNC/panel: {{ result.breakdown.cnc.cnd_cost_panel }}
           <ul>
+            <li>钻孔数(Panel): {{ result.breakdown.cnc.cnc_holes_panel }}</li>
             <li>CNC Cost: {{ result.breakdown.cnc.components.cnc_pth }}</li>
           </ul>
         </li>
         <li>Process: {{ result.breakdown.process.total }}
           <ul>
             <li>电铜: {{ result.breakdown.process.components.plating }}</li>
+            <li>锣程(Panel,英寸): {{ result.breakdown.routing_length_panel | round(0) | int }}</li>
             <li>锣板: {{ result.breakdown.process.components.routing }}</li>
             <li>啤板: {{ result.breakdown.process.components.stamping }}</li>
             <li>后工序: {{ result.breakdown.process.components.post_process }}</li>
