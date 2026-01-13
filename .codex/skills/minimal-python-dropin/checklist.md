@@ -1,0 +1,8 @@
+- [ ] I can state the exact required change in one sentence.
+- [ ] I listed what must NOT change (invariants).
+- [ ] I found the smallest edit location.
+- [ ] I deleted redundancy before adding new code.
+- [ ] I did not add abstractions or new interfaces.
+- [ ] I ran existing tests or the narrowest verification command.
+- [ ] Output is drop-in code (unless diff requested).
+- [ ] No clever code. No optional features.
