@@ -53,10 +53,12 @@ MODEL_EXTRACT_MATRIX = {
         "gemini-3-flash-preview",
     ],
     "PREMIUM_WATCH_FOLDER": [
-        "gpt-5.2",
+        "gpt-5.1",
     ],
 }
-MODEL_DISTILL = "o1"
+
+MODEL_DISTILL = "o3"
+#MODEL_DISTILL = "o1"
 
 RETRY_CONFIG = {
     "MAX_RETRIES": 1,

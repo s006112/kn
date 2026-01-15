@@ -6,20 +6,17 @@ from clipboard_polyfill import CLIPBOARD_POLYFILL
 from core_rendering import MODEL_OPTIONS, handle_render
 
 DISPLAY_NAMES = {
-    "gemini-3-pro-image-preview": "Nano Banana Pro",
-    "gemini-2.5-flash-image": "Nano Banana",
-    "gpt-image-1.5": "GPT-Image 1.5",
-    "gpt-image-1-mini": "GPT-Image 1.0",
-    "gpt-image-1": "GPT-Image 1",
-    "stability-ultra": "Stable Diffusion Ultra",
-    "stability-core": "Stable Diffusion Core",
-    "stability-sd3": "Stable Diffusion 3",
-    "stability-sketch": "Stable Diffusion Sketch",
-    "stability-structure": "Stable Diffusion Structure",
+    "gemini-3-pro-image-preview": "Nano Banana Pro, $$$",
+    "gemini-2.5-flash-image": "Nano Banana, $",
+    "gpt-image-1.5": "GPT-Image 1.5, $$",
+    "gpt-image-1-mini": "GPT-Image 1.0, $$$",
+    "gpt-image-1": "GPT-Image 1, $",
+    "stability-ultra": "Stable Diffusion Ultra, $$$$",
+    "stability-core": "Stable Diffusion Core, $$",
+    "stability-sd3": "Stable Diffusion 3, $$",
+    "stability-sketch": "Stable Diffusion Sketch, $$",
+    "stability-structure": "Stable Diffusion Structure, $$$",
 }
-
-MODEL_CHOICES = [(DISPLAY_NAMES.get(model, model), model) for model in MODEL_OPTIONS]
-
 
 with gr.Blocks(title="Sketch-to-Rendering Studio", head=CLIPBOARD_POLYFILL) as demo:
     gr.Markdown("## Sketch-to-Rendering Studio")
@@ -31,7 +28,7 @@ with gr.Blocks(title="Sketch-to-Rendering Studio", head=CLIPBOARD_POLYFILL) as d
         )
         model_picker = gr.Dropdown(
             label="Choose a rendering model",
-            choices=MODEL_CHOICES,
+            choices=[(DISPLAY_NAMES.get(model, model), model) for model in MODEL_OPTIONS],
             value=MODEL_OPTIONS[0],
         )
     prompt_editor = gr.Textbox(

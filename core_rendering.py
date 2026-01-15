@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import sys
 from io import BytesIO
 from pathlib import Path
