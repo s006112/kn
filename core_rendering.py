@@ -19,8 +19,8 @@ logger = configure_logging("rendering")
 
 MODEL_OPTIONS = [
     "gemini-3-pro-image-preview",
-    "gpt-image-1.5",
     "gemini-2.5-flash-image",
+    "gpt-image-1.5",
     "gpt-image-1-mini",    
     "gpt-image-1",
     "stability-structure",
