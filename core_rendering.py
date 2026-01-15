@@ -1,3 +1,24 @@
+"""This module handles:
+
+* Rendering orchestration for model-backed image generation.
+
+The processing pipeline:
+1. Load environment variables and configure logging on import.
+2. Read the prompt template from prompt/prompt_rendering.txt.
+3. Compose the final prompt from template and user input.
+4. Call the image generator with a selected model and optional image bytes.
+5. Return the first generated image or an error message.
+
+Invariants:
+* Allowed models are defined by MODEL_OPTIONS.
+* PROMPT_RENDERING may be empty if the template file is missing.
+
+Out of scope:
+* UI construction or event wiring.
+* Model validation beyond membership in MODEL_OPTIONS.
+* Persistence or caching of rendered images.
+"""
+
 from __future__ import annotations
 
 import sys
@@ -40,6 +61,22 @@ else:
 
 
 def _compose_prompt(system_prompt: str, user_text: str) -> str:
+    """Purpose:
+    Compose the final prompt from a system template and user input.
+
+    Inputs:
+    - system_prompt: Template string, may be empty.
+    - user_text: User-provided prompt, may be empty or None.
+
+    Outputs:
+    - Combined prompt string with whitespace trimmed.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - None.
+    """
     system_prompt = system_prompt.strip()
     user_text = (user_text or "").strip()
     if system_prompt and user_text:
@@ -48,15 +85,24 @@ def _compose_prompt(system_prompt: str, user_text: str) -> str:
 
 
 def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
-    """使用指定圖像模型產生渲染結果。
+    """Purpose:
+    Generate a single rendered image using the configured image backend.
 
-    - Stability 系列（stability-*）：
-        - 如果提供 image_bytes，則走 image-to-image。
-        - 如果未提供，則為 text-to-image。
-    - OpenAI gpt-image-1：
-        - 如果提供 image_bytes，走 image-to-image 編輯模式。
-        - 如果未提供，則為 text-to-image。
-    - 其他模型（Gemini 等）目前僅支援 text-to-image，會忽略 image_bytes。
+    Inputs:
+    - image_bytes: Optional source image bytes for image-to-image/edit paths.
+    - model: Model identifier string passed through to generate_image.
+    - prompt: User prompt text to combine with the template.
+
+    Outputs:
+    - Raw image bytes for the first generated image.
+
+    Side effects:
+    - Calls generate_image with the resolved prompt and parameters.
+
+    Failure modes:
+    - RuntimeError if the composed prompt is empty.
+    - ValueError if generate_image returns no images.
+    - Propagates exceptions from generate_image.
     """
     final_prompt = _compose_prompt(PROMPT_RENDERING, prompt)
     if not final_prompt:
@@ -77,6 +123,25 @@ def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
 
 
 def handle_render(uploaded: str | None, model: str, prompt: str):
+    """Purpose:
+    Validate input, read an uploaded file if present, and return a rendered image.
+
+    Inputs:
+    - uploaded: Filepath for the uploaded image, or None.
+    - model: Model identifier string selected by the user.
+    - prompt: User prompt text to combine with the template.
+
+    Outputs:
+    - (PIL.Image.Image | None, status message string).
+
+    Side effects:
+    - Reads the uploaded file from disk when provided.
+    - Logs exceptions during file read and rendering.
+
+    Failure modes:
+    - Returns (None, error message) if model is invalid, file read fails,
+      or rendering raises an exception.
+    """
     if model not in MODEL_OPTIONS:
         return None, "Select a valid model from the dropdown before submitting."
 

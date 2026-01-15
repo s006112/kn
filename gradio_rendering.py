@@ -1,3 +1,21 @@
+"""This module handles:
+
+* Gradio UI construction and event wiring for the rendering workflow.
+
+The processing pipeline:
+1. Build the UI: upload, model selector, prompt input, output panel.
+2. On click, call core_rendering.handle_render.
+3. Display the returned image and status message.
+
+Invariants:
+* Model choices are derived from core_rendering.MODEL_OPTIONS.
+* Display names fall back to raw model ids when not mapped.
+
+Out of scope:
+* Rendering logic, prompt composition, or image generation.
+* Model list management beyond display mapping.
+"""
+
 from __future__ import annotations
 
 import gradio as gr
