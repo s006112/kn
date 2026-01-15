@@ -39,7 +39,7 @@ PATH_CONFIG = {
     "OBSIDIAN_SYNC_FOLDER": Path("/desktop/Obsidian/O_2025"),
 }
 
-# sonar, sonar-pro, sonar-reasoning-pro
+# sonar $1, sonar-pro $15, sonar-reasoning-pro $8
 # gemini-2.0-flash, gemini-2.5-flash, gemini-2.5-pro, gemini-3-pro-preview, 
 # gpt-5-mini, gpt-5-nano, gpt-4.1-mini, gpt-4.1-nano, gpt-4o-mini, o1-mini, o3-mini, o4-mini, codex-mini-latest
 # gpt-5.1, gpt-5, gpt-5-chat-latest, gpt-4.1, gpt-4o, o1, o3,
@@ -48,7 +48,7 @@ MODEL_PRETEXT = "gpt-4.1-mini"
 MODEL_EXTRACT_MATRIX = {
     "EXTRACT_WATCH_FOLDER": [
         "gpt-5-mini",
-        "sonar-pro",
+        "sonar",
         "grok-4-1-fast-non-reasoning",
         "gemini-3-pro-preview",
     ],
