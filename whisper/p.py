@@ -40,23 +40,23 @@ PATH_CONFIG = {
 }
 
 # sonar $1, sonar-pro $15, sonar-reasoning-pro $8
-# gemini-2.0-flash, gemini-2.5-flash, gemini-2.5-pro, gemini-3-pro-preview, 
-# gpt-5-mini, gpt-5-nano, gpt-4.1-mini, gpt-4.1-nano, gpt-4o-mini, o1-mini, o3-mini, o4-mini, codex-mini-latest
-# gpt-5.1, gpt-5, gpt-5-chat-latest, gpt-4.1, gpt-4o, o1, o3,
-# grok-4-1-fast-reasoning, grok-4-1-fast-non-reasoning, grok-4-0709
+# gemini-2.0-flash $0.4, gemini-2.5-flash $2.5, gemini-2.5-pro $10, gemini-3-flash-preview $3, gemini-3-pro-preview $12, 
+# gpt-5-mini, gpt-5-nano, gpt-4.1-mini, gpt-4.1-nano, gpt-4o-mini, o1-mini, o3-mini, o4-mini,
+# gpt-5.1 $12, gpt-5.1 $10, gpt-4.1 $8, gpt-4o, o1 $60, o3 $8,
+# grok-4-1-fast-reasoning $0.5, grok-4-1-fast-non-reasoning $0.5, grok-4-0709 $15
 MODEL_PRETEXT = "gpt-4.1-mini"
 MODEL_EXTRACT_MATRIX = {
     "EXTRACT_WATCH_FOLDER": [
         "gpt-5-mini",
         "sonar",
         "grok-4-1-fast-non-reasoning",
-        "gemini-3-pro-preview",
+        "gemini-3-flash-preview",
     ],
     "PREMIUM_WATCH_FOLDER": [
         "gpt-5.2",
     ],
 }
-MODEL_DISTILL = "o3"
+MODEL_DISTILL = "o1"
 
 RETRY_CONFIG = {
     "MAX_RETRIES": 1,

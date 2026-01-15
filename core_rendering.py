@@ -18,11 +18,11 @@ load_env(dotenv_path=Path(__file__).parent / ".env")
 logger = configure_logging("rendering")
 
 MODEL_OPTIONS = [
-    "gemini-3-pro-image-preview",
-    "gemini-2.5-flash-image",
-    "gpt-image-1.5",
-    "gpt-image-1-mini",    
-    "gpt-image-1",
+    "gemini-3-pro-image-preview",   # $120, $0.134 per 1K/2K image
+    "gemini-2.5-flash-image",   # $0.039 per image
+    "gpt-image-1.5",    # $32, $0.133 per image 
+    "gpt-image-1-mini",   # $40, $0.167 per image
+    "gpt-image-1",   # $8.00, $0.036 per image
     "stability-structure",
     "stability-sketch",
     "stability-core",
