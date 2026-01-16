@@ -17,7 +17,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from helper.utils_config import configure_logging, load_env, load_prompt_text
-from helper.utils_nextcloud import share, ushare
+from helper.utils_nextcloud import ushare
 from helper.utils_llm import call_llm
 from helper.utils_pdf import get_pdf_full_text
 
@@ -25,6 +25,7 @@ load_env()
 log = configure_logging("per_report")
 
 PNG_REMOTE_DIR = "/Documents/PER/CIE Chart"
+REPORT_REMOTE_DIR = "/Documents/PER/Photometry Report"
 PNG_PLACEHOLDER_PREFIX = "cie-share://"
 
 LATEST_SUMMARY: str = ""
@@ -418,7 +419,7 @@ def generate_per_report(file_path: str, model: str) -> PerReportResult:
 
     share_info: dict[str, str] = {}
     try:
-        share_info = share(file_path) or {}
+        share_info = ushare(file_path, REPORT_REMOTE_DIR) or {}
         log.info("Nextcloud share available: %s", share_info.get("page"))
     except Exception as exc:  # noqa: BLE001 - logging for visibility
         log.error("Failed to create Nextcloud share link: %s", exc)

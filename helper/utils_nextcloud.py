@@ -280,25 +280,6 @@ def create_or_get_public_share(base_url: str, auth: Tuple[str, str], remote_path
     return _format_share_payload(share)
 
 
-def share(local_path: str) -> Dict[str, str]:
-    """Purpose:
-    Upload a file to `PEF_REMOTE_DIR` and return share data.
-
-    Inputs:
-    `local_path`.
-
-    Outputs:
-    Dict with `remote_path` and (when available) `page`/`download`/`id`.
-
-    Side effects:
-    Directory creation, upload, share calls.
-
-    Failure modes:
-    Propagates directory creation and upload errors.
-    """
-    return share_file(local_path, PEF_REMOTE_DIR)
-
-
 def share_file(local_path: str, remote_dir: str) -> Dict[str, str]:
     """Purpose:
     Upload a file and return public share URLs for the uploaded remote path.
@@ -362,7 +343,6 @@ __all__ = [
     "upload_file",
     "get_public_share_if_exists",
     "create_or_get_public_share",
-    "share",
     "share_file",
     "ushare",
 ]

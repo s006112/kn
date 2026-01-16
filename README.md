@@ -7,7 +7,7 @@ Processing Pipeline
 -------------------
 - **PDF ingestion** – `handle_upload()` reads the uploaded file, uses `utils_pdf.get_pdf_full_text()` to recover full text, and guards against empty or unreadable PDFs.
 - **Prompt-driven analysis** – The raw text is fed to the shared LLM helper twice (`utils_llm.call_llm()` using a PER-specific model): first with `Prompt_md.txt` to obtain a structured markdown analysis, then with `Prompt_summary.txt` to condense that analysis into an executive summary.
-- **Report assembly** – A templated header/ footer wraps the AI responses with branding, placeholder checkboxes, and a link back to the shared PDF on Nextcloud (`utils_nextcloud.share()`).
+- **Report assembly** – A templated header/ footer wraps the AI responses with branding, placeholder checkboxes, and a link back to the shared PDF on Nextcloud (`utils_nextcloud.ushare()`).
 - **CIE PNG coordination** – A deterministic timestamp defines the expected PNG artefact name so the frontend can later upload the rendered chart.
 - **Chromaticity parsing** – `_extract_cct_xy()` walks the generated markdown, isolates the “Product category” table, and uses regex matching to pull numeric CIE 1931 x,y pairs for display in a Gradio dataframe.
 - **State caching** – `LATEST_SUMMARY` keeps the combined report available for incremental updates once the CIE chart arrives.
