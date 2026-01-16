@@ -163,7 +163,7 @@ def handle_render(uploaded: str | None, model: str, prompt: str):
         rendered_bytes = request_render(sketch_bytes, model, prompt)
         rendered_image = Image.open(BytesIO(rendered_bytes))
         ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        generated_filename = f"{Path(uploaded).name}_{ts}.png"
+        generated_filename = f"{Path(uploaded).stem}_{model}_{ts}.png"
         upload_and_share_file(
             rendered_bytes,
             PNG_REMOTE_DIR,
