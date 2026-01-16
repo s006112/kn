@@ -65,30 +65,6 @@ else:
     PROMPT_RENDERING = ""
 
 
-def _compose_prompt(system_prompt: str, user_text: str) -> str:
-    """Purpose:
-    Compose the final prompt from a system template and user input.
-
-    Inputs:
-    - system_prompt: Template string, may be empty.
-    - user_text: User-provided prompt, may be empty.
-
-    Outputs:
-    - Combined prompt string with whitespace trimmed.
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - None.
-    """
-    system_prompt = system_prompt.strip()
-    user_text = (user_text or "").strip()
-    if system_prompt and user_text:
-        return f"{system_prompt}\n\n{user_text}"
-    return system_prompt or user_text
-
-
 def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
     """Purpose:
     Generate a single rendered image using the configured image backend.
@@ -109,7 +85,12 @@ def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
     - ValueError if generate_image returns no images.
     - Propagates exceptions from generate_image.
     """
-    final_prompt = _compose_prompt(PROMPT_RENDERING, prompt)
+    system_prompt = PROMPT_RENDERING.strip()
+    user_text = (prompt or "").strip()
+    if system_prompt and user_text:
+        final_prompt = f"{system_prompt}\n\n{user_text}"
+    else:
+        final_prompt = system_prompt or user_text
     if not final_prompt:
         raise RuntimeError("Rendering prompt is empty.")
 
@@ -219,7 +200,7 @@ with gr.Blocks(title="Sketch-to-Rendering Studio", head=CLIPBOARD_POLYFILL) as d
         rendered_output = gr.Gallery(
             label="Generated renderings",
             interactive=False,
-            columns=2,
+            columns=4,
             format="jpeg",
         )
         status_message = gr.Textbox(
