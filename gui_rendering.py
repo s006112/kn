@@ -1,24 +1,18 @@
-"""This module handles:
+"""Gradio GUI entrypoint for model-backed image generation and file upload.
 
-* Rendering orchestration for model-backed image generation.
-* Gradio UI construction and event wiring for the rendering workflow.
-
-The processing pipeline:
-1. Load environment variables and configure logging on import.
-2. Read the prompt template from prompt/prompt_rendering.txt.
-3. Compose the final prompt from template and user input.
-4. Call the image generator with a selected model and optional image bytes.
-5. Return the first generated image or an error message.
-6. Build the UI and wire the submit button to handle_render.
+Pipelines:
+- import -> load_env -> configure_logging -> read_template -> build_ui
+- submit -> validate_models -> read_upload -> render -> upload -> gallery -> status
 
 Invariants:
-* Allowed models are defined by MODEL_OPTIONS.
-* PROMPT_RENDERING may be empty if the template file is missing.
-* Model choices are derived from MODEL_OPTIONS.
+- `MODEL_OPTIONS` defines the allowed model identifiers.
+- `PROMPT_RENDERING` is `""` when the template file is missing.
+- `demo` is constructed at import time.
 
 Out of scope:
-* Model validation beyond membership in MODEL_OPTIONS.
-* Persistence or caching of rendered images.
+- Any model validation beyond membership in `MODEL_OPTIONS`.
+- Persistence or caching of generated images.
+- Serving configuration beyond `demo.launch(...)` in `__main__`.
 """
 
 from __future__ import annotations
@@ -75,7 +69,7 @@ def _compose_prompt(system_prompt: str, user_text: str) -> str:
 
     Inputs:
     - system_prompt: Template string, may be empty.
-    - user_text: User-provided prompt, may be empty or None.
+    - user_text: User-provided prompt, may be empty.
 
     Outputs:
     - Combined prompt string with whitespace trimmed.
@@ -122,7 +116,7 @@ def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
         prompt=final_prompt,
         size="1024x1024",
         n=1,
-        image_bytes=image_bytes,   # 關鍵：不要再做 startswith("stability") 判斷
+        image_bytes=image_bytes,  # Why: `generate_image` resolves backend routing.
     )
 
     if not images:
@@ -141,15 +135,19 @@ def handle_render(uploaded: str | None, model: str | list[str] | None, prompt: s
     - prompt: User prompt text to combine with the template.
 
     Outputs:
-    - (PIL.Image.Image | None, status message string).
+    - (list[(PIL.Image.Image, model_name)], status message string) on success.
+    - ([], status message string) on validation failure or render failure.
+    - (None, status message string) when the uploaded file cannot be read.
 
     Side effects:
     - Reads the uploaded file from disk when provided.
     - Logs exceptions during file read and rendering.
 
     Failure modes:
-    - Returns (None, error message) if model is invalid, file read fails,
-      or rendering raises an exception.
+    - Returns ([], error message) if no models are selected or any model is invalid.
+    - Returns (None, error message) if the uploaded file path cannot be read.
+    - Returns ([], error message) if rendering fails for any reason, including when
+      `uploaded` is None and the generated filename cannot be derived.
     """
     if isinstance(model, str):
         models = [model]
