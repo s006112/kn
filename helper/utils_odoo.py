@@ -12,7 +12,7 @@ from xmlrpc import client as xmlrpc_client
 
 from helper.utils_config import configure_logging, load_env
 from helper.utils_odoo_id import find_id
-from helper.utils_nextcloud import PO_REMOTE_DIR, share_file
+from helper.utils_nextcloud import PO_REMOTE_DIR, upload_and_share_file
 
 load_env()
 log = configure_logging("utils_odoo")
@@ -144,7 +144,7 @@ def _upload_pdf_to_nextcloud(client: OdooClient, order_id: int, pdf_path: str) -
     base_dir = PO_REMOTE_DIR.rstrip("/") if PO_REMOTE_DIR else ""
     remote_dir = f"{base_dir}/{partner_name}" if base_dir else partner_name
     try:
-        share_info = share_file(pdf_path, remote_dir) or {}
+        share_info = upload_and_share_file(pdf_path, remote_dir) or {}
         remote_path = share_info.get("remote_path")
         link = share_info.get("page") or remote_path
         if link:

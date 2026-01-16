@@ -280,9 +280,9 @@ def create_or_get_public_share(base_url: str, auth: Tuple[str, str], remote_path
     return _format_share_payload(share)
 
 
-def share_file(local_path: str, remote_dir: str) -> Dict[str, str]:
+def upload_and_share_file(local_path: str, remote_dir: str) -> Dict[str, str]:
     """Purpose:
-    Upload a file and return public share URLs for the uploaded remote path.
+    Upload a file and return public share URLs (when available) for the uploaded remote path.
 
     Inputs:
     `local_path`, `remote_dir`.
@@ -319,21 +319,21 @@ def share_file(local_path: str, remote_dir: str) -> Dict[str, str]:
 
 def ushare(local_path: str, remote_dir: str) -> Dict[str, str]:
     """Purpose:
-    Convenience wrapper around `share_file` for an arbitrary remote directory.
+    Convenience wrapper around `upload_and_share_file` for an arbitrary remote directory.
 
     Inputs:
     `local_path`, `remote_dir`.
 
     Outputs:
-    Same as `share_file`.
+    Same as `upload_and_share_file`.
 
     Side effects:
-    Same as `share_file`.
+    Same as `upload_and_share_file`.
 
     Failure modes:
-    Same as `share_file`.
+    Same as `upload_and_share_file`.
     """
-    return share_file(local_path, remote_dir)
+    return upload_and_share_file(local_path, remote_dir)
 
 
 __all__ = [
@@ -343,6 +343,6 @@ __all__ = [
     "upload_file",
     "get_public_share_if_exists",
     "create_or_get_public_share",
-    "share_file",
+    "upload_and_share_file",
     "ushare",
 ]
