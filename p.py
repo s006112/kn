@@ -17,10 +17,14 @@ Out of scope:
 import logging
 import os
 import sys
-import p_orchestrator
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+# Make whisper modules importable when running from repo root.
+WHISPER_DIR = Path(__file__).resolve().parent / "whisper"
+sys.path.insert(0, os.fspath(WHISPER_DIR))
+
+import p_orchestrator  # type: ignore[reportMissingImports]
 # -------------------------
 # 路径与运行配置
 # -------------------------
@@ -106,7 +110,7 @@ class UTFStreamHandler(logging.StreamHandler):
             self.handleError(record)
 
 
-LOG_DIR = Path(__file__).resolve().parent.parent / "log"
+LOG_DIR = Path(__file__).resolve().parent / "log"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 

@@ -4,7 +4,7 @@ p_orchestrator.py 負責組裝與啟動； p_pipelines.py 負責做事。
 Coordinate pipeline startup and lifecycle by loading prompt strings into a config dict, creating a `PipelineContext`, starting worker threads, and running a watchdog `Observer` for file events.
 
 Used by:
-* whisper/p.py
+* p.py
 
 Pipelines:
 - config -> read prompts -> create context -> start threads -> start watchdog -> monitor

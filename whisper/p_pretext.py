@@ -42,7 +42,7 @@ from helper.utils_llm import call_llm
 from utils_md import write_pretext_markdown
 
 
-class v(FileSystemEventHandler):
+class PretextHandler(FileSystemEventHandler):
     """Watch pretext folder events and request queueing via PipelineContext."""
 
     def __init__(self, ctx: PipelineContext):
