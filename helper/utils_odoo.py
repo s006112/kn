@@ -12,7 +12,9 @@ from xmlrpc import client as xmlrpc_client
 
 from helper.utils_config import configure_logging, load_env
 from helper.utils_odoo_id import find_id
-from helper.utils_nextcloud import PO_REMOTE_DIR, upload_and_share_file
+from helper.utils_nextcloud import upload_and_share_file
+
+PO_REMOTE_DIR = "/Documents/SO_Backup"
 
 load_env()
 log = configure_logging("utils_odoo")

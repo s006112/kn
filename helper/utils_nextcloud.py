@@ -30,8 +30,6 @@ import requests
 from dotenv import load_dotenv
 
 _BASE_URL = "https://nextcloud.ampco.com.hk"
-PEF_REMOTE_DIR = "/Documents/PER/Photometry Report"
-PO_REMOTE_DIR = "/Documents/SO_Backup"
 _OCS_HEADERS = {
     "OCS-APIRequest": "true",
     "Accept": "application/json",
@@ -317,32 +315,10 @@ def upload_and_share_file(local_path: str, remote_dir: str) -> Dict[str, str]:
     }
 
 
-def ushare(local_path: str, remote_dir: str) -> Dict[str, str]:
-    """Purpose:
-    Convenience wrapper around `upload_and_share_file` for an arbitrary remote directory.
-
-    Inputs:
-    `local_path`, `remote_dir`.
-
-    Outputs:
-    Same as `upload_and_share_file`.
-
-    Side effects:
-    Same as `upload_and_share_file`.
-
-    Failure modes:
-    Same as `upload_and_share_file`.
-    """
-    return upload_and_share_file(local_path, remote_dir)
-
-
 __all__ = [
-    "PEF_REMOTE_DIR",
-    "PO_REMOTE_DIR",
     "mkcol_recursive",
     "upload_file",
     "get_public_share_if_exists",
     "create_or_get_public_share",
     "upload_and_share_file",
-    "ushare",
 ]
