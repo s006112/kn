@@ -126,7 +126,7 @@ def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
     return images[0]
 
 
-def handle_render(uploaded: str | None, model: str, prompt: str):
+def handle_render(uploaded: str | None, model: str | list[str] | None, prompt: str):
     """Purpose:
     Validate input, read an uploaded file if present, and return a rendered image.
 
@@ -146,8 +146,17 @@ def handle_render(uploaded: str | None, model: str, prompt: str):
     - Returns (None, error message) if model is invalid, file read fails,
       or rendering raises an exception.
     """
-    if model not in MODEL_OPTIONS:
-        return None, "Select a valid model from the dropdown before submitting."
+    if isinstance(model, str):
+        models = [model]
+    else:
+        models = list(model or [])
+
+    if not models:
+        return [], "Select at least one model before submitting."
+
+    invalid_models = [item for item in models if item not in MODEL_OPTIONS]
+    if invalid_models:
+        return [], "Select valid models from the list before submitting."
 
     sketch_bytes: bytes | None = None
     if uploaded:
@@ -160,20 +169,26 @@ def handle_render(uploaded: str | None, model: str, prompt: str):
         upload_and_share_file(uploaded, PNG_REMOTE_DIR, share=False)
 
     try:
-        rendered_bytes = request_render(sketch_bytes, model, prompt)
-        rendered_image = Image.open(BytesIO(rendered_bytes))
-        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        generated_filename = f"{Path(uploaded).stem}_{model}_{ts}.png"
-        upload_and_share_file(
-            rendered_bytes,
-            PNG_REMOTE_DIR,
-            share=False,
-            filename=generated_filename,
-        )
-        return rendered_image, "Rendering complete."
+        rendered_images = []
+        for model_name in models:
+            rendered_bytes = request_render(sketch_bytes, model_name, prompt)
+            rendered_image = Image.open(BytesIO(rendered_bytes))
+            rendered_images.append((rendered_image, model_name))
+            ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            generated_filename = f"{Path(uploaded).stem}_{model_name}_{ts}.png"
+            upload_and_share_file(
+                rendered_bytes,
+                PNG_REMOTE_DIR,
+                share=False,
+                filename=generated_filename,
+            )
+        status = "Rendering complete."
+        if len(models) > 1:
+            status = f"Rendering complete for {len(models)} models."
+        return rendered_images, status
     except Exception as exc:
         logger.exception("Rendering failed.")
-        return None, f"Rendering failed: {exc}"
+        return [], f"Rendering failed: {exc}"
 
 
 __all__ = ["MODEL_OPTIONS", "PROMPT_RENDERING", "handle_render", "request_render"]

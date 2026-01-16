@@ -44,10 +44,10 @@ with gr.Blocks(title="Sketch-to-Rendering Studio", head=CLIPBOARD_POLYFILL) as d
             type="filepath",
             file_types=[".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff"],
         )
-        model_picker = gr.Dropdown(
+        model_picker = gr.CheckboxGroup(
             label="Choose a rendering model",
             choices=[(DISPLAY_NAMES.get(model, model), model) for model in MODEL_OPTIONS],
-            value=MODEL_OPTIONS[0],
+            value=[MODEL_OPTIONS[1], MODEL_OPTIONS[2], MODEL_OPTIONS[4]],
         )
     prompt_editor = gr.Textbox(
         label="Additional prompt (optional)",
@@ -58,14 +58,14 @@ with gr.Blocks(title="Sketch-to-Rendering Studio", head=CLIPBOARD_POLYFILL) as d
     with gr.Row():
         generate_btn = gr.Button("Generate Rendering")
     with gr.Column():
-        rendered_output = gr.Image(
-            label="Generated rendering",
+        rendered_output = gr.Gallery(
+            label="Generated renderings",
             interactive=False,
-            format="jpeg",  # ensure downloads default to JPG
+            columns=2,
         )
         status_message = gr.Textbox(
             label="Status",
-            value="Upload an image, select a model, then press Generate Rendering.",
+            value="Upload an image, select one or more models, then press Generate Rendering.",
             interactive=False,
         )
     generate_btn.click(
