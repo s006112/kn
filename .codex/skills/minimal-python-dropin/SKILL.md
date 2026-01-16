@@ -63,7 +63,7 @@ Never output both unless explicitly requested.
    - otherwise run the narrowest possible command(s) to prove the fix (e.g. import, minimal execution path)
    - do not introduce new test frameworks
 6. Final output:
-   - drop-in code (or diff if requested)
+   - direct update the drop-in code
    - list assumptions (should be empty; if not, highlight them)
    - exact commands executed and results (if available)
 

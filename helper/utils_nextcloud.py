@@ -58,23 +58,15 @@ def load_env() -> Tuple[str, str]:
     load_dotenv()  # Ensures .env is read when running locally
     username = os.getenv("NEXTCLOUD_USERNAME")
     password = os.getenv("NEXTCLOUD_PASSWORD")
-    pairs = [("NEXTCLOUD_USERNAME", username), ("NEXTCLOUD_PASSWORD", password)]
-    missing = [name for name, value in pairs if not value]
+    missing = []
+    if not username:
+        missing.append("NEXTCLOUD_USERNAME")
+    if not password:
+        missing.append("NEXTCLOUD_PASSWORD")
     if missing:
         raise RuntimeError(f"Missing required Nextcloud env vars: {', '.join(missing)}")
     assert username is not None and password is not None
     return username, password
-
-
-def _encode_path_segments(segments: Iterable[str]) -> str:
-    """Purpose: build a URL-safe path from non-empty segments.
-
-    Inputs: iterable of path segments.
-    Outputs: joined string with each segment URL-encoded.
-    Side effects: none.
-    Failure modes: none.
-    """
-    return "/".join(quote(seg, safe="") for seg in segments if seg)
 
 
 def mkcol_recursive(base_url: str, username: str, auth: Tuple[str, str], folders: Iterable[str]) -> None:
@@ -137,7 +129,7 @@ def upload_file(
     remote_root = f"{base_url}/remote.php/dav/files/{encoded_username}"
 
     remote_segments = [segment for segment in remote_dir.strip("/").split("/") if segment]
-    encoded_dir = _encode_path_segments(remote_segments)
+    encoded_dir = "/".join(quote(seg, safe="") for seg in remote_segments if seg)
     if encoded_dir:
         remote_root = f"{remote_root}/{encoded_dir}"
 
@@ -261,17 +253,6 @@ def share(local_path: str) -> Dict[str, str]:
     return share_file(local_path, PEF_REMOTE_DIR)
 
 
-def share_po(local_path: str) -> Dict[str, str]:
-    """Purpose: upload a file to the SO backup directory and return share data.
-
-    Inputs: local file path.
-    Outputs: dict with remote_path and share fields when available.
-    Side effects: performs remote directory creation, upload, and share calls.
-    Failure modes: propagates errors from upload/share helpers.
-    """
-    return share_file(local_path, PO_REMOTE_DIR)
-
-
 def share_file(local_path: str, remote_dir: str) -> Dict[str, str]:
     """Purpose: upload a file and return share URLs for a remote directory.
 
@@ -290,10 +271,9 @@ def share_file(local_path: str, remote_dir: str) -> Dict[str, str]:
         mkcol_recursive(_BASE_URL, username, auth, folders)
 
     remote_path = upload_file(local_path, remote_dir, _BASE_URL, username, auth)
-    relative_path = remote_path.lstrip("/")
 
     try:
-        share_payload = create_or_get_public_share(_BASE_URL, auth, relative_path)
+        share_payload = create_or_get_public_share(_BASE_URL, auth, remote_path)
     except Exception as exc:  # noqa: BLE001 - surface but continue
         log.warning("Unable to create share link for %s: %s", remote_path, exc)
         return {"remote_path": remote_path}
@@ -323,7 +303,6 @@ __all__ = [
     "get_public_share_if_exists",
     "create_or_get_public_share",
     "share",
-    "share_po",
     "share_file",
     "ushare",
 ]

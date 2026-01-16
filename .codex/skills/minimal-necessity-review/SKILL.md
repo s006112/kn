@@ -177,5 +177,6 @@ Constraints:
 - No abstractions
 - No cleverness
 Output:
+- Chinese language
 - Review-only proposals
 - Follow the Human Decision Gate format
