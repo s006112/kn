@@ -7,14 +7,14 @@ Processing Pipeline
 -------------------
 - **PDF ingestion** – `handle_upload()` reads the uploaded file, uses `utils_pdf.get_pdf_full_text()` to recover full text, and guards against empty or unreadable PDFs.
 - **Prompt-driven analysis** – The raw text is fed to the shared LLM helper twice (`utils_llm.call_llm()` using a PER-specific model): first with `Prompt_md.txt` to obtain a structured markdown analysis, then with `Prompt_summary.txt` to condense that analysis into an executive summary.
-- **Report assembly** – A templated header/ footer wraps the AI responses with branding, placeholder checkboxes, and a link back to the shared PDF on Nextcloud (`utils_nextcloud.upload_and_share_file(..., share=True)`).
+- **Report assembly** – A templated header/ footer wraps the AI responses with branding, placeholder checkboxes, and a link back to the shared PDF on Nextcloud (`helper_nextcloud.upload_and_share_file(..., share=True)`).
 - **CIE PNG coordination** – A deterministic timestamp defines the expected PNG artefact name so the frontend can later upload the rendered chart.
 - **Chromaticity parsing** – `_extract_cct_xy()` walks the generated markdown, isolates the “Product category” table, and uses regex matching to pull numeric CIE 1931 x,y pairs for display in a Gradio dataframe.
 - **State caching** – `LATEST_SUMMARY` keeps the combined report available for incremental updates once the CIE chart arrives.
 
 Hidden Upload Bridge
 --------------------
-`upload_cie_png()` receives a base64 payload emitted by custom frontend JavaScript, writes a temporary PNG, and calls `utils_nextcloud.upload_and_share_file(..., share=True)` to place it under `/Documents/PER/CIE Chart`. When the share link returns, the function swaps the placeholder URI embedded in the cached summary with the public preview URL.
+`upload_cie_png()` receives a base64 payload emitted by custom frontend JavaScript, writes a temporary PNG, and calls `helper_nextcloud.upload_and_share_file(..., share=True)` to place it under `/Documents/PER/CIE Chart`. When the share link returns, the function swaps the placeholder URI embedded in the cached summary with the public preview URL.
 
 User Interface
 --------------
@@ -28,7 +28,7 @@ Key Environment Inputs
 
 Supporting Files
 ----------------
-`Prompt_md.txt` and `Prompt_summary.txt` craft the AI prompts; `utils_nextcloud.py` provides sharing helpers; `utils_cie1931.py` generates the interactive colour space canvas. Together they enable a mostly hands-off workflow for turning raw photometric PDFs into polished reports.
+`Prompt_md.txt` and `Prompt_summary.txt` craft the AI prompts; `helper_nextcloud.py` provides sharing helpers; `utils_cie1931.py` generates the interactive colour space canvas. Together they enable a mostly hands-off workflow for turning raw photometric PDFs into polished reports.
 
 
 

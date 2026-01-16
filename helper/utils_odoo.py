@@ -12,7 +12,7 @@ from xmlrpc import client as xmlrpc_client
 
 from helper.utils_config import configure_logging, load_env
 from helper.utils_odoo_id import find_id
-from helper.utils_nextcloud import upload_and_share_file
+from helper.helper_nextcloud import upload_and_share_file
 
 PO_REMOTE_DIR = "/Documents/SO_Backup"
 
@@ -148,11 +148,11 @@ def _upload_pdf_to_nextcloud(client: OdooClient, order_id: int, pdf_path: str) -
     share_info = upload_and_share_file(pdf_path, remote_dir, share=False) or {}
     error = share_info.get("error")
     if error:
+        log.warning("Nextcloud upload failed for %s: %s", pdf_path, error)
         return messages
     remote_path = share_info.get("remote_path")
-    link = share_info.get("page") or remote_path
-    if link:
-        messages.append(f"Nextcloud upload: {link}")
+    if remote_path:
+        messages.append(f"Nextcloud upload: {remote_path}")
     return messages
 
 

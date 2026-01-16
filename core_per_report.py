@@ -5,7 +5,6 @@ import json
 import logging
 import os
 import re
-import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +16,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from helper.utils_config import configure_logging, load_env, load_prompt_text
-from helper.utils_nextcloud import upload_and_share_file
+from helper.helper_nextcloud import upload_and_share_file
 from helper.utils_llm import call_llm
 from helper.utils_pdf import get_pdf_full_text
 
@@ -480,12 +479,13 @@ def upload_cie_png(payload: str) -> str:
     b64_data = data_url.split(",", 1)[1]
     png_bytes = base64.b64decode(b64_data)
 
-    temp_path = Path(tempfile.gettempdir()) / fname
-    temp_path.write_bytes(png_bytes)
-
-    cie_share_info = upload_and_share_file(str(temp_path), PNG_REMOTE_DIR, share=True)
+    cie_share_info = upload_and_share_file(
+        png_bytes,
+        PNG_REMOTE_DIR,
+        share=True,
+        filename=fname,
+    )
     share_url = cie_share_info.get("page", "")
-    temp_path.unlink(missing_ok=True)
 
     if share_url:
         placeholder = f"{PNG_PLACEHOLDER_PREFIX}{fname}"

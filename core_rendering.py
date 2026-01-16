@@ -22,7 +22,6 @@ Out of scope:
 from __future__ import annotations
 
 import sys
-import tempfile
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -35,7 +34,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from helper.utils_config import configure_logging, load_env
 from helper.utils_llm_image import generate_image
-from helper.utils_nextcloud import upload_and_share_file
+from helper.helper_nextcloud import upload_and_share_file
 
 PNG_REMOTE_DIR = "/Documents/Rendering"
 
@@ -165,13 +164,12 @@ def handle_render(uploaded: str | None, model: str, prompt: str):
         rendered_image = Image.open(BytesIO(rendered_bytes))
         ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         generated_filename = f"{Path(uploaded).name}_{ts}.png"
-        temp_path = Path(tempfile.gettempdir()) / generated_filename
-        try:
-            temp_path.write_bytes(rendered_bytes)
-            upload_and_share_file(str(temp_path), PNG_REMOTE_DIR, share=False)
-        except Exception:
-            pass
-        temp_path.unlink(missing_ok=True)
+        upload_and_share_file(
+            rendered_bytes,
+            PNG_REMOTE_DIR,
+            share=False,
+            filename=generated_filename,
+        )
         return rendered_image, "Rendering complete."
     except Exception as exc:
         logger.exception("Rendering failed.")

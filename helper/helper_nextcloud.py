@@ -1,4 +1,5 @@
-"""Nextcloud WebDAV upload and OCS public share helpers.
+""" helper_nextcloud.py
+Nextcloud WebDAV upload and OCS public share helpers.
 
 Used by:
 * core_per_report.py
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import os
 import logging
+import tempfile
 from pathlib import Path
 from typing import Dict, Iterable, Tuple
 from urllib.parse import quote
@@ -280,15 +282,17 @@ def create_or_get_public_share(base_url: str, auth: Tuple[str, str], remote_path
 
 
 def upload_and_share_file(
-    local_path: str,
+    local_path: str | bytes,
     remote_dir: str,
     share: bool | None = None,
+    filename: str | None = None,
 ) -> Dict[str, str]:
     """Purpose:
-    Upload a file and return public share URLs (when available) for the uploaded remote path.
+    Upload a file (path or bytes) and return public share URLs for the uploaded remote path.
 
     Inputs:
-    `local_path`, `remote_dir`, `share` (optional; only share when True).
+    `local_path` (file path or raw bytes), `remote_dir`, `share` (optional; only share when True),
+    `filename` (required when `local_path` is bytes).
 
     Outputs:
     Dict with `remote_path` and (when available) `page`/`download`/`id`.
@@ -296,10 +300,23 @@ def upload_and_share_file(
 
     Side effects:
     Loads credentials, creates directories, uploads file, and attempts OCS share creation.
+    When given bytes, writes to a temp file before upload.
 
     Failure modes:
     Logs and swallows upload/share errors.
     """
+    temp_path: Path | None = None
+    if isinstance(local_path, bytes):
+        if not filename:
+            return {"error": "filename is required when uploading bytes"}
+        temp_path = Path(tempfile.gettempdir()) / filename
+        try:
+            temp_path.write_bytes(local_path)
+        except Exception as exc:
+            log.error("Nextcloud temp write failed for %s: %s", filename, exc)
+            return {"error": str(exc)}
+        local_path = str(temp_path)
+
     try:
         username, password = load_env()
         auth = (username, password)
@@ -322,14 +339,24 @@ def upload_and_share_file(
             share_payload = create_or_get_public_share(_BASE_URL, auth, remote_path)
         except Exception as exc:  # Share link failures should not block a successful upload.
             log.warning("Nextcloud share unavailable for %s: %s", remote_path, exc)
+            if temp_path:
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except Exception as cleanup_exc:
+                    log.warning("Failed to remove temp file %s: %s", temp_path, cleanup_exc)
             return {"remote_path": remote_path}
         log.info("Nextcloud share available: %s", share_payload.get("page"))
+
+    if temp_path:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except Exception as exc:
+            log.warning("Failed to remove temp file %s: %s", temp_path, exc)
 
     return {
         "remote_path": remote_path,
         **share_payload,
     }
-
 
 __all__ = [
     "mkcol_recursive",
