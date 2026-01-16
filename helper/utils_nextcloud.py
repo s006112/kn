@@ -2,6 +2,7 @@
 
 Used by:
 * core_per_report.py
+* core_rendering.py
 * helper/utils_odoo.py
 
 Pipelines:

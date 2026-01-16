@@ -22,6 +22,8 @@ Out of scope:
 from __future__ import annotations
 
 import sys
+import tempfile
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -33,6 +35,9 @@ if str(ROOT_DIR) not in sys.path:
 
 from helper.utils_config import configure_logging, load_env
 from helper.utils_llm_image import generate_image
+from helper.utils_nextcloud import upload_and_share_file
+
+PNG_REMOTE_DIR = "/Documents/Rendering"
 
 load_env(dotenv_path=Path(__file__).parent / ".env")
 logger = configure_logging("rendering")
@@ -153,10 +158,24 @@ def handle_render(uploaded: str | None, model: str, prompt: str):
         except Exception as exc:
             logger.exception("Unable to read the uploaded image.")
             return None, f"Failed to read the uploaded file: {exc}"
+        try:
+            upload_and_share_file(uploaded, PNG_REMOTE_DIR, share=False)
+        except Exception as exc:
+            logger.warning("Failed to upload original image to Nextcloud: %s", exc)
 
     try:
         rendered_bytes = request_render(sketch_bytes, model, prompt)
         rendered_image = Image.open(BytesIO(rendered_bytes))
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        generated_filename = (f"{Path(uploaded).name}_{ts}.png")
+        temp_path = Path(tempfile.gettempdir()) / generated_filename
+        try:
+            temp_path.write_bytes(rendered_bytes)
+            upload_and_share_file(str(temp_path), PNG_REMOTE_DIR, share=False)
+        except Exception as exc:
+            logger.warning("Failed to upload generated image to Nextcloud: %s", exc)
+        finally:
+            temp_path.unlink(missing_ok=True)
         return rendered_image, "Rendering complete."
     except Exception as exc:
         logger.exception("Rendering failed.")

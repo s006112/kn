@@ -417,12 +417,8 @@ def generate_per_report(file_path: str, model: str) -> PerReportResult:
     ts = now.strftime("%Y-%m-%d_%H-%M-%S")
     png_filename = f"CIE_{ts}.png"
 
-    share_info: dict[str, str] = {}
-    try:
-        share_info = upload_and_share_file(file_path, REPORT_REMOTE_DIR, share=False) or {}
-        log.info("Nextcloud share available: %s", share_info.get("page"))
-    except Exception as exc:  # noqa: BLE001 - logging for visibility
-        log.error("Failed to create Nextcloud share link: %s", exc)
+    share_info = upload_and_share_file(file_path, REPORT_REMOTE_DIR, share=False) or {}
+    log.info("Nextcloud share available: %s", share_info.get("page"))
 
     log.info("Uploaded processed PDF to Nextcloud: %s", share_info.get("remote_path"))
 
