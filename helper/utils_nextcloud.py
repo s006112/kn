@@ -1,28 +1,21 @@
-"""Nextcloud file upload/share helpers.
-
-This module handles:
-* uploading local files to a fixed Nextcloud instance and remote directory
-* creating or reusing public share links for uploaded paths
-
-The processing pipeline:
-1. Load credentials from environment or .env.
-2. Ensure remote directories exist via WebDAV MKCOL.
-3. Upload the local file via WebDAV PUT.
-4. Query for an existing public share or create one via OCS.
-
-Invariants:
-* Requests target the configured base URL.
-* Remote paths are URL-encoded by segment.
-* Public share links are only for share_type "3".
+"""Nextcloud WebDAV upload and OCS public share helpers.
 
 Used by:
 * core_per_report.py
 * helper/utils_odoo.py
 
+Pipelines:
+- env credentials -> ensure dirs -> upload file -> find share -> create share -> return urls
+
+Invariants:
+- Requests target `_BASE_URL`.
+- Remote paths are URL-encoded by segment.
+- Public share links are only for share type "3".
+
 Out of scope:
-* Token refresh, retry/backoff, or pagination.
-* Deleting remote files or shares.
-* Non-public share types or custom permissions.
+- Token refresh, retry or backoff, pagination.
+- Deleting remote files or shares.
+- Non-public share types, custom permissions.
 """
 
 from __future__ import annotations
@@ -48,12 +41,20 @@ log = logging.getLogger("nextcloud_upload")
 
 
 def load_env() -> Tuple[str, str]:
-    """Purpose: load Nextcloud credentials from environment or a .env file.
+    """Purpose:
+    Load Nextcloud credentials from the environment (optionally via `.env`).
 
-    Inputs: none.
-    Outputs: (username, password).
-    Side effects: reads environment variables and loads .env.
-    Failure modes: RuntimeError when required variables are missing.
+    Inputs:
+    None.
+
+    Outputs:
+    `(username, password)`.
+
+    Side effects:
+    Loads `.env` and reads `NEXTCLOUD_USERNAME` / `NEXTCLOUD_PASSWORD`.
+
+    Failure modes:
+    `RuntimeError` when required variables are missing.
     """
     load_dotenv()  # Ensures .env is read when running locally
     username = os.getenv("NEXTCLOUD_USERNAME")
@@ -70,13 +71,20 @@ def load_env() -> Tuple[str, str]:
 
 
 def mkcol_recursive(base_url: str, username: str, auth: Tuple[str, str], folders: Iterable[str]) -> None:
-    """Purpose: ensure each folder exists by issuing MKCOL requests in order.
+    """Purpose:
+    Ensure each folder exists via ordered WebDAV `MKCOL` requests.
 
-    Inputs: base URL, username, auth tuple, iterable of folder names.
-    Outputs: none.
-    Side effects: performs WebDAV MKCOL requests.
-    Failure modes: RuntimeError on 409 parent missing, 401 auth failure,
-    or any other HTTP error status.
+    Inputs:
+    `base_url`, `username`, `auth`, `folders`.
+
+    Outputs:
+    None.
+
+    Side effects:
+    WebDAV requests.
+
+    Failure modes:
+    `RuntimeError` for 401/409/other 4xx-5xx responses.
     """
     encoded_username = quote(username, safe="")
     base_url = base_url.rstrip("/")
@@ -93,7 +101,7 @@ def mkcol_recursive(base_url: str, username: str, auth: Tuple[str, str], folders
         resp = session.request("MKCOL", current, timeout=30)
         if resp.status_code in (200, 201):
             continue
-        if resp.status_code == 405:  # Already exists
+        if resp.status_code == 405:  # MKCOL returns 405 when the collection already exists.
             continue
         if resp.status_code == 409:
             raise RuntimeError(f"Cannot create folder '{folder}': parent does not exist (409)")
@@ -112,13 +120,20 @@ def upload_file(
     username: str,
     auth: Tuple[str, str],
 ) -> str:
-    """Purpose: upload a local file to Nextcloud and return the remote path.
+    """Purpose:
+    Upload a local file via WebDAV and return the remote path.
 
-    Inputs: local file path, remote directory, base URL, username, auth tuple.
-    Outputs: remote path string (leading slash, unencoded segments).
-    Side effects: reads local file and performs a PUT request.
-    Failure modes: FileNotFoundError if local file is missing; RuntimeError
-    on non-2xx/204 upload response.
+    Inputs:
+    `local_path`, `remote_dir`, `base_url`, `username`, `auth`.
+
+    Outputs:
+    Remote path string with a leading slash and unencoded segments.
+
+    Side effects:
+    Reads the local file and performs a WebDAV `PUT`.
+
+    Failure modes:
+    `FileNotFoundError` if local file is missing; `RuntimeError` on non-200/201/204 upload response.
     """
     local_file = Path(local_path).expanduser()
     if not local_file.is_file():
@@ -147,12 +162,20 @@ def upload_file(
 
 
 def _format_share_payload(share: Dict[str, object]) -> Dict[str, str]:
-    """Purpose: normalize a Nextcloud share payload into url/id fields.
+    """Purpose:
+    Normalize a Nextcloud share payload into `page`/`download`/`id`.
 
-    Inputs: raw share dictionary from Nextcloud.
-    Outputs: dict with page, download, and id keys.
-    Side effects: none.
-    Failure modes: RuntimeError if url or id is missing.
+    Inputs:
+    `share` dict from Nextcloud.
+
+    Outputs:
+    Dict with `page`, `download`, `id` keys.
+
+    Side effects:
+    None.
+
+    Failure modes:
+    `RuntimeError` if `url` or `id` is missing.
     """
     url = share.get("url")
     share_id = share.get("id")
@@ -167,12 +190,20 @@ def _format_share_payload(share: Dict[str, object]) -> Dict[str, str]:
 
 
 def get_public_share_if_exists(base_url: str, auth: Tuple[str, str], remote_path: str) -> Dict[str, str] | None:
-    """Purpose: fetch existing public share data for a remote path.
+    """Purpose:
+    Fetch existing public share data for `remote_path`, if present.
 
-    Inputs: base URL, auth tuple, remote path.
-    Outputs: share dict for share_type "3", or None when absent.
-    Side effects: performs an OCS share listing request.
-    Failure modes: RuntimeError on HTTP errors or invalid JSON.
+    Inputs:
+    `base_url`, `auth`, `remote_path`.
+
+    Outputs:
+    Share dict for share type "3", or `None`.
+
+    Side effects:
+    OCS share listing request.
+
+    Failure modes:
+    `RuntimeError` on HTTP errors or invalid JSON.
     """
     base_url = base_url.rstrip("/")
     path_param = f"/{remote_path.lstrip('/')}"
@@ -188,7 +219,7 @@ def get_public_share_if_exists(base_url: str, auth: Tuple[str, str], remote_path
 
     try:
         payload = resp.json()
-    except ValueError as exc:  # pragma: no cover - defensive
+    except ValueError as exc:  # Defensive: OCS responses may be non-JSON on error.
         raise RuntimeError("Nextcloud returned invalid JSON for share listing") from exc
 
     data = payload.get("ocs", {}).get("data")
@@ -203,13 +234,20 @@ def get_public_share_if_exists(base_url: str, auth: Tuple[str, str], remote_path
 
 
 def create_or_get_public_share(base_url: str, auth: Tuple[str, str], remote_path: str) -> Dict[str, str]:
-    """Purpose: reuse an existing public share or create a new one.
+    """Purpose:
+    Reuse an existing public share for `remote_path` or create a new one.
 
-    Inputs: base URL, auth tuple, remote path.
-    Outputs: share dict with page/download/id.
-    Side effects: performs OCS GET and possibly OCS POST requests.
-    Failure modes: RuntimeError on HTTP errors, invalid JSON, or missing
-    share data in the response.
+    Inputs:
+    `base_url`, `auth`, `remote_path`.
+
+    Outputs:
+    Share dict with `page`, `download`, `id`.
+
+    Side effects:
+    OCS GET and possibly OCS POST requests.
+
+    Failure modes:
+    `RuntimeError` on HTTP errors, invalid JSON, or missing share data.
     """
     existing = get_public_share_if_exists(base_url, auth, remote_path)
     if existing:
@@ -232,7 +270,7 @@ def create_or_get_public_share(base_url: str, auth: Tuple[str, str], remote_path
 
     try:
         payload = resp.json()
-    except ValueError as exc:  # pragma: no cover - defensive
+    except ValueError as exc:  # Defensive: OCS responses may be non-JSON on error.
         raise RuntimeError("Nextcloud returned invalid JSON for share creation") from exc
 
     data = payload.get("ocs", {}).get("data")
@@ -243,25 +281,39 @@ def create_or_get_public_share(base_url: str, auth: Tuple[str, str], remote_path
 
 
 def share(local_path: str) -> Dict[str, str]:
-    """Purpose: upload a file to the PEF directory and return share data.
+    """Purpose:
+    Upload a file to `PEF_REMOTE_DIR` and return share data.
 
-    Inputs: local file path.
-    Outputs: dict with remote_path and share fields when available.
-    Side effects: performs remote directory creation, upload, and share calls.
-    Failure modes: propagates errors from upload/share helpers.
+    Inputs:
+    `local_path`.
+
+    Outputs:
+    Dict with `remote_path` and (when available) `page`/`download`/`id`.
+
+    Side effects:
+    Directory creation, upload, share calls.
+
+    Failure modes:
+    Propagates directory creation and upload errors.
     """
     return share_file(local_path, PEF_REMOTE_DIR)
 
 
 def share_file(local_path: str, remote_dir: str) -> Dict[str, str]:
-    """Purpose: upload a file and return share URLs for a remote directory.
+    """Purpose:
+    Upload a file and return public share URLs for the uploaded remote path.
 
-    Inputs: local file path, remote directory path.
-    Outputs: dict with remote_path and share fields when available.
-    Side effects: loads credentials, creates directories, uploads file,
-    and attempts to create/reuse a public share (logs warning on failure).
-    Failure modes: propagates errors from credential loading, directory
-    creation, or upload; share creation errors are swallowed and logged.
+    Inputs:
+    `local_path`, `remote_dir`.
+
+    Outputs:
+    Dict with `remote_path` and (when available) `page`/`download`/`id`.
+
+    Side effects:
+    Loads credentials, creates directories, uploads file, and attempts OCS share creation.
+
+    Failure modes:
+    Propagates credential/directory/upload errors; logs and swallows share creation errors.
     """
     username, password = load_env()
     auth = (username, password)
@@ -274,7 +326,7 @@ def share_file(local_path: str, remote_dir: str) -> Dict[str, str]:
 
     try:
         share_payload = create_or_get_public_share(_BASE_URL, auth, remote_path)
-    except Exception as exc:  # noqa: BLE001 - surface but continue
+    except Exception as exc:  # Share link failures should not block a successful upload.
         log.warning("Unable to create share link for %s: %s", remote_path, exc)
         return {"remote_path": remote_path}
 
@@ -285,12 +337,20 @@ def share_file(local_path: str, remote_dir: str) -> Dict[str, str]:
 
 
 def ushare(local_path: str, remote_dir: str) -> Dict[str, str]:
-    """Purpose: convenience wrapper around share_file for arbitrary directories.
+    """Purpose:
+    Convenience wrapper around `share_file` for an arbitrary remote directory.
 
-    Inputs: local file path, remote directory path.
-    Outputs: dict with remote_path and share fields when available.
-    Side effects: same as share_file.
-    Failure modes: same as share_file.
+    Inputs:
+    `local_path`, `remote_dir`.
+
+    Outputs:
+    Same as `share_file`.
+
+    Side effects:
+    Same as `share_file`.
+
+    Failure modes:
+    Same as `share_file`.
     """
     return share_file(local_path, remote_dir)
 
