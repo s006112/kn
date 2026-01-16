@@ -379,7 +379,7 @@ def generate_per_report(file_path: str, model: str) -> PerReportResult:
     base_dir = Path(__file__).parent
     prompt_dir = base_dir / "prompt"
     prompt_md_str = load_prompt_text(prompt_dir, "prompt_md.txt")
-    prompt_summary_str = load_prompt_text(base_dir, "prompt_summary.txt")
+    prompt_summary_str = load_prompt_text(prompt_dir, "prompt_summary.txt")
     if not prompt_md_str or not prompt_summary_str:
         return PerReportResult("Error: Failed to load prompts.", [], text, "")
 
