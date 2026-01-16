@@ -133,13 +133,3 @@ This skill enforces:
 
 It is the first gate of the AI engineering governance pipeline.
 
-Raw intent enters here.
-Only executable contracts leave here.
-
-## Example usage
-
-Use skill: minimal-prompt-freeze
-
-需求：
-当邮件来自非 @ampco.com.hk 域名时，
-系统必须直接拒绝处理并移动到 Trash。

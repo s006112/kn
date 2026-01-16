@@ -1,6 +1,22 @@
 """
-Orchestrator：负责创建 PipelineContext、启动线程与 watchdog。
-承接 p.py，向下协调 p_pipelines.py 的 worker 与 p_context.py 的状态。
+Responsibility:
+Coordinate pipeline startup and lifecycle by loading prompt strings into a config dict, creating a `PipelineContext`, starting worker threads, and running a watchdog `Observer` for file events.
+
+Used by:
+* whisper/p.py
+
+Pipelines:
+- config -> read prompts -> create context -> start threads -> start watchdog -> monitor
+
+Invariants:
+- `CURRENT_CONTEXT` is set by `start_system()` after context creation and cleared by `stop_system()`.
+- `start_system()` mutates `cfg` by setting `PRETEXT_PROMPT`, `EXTRACT_PROMPT`, and `DISTILL_PROMPT`.
+- Worker threads created here are started as daemon threads.
+
+Out of scope:
+- Implementing pipeline worker logic (handled by `p_pipelines.py` and related modules).
+- Parsing or generating prompt content beyond reading prompt files.
+- Providing a process manager; shutdown is limited to setting a flag and stopping the observer.
 """
 
 import logging
@@ -26,14 +42,12 @@ from utils_unlink import setup_wikilink_cleaner_logging
 from utils_files import read_prompt_file
 
 
-# -------------------------
-# Public programmatic API
-# -------------------------
+# Public API surface used by `p.py` and programmatic callers.
 CURRENT_CONTEXT: Optional[PipelineContext] = None
 
 
 class SystemHandles(NamedTuple):
-    """封装线程和 watchdog observer，便于 CLI 管控。"""
+    """Holds runtime handles for stopping and status checks."""
 
     context: PipelineContext
     threads: Dict[str, threading.Thread]
@@ -41,7 +55,18 @@ class SystemHandles(NamedTuple):
 
 
 def ensure_directories(cfg: Dict[str, Any]) -> None:
-    """启动前确保必要目录存在。"""
+    """
+    Purpose:
+    Ensure required output directories exist before starting pipelines.
+    Inputs:
+    cfg: Configuration dictionary containing required folder paths.
+    Outputs:
+    None.
+    Side effects:
+    Creates directories at `ORIGINAL_FOLDER`, `AUDIO_DONE_FOLDER`, `LINK_BACKUP_FOLDER`, `FAIL_FOLDER` if missing.
+    Failure modes:
+    KeyError if required keys are missing; OSError on filesystem failures.
+    """
     os.makedirs(cfg["ORIGINAL_FOLDER"], exist_ok=True)
     os.makedirs(cfg["AUDIO_DONE_FOLDER"], exist_ok=True)
     os.makedirs(cfg["LINK_BACKUP_FOLDER"], exist_ok=True)
@@ -49,6 +74,18 @@ def ensure_directories(cfg: Dict[str, Any]) -> None:
 
 
 def _require_config(cfg: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Purpose:
+    Enforce that a configuration dictionary is provided.
+    Inputs:
+    cfg: Optional configuration dictionary.
+    Outputs:
+    The same configuration dictionary when non-None.
+    Side effects:
+    None.
+    Failure modes:
+    ValueError when `cfg` is None.
+    """
     if cfg is None:
         raise ValueError("Configuration dictionary is required.")
     return cfg
@@ -56,11 +93,16 @@ def _require_config(cfg: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 def start_system(cfg: Optional[Dict[str, Any]] = None) -> SystemHandles:
     """
-    启动全部 pipeline，并返回可供 stop/监控使用的句柄。
-
-    - 可组合：返回线程/observer，方便集成到别的进程。
-    - 可执行：与 main() 启动方式一致。
-    - 可测试：纯函数更容易单测。
+    Purpose:
+    Start all pipeline threads and watchdog observers and return runtime handles.
+    Inputs:
+    cfg: Configuration dictionary; must be non-None and include required folder keys used by this module.
+    Outputs:
+    `SystemHandles` containing the created `PipelineContext`, threads mapping, and watchdog observer.
+    Side effects:
+    Mutates `cfg` by setting `PRETEXT_PROMPT`, `EXTRACT_PROMPT`, `DISTILL_PROMPT`; creates directories; starts daemon threads; starts a watchdog observer; sets global `CURRENT_CONTEXT`.
+    Failure modes:
+    ValueError when `cfg` is None; KeyError for missing config keys; exceptions from prompt file reading, watchdog setup, or thread start.
     """
     cfg = _require_config(cfg)
 
@@ -154,7 +196,18 @@ def start_system(cfg: Optional[Dict[str, Any]] = None) -> SystemHandles:
 
 
 def stop_system(handles: SystemHandles) -> None:
-    """平滑停止全部线程并关闭 observer。"""
+    """
+    Purpose:
+    Request a graceful shutdown by setting the shared shutdown flag and stopping the watchdog observer.
+    Inputs:
+    handles: `SystemHandles` returned by `start_system()`.
+    Outputs:
+    None.
+    Side effects:
+    Sets `handles.context.shutdown_flag`; attempts to stop/join the observer; clears global `CURRENT_CONTEXT`.
+    Failure modes:
+    AttributeError/TypeError if `handles` is invalid; observer stop/join errors are suppressed.
+    """
     handles.context.shutdown_flag.set()
     try:
         handles.observer.stop()
@@ -167,7 +220,18 @@ def stop_system(handles: SystemHandles) -> None:
 
 
 def system_status() -> Dict[str, Any]:
-    """返回简易的队列和清理器状态，便于 CLI 查询。"""
+    """
+    Purpose:
+    Report current queue sizes and wikilink cleaner stats for the running system.
+    Inputs:
+    None.
+    Outputs:
+    Dictionary with `queues` and `wikilink_cleaner` sections derived from `CURRENT_CONTEXT`.
+    Side effects:
+    None.
+    Failure modes:
+    RuntimeError when the system has not been started (`CURRENT_CONTEXT` is None).
+    """
     if CURRENT_CONTEXT is None:
         raise RuntimeError("System context not initialized.")
     ctx = CURRENT_CONTEXT
@@ -185,7 +249,18 @@ def system_status() -> Dict[str, Any]:
 
 
 def main(cfg: Optional[Dict[str, Any]] = None) -> None:
-    """入口循环：负责启动系统并监控 GPU / 队列。"""
+    """
+    Purpose:
+    Run the orchestrator main loop: start the system and periodically log queue status until interrupted.
+    Inputs:
+    cfg: Configuration dictionary; must be non-None.
+    Outputs:
+    None.
+    Side effects:
+    Starts pipelines via `start_system()`; logs status; sleeps in a loop; on KeyboardInterrupt calls `stop_system()`.
+    Failure modes:
+    ValueError when `cfg` is None; RuntimeError if `CURRENT_CONTEXT` becomes None during monitoring.
+    """
     cfg = _require_config(cfg)
     logging.info(
         "Starting: TTML + Text + Audio + WikilinkCleaner"

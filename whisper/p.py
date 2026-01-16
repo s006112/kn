@@ -1,11 +1,23 @@
 """
-入口 shell：负责环境变量、日志初始化，并委托 p_orchestrator.main()。
-整个执行链为 p.py → p_orchestrator.py → p_pipelines.py/p_context.py。
+Responsibility:
+Initialize runtime configuration and logging, then delegate to `p_orchestrator.main()` with the resolved configuration.
+
+Pipelines:
+- config -> logging -> orchestrator
+
+Invariants:
+- `CONFIG` remains a dict containing resolved path and model settings used by `main()`.
+- `main()` always delegates to `p_orchestrator.main()` with a non-None config.
+
+Out of scope:
+- Orchestrator lifecycle control beyond delegating to `p_orchestrator`.
+- Pipeline worker execution or watchdog management.
 """
 
 import logging
 import os
 import sys
+import p_orchestrator
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -114,20 +126,20 @@ logging.basicConfig(
 )
 
 
-from p_orchestrator import (  # noqa: E402
-    main as _orchestrator_main,
-    start_system as _start_system,
-    stop_system,
-    system_status,
-)
-
-
 def main(cfg=None) -> None:
-    _orchestrator_main(cfg or CONFIG)
-
-
-def start_system(cfg=None):
-    return _start_system(cfg or CONFIG)
+    """
+    Purpose:
+    Run the orchestrator main loop with a provided or default configuration.
+    Inputs:
+    cfg: Optional configuration dictionary; when None, `CONFIG` is used.
+    Outputs:
+    None.
+    Side effects:
+    Delegates to `p_orchestrator.main()` which starts system threads and logging.
+    Failure modes:
+    Exceptions raised by `p_orchestrator.main()` or configuration loading.
+    """
+    p_orchestrator.main(cfg or CONFIG)
 
 
 if __name__ == "__main__":
