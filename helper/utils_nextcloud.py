@@ -5,7 +5,7 @@ Used by:
 * helper/utils_odoo.py
 
 Pipelines:
-- env credentials -> ensure dirs -> upload file -> find share -> create share -> return urls
+- env credentials -> ensure dirs -> upload file -> (optional) find share -> create share -> return urls
 
 Invariants:
 - Requests target `_BASE_URL`.
@@ -278,12 +278,16 @@ def create_or_get_public_share(base_url: str, auth: Tuple[str, str], remote_path
     return _format_share_payload(share)
 
 
-def upload_and_share_file(local_path: str, remote_dir: str) -> Dict[str, str]:
+def upload_and_share_file(
+    local_path: str,
+    remote_dir: str,
+    share: bool | None = None,
+) -> Dict[str, str]:
     """Purpose:
     Upload a file and return public share URLs (when available) for the uploaded remote path.
 
     Inputs:
-    `local_path`, `remote_dir`.
+    `local_path`, `remote_dir`, `share` (optional; only share when True).
 
     Outputs:
     Dict with `remote_path` and (when available) `page`/`download`/`id`.
@@ -303,11 +307,13 @@ def upload_and_share_file(local_path: str, remote_dir: str) -> Dict[str, str]:
 
     remote_path = upload_file(local_path, remote_dir, _BASE_URL, username, auth)
 
-    try:
-        share_payload = create_or_get_public_share(_BASE_URL, auth, remote_path)
-    except Exception as exc:  # Share link failures should not block a successful upload.
-        log.warning("Unable to create share link for %s: %s", remote_path, exc)
-        return {"remote_path": remote_path}
+    share_payload: Dict[str, str] = {}
+    if share is True:
+        try:
+            share_payload = create_or_get_public_share(_BASE_URL, auth, remote_path)
+        except Exception as exc:  # Share link failures should not block a successful upload.
+            log.warning("Unable to create share link for %s: %s", remote_path, exc)
+            return {"remote_path": remote_path}
 
     return {
         "remote_path": remote_path,

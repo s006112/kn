@@ -419,7 +419,7 @@ def generate_per_report(file_path: str, model: str) -> PerReportResult:
 
     share_info: dict[str, str] = {}
     try:
-        share_info = upload_and_share_file(file_path, REPORT_REMOTE_DIR) or {}
+        share_info = upload_and_share_file(file_path, REPORT_REMOTE_DIR, share=False) or {}
         log.info("Nextcloud share available: %s", share_info.get("page"))
     except Exception as exc:  # noqa: BLE001 - logging for visibility
         log.error("Failed to create Nextcloud share link: %s", exc)
@@ -490,7 +490,7 @@ def upload_cie_png(payload: str) -> str:
     temp_path = Path(tempfile.gettempdir()) / fname
     temp_path.write_bytes(png_bytes)
 
-    cie_share_info = upload_and_share_file(str(temp_path), PNG_REMOTE_DIR)
+    cie_share_info = upload_and_share_file(str(temp_path), PNG_REMOTE_DIR, share=True)
     log.info("Uploaded CIE PNG to Nextcloud: %s", cie_share_info.get("remote_path"))
     share_url = cie_share_info.get("page", "")
     temp_path.unlink(missing_ok=True)
