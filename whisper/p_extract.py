@@ -1,3 +1,20 @@
+"""
+Responsibility:
+Watch extract folders, run model-based extraction for pretext files, merge results
+into markdown, and archive or fail files with distillation when configured.
+
+Pipelines:
+- watch -> queue -> read -> extract -> merge -> distill -> archive
+
+Invariants:
+- Extract jobs only accept `_p.txt` files in the configured watch folders.
+- Per-model extracts are written before markdown merges are attempted.
+
+Out of scope:
+- Pretext generation and audio transcription workflows.
+- Orchestrator wiring and queue thread management.
+"""
+
 import os
 import logging
 import shutil
@@ -23,7 +40,27 @@ from utils_md import (
 from utils_text import sanitize_filename
 
 class BaseExtractHandler(FileSystemEventHandler):
+    """
+    Base handler for extract pipelines with shared queueing and processing logic.
+    """
+
     def __init__(self, config, queue, watch_folder_key, model_names, *, enable_distillation=True):
+        """
+        Purpose:
+        Initialize a handler for a specific extract watch folder and model list.
+        Inputs:
+        - config: Configuration mapping.
+        - queue: Queue to receive file paths.
+        - watch_folder_key: Config key for the watch folder.
+        - model_names: Iterable of model names to run.
+        - enable_distillation: Whether to run distillation after success.
+        Outputs:
+        - None.
+        Side effects:
+        - Stores configuration, queue, and model list.
+        Failure modes:
+        - Propagates exceptions from configuration access.
+        """
         self.config = config
         self.queue = queue
         self.watch_folder = config[watch_folder_key]
@@ -32,6 +69,20 @@ class BaseExtractHandler(FileSystemEventHandler):
         self.enable_distillation = enable_distillation
 
     def finalize_success(self, filename: str, base_name: str, md_path: str | None) -> None:
+        """
+        Purpose:
+        Optionally run distillation after successful extraction.
+        Inputs:
+        - filename: Source filename for logging.
+        - base_name: Base name used for distillation.
+        - md_path: Markdown path used by distillation.
+        Outputs:
+        - None.
+        Side effects:
+        - Logs and runs distillation when configured.
+        Failure modes:
+        - Propagates exceptions from distillation utilities.
+        """
         if getattr(self, "enable_distillation", True):
             distill_model = (self.config.get("MODEL_DISTILL") or "").strip()
             if distill_model:
@@ -56,6 +107,18 @@ class BaseExtractHandler(FileSystemEventHandler):
             )
 
     def _queue_file(self, file_path):
+        """
+        Purpose:
+        Queue a file path for processing if it is eligible and not already tracked.
+        Inputs:
+        - file_path: Path to the candidate file.
+        Outputs:
+        - None.
+        Side effects:
+        - Adds the file to the queue and processed set.
+        Failure modes:
+        - Propagates exceptions from queue operations.
+        """
         cond = (
             os.path.abspath(os.path.dirname(file_path)) == os.path.abspath(self.watch_folder)
             and file_path.lower().endswith('_p.txt')
@@ -69,6 +132,18 @@ class BaseExtractHandler(FileSystemEventHandler):
         logging.info(f"{self.__class__.__name__}: Queued {os.path.basename(file_path)}")
 
     def on_created(self, event):
+        """
+        Purpose:
+        Respond to watchdog file creation events by queueing eligible files.
+        Inputs:
+        - event: Filesystem event with the source path.
+        Outputs:
+        - None.
+        Side effects:
+        - Enqueues the file when eligible.
+        Failure modes:
+        - Logs and suppresses exceptions.
+        """
         if event.is_directory:
             return
         try:
@@ -77,6 +152,19 @@ class BaseExtractHandler(FileSystemEventHandler):
             logging.error(f"Error in {self.__class__.__name__}.on_created: {e}")
 
 def process(self, file_path, get_next_available_filename):
+    """
+    Purpose:
+    Run extraction across configured models, merge results, and archive the source.
+    Inputs:
+    - file_path: Path to the pretext source file.
+    - get_next_available_filename: Callable to generate output filenames.
+    Outputs:
+    - None.
+    Side effects:
+    - Calls LLMs, writes extract and markdown files, moves sources on success/failure.
+    Failure modes:
+    - Raises exceptions for extraction failures or filesystem errors.
+    """
     filename = os.path.basename(file_path)
     logging.info(f"{self.__class__.__name__}: Start processing {filename}")
     base = filename[:-6] if filename.lower().endswith('_p.txt') else os.path.splitext(filename)[0]
@@ -85,7 +173,7 @@ def process(self, file_path, get_next_available_filename):
         content, enc = read_file_with_encodings(file_path)
         payload = f"《{base}》\n{content}"
 
-        # Decide (or create) the target Markdown once; merge incrementally after each success.
+        # Avoid repeated note selection so merges stay consistent across models.
         md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(
             self.config, base, allow_existing=True
         )
@@ -100,7 +188,7 @@ def process(self, file_path, get_next_available_filename):
                 )
                 continue
             try:
-                # Run extraction for this model
+                # Keep model runs isolated to allow partial results and per-model errors.
                 result = call_llm(
                     model=model,
                     system_prompt=self.config['EXTRACT_PROMPT'],
@@ -108,7 +196,7 @@ def process(self, file_path, get_next_available_filename):
                     file_path=file_path,
                 )
 
-                # Save per-pass raw extract
+                # Preserve raw output before merging to allow later audits.
                 os.makedirs(self.config['EXTRACT_FOLDER'], exist_ok=True)
                 model_suffix = f"_{sanitize_filename(model)}"
                 save_path = get_next_available_filename(self.config['EXTRACT_FOLDER'], base, model_suffix)
@@ -116,7 +204,7 @@ def process(self, file_path, get_next_available_filename):
                     f.write(result)
                 release_text_file_permissions(save_path)
 
-                # Merge this pass immediately into MD
+                # Merge immediately to keep the markdown up to date after each success.
                 label = f"{model} "
                 merge_to_markdown(
                     md_path, [result], "", [label],
@@ -156,7 +244,7 @@ def process(self, file_path, get_next_available_filename):
 
         self.finalize_success(filename=filename, base_name=base, md_path=md_path)
 
-        # All models succeeded (minimal change: override dest for premium)
+        # Premium pipeline archives to a different folder to keep outputs segregated.
         dest_dir = self.config['PRETEXT_DONE_FOLDER']
         if os.path.abspath(os.path.dirname(file_path)) == os.path.abspath(self.config['PREMIUM_WATCH_FOLDER']):
             dest_dir = self.config['ARCHIVE_FOLDER']
@@ -173,7 +261,7 @@ def process(self, file_path, get_next_available_filename):
 
         logging.error(f"Error processing {filename}: {e}")
         base_nm = os.path.splitext(filename)[0]
-        # Overall error file (best-effort)
+        # Preserve a top-level error marker for troubleshooting.
         try:
             os.makedirs(self.config['EXTRACT_FOLDER'], exist_ok=True)
             err_path = os.path.join(
@@ -184,7 +272,7 @@ def process(self, file_path, get_next_available_filename):
             release_text_file_permissions(err_path)
         except Exception as w:
             logging.error(f"Write error file failed: {w}")
-        # Move source to Fail only if it still exists
+        # Only move if the source still exists to avoid duplicate errors.
         try:
             fail = self.config['FAIL_FOLDER']
             os.makedirs(fail, exist_ok=True)
@@ -200,6 +288,19 @@ def process(self, file_path, get_next_available_filename):
 
 class ExtractHandler(BaseExtractHandler):
     def __init__(self, config, queue):
+        """
+        Purpose:
+        Initialize the standard extract handler using the extract model matrix.
+        Inputs:
+        - config: Configuration mapping.
+        - queue: Queue to receive file paths.
+        Outputs:
+        - None.
+        Side effects:
+        - Configures models and enables distillation.
+        Failure modes:
+        - Propagates exceptions from configuration access.
+        """
         model_matrix = config.get('MODEL_EXTRACT_MATRIX', {})
         models = model_matrix.get('EXTRACT_WATCH_FOLDER', [])
         super().__init__(config, queue, 'EXTRACT_WATCH_FOLDER', models, enable_distillation=True)
@@ -207,11 +308,38 @@ class ExtractHandler(BaseExtractHandler):
 
 class PremiumExtractHandler(BaseExtractHandler):
     def __init__(self, config, queue):
+        """
+        Purpose:
+        Initialize the premium extract handler using the premium model matrix.
+        Inputs:
+        - config: Configuration mapping.
+        - queue: Queue to receive file paths.
+        Outputs:
+        - None.
+        Side effects:
+        - Configures models and disables distillation.
+        Failure modes:
+        - Propagates exceptions from configuration access.
+        """
         model_matrix = config.get('MODEL_EXTRACT_MATRIX', {})
         models = model_matrix.get('PREMIUM_WATCH_FOLDER', [])
         super().__init__(config, queue, 'PREMIUM_WATCH_FOLDER', models, enable_distillation=False)
 
     def finalize_success(self, filename: str, base_name: str, md_path: str | None) -> None:
+        """
+        Purpose:
+        Override distillation to do nothing for premium extracts.
+        Inputs:
+        - filename: Source filename for logging.
+        - base_name: Base name for extraction output.
+        - md_path: Markdown path, unused.
+        Outputs:
+        - None.
+        Side effects:
+        - None.
+        Failure modes:
+        - None.
+        """
         return
 
     process_premium_extract = process

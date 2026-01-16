@@ -1,5 +1,6 @@
 """
 Responsibility:
+p_orchestrator.py 負責組裝與啟動； p_pipelines.py 負責做事。
 Coordinate pipeline startup and lifecycle by loading prompt strings into a config dict, creating a `PipelineContext`, starting worker threads, and running a watchdog `Observer` for file events.
 
 Used by:
@@ -10,7 +11,7 @@ Pipelines:
 
 Invariants:
 - `CURRENT_CONTEXT` is set by `start_system()` after context creation and cleared by `stop_system()`.
-- `start_system()` mutates `cfg` by setting `PRETEXT_PROMPT`, `EXTRACT_PROMPT`, and `DISTILL_PROMPT`.
+- `start_system()` validates `cfg` is non-None and mutates it by setting `PRETEXT_PROMPT`, `EXTRACT_PROMPT`, and `DISTILL_PROMPT`.
 - Worker threads created here are started as daemon threads.
 
 Out of scope:
@@ -73,24 +74,6 @@ def ensure_directories(cfg: Dict[str, Any]) -> None:
     os.makedirs(cfg["FAIL_FOLDER"], exist_ok=True)
 
 
-def _require_config(cfg: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Purpose:
-    Enforce that a configuration dictionary is provided.
-    Inputs:
-    cfg: Optional configuration dictionary.
-    Outputs:
-    The same configuration dictionary when non-None.
-    Side effects:
-    None.
-    Failure modes:
-    ValueError when `cfg` is None.
-    """
-    if cfg is None:
-        raise ValueError("Configuration dictionary is required.")
-    return cfg
-
-
 def start_system(cfg: Optional[Dict[str, Any]] = None) -> SystemHandles:
     """
     Purpose:
@@ -104,7 +87,8 @@ def start_system(cfg: Optional[Dict[str, Any]] = None) -> SystemHandles:
     Failure modes:
     ValueError when `cfg` is None; KeyError for missing config keys; exceptions from prompt file reading, watchdog setup, or thread start.
     """
-    cfg = _require_config(cfg)
+    if cfg is None:
+        raise ValueError("Configuration dictionary is required.")
 
     cfg["PRETEXT_PROMPT"] = read_prompt_file("prompt_pretext.txt")
     cfg["EXTRACT_PROMPT"] = read_prompt_file("prompt_extract.txt")
@@ -261,7 +245,6 @@ def main(cfg: Optional[Dict[str, Any]] = None) -> None:
     Failure modes:
     ValueError when `cfg` is None; RuntimeError if `CURRENT_CONTEXT` becomes None during monitoring.
     """
-    cfg = _require_config(cfg)
     logging.info(
         "Starting: TTML + Text + Audio + WikilinkCleaner"
     )

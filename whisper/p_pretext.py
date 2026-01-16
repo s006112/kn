@@ -1,3 +1,20 @@
+"""
+Responsibility:
+Watch pretext folders, queue new text files, run LLM pretext generation, and
+write pretext outputs and archives.
+
+Pipelines:
+- watch -> queue -> read -> chunk -> llm -> merge -> write -> archive
+
+Invariants:
+- Queued pretext paths are normalized to absolute paths and de-duplicated.
+- Pretext outputs are written as `_p.txt` files in the pretext watch folder.
+
+Out of scope:
+- Extract or premium extract workflows.
+- Configuration construction and orchestrator wiring.
+"""
+
 import os
 import logging
 import shutil
@@ -25,20 +42,56 @@ from helper.utils_llm import call_llm
 from utils_md import write_pretext_markdown
 
 
-class PretextHandler(FileSystemEventHandler):
+class v(FileSystemEventHandler):
     """Watch pretext folder events and request queueing via PipelineContext."""
 
     def __init__(self, ctx: PipelineContext):
+        """
+        Purpose:
+        Initialize a handler bound to the pipeline context and watch folder.
+        Inputs:
+        - ctx: PipelineContext with config and queues.
+        Outputs:
+        - None.
+        Side effects:
+        - Stores context and resolves the absolute watch folder path.
+        Failure modes:
+        - Propagates exceptions from path normalization.
+        """
         self.ctx = ctx
         self.watch_folder = os.path.abspath(os.fspath(ctx.config['PRETEXT_WATCH_FOLDER']))
 
     def _handle_path(self, path: str) -> None:
+        """
+        Purpose:
+        Validate a path and enqueue it for pretext processing if eligible.
+        Inputs:
+        - path: File path to evaluate.
+        Outputs:
+        - None.
+        Side effects:
+        - Enqueues the file and logs when queued.
+        Failure modes:
+        - Propagates exceptions from queue operations.
+        """
         if not _is_pretext_candidate(path, self.watch_folder):
             return
         if request_pretext_processing(self.ctx, path):
             logging.info("Pretext: Queued %s", os.path.basename(path))
 
     def on_created(self, event):
+        """
+        Purpose:
+        Respond to file creation events from watchdog.
+        Inputs:
+        - event: Filesystem event containing the source path.
+        Outputs:
+        - None.
+        Side effects:
+        - May enqueue the created file.
+        Failure modes:
+        - Logs and suppresses exceptions.
+        """
         if event.is_directory:
             return
         try:
@@ -47,6 +100,18 @@ class PretextHandler(FileSystemEventHandler):
             logging.error("Error in PretextHandler.on_created: %s", exc)
 
     def on_moved(self, event):
+        """
+        Purpose:
+        Respond to file move events from watchdog.
+        Inputs:
+        - event: Filesystem event containing the destination path.
+        Outputs:
+        - None.
+        Side effects:
+        - May enqueue the moved file.
+        Failure modes:
+        - Logs and suppresses exceptions.
+        """
         if event.is_directory:
             return
         try:
@@ -59,14 +124,51 @@ class PretextProcessor:
     """Business logic for turning raw text into pretext outputs."""
 
     def __init__(self, ctx: PipelineContext):
+        """
+        Purpose:
+        Initialize the processor with the pipeline context.
+        Inputs:
+        - ctx: PipelineContext with config and queues.
+        Outputs:
+        - None.
+        Side effects:
+        - Stores the context reference.
+        Failure modes:
+        - None.
+        """
         self.ctx = ctx
 
     def process_pretext(self, file_path, get_next_available_filename):  # signature kept for queue API
+        """
+        Purpose:
+        Process a queued pretext file using the shared pipeline context.
+        Inputs:
+        - file_path: Path to the file to process.
+        - get_next_available_filename: Unused compatibility parameter.
+        Outputs:
+        - None.
+        Side effects:
+        - Reads, transcribes, and writes pretext output files.
+        Failure modes:
+        - Propagates exceptions from process_pretext_file.
+        """
         process_pretext_file(self.ctx, file_path)
 
 
 def request_pretext_processing(ctx: PipelineContext, file_path: str) -> bool:
-    """Register and queue a pretext job once per file path."""
+    """
+    Purpose:
+    Register and enqueue a pretext job once per normalized file path.
+    Inputs:
+    - ctx: PipelineContext with queue and tracking set.
+    - file_path: Path to the source file.
+    Outputs:
+    - True when the file is newly queued, otherwise False.
+    Side effects:
+    - Adds to processed_files_global and enqueues the path.
+    Failure modes:
+    - Propagates exceptions from queue operations.
+    """
     normalized = os.path.abspath(os.fspath(file_path))
     with ctx.processed_files_lock:
         if normalized in ctx.processed_files_global:
@@ -77,12 +179,38 @@ def request_pretext_processing(ctx: PipelineContext, file_path: str) -> bool:
 
 
 def release_pretext_request(ctx: PipelineContext, file_path: str) -> None:
+    """
+    Purpose:
+    Remove a normalized path from the global processed set.
+    Inputs:
+    - ctx: PipelineContext with tracking set.
+    - file_path: Path to remove from tracking.
+    Outputs:
+    - None.
+    Side effects:
+    - Updates processed_files_global under lock.
+    Failure modes:
+    - None.
+    """
     normalized = os.path.abspath(os.fspath(file_path))
     with ctx.processed_files_lock:
         ctx.processed_files_global.discard(normalized)
 
 
 def _is_pretext_candidate(path: Optional[str], watch_folder: str) -> bool:
+    """
+    Purpose:
+    Decide if a path is a pretext candidate within the watch folder.
+    Inputs:
+    - path: Path to validate.
+    - watch_folder: Absolute watch folder path.
+    Outputs:
+    - True when the path is a non-pretext .txt file in the watch folder.
+    Side effects:
+    - None.
+    Failure modes:
+    - None.
+    """
     if not path:
         return False
     normalized = os.path.abspath(os.fspath(path))
@@ -93,6 +221,19 @@ def _is_pretext_candidate(path: Optional[str], watch_folder: str) -> bool:
 
 
 def process_pretext_file(ctx: PipelineContext, file_path: str) -> None:
+    """
+    Purpose:
+    Generate pretext output from a text file and archive the original.
+    Inputs:
+    - ctx: PipelineContext with configuration and queues.
+    - file_path: Path to the source text file.
+    Outputs:
+    - None.
+    Side effects:
+    - Reads source text, calls LLM, writes output and markdown, moves files.
+    Failure modes:
+    - Logs and re-raises exceptions; writes .error file on partial results.
+    """
     config = ctx.config
     normalized_path = os.path.abspath(os.fspath(file_path))
     try:

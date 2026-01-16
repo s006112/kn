@@ -1,3 +1,20 @@
+"""
+Responsibility:
+Scan configured audio folders, enqueue audio files, transcribe them via the
+turbo service, and archive results along with temporary file cleanup.
+
+Pipelines:
+- scan -> enqueue -> convert -> transcribe -> write -> archive
+
+Invariants:
+- Transcriptions are written as UTF-8 text files in the configured output folder.
+- Converted WAV files are removed after processing completes or fails.
+
+Out of scope:
+- Managing downstream text processing pipelines.
+- Providing queue shutdown or cancellation controls.
+"""
+
 import os
 import time
 import subprocess
@@ -9,7 +26,7 @@ from utils_files import release_text_file_permissions
 from utils_text import sanitize_and_trim_filename
 from utils_whisper import get_turbo_service
 
-SORT_ORDER = False              # False: smallest first, True: largest first
+SORT_ORDER = False  # Process smallest files first to reduce time-to-first-result.
 DESKTOP_PATH = '/desktop'
 #DESKTOP_PATH = '/mnt/c/Users/KN/Desktop'
 
@@ -17,7 +34,18 @@ audio_queue = Queue()
 
 
 def find_audio_files_in_folder(path: str) -> bool:
-    """Check whether the folder contains audio files."""
+    """
+    Purpose:
+    Determine whether a folder contains any supported audio files.
+    Inputs:
+    - path: Folder path to inspect.
+    Outputs:
+    - True when at least one supported audio file exists, otherwise False.
+    Side effects:
+    - Reads the filesystem.
+    Failure modes:
+    - Propagates exceptions from os.listdir.
+    """
     if not os.path.exists(path):
         return False
     return any(
@@ -26,7 +54,18 @@ def find_audio_files_in_folder(path: str) -> bool:
 
 
 def _iter_audio_watch_folders(config: dict) -> list[str]:
-    """Normalize configured audio watch folders into a list of paths."""
+    """
+    Purpose:
+    Normalize audio watch folder configuration into a list of paths.
+    Inputs:
+    - config: Configuration mapping.
+    Outputs:
+    - List of folder paths.
+    Side effects:
+    - None.
+    Failure modes:
+    - None.
+    """
     folders = config.get('AUDIO_WATCH_FOLDERS')
     if not folders:
         fallback = config.get('AUDIO_WATCH_FOLDER')
@@ -37,7 +76,18 @@ def _iter_audio_watch_folders(config: dict) -> list[str]:
 
 
 def update_folder_path(config: dict) -> list[str]:
-    """Return audio watch folders that currently contain audio files."""
+    """
+    Purpose:
+    Filter configured audio watch folders to those containing audio files.
+    Inputs:
+    - config: Configuration mapping.
+    Outputs:
+    - List of folders that currently contain audio files.
+    Side effects:
+    - Reads the filesystem.
+    Failure modes:
+    - Propagates exceptions from filesystem access.
+    """
     available = []
     for folder in _iter_audio_watch_folders(config):
         if find_audio_files_in_folder(folder):
@@ -46,7 +96,18 @@ def update_folder_path(config: dict) -> list[str]:
 
 
 def get_audio_files_sorted_by_size(folder_path: str) -> list[str]:
-    """Return audio files sorted by size."""
+    """
+    Purpose:
+    List supported audio files in a folder, sorted by size.
+    Inputs:
+    - folder_path: Folder path to scan.
+    Outputs:
+    - List of filenames sorted by size.
+    Side effects:
+    - Reads the filesystem.
+    Failure modes:
+    - Propagates exceptions from filesystem access.
+    """
     if not os.path.exists(folder_path):
         return []
     audio_files = [
@@ -58,7 +119,19 @@ def get_audio_files_sorted_by_size(folder_path: str) -> list[str]:
 
 
 def convert_audio_to_wav(folder_path: str, audio_file: str) -> str | None:
-    """Convert input file to mono 16kHz WAV."""
+    """
+    Purpose:
+    Convert an input audio file to mono 16kHz WAV using ffmpeg.
+    Inputs:
+    - folder_path: Folder containing the input file.
+    - audio_file: Filename of the input file.
+    Outputs:
+    - Path to the converted WAV file, or None on failure.
+    Side effects:
+    - Invokes ffmpeg and writes a WAV file to disk.
+    Failure modes:
+    - Returns None when ffmpeg fails.
+    """
     input_path = os.path.join(folder_path, audio_file)
     output_path = os.path.join(folder_path, audio_file.rsplit('.', 1)[0] + '.wav')
     try:
@@ -81,7 +154,22 @@ def move_files_to_done(
     done_folder_path: str,
     sanitized_filename: str,
 ) -> None:
-    """Remove temporary files and archive original audio."""
+    """
+    Purpose:
+    Remove temporary WAV files and move the original audio into the done folder.
+    Inputs:
+    - audio_file_path: Full path to the original audio file.
+    - wav_file_path: Full path to the WAV file, if created.
+    - process_time: Processing duration in seconds.
+    - done_folder_path: Destination folder for archived audio files.
+    - sanitized_filename: Target filename in the done folder.
+    Outputs:
+    - None.
+    Side effects:
+    - Deletes and moves files on disk and logs processing time.
+    Failure modes:
+    - Propagates exceptions from filesystem operations.
+    """
     if wav_file_path and os.path.exists(wav_file_path):
         os.remove(wav_file_path)
     target = os.path.join(done_folder_path, sanitized_filename)
@@ -92,7 +180,18 @@ def move_files_to_done(
 
 
 def scan_audio_files(config: dict) -> None:
-    """Populate the queue with new audio files."""
+    """
+    Purpose:
+    Scan watch folders and enqueue audio files not yet queued.
+    Inputs:
+    - config: Configuration mapping.
+    Outputs:
+    - None.
+    Side effects:
+    - Reads directories and enqueues items into the global audio_queue.
+    Failure modes:
+    - Propagates exceptions from filesystem access.
+    """
     for current_folder in update_folder_path(config):
         for audio_file in get_audio_files_sorted_by_size(current_folder):
             file_path = os.path.join(current_folder, audio_file)
@@ -102,13 +201,27 @@ def scan_audio_files(config: dict) -> None:
 
 
 def process_audio_file(file_path: str, folder_path: str, config: dict, done_folder_path: str) -> bool:
-    """Convert the file to WAV, transcribe it and archive the results."""
+    """
+    Purpose:
+    Convert audio to WAV, transcribe it, write text output, and archive inputs.
+    Inputs:
+    - file_path: Full path to the original audio file.
+    - folder_path: Folder containing the original audio file.
+    - config: Configuration mapping.
+    - done_folder_path: Destination folder for archived audio files.
+    Outputs:
+    - True on successful transcription and archival, otherwise False.
+    Side effects:
+    - Runs ffmpeg, moves files, writes text output, and logs errors.
+    Failure modes:
+    - Returns False on conversion or transcription failure.
+    """
     base_name, ext = os.path.splitext(os.path.basename(file_path))
     sanitized = sanitize_and_trim_filename(base_name)
 
     wav_file = convert_audio_to_wav(folder_path, os.path.basename(file_path))
     if not wav_file:
-        # move unusable file aside
+        # Avoid repeatedly retrying files that cannot be converted.
         move_files_to_done(file_path, None, 0, done_folder_path, sanitized + ext)
         return False
     desktop_wav_path = os.path.join(DESKTOP_PATH, os.path.basename(wav_file))
@@ -143,7 +256,21 @@ def process_audio_file(file_path: str, folder_path: str, config: dict, done_fold
 
 
 def process_audio_queue(config, *_queues, processing_lock, done_folder_path):
-    """Continuous worker that processes the audio queue."""
+    """
+    Purpose:
+    Continuously scan for audio files and process the audio_queue.
+    Inputs:
+    - config: Configuration mapping.
+    - _queues: Unused positional arguments for compatibility with callers.
+    - processing_lock: Lock to serialize audio processing.
+    - done_folder_path: Destination folder for archived audio files.
+    Outputs:
+    - None.
+    Side effects:
+    - Enqueues and processes audio files in an infinite loop with sleeps.
+    Failure modes:
+    - Logs errors and continues.
+    """
     while True:
         try:
             scan_audio_files(config)
