@@ -81,7 +81,7 @@ python gradio_per_report.py       # listens on 0.0.0.0:7860
 python gradio_so_import.py        # listens on 0.0.0.0:7960
 
 # Weekly summary helper
-python gradio_weekly_summary.py   # listens on 0.0.0.0:1986
+python gui_weekly_summary.py      # listens on 0.0.0.0:1986
 
 # Sketch-to-rendering tool
 python gui_rendering.py
@@ -95,7 +95,7 @@ Deployment Plan (Suggested)
   - Use a dedicated virtualenv (e.g. Python 3.10+), install dependencies with `pip install -r requirements.txt`.
   - Provide a `.env` file alongside the code with `OPENAI_API_KEY`, Nextcloud and Odoo credentials, and flags such as `DEBUG_TEXTBOXES` / `ODOO_IMPORT`.
 - **Process layout**
-- Run each Gradio app (`Gradio_per_report.py`, `Gradio_so_import.py`, `Gradio_weekly_summary.py`, `gui_rendering.py`) as a separate process, each bound to its documented port.
+- Run each Gradio app (`gradio_per_report.py`, `gradio_so_import.py`, `gui_weekly_summary.py`, `gui_rendering.py`) as a separate process, each bound to its documented port.
   - In production, supervise them via `systemd`, `supervisor`, or a process manager like `pm2` (through `python` commands).
 - **Reverse proxy**
   - Place an Nginx or Apache reverse proxy in front, mapping friendly paths to each service, for example:
