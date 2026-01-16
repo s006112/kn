@@ -233,6 +233,7 @@ with gr.Blocks(title="Sketch-to-Rendering Studio", head=CLIPBOARD_POLYFILL) as d
             label="Generated renderings",
             interactive=False,
             columns=2,
+            format="jpeg",
         )
         status_message = gr.Textbox(
             label="Status",
