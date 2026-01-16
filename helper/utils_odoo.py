@@ -145,16 +145,14 @@ def _upload_pdf_to_nextcloud(client: OdooClient, order_id: int, pdf_path: str) -
         return messages
     base_dir = PO_REMOTE_DIR.rstrip("/") if PO_REMOTE_DIR else ""
     remote_dir = f"{base_dir}/{partner_name}" if base_dir else partner_name
-    try:
-        share_info = upload_and_share_file(pdf_path, remote_dir, share=False) or {}
-        remote_path = share_info.get("remote_path")
-        link = share_info.get("page") or remote_path
-        if link:
-            messages.append(f"Nextcloud upload: {link}")
-        log.info("Uploaded PO file to Nextcloud: %s", remote_path or pdf_path)
-    except Exception as exc:
-        log.error("Nextcloud upload failed: %s", exc)
-        messages.append(f"Nextcloud upload failed: {exc}")
+    share_info = upload_and_share_file(pdf_path, remote_dir, share=False) or {}
+    error = share_info.get("error")
+    if error:
+        return messages
+    remote_path = share_info.get("remote_path")
+    link = share_info.get("page") or remote_path
+    if link:
+        messages.append(f"Nextcloud upload: {link}")
     return messages
 
 

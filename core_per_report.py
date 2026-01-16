@@ -418,9 +418,6 @@ def generate_per_report(file_path: str, model: str) -> PerReportResult:
     png_filename = f"CIE_{ts}.png"
 
     share_info = upload_and_share_file(file_path, REPORT_REMOTE_DIR, share=False) or {}
-    log.info("Nextcloud share available: %s", share_info.get("page"))
-
-    log.info("Uploaded processed PDF to Nextcloud: %s", share_info.get("remote_path"))
 
     placeholder_url = f"{PNG_PLACEHOLDER_PREFIX}{png_filename}"
 
@@ -487,7 +484,6 @@ def upload_cie_png(payload: str) -> str:
     temp_path.write_bytes(png_bytes)
 
     cie_share_info = upload_and_share_file(str(temp_path), PNG_REMOTE_DIR, share=True)
-    log.info("Uploaded CIE PNG to Nextcloud: %s", cie_share_info.get("remote_path"))
     share_url = cie_share_info.get("page", "")
     temp_path.unlink(missing_ok=True)
 
@@ -496,9 +492,6 @@ def upload_cie_png(payload: str) -> str:
         preview_url = share_url.rstrip("/") + "/preview"
         if placeholder in LATEST_SUMMARY:
             LATEST_SUMMARY = LATEST_SUMMARY.replace(placeholder, preview_url)
-    else:
-        log.warning("CIE PNG share link unavailable; retaining placeholder link in summary.")
-
     return LATEST_SUMMARY
 
 

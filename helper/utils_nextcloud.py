@@ -292,29 +292,38 @@ def upload_and_share_file(
 
     Outputs:
     Dict with `remote_path` and (when available) `page`/`download`/`id`.
+    On upload failure, returns `{"error": "..."}`
 
     Side effects:
     Loads credentials, creates directories, uploads file, and attempts OCS share creation.
 
     Failure modes:
-    Propagates credential/directory/upload errors; logs and swallows share creation errors.
+    Logs and swallows upload/share errors.
     """
-    username, password = load_env()
-    auth = (username, password)
+    try:
+        username, password = load_env()
+        auth = (username, password)
+        mkcol_recursive(
+            _BASE_URL,
+            username,
+            auth,
+            [segment for segment in remote_dir.strip("/").split("/") if segment],
+        )
+        remote_path = upload_file(local_path, remote_dir, _BASE_URL, username, auth)
+    except Exception as exc:
+        log.error("Nextcloud upload failed for %s: %s", local_path, exc)
+        return {"error": str(exc)}
 
-    folders = [segment for segment in remote_dir.strip("/").split("/") if segment]
-    if folders:
-        mkcol_recursive(_BASE_URL, username, auth, folders)
-
-    remote_path = upload_file(local_path, remote_dir, _BASE_URL, username, auth)
+    log.info("Nextcloud upload complete: %s", remote_path)
 
     share_payload: Dict[str, str] = {}
     if share is True:
         try:
             share_payload = create_or_get_public_share(_BASE_URL, auth, remote_path)
         except Exception as exc:  # Share link failures should not block a successful upload.
-            log.warning("Unable to create share link for %s: %s", remote_path, exc)
+            log.warning("Nextcloud share unavailable for %s: %s", remote_path, exc)
             return {"remote_path": remote_path}
+        log.info("Nextcloud share available: %s", share_payload.get("page"))
 
     return {
         "remote_path": remote_path,
