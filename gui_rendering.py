@@ -40,20 +40,22 @@ PNG_REMOTE_DIR = "/Documents/Rendering"
 load_env(dotenv_path=Path(__file__).parent / ".env")
 logger = configure_logging("rendering")
 
-MODEL_OPTIONS = [
-    "gemini-3-pro-image-preview",   # $120, $0.134 per 1K/2K image
-    "gemini-2.5-flash-image",   # $0.039 per image
-    "gpt-image-1.5",    # $32, $0.133 per image
-    "gpt-image-1-mini",   # $40, $0.167 per image
-    "gpt-image-1",   # $8.00, $0.036 per image
-    "stability-structure",
-    "stability-sketch",
-    "stability-core",
-    "stability-sd3",
-    "stability-ultra",
-]
+MODEL_CATALOG = {
+    "gemini-3-pro-image-preview": "Nano Banana Pro, $$$",  # $120, $0.134 per 1K/2K image
+    "gemini-2.5-flash-image": "Nano Banana, $",  # $0.039 per image
+    "gpt-image-1.5": "GPT-Image 1.5, $$",  # $32, $0.133 per image
+    "gpt-image-1-mini": "GPT-Image 1.0, $$$",  # $40, $0.167 per image
+    "gpt-image-1": "GPT-Image 1, $",  # $8.00, $0.036 per image
+    "stability-structure": "Stable Diffusion Structure, $$$",
+    "stability-sketch": "Stable Diffusion Sketch, $$",
+    "stability-core": "Stable Diffusion Core, $$",
+    "stability-sd3": "Stable Diffusion 3, $$",
+    "stability-ultra": "Stable Diffusion Ultra, $$$$",
+}
 
 PROMPT_RENDERING_PATH = Path(__file__).parent / "prompt" / "prompt_rendering.txt"
+MODEL_OPTIONS = list(MODEL_CATALOG)
+
 if PROMPT_RENDERING_PATH.exists():
     PROMPT_RENDERING = PROMPT_RENDERING_PATH.read_text("utf-8")
 else:
@@ -192,21 +194,6 @@ def handle_render(uploaded: str | None, model: str | list[str] | None, prompt: s
     except Exception as exc:
         logger.exception("Rendering failed.")
         return [], f"Rendering failed: {exc}"
-
-
-DISPLAY_NAMES = {
-    "gemini-3-pro-image-preview": "Nano Banana Pro, $$$",
-    "gemini-2.5-flash-image": "Nano Banana, $",
-    "gpt-image-1.5": "GPT-Image 1.5, $$",
-    "gpt-image-1-mini": "GPT-Image 1.0, $$$",
-    "gpt-image-1": "GPT-Image 1, $",
-    "stability-ultra": "Stable Diffusion Ultra, $$$$",
-    "stability-core": "Stable Diffusion Core, $$",
-    "stability-sd3": "Stable Diffusion 3, $$",
-    "stability-sketch": "Stable Diffusion Sketch, $$",
-    "stability-structure": "Stable Diffusion Structure, $$$",
-}
-
 with gr.Blocks(title="Sketch-to-Rendering Studio", head=CLIPBOARD_POLYFILL) as demo:
     gr.Markdown("## Sketch-to-Rendering Studio")
     with gr.Row():
@@ -217,7 +204,7 @@ with gr.Blocks(title="Sketch-to-Rendering Studio", head=CLIPBOARD_POLYFILL) as d
         )
         model_picker = gr.CheckboxGroup(
             label="Choose a rendering model",
-            choices=[(DISPLAY_NAMES.get(model, model), model) for model in MODEL_OPTIONS],
+            choices=[(MODEL_CATALOG.get(model, model), model) for model in MODEL_OPTIONS],
             value=[MODEL_OPTIONS[1], MODEL_OPTIONS[2], MODEL_OPTIONS[4]],
         )
     prompt_editor = gr.Textbox(
