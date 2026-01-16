@@ -3,7 +3,7 @@ Nextcloud WebDAV upload and OCS public share helpers.
 
 Used by:
 * core_per_report.py
-* core_rendering.py
+* gui_rendering.py
 * helper/utils_odoo.py
 
 Pipelines:

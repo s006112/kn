@@ -1,6 +1,7 @@
 """This module handles:
 
 * Rendering orchestration for model-backed image generation.
+* Gradio UI construction and event wiring for the rendering workflow.
 
 The processing pipeline:
 1. Load environment variables and configure logging on import.
@@ -8,13 +9,14 @@ The processing pipeline:
 3. Compose the final prompt from template and user input.
 4. Call the image generator with a selected model and optional image bytes.
 5. Return the first generated image or an error message.
+6. Build the UI and wire the submit button to handle_render.
 
 Invariants:
 * Allowed models are defined by MODEL_OPTIONS.
 * PROMPT_RENDERING may be empty if the template file is missing.
+* Model choices are derived from MODEL_OPTIONS.
 
 Out of scope:
-* UI construction or event wiring.
 * Model validation beyond membership in MODEL_OPTIONS.
 * Persistence or caching of rendered images.
 """
@@ -26,7 +28,10 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
+import gradio as gr
 from PIL import Image
+
+from clipboard_polyfill import CLIPBOARD_POLYFILL
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -44,7 +49,7 @@ logger = configure_logging("rendering")
 MODEL_OPTIONS = [
     "gemini-3-pro-image-preview",   # $120, $0.134 per 1K/2K image
     "gemini-2.5-flash-image",   # $0.039 per image
-    "gpt-image-1.5",    # $32, $0.133 per image 
+    "gpt-image-1.5",    # $32, $0.133 per image
     "gpt-image-1-mini",   # $40, $0.167 per image
     "gpt-image-1",   # $8.00, $0.036 per image
     "stability-structure",
@@ -191,4 +196,66 @@ def handle_render(uploaded: str | None, model: str | list[str] | None, prompt: s
         return [], f"Rendering failed: {exc}"
 
 
-__all__ = ["MODEL_OPTIONS", "PROMPT_RENDERING", "handle_render", "request_render"]
+DISPLAY_NAMES = {
+    "gemini-3-pro-image-preview": "Nano Banana Pro, $$$",
+    "gemini-2.5-flash-image": "Nano Banana, $",
+    "gpt-image-1.5": "GPT-Image 1.5, $$",
+    "gpt-image-1-mini": "GPT-Image 1.0, $$$",
+    "gpt-image-1": "GPT-Image 1, $",
+    "stability-ultra": "Stable Diffusion Ultra, $$$$",
+    "stability-core": "Stable Diffusion Core, $$",
+    "stability-sd3": "Stable Diffusion 3, $$",
+    "stability-sketch": "Stable Diffusion Sketch, $$",
+    "stability-structure": "Stable Diffusion Structure, $$$",
+}
+
+with gr.Blocks(title="Sketch-to-Rendering Studio", head=CLIPBOARD_POLYFILL) as demo:
+    gr.Markdown("## Sketch-to-Rendering Studio")
+    with gr.Row():
+        upload_image = gr.File(
+            label="Upload sketch photo or CAD drawing (images only)",
+            type="filepath",
+            file_types=[".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff"],
+        )
+        model_picker = gr.CheckboxGroup(
+            label="Choose a rendering model",
+            choices=[(DISPLAY_NAMES.get(model, model), model) for model in MODEL_OPTIONS],
+            value=[MODEL_OPTIONS[1], MODEL_OPTIONS[2], MODEL_OPTIONS[4]],
+        )
+    prompt_editor = gr.Textbox(
+        label="Additional prompt (optional)",
+        value="",
+        placeholder="Add any extra rendering instructions here.",
+        lines=6,
+    )
+    with gr.Row():
+        generate_btn = gr.Button("Generate Rendering")
+    with gr.Column():
+        rendered_output = gr.Gallery(
+            label="Generated renderings",
+            interactive=False,
+            columns=2,
+        )
+        status_message = gr.Textbox(
+            label="Status",
+            value="Upload an image, select one or more models, then press Generate Rendering.",
+            interactive=False,
+        )
+    generate_btn.click(
+        fn=handle_render,
+        inputs=[upload_image, model_picker, prompt_editor],
+        outputs=[rendered_output, status_message],
+    )
+
+
+__all__ = [
+    "MODEL_OPTIONS",
+    "PROMPT_RENDERING",
+    "handle_render",
+    "request_render",
+    "demo",
+]
+
+
+if __name__ == "__main__":
+    demo.launch(server_name="0.0.0.0", server_port=7760)
