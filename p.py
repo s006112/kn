@@ -116,7 +116,7 @@ def main(cfg=None) -> None:
     Initialize runtime configuration and logging, then delegate to `p_orchestrator.main()` with the resolved configuration.
 
     Pipelines:
-    - config -> logging -> orchestrator
+    - config -> logging -> orchestrator -> pipelines/workers -> tasks
 
     Invariants:
     - `CONFIG` remains a dict containing resolved path and model settings used by `main()`.

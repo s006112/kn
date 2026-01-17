@@ -5,7 +5,12 @@ import openai
 import requests
 from google.genai import errors as genai_errors
 
-from helper.utils_llm import get_gemini_client, get_openai_client, get_stability_client
+from helper.utils_llm import (
+    get_gemini_client,
+    get_grok_client,
+    get_openai_client,
+    get_stability_client,
+)
 
 
 _STABILITY_BASE_URL = "https://api.stability.ai/v2beta/stable-image"
@@ -161,6 +166,45 @@ def call_openai_t2i(
     images = [img for item in data if (img := _extract_bytes(item))]
     if not images:
         raise RuntimeError("OpenAI image API did not return any decodable image.")
+    return images
+
+
+def call_grok_t2i(
+    client: openai.OpenAI,
+    model: str,
+    prompt: str,
+    size: str,
+    n: int,
+) -> List[bytes]:
+    """Use xAI Images API (grok-2-image) via OpenAI SDK-compatible endpoint."""
+    del size  # xAI API does not support size/quality/style.
+    if len(prompt) >1000:
+        # xAI prompt length limit (server rejects longer prompts).
+        prompt = prompt[:1000]
+    resp = client.images.generate(model=model, prompt=prompt, n=min(10, max(1, n)))
+
+    data = getattr(resp, "data", None) or []
+    if not data:
+        raise RuntimeError("Grok image API returned no data.")
+
+    def _extract_bytes(item: Any) -> Optional[bytes]:
+        b64 = getattr(item, "b64_json", None)
+        if b64:
+            try:
+                return base64.b64decode(b64)
+            except Exception as exc:  # pragma: no cover - defensive
+                raise RuntimeError("Grok image payload is not valid base64.") from exc
+
+        url = getattr(item, "url", None)
+        if not url:
+            return None
+        response = requests.get(url, timeout=120)
+        response.raise_for_status()
+        return response.content
+
+    images = [img for item in data if (img := _extract_bytes(item))]
+    if not images:
+        raise RuntimeError("Grok image API did not return any decodable image.")
     return images
 
 
@@ -322,6 +366,11 @@ _IMAGE_BACKENDS: Dict[str, Dict[str, Any]] = {
         "match": lambda m: m.lower().startswith("stability"),
         "client_getter": get_stability_client,
         "call_fn": call_stability_image,
+    },
+    "grok-image": {
+        "match": lambda m: m.lower().startswith("grok"),
+        "client_getter": get_grok_client,
+        "call_fn": call_grok_t2i,
     },
     "gemini": {
         "match": lambda m: m.lower().startswith("gemini") and "image" in m.lower(),

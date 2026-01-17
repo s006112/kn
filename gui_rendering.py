@@ -38,16 +38,17 @@ logger = configure_logging("rendering")
 
 MODEL_CATALOG = {
     # Cost hints are embedded in labels to make quick UI comparisons possible.
-    "gemini-3-pro-image-preview": "Nano Banana Pro, $$$",   # $120, $0.134 per 1K/2K image
-    "gemini-2.5-flash-image": "Nano Banana, $",   # $0.039 per image
-    "gpt-image-1.5": "GPT-Image 1.5, $$",    # $32, $0.133 per image
-    "gpt-image-1": "GPT-Image 1.0, $$$",   # $40, $0.167 per image
-    "gpt-image-1-mini": "GPT-Image-Mini, $",   # $8.00, $0.036 per images
-    "stability-structure": "Stable Diffusion Structure, $$$",
-    "stability-sketch": "Stable Diffusion Sketch, $$",
-    "stability-core": "Stable Diffusion Core, $$",
-    "stability-sd3": "Stable Diffusion 3, $$",
-    "stability-ultra": "Stable Diffusion Ultra, $$$$",
+    "gemini-3-pro-image-preview": "Nano-Banana-Pro, $$$",   # $120, $0.134 per 1K/2K image
+    "gemini-2.5-flash-image": "Nano-Banana, $",   # $0.039 per image
+    "gpt-image-1.5": "GPT-1.5, $$",    # $32, $0.133 per image
+    "gpt-image-1": "GPT-1, $$$",   # $40, $0.167 per image
+    "gpt-image-1-mini": "GPT-1-Mini, $",   # $8.00, $0.036 per images
+    "grok-2-image-1212": "Grok-2, $",   # $0.07 per images
+    "stability-structure": "SD-Structure, $$$",
+    "stability-sketch": "SD-Sketch, $$",
+    "stability-core": "SD-Core, $$",
+    "stability-sd3": "SD-3, $$",
+    "stability-ultra": "SD-Ultra, $$$$",
 }
 
 PROMPT_RENDERING_PATH = Path(__file__).parent / "prompt" / "prompt_rendering.txt"
@@ -205,7 +206,7 @@ def get_demo() -> "gr.Blocks":
             model_picker = gr.CheckboxGroup(
                 label="Choose a rendering model",
                 choices=[(MODEL_CATALOG.get(model, model), model) for model in MODEL_OPTIONS],
-                value=[MODEL_OPTIONS[1], MODEL_OPTIONS[2], MODEL_OPTIONS[4]],
+                value=[MODEL_OPTIONS[1], MODEL_OPTIONS[4]],
             )
         prompt_editor = gr.Textbox(
             label="Additional prompt (optional)",
