@@ -7,14 +7,14 @@ configuration).
 Location: `helper/helper_whipser.py`
 
 Used by:
-- `whisper/p_audio.py` for batch audio file transcription (`get_turbo_service()`).
-- `tool/tool_real_time_transcription.py` for real-time array transcription (`get_turbo_service()`).
+- `whisper/p_audio.py` for batch audio file transcription (`get_service()`).
+- `tool/tool_real_time_transription.py` for real-time array transcription (`get_service()`).
 """
 
 import gc
 import logging
 import warnings
-from dataclasses import dataclass
+from functools import lru_cache
 from typing import Optional
 
 import torch
@@ -30,12 +30,6 @@ warnings.filterwarnings(
     message=r"You are using `torch.load`",
 )
 
-@dataclass
-class WhisperConfig:
-    """Configuration for WhisperService."""
-
-    model_name: str
-
 class WhisperService:
     """
     Shared Whisper model manager with simple GPU/CPU heuristics.
@@ -44,8 +38,8 @@ class WhisperService:
     devices triggers a reload.
     """
 
-    def __init__(self, config: WhisperConfig):
-        self.config = config
+    def __init__(self, model_name: str):
+        self.model_name = model_name
         self._model: Optional[whisper.Whisper] = None
         self._device: Optional[str] = None
 
@@ -71,7 +65,7 @@ class WhisperService:
     # --- Model loading -----------------------------------------------
     def _load_model(self, device: str) -> whisper.Whisper:
         if self._model is None or self._device != device:
-            self._model = whisper.load_model(self.config.model_name, device=device)
+            self._model = whisper.load_model(self.model_name, device=device)
             self._device = device
         return self._model
 
@@ -158,33 +152,7 @@ class WhisperService:
         )
 
 
-_DEFAULT_SERVICE: Optional[WhisperService] = None
-
-
-def get_default_service(config: WhisperConfig) -> WhisperService:
-    """
-    Return a process-wide WhisperService singleton.
-
-    The first caller may pass a config; later calls return the same instance and
-    ignore config changes.
-    """
-    global _DEFAULT_SERVICE
-    if _DEFAULT_SERVICE is None:
-        _DEFAULT_SERVICE = WhisperService(config)
-    return _DEFAULT_SERVICE
-
-
-# Convenience config/service for the common large-v3-turbo setup used across tools.
-DEFAULT_TURBO_CONFIG = WhisperConfig(
-    model_name="large-v3-turbo",
-)
-
-
-def get_turbo_service() -> WhisperService:
-    """
-    Return the process-wide WhisperService configured for `large-v3-turbo`.
-
-    This is a convenience wrapper around `get_default_service` using
-    `DEFAULT_TURBO_CONFIG`.
-    """
-    return get_default_service(DEFAULT_TURBO_CONFIG)
+@lru_cache(maxsize=1)
+def get_service() -> WhisperService:
+    """Return a process-wide `large-v3-turbo` WhisperService singleton."""
+    return WhisperService("large-v3-turbo")

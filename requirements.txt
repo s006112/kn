@@ -2,6 +2,7 @@
 sudo apt-get update # update package lists
 sudo apt-get autoclean   #只会删除「过期的 .deb」
 sudo apt-get install -y --download-only python3-pip # download .deb
+sudo apt-get install -y --reinstall --download-only libportaudio2 # force-cache PortAudio runtime .deb (needed by sounddevice)
 
 aria2c   # file download acceleration 2.4.14 (amd64)
 

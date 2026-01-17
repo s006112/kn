@@ -9,7 +9,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from helper.helper_whipser import get_turbo_service
+from helper.helper_whipser import get_service  # noqa: E402
 
 
 SAMPLE_RATE = 16000
@@ -31,7 +31,7 @@ print("Listening... Ctrl+C to stop.")
 buffer = np.zeros(0, dtype=np.float32)
 required_samples = SEGMENT_SECONDS * SAMPLE_RATE  # 10 秒所需采样点
 
-service = get_turbo_service()
+service = get_service()
 
 try:
     with sd.InputStream(
