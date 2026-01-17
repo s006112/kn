@@ -1,3 +1,16 @@
+"""
+Whisper model helpers.
+
+This module provides a lightweight `WhisperService` wrapper plus singleton-style
+accessors used across the pipeline and tools (notably the `large-v3-turbo`
+configuration).
+Location: `helper/helper_whipser.py`
+
+Used by:
+- `whisper/p_audio.py` for batch audio file transcription (`get_turbo_service()`).
+- `tool/tool_real_time_transcription.py` for real-time array transcription (`get_turbo_service()`).
+"""
+
 import gc
 import logging
 import warnings
@@ -24,7 +37,12 @@ class WhisperConfig:
     model_name: str
 
 class WhisperService:
-    """Shared Whisper model manager with simple GPU/CPU heuristics."""
+    """
+    Shared Whisper model manager with simple GPU/CPU heuristics.
+
+    The underlying model is loaded lazily and cached per-process; switching
+    devices triggers a reload.
+    """
 
     def __init__(self, config: WhisperConfig):
         self.config = config
@@ -58,7 +76,12 @@ class WhisperService:
         return self._model
 
     def load_model(self) -> whisper.Whisper:
-        """Initialize Whisper, preferring a dedicated GPU when available."""
+        """
+        Initialize Whisper, preferring a dedicated GPU when available.
+
+        Returns the cached model instance, loading it the first time it is
+        requested for a given device.
+        """
         device = "cpu"
         if torch.cuda.is_available():
             try:
@@ -80,7 +103,7 @@ class WhisperService:
         task: str = "transcribe",
     ) -> str:
         """
-        Transcribe a mono 16kHz WAV file. Mirrors the behavior in p_audio.py:
+        Transcribe a mono 16kHz WAV file. Mirrors the behavior in `p_audio.py`:
         - prefer GPU when available
         - on GPU OOM, fall back to CPU and retry
         """
@@ -118,8 +141,13 @@ class WhisperService:
         task: str = "transcribe",
     ) -> str:
         """
-        Transcribe an in-memory audio array.
-        Used by the real-time transcription tool.
+        Transcribe an in-memory audio array (typically float32 PCM).
+
+        Notes:
+        - `audio` is expected to already be 16kHz mono (Whisper's default).
+        - `sample_rate` is currently unused and is kept for call-site clarity
+          and future resampling support.
+        - Unlike `transcribe_file`, this path does not retry on GPU OOM.
         """
         model = self.load_model()
         return self._run_transcribe(
@@ -136,7 +164,9 @@ _DEFAULT_SERVICE: Optional[WhisperService] = None
 def get_default_service(config: WhisperConfig) -> WhisperService:
     """
     Return a process-wide WhisperService singleton.
-    The first caller may pass a config; later calls ignore config changes.
+
+    The first caller may pass a config; later calls return the same instance and
+    ignore config changes.
     """
     global _DEFAULT_SERVICE
     if _DEFAULT_SERVICE is None:
@@ -151,5 +181,10 @@ DEFAULT_TURBO_CONFIG = WhisperConfig(
 
 
 def get_turbo_service() -> WhisperService:
-    """Return the shared WhisperService configured for large-v3-turbo."""
+    """
+    Return the process-wide WhisperService configured for `large-v3-turbo`.
+
+    This is a convenience wrapper around `get_default_service` using
+    `DEFAULT_TURBO_CONFIG`.
+    """
     return get_default_service(DEFAULT_TURBO_CONFIG)
