@@ -31,7 +31,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from helper.helper_whipser import get_service  # noqa: E402
+from helper.helper_whisper import get_service  # noqa: E402
 
 SORT_ORDER = False  # Process smallest files first to reduce time-to-first-result.
 DESKTOP_PATH = '/desktop'
