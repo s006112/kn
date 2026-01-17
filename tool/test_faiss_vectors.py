@@ -7,19 +7,25 @@ from pathlib import Path
 import faiss
 import numpy as np
 
+DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/index/faiss.index"
+
 
 def load_index(index_path: Path):
     """Load a FAISS IndexIDMap and return ids array + dense vector matrix."""
     index = faiss.read_index(str(index_path))
 
-    if not hasattr(index, "id_map"):
+    if hasattr(index, "id_map"):
+        ids = faiss.vector_to_array(index.id_map)
+        base_index = faiss.downcast_index(index.index)
+    else:
+        ids = np.arange(index.ntotal, dtype=np.int64)
+        base_index = faiss.downcast_index(index)
+
+    if not hasattr(base_index, "get_xb"):
         raise RuntimeError(
-            "Expected an IndexIDMap so we can retrieve stored identifiers"
+            f"Index type {type(index).__name__} does not expose stored vectors"
         )
 
-    ids = faiss.vector_to_array(index.id_map)
-
-    base_index = faiss.downcast_index(index.index)
     xb_ptr = base_index.get_xb()
     buffer = faiss.rev_swig_ptr(xb_ptr, index.ntotal * index.d)
     vectors = np.array(buffer, dtype=np.float32).reshape(index.ntotal, index.d)
@@ -41,8 +47,8 @@ def main() -> None:
     parser.add_argument(
         "--index-path",
         type=Path,
-        default=Path("index/vectors.faiss"),
-        help="Path to the vectors.faiss file (default: index/vectors.faiss)",
+        default=DEFAULT_INDEX_PATH,
+        help="Path to the vectors.faiss file (default: data/index/vectors.faiss from repo root)",
     )
     parser.add_argument(
         "--dims",

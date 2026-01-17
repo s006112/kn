@@ -8,6 +8,12 @@ All core logic now resides in helper_rag_worker.py.
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Add workspace root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from typing import Tuple
 
 # 引入核心 RAG 邏輯
