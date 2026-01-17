@@ -1,3 +1,31 @@
+"""
+Helpers for cleaning broken Obsidian-style wikilinks from Markdown notes.
+
+Used by:
+* whisper/p_orchestrator.py
+* whisper/p_pipelines.py
+* whisper/tool_wikilink_cleaner.py
+
+Pipelines:
+- target_dir -> glob -> select_files -> process_file -> stats
+- markdown -> find_wikilinks -> check_existence -> remove_links -> write
+- markdown -> remove_empty_lines -> preserve_spacing -> write
+- file_path -> copy_backup -> write_modified -> chmod
+
+Invariants:
+- Only non-embedded wikilinks matching `[[...]]` (without a leading `!`) are considered.
+- When `file_lock_functions` is provided and a lock cannot be acquired, the file is skipped
+  for that run without counting an error.
+- When `dry_run` is true, no file content is written and link removal is only reported.
+- Backups are created via `shutil.copy2` into the configured backup directory when enabled.
+- `_cleaning_stats` accumulates totals across calls to `clean_dead_links`.
+
+Out of scope:
+- Full Markdown parsing, AST transforms, and link normalization.
+- Concurrency safety across processes and OS-level file locks.
+- Resolving links across directories beyond the note's parent folder.
+"""
+
 import logging
 import re
 import shutil
@@ -20,13 +48,35 @@ _cleaning_stats = {
 
 
 def setup_wikilink_cleaner_logging(existing_logger: logging.Logger) -> None:
-    """Configure logging to use external logger instance."""
+    """
+    Purpose:
+    - Configure this module to log through an externally-managed logger.
+    Inputs:
+    - existing_logger: Logger instance to use for subsequent cleaner operations.
+    Outputs:
+    - None.
+    Side effects:
+    - Mutates the module-level `_shared_logger`.
+    Failure modes:
+    - None.
+    """
     global _shared_logger
     _shared_logger = existing_logger
 
 
 def get_cleaning_stats() -> Dict[str, any]:
-    """Return cleaning statistics for status reporting."""
+    """
+    Purpose:
+    - Return a snapshot of aggregated cleaning statistics accumulated across runs.
+    Inputs:
+    - None.
+    Outputs:
+    - Copy of the module-level `_cleaning_stats` dictionary.
+    Side effects:
+    - None.
+    Failure modes:
+    - None.
+    """
     return _cleaning_stats.copy()
 
 
@@ -39,7 +89,24 @@ def clean_dead_links(
     file_lock_functions: Dict | None = None,
 ) -> Dict[str, any]:
     """
-    Main cleaning function for integration with pipeline or CLI.
+    Purpose:
+    - Run a cleaning pass over a limited set of Markdown files and remove broken wikilinks.
+    Inputs:
+    - target_dir: Directory containing Obsidian notes to scan.
+    - backup_dir: Optional directory for backups; defaults under `target_dir` when omitted.
+    - create_backup: When true, copy each modified file to a timestamped backup before writing.
+    - dry_run: When true, report removals but do not write changes.
+    - max_files: Maximum number of target files processed per call.
+    - file_lock_functions: Optional mapping with `acquire`, `release`, and `cleanup` callables.
+    Outputs:
+    - Per-run stats dictionary with keys: `files_processed`, `broken_links_found`,
+      `broken_links_removed`, `files_modified`, `errors`.
+    Side effects:
+    - Updates module-level `_cleaning_stats` totals and `last_run` on success.
+    - May read/write Markdown files and create backups.
+    - Logs errors via `_shared_logger` when configured.
+    Failure modes:
+    - On exception, increments error counters and returns best-effort run stats without raising.
     """
     global _cleaning_stats, _shared_logger
 
@@ -83,7 +150,12 @@ def clean_dead_links(
 
 
 class WikilinkCleaner:
-    """Internal class for cleaning broken wikilinks in Obsidian markdown files."""
+    """
+    Internal worker that scans Markdown files and removes broken wikilinks.
+
+    This class is intentionally file-system oriented and operates on plain strings rather
+    than parsing Markdown into a structured representation.
+    """
 
     def __init__(
         self,
@@ -94,6 +166,24 @@ class WikilinkCleaner:
         max_files: int = 50,
         file_lock_functions: Dict | None = None,
     ):
+        """
+        Purpose:
+        - Initialize cleaner configuration, stats, patterns, and backup directory handling.
+        Inputs:
+        - target_dir: Directory containing Markdown files to process.
+        - backup_dir: Optional backup directory path; when omitted, uses a default under the
+          parent of `target_dir`.
+        - create_backup: Whether backups are created before writing modifications.
+        - dry_run: Whether modifications are only reported instead of written.
+        - max_files: Upper bound on files processed per run.
+        - file_lock_functions: Optional mapping with `acquire`, `release`, `cleanup` callables.
+        Outputs:
+        - None.
+        Side effects:
+        - May create the backup directory when backups are enabled.
+        Failure modes:
+        - Propagates exceptions from path creation (`mkdir`) and regex compilation.
+        """
         self.target_dir = Path(target_dir)
         self.backup_dir = (
             Path(backup_dir)
@@ -119,9 +209,34 @@ class WikilinkCleaner:
             self.backup_dir.mkdir(parents=True, exist_ok=True)
 
     def get_stats(self) -> Dict[str, any]:
+        """
+        Purpose:
+        - Return a snapshot of stats accumulated for this cleaner instance.
+        Inputs:
+        - None.
+        Outputs:
+        - Copy of `self.stats`.
+        Side effects:
+        - None.
+        Failure modes:
+        - None.
+        """
         return self.stats.copy()
 
     def find_target_files(self) -> List[Path]:
+        """
+        Purpose:
+        - Find Markdown files in `target_dir` that match known Whisper/Obsidian naming patterns.
+        Inputs:
+        - None.
+        Outputs:
+        - List of file paths limited to `self.max_files`.
+        Side effects:
+        - Reads directory contents via `Path.glob`.
+        - Logs debug/info messages when `self.logger` is configured.
+        Failure modes:
+        - Returns an empty list when `target_dir` does not exist.
+        """
         target_files: List[Path] = []
 
         if not self.target_dir.exists():
@@ -163,6 +278,18 @@ class WikilinkCleaner:
         return target_files
 
     def get_existing_files(self, directory: Path) -> Set[str]:
+        """
+        Purpose:
+        - Build a set of existing note names for link existence checks.
+        Inputs:
+        - directory: Directory whose `.md` files are treated as valid link targets.
+        Outputs:
+        - Set containing both `stem` (no extension) and `name` (with extension) values.
+        Side effects:
+        - Reads directory contents via `Path.glob`.
+        Failure modes:
+        - Propagates `OSError` from filesystem operations.
+        """
         existing_files: Set[str] = set()
 
         for file_path in directory.glob("*.md"):
@@ -175,6 +302,18 @@ class WikilinkCleaner:
         return existing_files
 
     def extract_wikilinks(self, content: str) -> List[Tuple[str, str]]:
+        """
+        Purpose:
+        - Extract non-embedded wikilinks from a string.
+        Inputs:
+        - content: Line or document content to scan.
+        Outputs:
+        - List of `(full_match, filename)` tuples where `filename` is stripped.
+        Side effects:
+        - None.
+        Failure modes:
+        - None.
+        """
         wikilinks: List[Tuple[str, str]] = []
         for match in self.wikilink_pattern.finditer(content):
             full_match = match.group(0)
@@ -183,11 +322,37 @@ class WikilinkCleaner:
         return wikilinks
 
     def is_link_broken(self, filename: str, existing_files: Set[str]) -> bool:
+        """
+        Purpose:
+        - Decide whether a wikilink target is missing based on known existing note names.
+        Inputs:
+        - filename: Link target as extracted from `[[...]]`.
+        - existing_files: Set of valid targets (stems and `.md` filenames).
+        Outputs:
+        - True when the target does not exist in `existing_files`, otherwise False.
+        Side effects:
+        - None.
+        Failure modes:
+        - None.
+        """
         return filename not in existing_files and (
             filename.endswith(".md") or f"{filename}.md" not in existing_files
         )
 
     def _has_active_wikilink(self, line: str, existing_files: Set[str]) -> bool:
+        """
+        Purpose:
+        - Check whether a line contains at least one non-broken wikilink.
+        Inputs:
+        - line: Single line of Markdown.
+        - existing_files: Set of valid targets (stems and `.md` filenames).
+        Outputs:
+        - True when any extracted wikilink resolves to an existing target, otherwise False.
+        Side effects:
+        - None.
+        Failure modes:
+        - None.
+        """
         line_wikilinks = self.extract_wikilinks(line)
         if not line_wikilinks:
             return False
@@ -197,6 +362,19 @@ class WikilinkCleaner:
         )
 
     def create_backup(self, file_path: Path) -> bool:
+        """
+        Purpose:
+        - Copy a file to the backup directory using a timestamped filename.
+        Inputs:
+        - file_path: Markdown file path to back up.
+        Outputs:
+        - True when backups are disabled or the backup copy succeeds; otherwise False.
+        Side effects:
+        - Creates a backup file via `shutil.copy2` when enabled.
+        - Logs debug/error messages and increments `self.stats["errors"]` on failure.
+        Failure modes:
+        - Returns False on any exception during backup creation.
+        """
         if not self.backup_enabled:
             return True
 
@@ -222,6 +400,18 @@ class WikilinkCleaner:
             return False
 
     def _acquire_lock(self, file_path_str: str) -> bool:
+        """
+        Purpose:
+        - Attempt to acquire a non-blocking lock via the provided lock function mapping.
+        Inputs:
+        - file_path_str: Lock key passed to the `acquire` callable.
+        Outputs:
+        - True when a lock function exists and reports success; otherwise False.
+        Side effects:
+        - Calls the external `acquire` function when provided.
+        Failure modes:
+        - Suppresses exceptions from the external `acquire` callable and returns False.
+        """
         acquire = (
             self.file_lock_functions.get("acquire")
             if self.file_lock_functions
@@ -235,6 +425,20 @@ class WikilinkCleaner:
             return False
 
     def _release_lock(self, file_path_str: str, lock_acquired: bool) -> None:
+        """
+        Purpose:
+        - Release and clean up a previously acquired lock via the provided lock mapping.
+        Inputs:
+        - file_path_str: Lock key passed to `release`/`cleanup` callables.
+        - lock_acquired: Whether a lock was acquired and should be released.
+        Outputs:
+        - None.
+        Side effects:
+        - Calls external `release` and `cleanup` callables when present.
+        - Logs debug messages on release failures when `self.logger` is configured.
+        Failure modes:
+        - Suppresses exceptions from the external release/cleanup callables.
+        """
         if not (lock_acquired and self.file_lock_functions):
             return
         release = self.file_lock_functions.get("release")
@@ -253,6 +457,23 @@ class WikilinkCleaner:
                 )
 
     def process_file(self, file_path: Path) -> bool:
+        """
+        Purpose:
+        - Process one Markdown file: remove broken wikilinks and adjacent empty lines.
+        Inputs:
+        - file_path: Markdown file path to read and possibly rewrite.
+        Outputs:
+        - True when processing completes (including lock-defer cases), otherwise False.
+        Side effects:
+        - Reads file content, scans for wikilinks, and may write updated content.
+        - When enabled, creates a backup copy before writing modifications.
+        - Updates `self.stats` counters and logs progress via `self.logger`.
+        - Updates file permissions after writing via `release_text_file_permissions`.
+        - Uses `file_lock_functions` for lock coordination when provided.
+        Failure modes:
+        - Returns False and increments error stats when an exception occurs while processing.
+        - Skips writing when `dry_run` is true.
+        """
         file_path_str = str(file_path)
         lock_acquired = self._acquire_lock(file_path_str)
         if self.file_lock_functions and not lock_acquired:
@@ -456,6 +677,18 @@ class WikilinkCleaner:
             self._release_lock(file_path_str, lock_acquired)
 
     def run_cleaning(self) -> bool:
+        """
+        Purpose:
+        - Run a cleaning pass over a limited set of target Markdown files.
+        Inputs:
+        - None.
+        Outputs:
+        - True when all processed files report success (or no files are found), otherwise False.
+        Side effects:
+        - Calls `process_file` for each selected target file and updates instance stats.
+        Failure modes:
+        - Returns False if any `process_file` call returns False.
+        """
         target_files = self.find_target_files()
 
         if not target_files:
