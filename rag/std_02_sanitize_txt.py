@@ -15,9 +15,15 @@ txt_to_splited_txt.py
 from __future__ import annotations
 
 from pathlib import Path
-from helper.helper_std_sanitize import clean_overlay, apply_page_splitting
-import re
 import sys
+import re
+
+# Ensure project root is importable when running via `python rag/...py`
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from helper.helper_std_sanitize import clean_overlay, apply_page_splitting
 
 # === 配置 ===
 

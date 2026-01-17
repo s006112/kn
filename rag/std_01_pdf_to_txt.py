@@ -14,6 +14,11 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
+# Ensure project root is importable when running via `python rag/...py`
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 # --- helper modules ---
 from helper.utils_pdf import extract_raw_text
 

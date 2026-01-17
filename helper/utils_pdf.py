@@ -113,7 +113,7 @@ def _extract_text_with_ocr_fallback(
 
 def extract_raw_text(pdf_path: Path) -> str:
     """
-    使用 PyMuPDF 以最接近原始 stream 的方式抽取文字。Chunker.py 會用到此函式。
+    使用 PyMuPDF 以最接近原始 stream 的方式抽取文字。`rag/std_01_pdf_to_txt.py` 會用到此函式。
     不做 OCR、不做任何版式修复。
     """
     parts: list[str] = []
@@ -184,4 +184,3 @@ def extract_pdf_attachment_tasks(
         for i, chunk in enumerate(chunks)
         if chunk.strip()
     ]
-

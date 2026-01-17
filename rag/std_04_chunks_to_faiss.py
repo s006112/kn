@@ -41,7 +41,7 @@ def embed(texts):
 # Paths
 # ============================================================
 # 改成指向存放 *.page_blocks.jsonl 的目錄
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data/json")
 INDEX_DIR = os.path.join(BASE_DIR, "data/index")
 PAGE_BLOCK_SUFFIX = ".page_blocks.jsonl"

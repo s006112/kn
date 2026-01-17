@@ -145,7 +145,7 @@ class RagEngine:
         q_vec = self.embedder.embed_query(q)
         top_idx, top_scores = brute_force_knn(self.E, q_vec, TOP_K)
 
-        # 直接使用原始文本作為 snippet，前綴已在 03_txt_to_page_blocks.py 中注入
+        # 直接使用原始文本作為 snippet，前綴已在 `rag/std_03_txt_to_chunks.py` 中注入
         snippets = [self.texts[i] for i in top_idx]
         context = "\n\n".join(snippets)
 
