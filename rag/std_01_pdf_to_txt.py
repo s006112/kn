@@ -24,8 +24,8 @@ from helper.utils_pdf import extract_raw_text
 
 # === 配置 ===
 
-RAW_PDF_DIR = Path("data/raw/standard/pdf")   # 原始 PDF 输入目录
-OUTPUT_TXT_DIR = Path("data/raw/standard/txt")  # 抽取后的 TXT 输出目录
+RAW_PDF_DIR = Path("data/standard/pdf")   # 原始 PDF 输入目录
+TXT_RAW_DIR = Path("data/standard/txt_raw")  # 抽取后的 TXT 输出目录
 OUTPUT_SUFFIX = ".txt"                          # 输出格式
 
 
@@ -49,7 +49,7 @@ def pdf_to_txt_pipeline() -> None:
         sys.exit(1)
 
     # 确保输出目录存在
-    OUTPUT_TXT_DIR.mkdir(parents=True, exist_ok=True)
+    TXT_RAW_DIR.mkdir(parents=True, exist_ok=True)
 
     pdf_files = list_pdfs(RAW_PDF_DIR)
     if not pdf_files:
@@ -63,7 +63,7 @@ def pdf_to_txt_pipeline() -> None:
 
         # 生成相对路径，写入到单独的 TXT 目录
         relative_path = pdf_path.relative_to(RAW_PDF_DIR)
-        out_path = (OUTPUT_TXT_DIR / relative_path).with_suffix(OUTPUT_SUFFIX)
+        out_path = (TXT_RAW_DIR / relative_path).with_suffix(OUTPUT_SUFFIX)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(raw_text, encoding="utf-8")
 
