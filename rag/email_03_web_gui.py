@@ -14,7 +14,7 @@ import faiss
 import gradio as gr
 from openai import OpenAI
 from dotenv import load_dotenv
-
+from rag_config import INDEX_DIR
 from rag_embeddings import EmbeddingModel
 from rag_retrieval import (
     build_grouped_docs,
@@ -29,8 +29,6 @@ sys.modules["torchvision"] = None  # avoid accidental heavy imports
 load_dotenv()  # load API keys if present
 
 # ─── Config ─────────────────────────────────────────────────────────────────
-INDEX_DIR = Path(__file__).resolve().parent / "index"
-
 if not INDEX_DIR.exists():
     raise FileNotFoundError(f"Index directory not found: {INDEX_DIR}")
 
