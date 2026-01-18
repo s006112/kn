@@ -16,7 +16,6 @@ OUTPUT_JSONL = (REPO_ROOT / "data/mbox/json/email_chunks.jsonl").resolve()
 PROCESSED_MBOX_TXT = (REPO_ROOT / "data/mbox/json/processed_mboxes.txt").resolve()
 
 # Embedding / vector index paths (used by other rag scripts)
-CHUNKS_DIR = OUTPUT_JSONL.parent
 INDEX_DIR = (REPO_ROOT / "data/mbox/index").resolve()
 
 

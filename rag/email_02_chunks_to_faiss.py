@@ -10,7 +10,7 @@ import torch
 from rag_embeddings import build_embeddings, l2_normalize
 from rag_io_jsonl import safe_read_jsonl_line
 from rag_vectorstore import FaissStore, archive_existing_index
-from rag_config import CHUNKS_DIR, INDEX_DIR
+from rag_config import OUTPUT_JSONL, INDEX_DIR
 
 _BGE_M3_SNAPSHOT_PATH = "/root/.cache/huggingface/hub/models--BAAI--bge-m3/snapshots/5617a9f61b028005a4858fdac845db406aefb181"
 HF_EMBEDDING_MODEL = (
@@ -28,16 +28,15 @@ if GPU_AVAILABLE:
     gpu_mem = torch.cuda.get_device_properties(0).total_memory / 1e9
     print(f"🔧 GPU Memory: {gpu_mem:.1f} GB")
 
-if not CHUNKS_DIR.is_dir():
+if not OUTPUT_JSONL.is_file():
     raise FileNotFoundError(
-        f"Chunks dir missing: {CHUNKS_DIR}. Run 01_chunk.py to generate chunk files first."
+        f"Chunks file missing: {OUTPUT_JSONL}. Run 01_chunk.py to generate chunk files first."
     )
-if not os.access(CHUNKS_DIR, os.R_OK | os.X_OK):
-    raise PermissionError(f"Chunks dir not readable: {CHUNKS_DIR}")
+if not os.access(OUTPUT_JSONL, os.R_OK):
+    raise PermissionError(f"Chunks file not readable: {OUTPUT_JSONL}")
 
-CHUNKS_JSONL_FILES = sorted(CHUNKS_DIR.glob("*.jsonl"))
-print(f"ℹ️ Using chunks dir: {CHUNKS_DIR}")
-print(f"ℹ️ Found {len(CHUNKS_JSONL_FILES)} JSONL files")
+CHUNKS_JSONL_FILES = [OUTPUT_JSONL]
+print(f"ℹ️ Using chunks file: {OUTPUT_JSONL}")
 
 def gpu_memory_cleanup():
     if GPU_AVAILABLE:
