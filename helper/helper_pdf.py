@@ -68,6 +68,97 @@ def _infer_filename_from_stack() -> str | None:
 # -------------------------------------------------------------------------------------
 # 核心 PDF 解析器（使用 PyMuPDF）
 # -------------------------------------------------------------------------------------
+def _preprocess_pdf_background(data: bytes) -> bytes | None:
+    """
+    Purpose:
+    Render PDF pages and apply simple image filters to reduce background noise before OCR.
+
+    Inputs:
+    - data: Raw PDF bytes.
+
+    Outputs:
+    - New PDF bytes containing rasterized pages, or `None` when preprocessing is skipped/fails.
+
+    Side effects:
+    - Renders pages via PyMuPDF and creates in-memory images.
+    - Logs debug messages when preprocessing cannot be applied.
+
+    Failure modes:
+    - Returns `None` on any exception.
+    """
+
+    try:
+        with fitz.open(stream=data, filetype="pdf") as src, fitz.open() as dst:
+            zoom = fitz.Matrix(300 / 72, 300 / 72)
+            for page in src:
+                pix = page.get_pixmap(matrix=zoom, alpha=False)
+                mode = "RGB" if pix.n > 1 else "L"
+                img = Image.frombytes(mode, [pix.width, pix.height], pix.samples)
+                gray = ImageOps.grayscale(img)
+                gray = ImageOps.autocontrast(gray, cutoff=4)
+                gray = gray.filter(ImageFilter.MedianFilter(size=3))
+                gray = gray.point(lambda x, t=210: 255 if x > t else int(x * 0.8))
+                buf = io.BytesIO()
+                gray.save(buf, format="PNG")
+                new_page = dst.new_page(width=page.rect.width, height=page.rect.height)
+                new_page.insert_image(new_page.rect, stream=buf.getvalue())
+            return dst.tobytes()
+    except Exception as exc:
+        logger.debug("Background preprocessing skipped: %s", exc)
+        return None
+
+
+def _extract_text_with_ocr_fallback(
+    data: bytes,
+    extractor: Callable[[bytes], dict[int, str]],
+) -> dict[int, str]:
+    """
+    Purpose:
+    Run OCR to produce a searchable PDF and then re-run a provided extractor on the OCR output.
+
+    Inputs:
+    - data: Raw PDF bytes.
+    - extractor: Callable that extracts per-page text from PDF bytes.
+
+    Outputs:
+    - Mapping of 1-based page index to extracted text.
+
+    Side effects:
+    - Creates temporary files/directories.
+    - Runs `ocrmypdf.ocr` and reads its output file.
+    - Logs OCR progress and failures.
+
+    Failure modes:
+    - Returns `{}` on OCR failure or when the extractor returns no pages.
+    """
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_path = Path(tmpdir, "source.pdf")
+            ocr_path = Path(tmpdir, "ocr.pdf")
+            preprocessed = _preprocess_pdf_background(data)
+            src_path.write_bytes(preprocessed or data)
+            # Run OCR to produce a searchable PDF; force OCR to avoid Ghostscript regression with skip_text.
+            ocrmypdf.ocr(
+                str(src_path),
+                str(ocr_path),
+                output_type="pdf",
+                force_ocr=True,
+                rotate_pages=True,
+                deskew=True,
+                oversample=300,
+                optimize=1,
+            )
+            ocr_bytes = ocr_path.read_bytes()
+        pages = extractor(ocr_bytes)
+        if pages:
+            logger.info("OCR fallback succeeded.")
+            return pages
+        logger.warning("OCR fallback produced no text.")
+    except Exception as exc:
+        logger.error("OCR fallback failed: %s", exc)
+    return {}
+
 def extract_text_with_pymupdf(data: bytes) -> dict[int, str]:
     """
     Purpose:
@@ -120,101 +211,7 @@ def extract_text_with_pymupdf(data: bytes) -> dict[int, str]:
         logger.info("PyMuPDF extracted no text, attempting OCR fallback.")
     except Exception as exc:
         logger.error("Extraction failed: %s", exc)
-    return extract_text_with_ocr_fallback(data, _run_extraction)
-
-
-def _preprocess_pdf_background(data: bytes) -> bytes | None:
-    """
-    Purpose:
-    Render PDF pages and apply simple image filters to reduce background noise before OCR.
-
-    Inputs:
-    - data: Raw PDF bytes.
-
-    Outputs:
-    - New PDF bytes containing rasterized pages, or `None` when preprocessing is skipped/fails.
-
-    Side effects:
-    - Renders pages via PyMuPDF and creates in-memory images.
-    - Logs debug messages when preprocessing cannot be applied.
-
-    Failure modes:
-    - Returns `None` on any exception.
-    """
-
-    try:
-        with fitz.open(stream=data, filetype="pdf") as src, fitz.open() as dst:
-            zoom = fitz.Matrix(300 / 72, 300 / 72)
-            for page in src:
-                pix = page.get_pixmap(matrix=zoom, alpha=False)
-                mode = "RGB" if pix.n > 1 else "L"
-                img = Image.frombytes(mode, [pix.width, pix.height], pix.samples)
-                gray = ImageOps.grayscale(img)
-                gray = ImageOps.autocontrast(gray, cutoff=4)
-                gray = gray.filter(ImageFilter.MedianFilter(size=3))
-                gray = gray.point(lambda x, t=210: 255 if x > t else int(x * 0.8))
-                buf = io.BytesIO()
-                gray.save(buf, format="PNG")
-                new_page = dst.new_page(width=page.rect.width, height=page.rect.height)
-                new_page.insert_image(new_page.rect, stream=buf.getvalue())
-            return dst.tobytes()
-    except Exception as exc:
-        logger.debug("Background preprocessing skipped: %s", exc)
-        return None
-
-
-def extract_text_with_ocr_fallback(
-    data: bytes,
-    extractor: Callable[[bytes], dict[int, str]],
-) -> dict[int, str]:
-    """
-    Purpose:
-    Run OCR to produce a searchable PDF and then re-run a provided extractor on the OCR output.
-
-
-
-    Inputs:
-    - data: Raw PDF bytes.
-    - extractor: Callable that extracts per-page text from PDF bytes.
-
-    Outputs:
-    - Mapping of 1-based page index to extracted text.
-
-    Side effects:
-    - Creates temporary files/directories.
-    - Runs `ocrmypdf.ocr` and reads its output file.
-    - Logs OCR progress and failures.
-
-    Failure modes:
-    - Returns `{}` on OCR failure or when the extractor returns no pages.
-    """
-
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            src_path = Path(tmpdir, "source.pdf")
-            ocr_path = Path(tmpdir, "ocr.pdf")
-            preprocessed = _preprocess_pdf_background(data)
-            src_path.write_bytes(preprocessed or data)
-            # Run OCR to produce a searchable PDF; force OCR to avoid Ghostscript regression with skip_text.
-            ocrmypdf.ocr(
-                str(src_path),
-                str(ocr_path),
-                output_type="pdf",
-                force_ocr=True,
-                rotate_pages=True,
-                deskew=True,
-                oversample=300,
-                optimize=1,
-            )
-            ocr_bytes = ocr_path.read_bytes()
-        pages = extractor(ocr_bytes)
-        if pages:
-            logger.info("OCR fallback succeeded.")
-            return pages
-        logger.warning("OCR fallback produced no text.")
-    except Exception as exc:
-        logger.error("OCR fallback failed: %s", exc)
-    return {}
+    return _extract_text_with_ocr_fallback(data, _run_extraction)
 
 # -------------------------------------------------------------------------------------
 # 封裝提取流程：對外公開的頁面文字提取接口
@@ -227,6 +224,7 @@ def extract_text_from_pdf_bytes(data: bytes, filename: str | None = None) -> dic
     Direct used by:
     * core_so_import.py
     * core_per_report.py
+    * rag/std_01_pdf_to_txt.py
 
     Inputs:
     - data: Raw PDF bytes.
