@@ -13,7 +13,7 @@ Pipelines:
 - open_pdf -> extract_text -> ocr_fallback -> merge_pages -> chunk_fixed
 
 Invariants:
-- `extract_pdf_pages_text` returns a `{page_number: text}` mapping with 1-based page numbers when extraction succeeds.
+- `get_pdf_full_text` returns a merged string (page texts joined by newlines) when extraction succeeds.
 - OCR fallback writes temporary files and re-extracts text from the OCR output PDF.
 
 Out of scope:
@@ -131,69 +131,34 @@ def _extract_text_with_ocr_fallback(
         logger.error("OCR fallback failed: %s", exc)
     return {}
 
-def extract_pdf_pages_text(data: bytes, filename: str | None = None) -> dict[int, str]:
+
+def _raw_extraction(pdf_bytes: bytes) -> dict[int, str]:
     """
     Purpose:
-    Extract per-page text from PDF bytes using PyMuPDF, with OCR fallback when extraction yields no text or fails.
+    Perform a single text-extraction pass over PDF bytes using PyMuPDF (no OCR).
+
+    Used by:
+    - `get_pdf_full_text()` as the primary extraction pass.
+    - `_extract_text_with_ocr_fallback()` as the extractor applied to the OCR output PDF.
 
     Inputs:
-    - data: Raw PDF bytes.
-    - filename: Optional filename used for logging.
+    - pdf_bytes: Raw PDF bytes.
 
     Outputs:
-    - Mapping of 1-based page index to extracted text.
-
-    Side effects:
-    - Logs extraction, fallback progress, and extraction summary.
+    - Mapping of 1-based page index to extracted text (whitespace-only pages omitted).
 
     Failure modes:
-    - Returns `{}` when both direct extraction and OCR fallback produce no text.
+    - Propagates exceptions raised by PyMuPDF operations.
     """
 
-    def _run_extraction(pdf_bytes: bytes) -> dict[int, str]:
-        """
-        Purpose:
-        Run a single PyMuPDF extraction pass on PDF bytes.
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        pages: dict[int, str] = {}
+        for idx, page in enumerate(doc, start=1):
+            text = page.get_text()
+            if text and text.strip():
+                pages[idx] = text
+        return pages
 
-        Inputs:
-        - pdf_bytes: Raw PDF bytes.
-
-        Outputs:
-        - Mapping of 1-based page index to extracted text (no OCR).
-
-        Side effects:
-        - Opens a PyMuPDF document handle.
-
-        Failure modes:
-        - Propagates exceptions raised by PyMuPDF operations.
-        """
-
-        with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-            pages: dict[int, str] = {}
-            for idx, page in enumerate(doc, start=1):
-                text = page.get_text()
-                if text and text.strip():
-                    pages[idx] = text
-            return pages
-
-    try:
-        pages = _run_extraction(data)
-        if pages:
-            if filename:
-                logger.info("Extraction complete: %d pages (%s)", len(pages), filename)
-            else:
-                logger.info("Extraction complete: %d pages", len(pages))
-            return pages
-        # PyMuPDF returned no text; fall back to OCR once.
-        logger.info("PyMuPDF extracted no text, attempting OCR fallback.")
-    except Exception as exc:
-        logger.error("Extraction failed: %s", exc)
-    pages = _extract_text_with_ocr_fallback(data, _run_extraction)
-    if filename:
-        logger.info("Extraction complete: %d pages (%s)", len(pages), filename)
-    else:
-        logger.info("Extraction complete: %d pages", len(pages))
-    return pages
 
 # -------------------------------------------------------------------------------------
 # 高階共用函數：回傳合併後的完整 PDF 文字（不含分頁結構）
@@ -202,26 +167,37 @@ def extract_pdf_pages_text(data: bytes, filename: str | None = None) -> dict[int
 def get_pdf_full_text(data: bytes, filename: str) -> str:
     """
     Purpose:
-    Merge extracted per-page PDF text into a single string.
+    Extract full text from a PDF payload, using PyMuPDF with an OCR fallback, then merge pages into one string.
 
-    Direct used by:
+    Directly used by:
     * core_per_report.py
+    * core_so_import.py
+    * rag/std_01_pdf_to_txt.py
 
     Inputs:
     - data: Raw PDF bytes.
-    - filename: Filename forwarded to `extract_pdf_pages_text`.
+    - filename: Filename used for logging.
 
     Outputs:
     - Combined text with pages joined by newlines.
 
     Side effects:
-    - Calls `extract_pdf_pages_text` (which may run OCR fallback and log).
+    - Logs extraction, fallback progress, and extraction summary.
 
     Failure modes:
     - Returns an empty string when no pages contain non-whitespace text.
     """
 
-    pages = extract_pdf_pages_text(data, filename)  # 提取每頁文字
+    try:
+        pages = _raw_extraction(data)
+        if not pages:
+            logger.info("PyMuPDF extracted no text, attempting OCR fallback.")
+            pages = _extract_text_with_ocr_fallback(data, _raw_extraction)
+    except Exception as exc:
+        logger.error("Extraction failed: %s", exc)
+        pages = _extract_text_with_ocr_fallback(data, _raw_extraction)
+
+    logger.info("Extraction complete: %d pages (%s)", len(pages), filename)
     return "\n".join(
         text.strip() for _, text in sorted(pages.items())  # 依頁碼排序並合併
         if text and text.strip()
@@ -238,7 +214,7 @@ def extract_pdf_attachment_tasks(
     Purpose:
     Produce fixed-size `(chunk_text, metadata)` tuples for a PDF payload.
 
-    Used by:
+    Directly Used by:
     * rag/chunk_att.py
 
     Inputs:

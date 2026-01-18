@@ -5,7 +5,7 @@ This project hosts a Gradio interface (`gradio_per_report.py`) backed by a core 
 
 Processing Pipeline
 -------------------
-- **PDF ingestion** – `handle_upload()` reads the uploaded file, uses `utils_pdf.get_pdf_full_text()` to recover full text, and guards against empty or unreadable PDFs.
+- **PDF ingestion** – `handle_upload()` reads the uploaded file, uses `helper/helper_pdf.get_pdf_full_text()` to recover full text, and guards against empty or unreadable PDFs.
 - **Prompt-driven analysis** – The raw text is fed to the shared LLM helper twice (`utils_llm.call_llm()` using a PER-specific model): first with `Prompt_md.txt` to obtain a structured markdown analysis, then with `Prompt_summary.txt` to condense that analysis into an executive summary.
 - **Report assembly** – A templated header/ footer wraps the AI responses with branding, placeholder checkboxes, and a link back to the shared PDF on Nextcloud (`helper_nextcloud.upload_and_share_file(..., share=True)`).
 - **CIE PNG coordination** – A deterministic timestamp defines the expected PNG artefact name so the frontend can later upload the rendered chart.
@@ -45,7 +45,7 @@ Sales Order Importer
 `gradio_so_import.py` provides a Gradio-powered workflow that converts customer PO PDFs into structured sale orders for Odoo. The app extracts text from the upload, prompts an LLM to generate assignment-style Python code, and (when enabled) pushes the cleaned data and source PDF into Odoo.
 End-to-End Flow
 ---------------
-- **File intake** – `handle_upload()` validates the uploaded PDF and salesperson name, loads `Prompt_po.txt`, and invokes `extract_pdf_pages_text()` to recover page-level text.
+- **File intake** – `handle_upload()` validates the uploaded PDF and salesperson name, loads `Prompt_po.txt`, and invokes `get_pdf_full_text()` to recover PDF text.
 - **AI parsing** – `utils_llm.call_llm()` merges the prompt and parsed text (using an SO-specific model) via a two-message payload, then asks the model for a `self.<field> = ...` style response. The function sanitizes the response, injects the provided salesperson, and returns both the generated code and raw PDF text for inspection.
 - **Odoo integration** – When `ODOO_IMPORT=true`, `handle_upload()` passes the AI output to `create_sale_order_from_text()`. Successful imports trigger `attach_pdf_to_sale_order()` to archive the original PDF on the created record, share it to the partner-specific Nextcloud subfolder, and surface all status messages back to the UI.
 - **Frontend** – A compact `gr.Blocks` layout exposes the PDF uploader, salesperson textbox, submit button, and read-only import log. Optional debugging textboxes (`DEBUG_TEXTBOXES=true`) show the AI response and extracted PDF text.
@@ -60,8 +60,8 @@ Module Highlights
   - `create_sale_order()` builds the XML-RPC payload, normalizes dates, parses quantities, retries with a fallback company if necessary, and reads back the created order.
   - `attach_pdf_to_sale_order()` uploads the PDF as an `ir.attachment`, posts a note on the sale order, optionally shares the PDF to Nextcloud (per partner folder), and appends any share log messages to the running status log.
 - `helper/helper_pdf.py`
-  - `extract_pdf_pages_text()` uses PyMuPDF to build a `{page: text}` mapping, with automatic fallback to OCR (`ocrmypdf`) if no text is returned.
-  - Additional helpers such as `get_pdf_full_text()` and `extract_pdf_attachment_tasks()` support other services that need flattened or chunked PDF text.
+  - `get_pdf_full_text()` uses PyMuPDF with automatic fallback to OCR (`ocrmypdf`) when no text is returned.
+  - `extract_pdf_attachment_tasks()` supports services that need chunked PDF text.
 Key Environment Variables
 -------------------------
 - `OPENAI_API_KEY` – LLM client authentication.
