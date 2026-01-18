@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gradio UI for querying email data via FAISS + Jina embeddings.
+"""Gradio UI for querying email data via FAISS + embeddings.
 Designed for Hugging Face Spaces (sdk: gradio).
 Phase 0: keep functionality identical, no Pydantic, no langchain_core.output_parsers.
 """
@@ -34,15 +34,18 @@ INDEX_DIR = Path(__file__).resolve().parent / "index"
 if not INDEX_DIR.exists():
     raise FileNotFoundError(f"Index directory not found: {INDEX_DIR}")
 
-# EMBED_MODEL = "intfloat/multilingual-e5-large-instruct"
-EMBED_MODEL = "jinaai/jina-embeddings-v3"
+_BGE_M3_SNAPSHOT_PATH = "/root/.cache/huggingface/hub/models--BAAI--bge-m3/snapshots/5617a9f61b028005a4858fdac845db406aefb181"
+EMBED_MODEL = (
+    os.getenv("HF_EMBEDDING_MODEL")
+    or (_BGE_M3_SNAPSHOT_PATH if os.path.isdir(_BGE_M3_SNAPSHOT_PATH) else "BAAI/bge-m3")
+)
 EMBED_BATCH_SIZE = 16
 LLM_MODEL = "gpt-4.1-mini"   # keep as-is; can be overridden by env if you like
 TOP_K = 50
 CHUNKS_PER_EMAIL = 20
 MAX_TOKENS = 20000
 MAX_EMAIL_HIT = 5
-QUERY_PREFIX = ""  # Jina v3 不需 e5 的 "query: " 前綴
+QUERY_PREFIX = ""  # 不需 e5 的 "query: " 前綴
 SCORE_THRESHOLD = 0.5
 
 FAISS_INDEX: faiss.Index | None = None
