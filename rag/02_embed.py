@@ -3,7 +3,6 @@ import json
 import os
 import time
 from math import ceil
-from pathlib import Path
 
 import faiss
 import torch
@@ -11,6 +10,7 @@ import torch
 from rag_embeddings import build_embeddings, l2_normalize
 from rag_io_jsonl import safe_read_jsonl_line
 from rag_vectorstore import FaissStore, archive_existing_index
+from rag_config import CHUNKS_DIR, INDEX_DIR
 
 _BGE_M3_SNAPSHOT_PATH = "/root/.cache/huggingface/hub/models--BAAI--bge-m3/snapshots/5617a9f61b028005a4858fdac845db406aefb181"
 HF_EMBEDDING_MODEL = (
@@ -27,11 +27,6 @@ if GPU_AVAILABLE:
     print(f"🚀 GPU detected: {torch.cuda.get_device_name(0)}")
     gpu_mem = torch.cuda.get_device_properties(0).total_memory / 1e9
     print(f"🔧 GPU Memory: {gpu_mem:.1f} GB")
-
-# Resolve key directories without relying on .env
-PROJECT_ROOT = Path(__file__).resolve().parent
-INDEX_DIR = (PROJECT_ROOT / "index").resolve()
-CHUNKS_DIR = (PROJECT_ROOT / "data" / "clean").resolve()
 
 if not CHUNKS_DIR.is_dir():
     raise FileNotFoundError(
