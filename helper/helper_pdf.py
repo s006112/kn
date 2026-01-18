@@ -11,12 +11,10 @@ Used by:
 
 Pipelines:
 - open_pdf -> extract_text -> ocr_fallback -> merge_pages -> chunk_fixed
-- open_pdf -> extract_raw -> return_text
 
 Invariants:
 - `extract_text_from_pdf_bytes` returns a `{page_number: text}` mapping with 1-based page numbers when extraction succeeds.
 - OCR fallback writes temporary files and re-extracts text from the OCR output PDF.
-- `extract_raw_text` performs no OCR and uses PyMuPDF `"raw"` extraction.
 
 Out of scope:
 - Email attachment routing and processing (handled elsewhere).
@@ -38,42 +36,6 @@ from PIL import Image, ImageFilter, ImageOps
 logger = logging.getLogger(__name__)
 
 PDF_EXTS = {".pdf"}
-
-
-# -------------------------------------------------------------------------------------
-# Simple raw text extractor (no OCR, PyMuPDF "raw" mode)
-# -------------------------------------------------------------------------------------
-
-def extract_raw_text(pdf_path: Path) -> str:
-    """
-    Purpose:
-    Extract raw text from a PDF file path using PyMuPDF `"raw"` mode.
-
-    Direct used by:
-    * rag/std_01_pdf_to_txt.py
-
-    Inputs:
-    - pdf_path: Filesystem path to a PDF.
-
-    Outputs:
-    - Concatenated raw text across all pages.
-
-    Side effects:
-    - Reads from the filesystem and opens a PyMuPDF document handle.
-
-    Failure modes:
-    - Propagates exceptions raised by file I/O or PyMuPDF operations.
-    """
-
-    parts: list[str] = []
-
-    with fitz.open(pdf_path) as doc:
-        for page in doc:
-            text = page.get_text("raw") or ""
-            parts.append(text)
-
-    return "".join(parts)
-
 
 
 # -------------------------------------------------------------------------------------
@@ -106,7 +68,7 @@ def _infer_filename_from_stack() -> str | None:
 # -------------------------------------------------------------------------------------
 # 核心 PDF 解析器（使用 PyMuPDF）
 # -------------------------------------------------------------------------------------
-def _extract_text_with_pymupdf(data: bytes) -> dict[int, str]:
+def extract_text_with_pymupdf(data: bytes) -> dict[int, str]:
     """
     Purpose:
     Extract per-page text from PDF bytes using PyMuPDF, with OCR fallback when extraction yields no text or fails.
@@ -158,7 +120,7 @@ def _extract_text_with_pymupdf(data: bytes) -> dict[int, str]:
         logger.info("PyMuPDF extracted no text, attempting OCR fallback.")
     except Exception as exc:
         logger.error("Extraction failed: %s", exc)
-    return _extract_text_with_ocr_fallback(data, _run_extraction)
+    return extract_text_with_ocr_fallback(data, _run_extraction)
 
 
 def _preprocess_pdf_background(data: bytes) -> bytes | None:
@@ -201,13 +163,15 @@ def _preprocess_pdf_background(data: bytes) -> bytes | None:
         return None
 
 
-def _extract_text_with_ocr_fallback(
+def extract_text_with_ocr_fallback(
     data: bytes,
     extractor: Callable[[bytes], dict[int, str]],
 ) -> dict[int, str]:
     """
     Purpose:
     Run OCR to produce a searchable PDF and then re-run a provided extractor on the OCR output.
+
+
 
     Inputs:
     - data: Raw PDF bytes.
@@ -280,7 +244,7 @@ def extract_text_from_pdf_bytes(data: bytes, filename: str | None = None) -> dic
     """
 
     filename = filename or _infer_filename_from_stack()  # 若未提供 filename，則自動嘗試推測
-    pages = _extract_text_with_pymupdf(data)  # 調用實際的 PDF 擷取器
+    pages = extract_text_with_pymupdf(data)  # 調用實際的 PDF 擷取器
     ctx = f" ({filename})" if filename else ""
     logger.info("Extraction complete: %d pages%s", len(pages), ctx)
     return pages  # 回傳每頁清洗後文字的字典
