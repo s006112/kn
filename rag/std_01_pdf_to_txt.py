@@ -19,7 +19,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 # --- helper modules ---
-from helper.utils_pdf import extract_raw_text
+from helper.helper_pdf import extract_raw_text
 
 
 # === 配置 ===

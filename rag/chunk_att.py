@@ -173,7 +173,7 @@ def extract_attachment_tasks(
     """
 
     from chunk_doc import WORD_EXTS, extract_word_attachment_tasks
-    from chunk_pdf import PDF_EXTS, extract_pdf_attachment_tasks
+    from helper.helper_pdf import PDF_EXTS, extract_pdf_attachment_tasks
     from chunk_xls import XLS_EXTS, extract_excel_attachment_tasks
 
     tasks: List[Task] = []

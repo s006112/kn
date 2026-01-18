@@ -18,7 +18,7 @@ if str(ROOT_DIR) not in sys.path:
 from helper.utils_config import configure_logging, load_env, load_prompt_text
 from helper.helper_nextcloud import upload_and_share_file
 from helper.utils_llm import call_llm
-from helper.utils_pdf import get_pdf_full_text
+from helper.helper_pdf import get_pdf_full_text
 
 load_env()
 log = configure_logging("per_report")

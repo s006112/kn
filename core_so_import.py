@@ -15,7 +15,7 @@ if str(ROOT_DIR) not in sys.path:
 from helper.utils_config import configure_logging, get_env_flag, load_env, load_prompt_text
 from helper.utils_odoo import attach_pdf_to_sale_order, create_sale_order_from_text
 from helper.utils_llm import call_llm
-from helper.utils_pdf import extract_text_from_pdf_bytes
+from helper.helper_pdf import extract_text_from_pdf_bytes
 
 load_env()
 log = configure_logging("so_import")

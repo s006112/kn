@@ -7,6 +7,7 @@ Used by:
 * core_per_report.py
 * core_so_import.py
 * rag/std_01_pdf_to_txt.py
+* rag/chunk_att.py
 
 Pipelines:
 - open_pdf -> extract_text -> ocr_fallback -> merge_pages -> chunk_fixed
@@ -23,7 +24,6 @@ Out of scope:
 """
 
 from __future__ import annotations
-import os
 import inspect
 import logging
 import tempfile
@@ -39,7 +39,42 @@ logger = logging.getLogger(__name__)
 
 PDF_EXTS = {".pdf"}
 
-_OCR_LANGUAGES = os.environ.get("OCR_LANGUAGES", "chi_sim+eng").strip()
+
+# -------------------------------------------------------------------------------------
+# Simple raw text extractor (no OCR, PyMuPDF "raw" mode)
+# -------------------------------------------------------------------------------------
+
+def extract_raw_text(pdf_path: Path) -> str:
+    """
+    Purpose:
+    Extract raw text from a PDF file path using PyMuPDF `"raw"` mode.
+
+    Direct used by:
+    * rag/std_01_pdf_to_txt.py
+
+    Inputs:
+    - pdf_path: Filesystem path to a PDF.
+
+    Outputs:
+    - Concatenated raw text across all pages.
+
+    Side effects:
+    - Reads from the filesystem and opens a PyMuPDF document handle.
+
+    Failure modes:
+    - Propagates exceptions raised by file I/O or PyMuPDF operations.
+    """
+
+    parts: list[str] = []
+
+    with fitz.open(pdf_path) as doc:
+        for page in doc:
+            text = page.get_text("raw") or ""
+            parts.append(text)
+
+    return "".join(parts)
+
+
 
 # -------------------------------------------------------------------------------------
 # 輔助工具函數：從呼叫堆疊中自動推測 filename（若未在參數中顯式提供）
@@ -197,7 +232,9 @@ def _extract_text_with_ocr_fallback(
             preprocessed = _preprocess_pdf_background(data)
             src_path.write_bytes(preprocessed or data)
             # Run OCR to produce a searchable PDF; force OCR to avoid Ghostscript regression with skip_text.
-            ocr_kwargs = dict(
+            ocrmypdf.ocr(
+                str(src_path),
+                str(ocr_path),
                 output_type="pdf",
                 force_ocr=True,
                 rotate_pages=True,
@@ -205,21 +242,6 @@ def _extract_text_with_ocr_fallback(
                 oversample=300,
                 optimize=1,
             )
-            if _OCR_LANGUAGES:
-                ocr_kwargs["language"] = _OCR_LANGUAGES
-            try:
-                ocrmypdf.ocr(str(src_path), str(ocr_path), **ocr_kwargs)
-            except Exception as exc:
-                if _OCR_LANGUAGES and _OCR_LANGUAGES != "eng":
-                    logger.warning(
-                        "OCR with language=%s failed (%s); retrying with eng",
-                        _OCR_LANGUAGES,
-                        exc,
-                    )
-                    ocr_kwargs["language"] = "eng"
-                    ocrmypdf.ocr(str(src_path), str(ocr_path), **ocr_kwargs)
-                else:
-                    raise
             ocr_bytes = ocr_path.read_bytes()
         pages = extractor(ocr_bytes)
         if pages:
@@ -230,35 +252,6 @@ def _extract_text_with_ocr_fallback(
         logger.error("OCR fallback failed: %s", exc)
     return {}
 
-
-def extract_raw_text(pdf_path: Path) -> str:
-    """
-    Purpose:
-    Extract raw text from a PDF file path using PyMuPDF `"raw"` mode.
-
-    Inputs:
-    - pdf_path: Filesystem path to a PDF.
-
-    Outputs:
-    - Concatenated raw text across all pages.
-
-    Side effects:
-    - Reads from the filesystem and opens a PyMuPDF document handle.
-
-    Failure modes:
-    - Propagates exceptions raised by file I/O or PyMuPDF operations.
-    """
-
-    parts: list[str] = []
-
-    with fitz.open(pdf_path) as doc:
-        for page in doc:
-            text = page.get_text("raw") or ""
-            parts.append(text)
-
-    return "".join(parts)
-
-
 # -------------------------------------------------------------------------------------
 # 封裝提取流程：對外公開的頁面文字提取接口
 # -------------------------------------------------------------------------------------
@@ -266,6 +259,10 @@ def extract_text_from_pdf_bytes(data: bytes, filename: str | None = None) -> dic
     """
     Purpose:
     Extract per-page text from PDF bytes and log the page count, optionally labeling logs with a filename.
+
+    Direct used by:
+    * core_so_import.py
+    * core_per_report.py
 
     Inputs:
     - data: Raw PDF bytes.
@@ -290,7 +287,7 @@ def extract_text_from_pdf_bytes(data: bytes, filename: str | None = None) -> dic
 
 # -------------------------------------------------------------------------------------
 # 高階共用函數：回傳合併後的完整 PDF 文字（不含分頁結構）
-# 供 05_dvt.py 使用，用於將整份 PDF 匯出為 .txt 檔案
+# 供 rag/chunk_att.py 使用，用於將整份 PDF 匯出為 .txt 檔案
 # -------------------------------------------------------------------------------------
 def get_pdf_full_text(data: bytes, filename: str | None = None) -> str:
     """
@@ -317,9 +314,7 @@ def get_pdf_full_text(data: bytes, filename: str | None = None) -> str:
         if text.strip()
     )
 
-# -------------------------------------------------------------------------------------
-# 結構化 chunk 任務輸出（供 01_email.py 等模組使用）
-# -------------------------------------------------------------------------------------
+
 def extract_pdf_attachment_tasks(
     data: bytes,
     filename: str,
@@ -329,6 +324,9 @@ def extract_pdf_attachment_tasks(
     """
     Purpose:
     Produce fixed-size `(chunk_text, metadata)` tuples for a PDF payload.
+
+    Used by:
+    * rag/chunk_att.py
 
     Inputs:
     - data: PDF bytes.
