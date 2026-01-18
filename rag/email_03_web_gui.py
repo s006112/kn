@@ -72,11 +72,11 @@ embedding_model = EmbeddingModel(
 print("✅ Index and retriever ready")
 
 # ─── Prompt & QA chain (no JSON parser; plaintext/Markdown only) ────────────
-prompt_path = Path(__file__).parent / "prompt_web.txt"
+prompt_path = Path(__file__).resolve().parents[1] / "prompt" / "prompt_email_web_gui.txt"
 if prompt_path.exists():
     template_str = prompt_path.read_text("utf-8")
 else:
-    print("[WARN] prompt_web.txt Not exist, use default prompt")
+    print("[WARN] prompt file not found, use default prompt")
     template_str = "Context:\n{context}\n\nQuestion:\n{question}"
 
 # ─── Helpers ────────────────────────────────────────────────────────────────

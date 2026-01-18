@@ -72,11 +72,11 @@ print("✅ Index and retriever ready")
 
 # ─── Prompt and QA chain ───────────────────────────────────────────────────
 # ✅ MODIFIED: 加载 prompt 时 fallback
-prompt_path = Path(__file__).parent / "prompt_web.txt"
+prompt_path = Path(__file__).resolve().parents[2] / "prompt" / "prompt_email_web_gui.txt"
 if prompt_path.exists():
     template_str = prompt_path.read_text("utf-8")
 else:
-    print("[WARN] prompt_web.txt 不存在，使用默认模板")
+    print("[WARN] prompt file 不存在，使用默认模板")
     template_str = "Context:\n{context}\n\nQuestion:\n{question}"
 prompt = PromptTemplate(input_variables=["context", "question"], template=template_str)
 qa = RetrievalQA.from_chain_type(
