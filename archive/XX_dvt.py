@@ -8,7 +8,7 @@
 
 import logging
 from pathlib import Path
-from chunk_pdf import get_pdf_full_text
+from chunk_pdf_a import get_pdf_full_text
 
 # 路徑設定
 raw_pdf_dir: Path = Path("/root/email-rag/data/raw/pdf/")

@@ -4,7 +4,7 @@ Responsibility:
 Extracts and sanitizes text from PDF bytes using PyMuPDF, with an OCR fallback for image-based PDFs, and converts the result into fixed-size attachment chunk tasks.
 
 Used by:
-* rag/chunk_att.py
+* archive/XX_dvt.py
 
 Pipelines:
 - extract_pymupdf -> sanitize_text -> ocr_fallback -> merge_pages -> chunk_fixed

@@ -11,7 +11,7 @@ if str(RAG_DIR) not in sys.path:
 
 from rag.chunk_json import JsonlWriter  # type: ignore
 from helper.std_chunker import StandardDocInfo, chunk_standard_text  # type: ignore
-import helper.utils_pdf as utils_pdf
+import archive.utils_pdf as utils_pdf
 
 
 def load_text(path: Path) -> str:

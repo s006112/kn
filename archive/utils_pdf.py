@@ -4,9 +4,7 @@ Responsibility:
 PDF extraction helpers for the standard-document pipeline: extract per-page text from PDFs using PyMuPDF, optionally run OCR, and produce either raw text or fixed-size chunk tasks with metadata.
 
 Used by:
-* core_per_report.py
-* core_so_import.py
-* rag/std_01_pdf_to_txt.py
+* archive/std_1_chunk.py
 
 Pipelines:
 - open_pdf -> extract_text -> ocr_fallback -> merge_pages -> chunk_fixed
@@ -23,8 +21,8 @@ Out of scope:
 """
 
 from __future__ import annotations
-import os
 import inspect
+import json
 import logging
 import tempfile
 import io
@@ -38,8 +36,6 @@ from PIL import Image, ImageFilter, ImageOps
 logger = logging.getLogger(__name__)
 
 PDF_EXTS = {".pdf"}
-
-_OCR_LANGUAGES = os.environ.get("OCR_LANGUAGES", "chi_sim+eng").strip()
 
 # -------------------------------------------------------------------------------------
 # 輔助工具函數：從呼叫堆疊中自動推測 filename（若未在參數中顯式提供）
@@ -197,7 +193,9 @@ def _extract_text_with_ocr_fallback(
             preprocessed = _preprocess_pdf_background(data)
             src_path.write_bytes(preprocessed or data)
             # Run OCR to produce a searchable PDF; force OCR to avoid Ghostscript regression with skip_text.
-            ocr_kwargs = dict(
+            ocrmypdf.ocr(
+                str(src_path),
+                str(ocr_path),
                 output_type="pdf",
                 force_ocr=True,
                 rotate_pages=True,
@@ -205,21 +203,6 @@ def _extract_text_with_ocr_fallback(
                 oversample=300,
                 optimize=1,
             )
-            if _OCR_LANGUAGES:
-                ocr_kwargs["language"] = _OCR_LANGUAGES
-            try:
-                ocrmypdf.ocr(str(src_path), str(ocr_path), **ocr_kwargs)
-            except Exception as exc:
-                if _OCR_LANGUAGES and _OCR_LANGUAGES != "eng":
-                    logger.warning(
-                        "OCR with language=%s failed (%s); retrying with eng",
-                        _OCR_LANGUAGES,
-                        exc,
-                    )
-                    ocr_kwargs["language"] = "eng"
-                    ocrmypdf.ocr(str(src_path), str(ocr_path), **ocr_kwargs)
-                else:
-                    raise
             ocr_bytes = ocr_path.read_bytes()
         pages = extractor(ocr_bytes)
         if pages:
