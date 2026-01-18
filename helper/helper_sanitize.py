@@ -1,12 +1,32 @@
 """
 helper_sanitize.py
 
-Unified sanitization helpers.
+Responsibility:
+Provide shared text sanitization helpers for the RAG pipeline, including both flat text normalization for
+chunking/LLM input and layout-aware cleanup for UL/IEC-style standard-document TXT processing.
 
-This module intentionally contains two categories of sanitizers:
-- Flat text sanitization for LLM/chunking (`sanitize_text`) which normalizes Unicode and collapses whitespace.
-- Layout-aware sanitization for UL/IEC-style standard TXT (`clean_overlay`, `apply_page_splitting`) which works
-  on line structure and inserts page-break markers.
+Used by:
+* rag/chunk_doc.py
+* rag/chunk_json.py
+* rag/chunk_pdf.py
+* rag/chunk_xls.py
+* rag/std_02_sanitize_txt.py
+
+Pipelines:
+- bytes or str -> decode -> normalize -> replace chars -> mask email -> regex clean -> mask email -> collapse whitespace
+- text -> splitlines -> drop overlay -> join
+- text -> splitlines -> detect headers -> insert markers -> join
+
+Invariants:
+- `sanitize_text` returns `""` when input is falsy and collapses all whitespace to single spaces.
+- `clean_overlay` only removes whole lines and preserves the original line endings of kept lines.
+- `apply_page_splitting` emits `\\n`-joined output and may normalize line endings.
+- Page-break markers use the `<<<PAGE_BREAK_N>>>` format with `PAGE_BREAK_PREFIX`.
+
+Out of scope:
+- File I/O, discovery, and orchestration.
+- PDF parsing, OCR, or layout reconstruction.
+- Document-structure parsing (tables/HTML/Markdown) beyond regex cleanup.
 """
 
 from __future__ import annotations
@@ -100,6 +120,22 @@ _EMAIL_STRIP_CHARS = ".,;:!?()[]<>\"'"
 
 
 def _remove_email_like_phrases(text: str) -> str:
+    """
+    Purpose:
+    Mask email-like tokens in free text using a heuristic rule.
+
+    Inputs:
+    - text: Source text to scan.
+
+    Outputs:
+    - A string where some tokens are replaced by a single space.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - None; unexpected inputs raise from string operations.
+    """
     parts = _EMAIL_TOKEN_SPLITTER.split(text)
     for idx, part in enumerate(parts):
         if not part or part.isspace():
@@ -115,6 +151,22 @@ def _remove_email_like_phrases(text: str) -> str:
 
 
 def sanitize_text(text: str | bytes) -> str:
+    """
+    Purpose:
+    Normalize and clean text from heterogeneous sources into a compact Unicode string.
+
+    Inputs:
+    - text: `str` or raw `bytes`. For `bytes`, decoding is attempted in a fixed order.
+
+    Outputs:
+    - A whitespace-collapsed `str` with selected legacy/control characters removed or replaced.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - If `text` is not `str | bytes`, operations like `isinstance`/`unicodedata.normalize` may raise.
+    """
     if not text:
         return ""
     if isinstance(text, bytes):
@@ -150,6 +202,23 @@ PAGE_BREAK_PREFIX = "<<<PAGE_BREAK_"  # 實際輸出：<<<PAGE_BREAK_2>>>
 
 
 def clean_overlay(text: str) -> str:
+    """
+    Purpose:
+    Remove known overlay/header/footer/banner lines commonly present in UL/IEC standard PDFs converted to text.
+
+    Inputs:
+    - text: Raw extracted text.
+
+    Outputs:
+    - Text with matching overlay lines removed; all other lines are preserved verbatim (including their original
+      line endings).
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - None (returns input unchanged when `text` is falsy).
+    """
     if not text:
         return text
     patterns = [
@@ -166,6 +235,22 @@ def clean_overlay(text: str) -> str:
 
 
 def is_ul_header_line(s: str) -> bool:
+    """
+    Purpose:
+    Detect whether a line is a UL-style header line that can participate in page-break detection.
+
+    Inputs:
+    - s: A single line (typically stripped).
+
+    Outputs:
+    - True if the line matches one of the supported UL-header patterns; otherwise False.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - None.
+    """
     if re.fullmatch(r"UL\s+\d+[A-Za-z]?", s):
         return True
     if s.startswith("NMX-J") and "UL" in s:
@@ -178,6 +263,22 @@ def is_ul_header_line(s: str) -> bool:
 
 
 def apply_page_splitting(text: str) -> str:
+    """
+    Purpose:
+    Replace adjacent "page number" + "UL header" line pairs with a `<<<PAGE_BREAK_N>>>` marker.
+
+    Inputs:
+    - text: Input text to scan for header pairs.
+
+    Outputs:
+    - Text where matched two-line pairs are replaced by a single page-break marker line.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - None.
+    """
     lines = text.splitlines()
     out_lines: list[str] = []
     i = 0
@@ -207,4 +308,3 @@ def apply_page_splitting(text: str) -> str:
         i += 1
 
     return "\n".join(out_lines)
-

@@ -19,7 +19,7 @@ Invariants:
 Out of scope:
 - PDF extraction and OCR.
 - Chunking, embedding, or indexing.
-- Defining overlay/page-splitting rules (delegated to `helper.helper_std_sanitize`).
+- Defining overlay/page-splitting rules (delegated to `helper.helper_sanitize`).
 """
 
 from __future__ import annotations
