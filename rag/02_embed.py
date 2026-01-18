@@ -12,7 +12,11 @@ from rag_embeddings import build_embeddings, l2_normalize
 from rag_io_jsonl import safe_read_jsonl_line
 from rag_vectorstore import FaissStore, archive_existing_index
 
-HF_EMBEDDING_MODEL = "jinaai/jina-embeddings-v3"
+_BGE_M3_SNAPSHOT_PATH = "/root/.cache/huggingface/hub/models--BAAI--bge-m3/snapshots/5617a9f61b028005a4858fdac845db406aefb181"
+HF_EMBEDDING_MODEL = (
+    os.getenv("HF_EMBEDDING_MODEL")
+    or (_BGE_M3_SNAPSHOT_PATH if os.path.isdir(_BGE_M3_SNAPSHOT_PATH) else "BAAI/bge-m3")
+)
 EMBEDDING_BATCH_SIZE = 16
 CHUNK_BATCH_SIZE = 500
 
