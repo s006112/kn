@@ -20,8 +20,6 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-
 # Local imports (after sys.path setup for script execution)
 from rag_config import Config, PerformanceTracker
 from helper.utils_text_processing import extract_email_body_tasks
@@ -136,13 +134,13 @@ def process_batch(
 # ---------------------------------------------------------------------------
 
 def bootstrap() -> Config:
-    log_dir = PROJECT_ROOT / "log"
+    log_dir = ROOT_DIR / "log"
     log_dir.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[
-            logging.FileHandler(log_dir / "extract.log"),
+            logging.FileHandler(log_dir / "mbox_to_json.log"),
             logging.StreamHandler(),
         ],
         force=True,
