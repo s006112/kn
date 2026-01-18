@@ -22,7 +22,6 @@ Out of scope:
 """
 
 from __future__ import annotations
-import inspect
 import logging
 import tempfile
 import io
@@ -37,33 +36,6 @@ logger = logging.getLogger(__name__)
 
 PDF_EXTS = {".pdf"}
 
-
-# -------------------------------------------------------------------------------------
-# 輔助工具函數：從呼叫堆疊中自動推測 filename（若未在參數中顯式提供）
-# -------------------------------------------------------------------------------------
-def _infer_filename_from_stack() -> str | None:
-    """
-    Purpose:
-    Infer a filename from the call stack by looking for a local variable named `fn`.
-
-    Inputs:
-    - None.
-
-    Outputs:
-    - Filename string when found, else `None`.
-
-    Side effects:
-    - Inspects the Python call stack.
-
-    Failure modes:
-    - None.
-    """
-
-    for frame in inspect.stack()[1:]:
-        fn = frame.frame.f_locals.get("fn")
-        if isinstance(fn, str):
-            return fn
-    return None
 
 # -------------------------------------------------------------------------------------
 # 核心 PDF 解析器（使用 PyMuPDF）
@@ -216,10 +188,10 @@ def extract_text_with_pymupdf(data: bytes) -> dict[int, str]:
 # -------------------------------------------------------------------------------------
 # 封裝提取流程：對外公開的頁面文字提取接口
 # -------------------------------------------------------------------------------------
-def extract_text_from_pdf_bytes(data: bytes, filename: str | None = None) -> dict[int, str]:
+def extract_text_from_pdf_bytes(data: bytes, filename: str) -> dict[int, str]:
     """
     Purpose:
-    Extract per-page text from PDF bytes and log the page count, optionally labeling logs with a filename.
+    Extract per-page text from PDF bytes and log the page count with a filename label.
 
     Direct used by:
     * core_so_import.py
@@ -228,37 +200,34 @@ def extract_text_from_pdf_bytes(data: bytes, filename: str | None = None) -> dic
 
     Inputs:
     - data: Raw PDF bytes.
-    - filename: Optional filename used for logging; when omitted, `_infer_filename_from_stack()` is attempted.
+    - filename: Filename used for logging.
 
     Outputs:
     - Mapping of 1-based page index to extracted text.
 
     Side effects:
-    - Inspects the call stack when `filename` is not provided.
     - Logs extraction progress.
 
     Failure modes:
     - Returns `{}` when extraction yields no text.
     """
 
-    filename = filename or _infer_filename_from_stack()  # 若未提供 filename，則自動嘗試推測
     pages = extract_text_with_pymupdf(data)  # 調用實際的 PDF 擷取器
-    ctx = f" ({filename})" if filename else ""
-    logger.info("Extraction complete: %d pages%s", len(pages), ctx)
+    logger.info("Extraction complete: %d pages (%s)", len(pages), filename)
     return pages  # 回傳每頁清洗後文字的字典
 
 # -------------------------------------------------------------------------------------
 # 高階共用函數：回傳合併後的完整 PDF 文字（不含分頁結構）
 # 供 rag/chunk_att.py 使用，用於將整份 PDF 匯出為 .txt 檔案
 # -------------------------------------------------------------------------------------
-def get_pdf_full_text(data: bytes, filename: str | None = None) -> str:
+def get_pdf_full_text(data: bytes, filename: str) -> str:
     """
     Purpose:
     Merge extracted per-page PDF text into a single string.
 
     Inputs:
     - data: Raw PDF bytes.
-    - filename: Optional filename forwarded to `extract_text_from_pdf_bytes`.
+    - filename: Filename forwarded to `extract_text_from_pdf_bytes`.
 
     Outputs:
     - Combined text with pages joined by blank lines.
