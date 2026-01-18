@@ -23,8 +23,8 @@ from sentence_transformers import SentenceTransformer
 
 # ─── Config (保持原有的配置) ────────────────────────────────
 # 由於這些是常數，可以保留在這裡
-DB_PATH = Path("data/index/metadata.sqlite")
-INDEX_PATH = Path("data/index/faiss.index")
+DB_PATH = Path("data/standard/index/metadata.sqlite")
+INDEX_PATH = Path("data/standard/index/faiss.index")
 EMBED_MODEL = "BAAI/bge-m3"
 EMBED_BATCH_SIZE = 16
 LLM_MODEL = "sonar"

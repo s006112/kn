@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-import os
-import json
+import os, json
 import sqlite3
 from glob import glob
-
+from pathlib import Path
 import faiss
 import torch
 from transformers import AutoTokenizer, AutoModel
@@ -41,9 +40,8 @@ def embed(texts):
 # Paths
 # ============================================================
 # 改成指向存放 *.page_blocks.jsonl 的目錄
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data/json")
-INDEX_DIR = os.path.join(BASE_DIR, "data/index")
+JSON_DIR = Path("data/standard/json")
+INDEX_DIR = Path("data/standard/index")
 PAGE_BLOCK_SUFFIX = ".page_blocks.jsonl"
 
 os.makedirs(INDEX_DIR, exist_ok=True)
@@ -93,7 +91,7 @@ def load_chunks():
         "text": "......"
     }
     """
-    pattern = os.path.join(DATA_DIR, f"*{PAGE_BLOCK_SUFFIX}")
+    pattern = os.path.join(JSON_DIR, f"*{PAGE_BLOCK_SUFFIX}")
     files = glob(pattern)
     chunks = []
 
