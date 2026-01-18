@@ -1,29 +1,39 @@
 #!/usr/bin/env python3
 """
-txt_to_splited_txt.py
+std_02_sanitize_txt.py
 
-新版規則：
-- 尋找「純數字行 + 'UL xxx' 行」這種組合
-- 例如：
-    2
-    UL 935
-  兩行一起替換為：
-    <<<PAGE_BREAK_2>>>
-- 不判斷 / 依賴任何日期行
+Responsibility:
+Sanitize raw standard TXT files by removing known PDF overlay/header/footer lines and inserting page-break
+markers, then write a sidecar output file per input.
+
+Used by:
+* (no direct callers found)
+
+Pipelines:
+- discover txt -> read text -> clean overlay -> split pages -> write output
+
+Invariants:
+- Does not modify input files in place.
+- Reads text with `errors="ignore"` to avoid hard failures on undecodable bytes.
+
+Out of scope:
+- PDF extraction and OCR.
+- Chunking, embedding, or indexing.
+- Defining overlay/page-splitting rules (delegated to `helper.helper_std_sanitize`).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 import sys
-import re
+import re  # noqa: F401
 
-# Ensure project root is importable when running via `python rag/...py`
+# Allow running as a script from the repo root without installing the project as a package.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from helper.helper_std_sanitize import clean_overlay, apply_page_splitting
+from helper.helper_sanitize import clean_overlay, apply_page_splitting  # noqa: E402
 
 # === 配置 ===
 
@@ -33,7 +43,20 @@ OUTPUT_SUFFIX = ".page_splited"
 
 def list_txt_files(root: Path) -> list[Path]:
     """
-    遍歷 root 下所有 .txt 文件，排除已經是 .splited.txt 的輸出。
+    Purpose:
+    Collect input TXT files under `root`, excluding files that already look like this script's output.
+
+    Inputs:
+    - root: Directory to recursively search.
+
+    Outputs:
+    - Sorted list of `.txt` `Path` values that do not end with `OUTPUT_SUFFIX`.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - Propagates filesystem-related exceptions raised by `Path.rglob`.
     """
     files: list[Path] = []
     for path in root.rglob(f"*{INPUT_SUFFIX}"):
@@ -44,6 +67,25 @@ def list_txt_files(root: Path) -> list[Path]:
 
 
 def main() -> None:
+    """
+    Purpose:
+    Run the sanitize pipeline over all TXT files under `TXT_ROOT`.
+
+    Inputs:
+    - None (uses module constants).
+
+    Outputs:
+    - None (writes output files alongside inputs).
+
+    Side effects:
+    - Reads input files and writes `.page_splited` outputs.
+    - Prints progress to stdout/stderr.
+    - Exits with status 1 if `TXT_ROOT` does not exist.
+
+    Failure modes:
+    - Exits via `sys.exit(1)` if `TXT_ROOT` is missing.
+    - Propagates filesystem-related exceptions from reading/writing files.
+    """
     if not TXT_ROOT.exists():
         print(f"[ERROR] TXT root not found: {TXT_ROOT}", file=sys.stderr)
         sys.exit(1)
@@ -59,7 +101,7 @@ def main() -> None:
         print(f"[INFO] Processing TXT: {txt_path}")
         text = txt_path.read_text(encoding="utf-8", errors="ignore")
 
-        # 先做通用頁眉/頁腳/橫幅覆蓋文字清理，再做分頁標記
+        # Run overlay cleanup first so page-splitting sees only content-relevant lines.
         cleaned = clean_overlay(text)
         splitted = apply_page_splitting(cleaned)
 
