@@ -26,7 +26,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
-import re  # noqa: F401
 
 # Allow running as a script from the repo root without installing the project as a package.
 ROOT_DIR = Path(__file__).resolve().parents[1]

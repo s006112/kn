@@ -3,20 +3,21 @@ from __future__ import annotations
 from pathlib import Path
 import json, re, sys
 
-ROOT = Path("data/raw/standard")
-OUTPUT = Path("data/json")
+# === 配置 ===
+TXT_SPLITTED_DIR = Path("data/standard/txt_splitted") 
+OUTPUT = Path("data/standard/json")
 IN_SUFFIX = ".page_splited"
 OUT_SUFFIX = ".page_blocks.jsonl"
 PAGE_RE = re.compile(r"^<<<PAGE_BREAK_(\d+)>>>$")
 
 def main() -> None:
-    if not ROOT.exists():
-        print(f"[ERROR] {ROOT} not found", file=sys.stderr)
+    if not TXT_SPLITTED_DIR.exists():
+        print(f"[ERROR] {TXT_SPLITTED_DIR} not found", file=sys.stderr)
         sys.exit(1)
 
     OUTPUT.mkdir(parents=True, exist_ok=True)
 
-    for src in sorted(ROOT.rglob(f"*{IN_SUFFIX}")):
+    for src in sorted(TXT_SPLITTED_DIR.rglob(f"*{IN_SUFFIX}")):
         dst = OUTPUT / src.with_suffix(OUT_SUFFIX).name
         file_id = src.stem   # 例如 s935_10.page_splited
         print(f"[INFO] {src} -> {dst}")
