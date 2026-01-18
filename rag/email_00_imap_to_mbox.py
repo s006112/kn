@@ -170,7 +170,7 @@ def load_credentials(logger: logging.Logger) -> Tuple[str, str]:
     - Raises ExportError when IMAP_USER or IMAP_PASSWORD is missing.
     """
     load_dotenv()
-    user = os.getenv("IMAP_USER")
+    user = os.getenv("IMAP_USERNAME")
     password = os.getenv("IMAP_PASSWORD")
     if not user or not password:
         logger.error("Missing IMAP_USER or IMAP_PASSWORD in environment.")

@@ -42,12 +42,12 @@ def load_imap_config(
     gracefully skip IMAP operations (used by the sender).
     """
     host = get_env_str("IMAP_HOST", "")
-    user = get_env_str("IMAP_USER", "")
-    password = get_env_str("IMAP_PASSWORD", "")
+    user = get_env_str("ALI_USERNAME", "")
+    password = get_env_str("ALI_PASSWORD", "")
 
     if not host or not user or not password:
         if require_credentials:
-            raise RuntimeError("IMAP_HOST / IMAP_USER / IMAP_PASSWORD 必須設定。")
+            raise RuntimeError("IMAP_HOST / ALI_USERNAME / ALI_PASSWORD 必須設定。")
         return None
 
     port = get_env_int("IMAP_PORT", 993)
@@ -74,8 +74,8 @@ def load_smtp_config() -> SmtpConfig | None:
     can fail gracefully.
     """
     host = get_env_str("SMTP_HOST", "")
-    user = get_env_str("SMTP_USER", "")
-    password = get_env_str("SMTP_PASSWORD", "")
+    user = get_env_str("ALI_USERNAME", "")
+    password = get_env_str("ALI_PASSWORD", "")
     if not host or not user or not password:
         return None
 
