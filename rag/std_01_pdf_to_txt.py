@@ -19,7 +19,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 # --- helper modules ---
-from helper.helper_pdf import extract_text_from_pdf_bytes
+from helper.helper_pdf import get_pdf_full_text
 
 
 # === 配置 ===
@@ -59,8 +59,7 @@ def pdf_to_txt_pipeline() -> None:
     for pdf_path in pdf_files:
         print(f"[INFO] Extracting: {pdf_path}")
 
-        pages = extract_text_from_pdf_bytes(pdf_path.read_bytes(), filename=str(pdf_path))
-        raw_text = "".join(text for _, text in sorted(pages.items()))
+        raw_text = get_pdf_full_text(pdf_path.read_bytes(), filename=str(pdf_path))
 
         # 生成相对路径，写入到单独的 TXT 目录
         relative_path = pdf_path.relative_to(RAW_PDF_DIR)

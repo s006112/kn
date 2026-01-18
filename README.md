@@ -45,7 +45,7 @@ Sales Order Importer
 `gradio_so_import.py` provides a Gradio-powered workflow that converts customer PO PDFs into structured sale orders for Odoo. The app extracts text from the upload, prompts an LLM to generate assignment-style Python code, and (when enabled) pushes the cleaned data and source PDF into Odoo.
 End-to-End Flow
 ---------------
-- **File intake** – `handle_upload()` validates the uploaded PDF and salesperson name, loads `Prompt_po.txt`, and invokes `_extract_text_with_pymupdf()` to recover page-level text.
+- **File intake** – `handle_upload()` validates the uploaded PDF and salesperson name, loads `Prompt_po.txt`, and invokes `extract_pdf_pages_text()` to recover page-level text.
 - **AI parsing** – `utils_llm.call_llm()` merges the prompt and parsed text (using an SO-specific model) via a two-message payload, then asks the model for a `self.<field> = ...` style response. The function sanitizes the response, injects the provided salesperson, and returns both the generated code and raw PDF text for inspection.
 - **Odoo integration** – When `ODOO_IMPORT=true`, `handle_upload()` passes the AI output to `create_sale_order_from_text()`. Successful imports trigger `attach_pdf_to_sale_order()` to archive the original PDF on the created record, share it to the partner-specific Nextcloud subfolder, and surface all status messages back to the UI.
 - **Frontend** – A compact `gr.Blocks` layout exposes the PDF uploader, salesperson textbox, submit button, and read-only import log. Optional debugging textboxes (`DEBUG_TEXTBOXES=true`) show the AI response and extracted PDF text.
@@ -59,9 +59,8 @@ Module Highlights
   - `parse_po_response_text()` uses `ast` to safely interpret the AI-generated `self.field = value` statements, enforcing required fields and data types.
   - `create_sale_order()` builds the XML-RPC payload, normalizes dates, parses quantities, retries with a fallback company if necessary, and reads back the created order.
   - `attach_pdf_to_sale_order()` uploads the PDF as an `ir.attachment`, posts a note on the sale order, optionally shares the PDF to Nextcloud (per partner folder), and appends any share log messages to the running status log.
-- `utils_pdf.py`
-  - `_extract_text_with_pymupdf()` uses PyMuPDF plus a custom sanitizer to build a `{page: text}` mapping, with automatic fallback to OCR (`ocrmypdf`) if no text is returned.
-  - `extract_text_from_pdf_bytes()` logs extraction context and exposes the primary API used by `Gradio_so_import.py`.
+- `helper/helper_pdf.py`
+  - `extract_pdf_pages_text()` uses PyMuPDF to build a `{page: text}` mapping, with automatic fallback to OCR (`ocrmypdf`) if no text is returned.
   - Additional helpers such as `get_pdf_full_text()` and `extract_pdf_attachment_tasks()` support other services that need flattened or chunked PDF text.
 Key Environment Variables
 -------------------------

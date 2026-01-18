@@ -15,7 +15,7 @@ if str(ROOT_DIR) not in sys.path:
 from helper.utils_config import configure_logging, get_env_flag, load_env, load_prompt_text
 from helper.utils_odoo import attach_pdf_to_sale_order, create_sale_order_from_text
 from helper.utils_llm import call_llm
-from helper.helper_pdf import extract_text_from_pdf_bytes
+from helper.helper_pdf import get_pdf_full_text
 
 load_env()
 log = configure_logging("so_import")
@@ -80,15 +80,8 @@ def run_so_import(file_path: str | None, salesperson: str, model: str) -> SOImpo
         with open(file_path, "rb") as f:
             data = f.read()
 
-        pdf_pages = extract_text_from_pdf_bytes(data, Path(file_path).name)
-        if not pdf_pages:
-            return SOImportResult("Error: PDF parsing failed.", "", "", "")
-        pdf_parsing_text = "\n\n".join(
-            f"[Page {page_no}]\n{text.strip()}"
-            for page_no, text in sorted(pdf_pages.items())
-            if text and text.strip()
-        )
-        if not pdf_parsing_text:
+        pdf_parsing_text = get_pdf_full_text(data, Path(file_path).name)
+        if not pdf_parsing_text or not pdf_parsing_text.strip():
             return SOImportResult("Error: PDF parsing produced empty text.", "", "", "")
 
     base_dir = Path(__file__).parent

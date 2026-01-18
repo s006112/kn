@@ -13,7 +13,7 @@ Pipelines:
 - open_pdf -> extract_text -> ocr_fallback -> merge_pages -> chunk_fixed
 
 Invariants:
-- `extract_text_from_pdf_bytes` returns a `{page_number: text}` mapping with 1-based page numbers when extraction succeeds.
+- `extract_pdf_pages_text` returns a `{page_number: text}` mapping with 1-based page numbers when extraction succeeds.
 - OCR fallback writes temporary files and re-extracts text from the OCR output PDF.
 
 Out of scope:
@@ -131,19 +131,20 @@ def _extract_text_with_ocr_fallback(
         logger.error("OCR fallback failed: %s", exc)
     return {}
 
-def extract_text_with_pymupdf(data: bytes) -> dict[int, str]:
+def extract_pdf_pages_text(data: bytes, filename: str | None = None) -> dict[int, str]:
     """
     Purpose:
     Extract per-page text from PDF bytes using PyMuPDF, with OCR fallback when extraction yields no text or fails.
 
     Inputs:
     - data: Raw PDF bytes.
+    - filename: Optional filename used for logging.
 
     Outputs:
     - Mapping of 1-based page index to extracted text.
 
     Side effects:
-    - Logs extraction and fallback progress.
+    - Logs extraction, fallback progress, and extraction summary.
 
     Failure modes:
     - Returns `{}` when both direct extraction and OCR fallback produce no text.
@@ -178,43 +179,21 @@ def extract_text_with_pymupdf(data: bytes) -> dict[int, str]:
     try:
         pages = _run_extraction(data)
         if pages:
+            if filename:
+                logger.info("Extraction complete: %d pages (%s)", len(pages), filename)
+            else:
+                logger.info("Extraction complete: %d pages", len(pages))
             return pages
         # PyMuPDF returned no text; fall back to OCR once.
         logger.info("PyMuPDF extracted no text, attempting OCR fallback.")
     except Exception as exc:
         logger.error("Extraction failed: %s", exc)
-    return _extract_text_with_ocr_fallback(data, _run_extraction)
-
-# -------------------------------------------------------------------------------------
-# 封裝提取流程：對外公開的頁面文字提取接口
-# -------------------------------------------------------------------------------------
-def extract_text_from_pdf_bytes(data: bytes, filename: str) -> dict[int, str]:
-    """
-    Purpose:
-    Extract per-page text from PDF bytes and log the page count with a filename label.
-
-    Direct used by:
-    * core_so_import.py
-    * core_per_report.py
-    * rag/std_01_pdf_to_txt.py
-
-    Inputs:
-    - data: Raw PDF bytes.
-    - filename: Filename used for logging.
-
-    Outputs:
-    - Mapping of 1-based page index to extracted text.
-
-    Side effects:
-    - Logs extraction progress.
-
-    Failure modes:
-    - Returns `{}` when extraction yields no text.
-    """
-
-    pages = extract_text_with_pymupdf(data)  # 調用實際的 PDF 擷取器
-    logger.info("Extraction complete: %d pages (%s)", len(pages), filename)
-    return pages  # 回傳每頁清洗後文字的字典
+    pages = _extract_text_with_ocr_fallback(data, _run_extraction)
+    if filename:
+        logger.info("Extraction complete: %d pages (%s)", len(pages), filename)
+    else:
+        logger.info("Extraction complete: %d pages", len(pages))
+    return pages
 
 # -------------------------------------------------------------------------------------
 # 高階共用函數：回傳合併後的完整 PDF 文字（不含分頁結構）
@@ -225,24 +204,27 @@ def get_pdf_full_text(data: bytes, filename: str) -> str:
     Purpose:
     Merge extracted per-page PDF text into a single string.
 
+    Direct used by:
+    * core_per_report.py
+
     Inputs:
     - data: Raw PDF bytes.
-    - filename: Filename forwarded to `extract_text_from_pdf_bytes`.
+    - filename: Filename forwarded to `extract_pdf_pages_text`.
 
     Outputs:
-    - Combined text with pages joined by blank lines.
+    - Combined text with pages joined by newlines.
 
     Side effects:
-    - Calls `extract_text_from_pdf_bytes` (which may run OCR fallback and log).
+    - Calls `extract_pdf_pages_text` (which may run OCR fallback and log).
 
     Failure modes:
     - Returns an empty string when no pages contain non-whitespace text.
     """
 
-    pages = extract_text_from_pdf_bytes(data, filename)  # 提取每頁文字
-    return "\n\n".join(
-        text for _, text in sorted(pages.items())  # 依頁碼排序並合併
-        if text.strip()
+    pages = extract_pdf_pages_text(data, filename)  # 提取每頁文字
+    return "\n".join(
+        text.strip() for _, text in sorted(pages.items())  # 依頁碼排序並合併
+        if text and text.strip()
     )
 
 
