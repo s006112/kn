@@ -1,3 +1,25 @@
+"""
+Responsibility:
+Text processing helpers used across email and LLM flows: normalize values to strings, remove `<think>` blocks from model output, and extract message bodies from `email.message.Message`.
+
+Used by:
+* rag/email_01_mbox_to_chunks.py
+* helper/utils_llm.py
+
+Pipelines:
+- format_text -> normalize_output -> strip_think
+- walk_message -> decode_part -> html_to_text -> build_tasks
+
+Invariants:
+- `_strip_think` removes matched `<think>...</think>` regions while preserving non-think text.
+- `extract_email_body` prefers `text/plain` when available and falls back to `text/html`.
+- `extract_email_body_tasks` returns at most one task and truncates body text to `max_len`.
+
+Out of scope:
+- Attachment extraction (handled elsewhere).
+- Chunking and JSONL persistence.
+"""
+
 import re
 from email.message import Message
 from typing import Any, List, Optional, Tuple
@@ -5,34 +27,47 @@ from typing import Any, List, Optional, Tuple
 from bs4 import BeautifulSoup
 
 
-# ============================================================================
-# 文本处理工具
-# ============================================================================
-# 用于规范化和清理 LLM 输入和输出的辅助函数
-
-
-# 统一格式化传入的值为字符串。
 def _format_text(v: Any) -> str:
     """
-    将任何值转换为规范化的文本字符串。
+    Purpose:
+    Convert a value to a normalized text string.
+
+    Inputs:
+    - v: Any value, typically a string-like or None.
+
+    Outputs:
+    - Normalized string with surrounding whitespace stripped; returns `""` for `None`.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - None.
     """
     if v is None:
         return ""
     return v.strip() if isinstance(v, str) else str(v).strip()
 
 
-# ============================================================================
-# HTML <think> 标签处理
-# ============================================================================
-
-# 正则表达式模式用于匹配开闭 <think> 标签（不区分大小写）
 _THINK_TAG = re.compile(r"<\s*(/?)\s*think\b[^>]*>", re.IGNORECASE)
 
 
-# 移除 <think> 标签及其中内容，避免污染输出。
 def _strip_think(text: str) -> str:
     """
-    从文本中移除 <think>...</think> 标签及其内容。
+    Purpose:
+    Remove `<think>...</think>` blocks from a string while preserving non-think content.
+
+    Inputs:
+    - text: Input string.
+
+    Outputs:
+    - String with think blocks removed; returns the original string when no tags are present.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - None.
     """
     if not text or "<" not in text:
         return text
@@ -64,10 +99,22 @@ def _strip_think(text: str) -> str:
 
     return "".join(out)
 
-# 将 LLM 输出合并为纯文本并过滤 think 标签。
 def _normalize_output(content: Any) -> str:
     """
-    将 LLM 响应内容转换为干净的字符串。
+    Purpose:
+    Normalize an LLM response payload to a clean string and remove think blocks.
+
+    Inputs:
+    - content: Either a string, a list of objects/dicts with `text`, or a falsy value.
+
+    Outputs:
+    - Normalized string with surrounding whitespace stripped and think blocks removed.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - None.
     """
     if isinstance(content, str):
         text = content.strip()
@@ -84,16 +131,42 @@ def _normalize_output(content: Any) -> str:
     return _strip_think(text)
 
 
-# ============================================================================
-# 邮件正文提取工具
-# ============================================================================
-
-
-# 提取邮件正文内容，先尝试 text/plain，再回退到 text/html。
 def extract_email_body(msg: Message) -> str:
-    """提取邮件正文内容，优先使用 text/plain，备用 text/html"""
+    """
+    Purpose:
+    Extract an email body from a message, preferring `text/plain` and falling back to `text/html`.
+
+    Inputs:
+    - msg: Email message object.
+
+    Outputs:
+    - Extracted body text as a string (may be empty).
+
+    Side effects:
+    - Parses HTML via BeautifulSoup when `text/html` is selected.
+
+    Failure modes:
+    - Returns `""` when no suitable body part is found or decoding yields empty text.
+    """
 
     def _decode_part(part: Message) -> Optional[str]:
+        """
+        Purpose:
+        Decode a message part payload to a string using its declared charset with fallback.
+
+        Inputs:
+        - part: Message part.
+
+        Outputs:
+        - Decoded string, or `None` when no payload is available.
+
+        Side effects:
+        - None.
+
+        Failure modes:
+        - Falls back to UTF-8 decode with replacement on decode errors.
+        """
+
         payload = part.get_payload(decode=True)
         if payload is None:
             raw_payload = part.get_payload(decode=False)
@@ -105,6 +178,23 @@ def extract_email_body(msg: Message) -> str:
             return payload.decode("utf-8", errors="replace")
 
     def _html_to_text(content: str) -> str:
+        """
+        Purpose:
+        Convert HTML content to plain text.
+
+        Inputs:
+        - content: HTML string.
+
+        Outputs:
+        - Plain text extracted via BeautifulSoup.
+
+        Side effects:
+        - Parses HTML.
+
+        Failure modes:
+        - Propagates exceptions raised by BeautifulSoup on malformed inputs.
+        """
+
         soup = BeautifulSoup(content, "html.parser")
         return soup.get_text(separator="\n", strip=True)
 
@@ -145,11 +235,28 @@ def extract_email_body(msg: Message) -> str:
     return ""
 
 
-# 将邮件正文封装到统一的任务结构中，附上基本 metadata。
 def extract_email_body_tasks(
     msg: Message, base_meta: dict, max_len: int
 ) -> List[Tuple[str, dict]]:
-    """提取正文并封装为 task 单元"""
+    """
+    Purpose:
+    Extract an email body and wrap it as a single `(text, metadata)` task tuple.
+
+    Inputs:
+    - msg: Email message.
+    - base_meta: Base metadata to merge into the task metadata dict.
+    - max_len: Maximum length (characters) to keep from the extracted body.
+
+    Outputs:
+    - A list with 0 or 1 `(text, metadata)` tuples.
+
+    Side effects:
+    - Calls `extract_email_body`.
+
+    Failure modes:
+    - Returns `[]` when the extracted body is empty.
+    """
+
     body = extract_email_body(msg)
     if not body.strip():
         return []

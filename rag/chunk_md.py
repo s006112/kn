@@ -1,4 +1,22 @@
-"""Helper functions for chunking Markdown files into JSON lines."""
+"""
+Responsibility:
+Chunks Markdown files into semantically grouped text blocks and writes them as JSONL records for downstream ingestion.
+
+Used by:
+* archive/XX_md.py
+
+Pipelines:
+- discover_files -> split_markdown -> build_records -> write_jsonl
+
+Invariants:
+- Code blocks delimited by lines starting with ``` are kept intact by suppressing heading-based splits while inside a code block.
+- Chunks shorter than `MIN_CHARS` are dropped.
+- A size-based flush occurs when the current section reaches `MAX_CHARS` outside code blocks.
+
+Out of scope:
+- Markdown parsing beyond simple heading/code-fence heuristics.
+- Embedding, indexing, and retrieval.
+"""
 
 from __future__ import annotations
 
@@ -15,12 +33,44 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(message)s")
 
 
 def markdown_files(base: Path) -> Iterable[Path]:
-    """Yield all Markdown files under ``base``."""
+    """
+    Purpose:
+    Yield all Markdown files under a base directory.
+
+    Inputs:
+    - base: Root directory to search.
+
+    Outputs:
+    - An iterable of `Path` objects for files matching `*.md`.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - None.
+    """
+
     return base.rglob("*.md")
 
 
 def split_markdown(text: str) -> list[str]:
-    """Split Markdown ``text`` into semantic chunks."""
+    """
+    Purpose:
+    Split Markdown text into chunks using heading boundaries and size thresholds while preserving code blocks.
+
+    Inputs:
+    - text: Markdown source text.
+
+    Outputs:
+    - List of chunk strings (each at least `MIN_CHARS` characters).
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - None.
+    """
+
     chunks: list[str] = []
     section: list[str] = []
     size = 0
@@ -49,7 +99,24 @@ def split_markdown(text: str) -> list[str]:
 
 
 def process_file(path: Path, base: Path) -> list[dict]:
-    """Return JSON serialisable chunks for ``path``."""
+    """
+    Purpose:
+    Read a Markdown file, split it into chunks, and convert them into JSON-serializable records.
+
+    Inputs:
+    - path: Markdown file path to read.
+    - base: Base directory used to compute `relative_path` metadata.
+
+    Outputs:
+    - List of dict records with `filename`, `chunk_index`, `content`, and `metadata`.
+
+    Side effects:
+    - Logs an error and returns `[]` when file reading fails.
+
+    Failure modes:
+    - Returns `[]` when `path.read_text` raises.
+    """
+
     try:
         text = path.read_text(encoding="utf-8")
     except Exception as exc:  # noqa: BLE001
@@ -69,7 +136,25 @@ def process_file(path: Path, base: Path) -> list[dict]:
 
 
 def chunk_markdown_files(source_dir: Path, clean_dir: Path) -> Path:
-    """Process all Markdown files under ``source_dir`` into ``clean_dir``."""
+    """
+    Purpose:
+    Process all Markdown files under `source_dir` and write a single JSONL output file under `clean_dir`.
+
+    Inputs:
+    - source_dir: Root directory containing Markdown files.
+    - clean_dir: Output directory for the generated JSONL file.
+
+    Outputs:
+    - Path to the created JSONL file.
+
+    Side effects:
+    - Creates `clean_dir` if needed.
+    - Writes JSONL records to disk and logs progress.
+
+    Failure modes:
+    - Propagates filesystem exceptions when output cannot be created/written.
+    """
+
     clean_dir.mkdir(parents=True, exist_ok=True)
     outfile = clean_dir / f"md_{datetime.now().strftime('%y%m%d')}.jsonl"
     with outfile.open("w", encoding="utf-8") as f:

@@ -1,10 +1,24 @@
 # helper_rag_worker.py
 #!/usr/bin/env python3
 """
-helper_rag_worker.py
+Responsibility:
+Implements a self-contained RAG engine (`RagEngine`) for the standard document index: loads chunk text/metadata from SQLite, loads FAISS embeddings, embeds queries, performs a KNN-style search, and calls an LLM with retrieved context.
 
-Encapsulated RAG core logic (RagEngine).
-Heavy resources (FAISS, SentenceTransformer) are only loaded upon instantiation.
+Used by:
+* ali_email/ali_llm.py
+* tool/test_std_rag.py
+
+Pipelines:
+- load_chunks -> load_index -> normalize_vectors -> embed_query -> knn_search -> build_prompt -> call_llm
+
+Invariants:
+- Embedding matrix `E` is L2-normalized once after loading.
+- `answer_question` returns `("", "")` for empty/whitespace-only questions.
+- Raises when the number of loaded texts does not match the FAISS vector count.
+
+Out of scope:
+- Building the FAISS index and populating the SQLite metadata store.
+- Chunking/sanitization of source documents.
 """
 from __future__ import annotations
 
@@ -35,8 +49,33 @@ SYSTEM_PROMPT_PATH = Path("prompt/prompt_rag_system.txt")
 # ─── Helper Classes/Functions (保留在內部) ────────────────
 
 class EmbeddingModel:
-    # 保持原有的 EmbeddingModel 類
+    """
+    Responsibility:
+    Thin wrapper around `SentenceTransformer` to produce a normalized query embedding.
+    """
+
     def __init__(self, model_name: str, device: str, batch_size: int, task: str = None):
+        """
+        Purpose:
+        Initialize a sentence-transformers model on the requested device with a CPU fallback.
+
+        Inputs:
+        - model_name: SentenceTransformer model name or local path.
+        - device: Target device string (e.g. `"cpu"`, `"cuda"`, `"cuda:0"`).
+        - batch_size: Batch size retained for API compatibility; used by this wrapper as stored config.
+        - task: Optional task parameter (currently unused by this wrapper).
+
+        Outputs:
+        - None.
+
+        Side effects:
+        - Loads model weights and may allocate GPU memory.
+        - Prints a notice when CUDA is requested but unavailable.
+
+        Failure modes:
+        - Propagates exceptions from `SentenceTransformer` initialization.
+        """
+
         actual_device = device
         if device.startswith("cuda") and not torch.cuda.is_available():
             print("CUDA not available, falling back to CPU for embeddings.")
@@ -45,6 +84,23 @@ class EmbeddingModel:
         self.batch_size = batch_size
 
     def embed_query(self, text):
+        """
+        Purpose:
+        Embed a single query string into a normalized vector.
+
+        Inputs:
+        - text: Query string.
+
+        Outputs:
+        - 1D NumPy array embedding.
+
+        Side effects:
+        - Runs the underlying transformer model.
+
+        Failure modes:
+        - Propagates exceptions from `SentenceTransformer.encode`.
+        """
+
         v = self.model.encode(
             [text],
             batch_size=1,
@@ -57,7 +113,24 @@ class EmbeddingModel:
 
 # 所有的 load/knn/format 函數都移到這裡作為內部函數 (不公開，但 RagEngine 會調用)
 def _load_all_chunks(db_path: Path) -> Tuple[List[str], List[Dict[str, Any]]]: 
-    # (實現與 20_rag.py 中 load_all_chunks 相同)
+    """
+    Purpose:
+    Load chunk text and parsed metadata JSON from a SQLite database.
+
+    Inputs:
+    - db_path: Path to the SQLite file containing a `chunks` table.
+
+    Outputs:
+    - `(texts, metas)` where `texts` is a list of `chunk_text` and `metas` is a list of metadata dicts aligned by row order.
+
+    Side effects:
+    - Opens and closes a SQLite connection.
+
+    Failure modes:
+    - Propagates `sqlite3` errors for missing tables or unreadable databases.
+    - Propagates JSON parsing errors for invalid `metadata_json` strings.
+    """
+
     conn = sqlite3.connect(db_path)
     try:
         rows = conn.execute(
@@ -74,7 +147,24 @@ def _load_all_chunks(db_path: Path) -> Tuple[List[str], List[Dict[str, Any]]]:
 
 
 def _load_embedding_matrix(index_path: Path) -> np.ndarray: 
-    # (實現與 20_rag.py 中 load_embedding_matrix 相同)
+    """
+    Purpose:
+    Load a FAISS index from disk and reconstruct all stored vectors as a matrix.
+
+    Inputs:
+    - index_path: Path to a FAISS index file.
+
+    Outputs:
+    - NumPy array of shape `(ntotal, dim)` and dtype `float32`.
+
+    Side effects:
+    - Reads from the filesystem and loads a FAISS index.
+
+    Failure modes:
+    - Raises `FileNotFoundError` when the index path does not exist.
+    - Raises `ValueError` when the loaded FAISS index does not support vector reconstruction.
+    """
+
     if not index_path.exists():
         raise FileNotFoundError(f"FAISS index not found: {index_path}")
     index = faiss.read_index(str(index_path))
@@ -88,14 +178,51 @@ def _load_embedding_matrix(index_path: Path) -> np.ndarray:
 
 
 def brute_force_knn(E: np.ndarray, q: np.ndarray, k: int): 
-    # (實現與 20_rag.py 中 brute_force_knn 相同)
+    """
+    Purpose:
+    Compute top-k neighbors by brute-force dot product between an embedding matrix and a query vector.
+
+    Inputs:
+    - E: Embedding matrix shaped `(n, d)`.
+    - q: Query vector shaped `(d,)`.
+    - k: Number of neighbors to return.
+
+    Outputs:
+    - `(idx, scores)` where `idx` is a 1D array of selected row indices and `scores` are the corresponding dot products.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - Propagates NumPy shape errors when `E` and `q` are incompatible.
+    """
+
     scores = E @ q
     idx = np.argsort(scores)[-k:][::-1]
     return idx, scores[idx]
 
 
 def build_similarity_table(top_idx, top_scores, metas, texts):
-    # (實現與 20_rag.py 中 build_similarity_table 相同)
+    """
+    Purpose:
+    Build a Markdown table summarizing retrieved chunks with scores and selected metadata fields.
+
+    Inputs:
+    - top_idx: Iterable of selected indices into `metas`/`texts`.
+    - top_scores: Iterable of scores aligned to `top_idx`.
+    - metas: List of metadata dicts.
+    - texts: List of chunk texts (currently unused by this formatter).
+
+    Outputs:
+    - Markdown string containing a table plus a trailing total-word-count line.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - Propagates exceptions if indices are out of range or metadata is not dict-like.
+    """
+
     table = ["| score | doc | page | word |", "|---:|---|---:|---:|"]
     total_words = 0
     for i, s in zip(top_idx, top_scores):
@@ -113,8 +240,34 @@ def build_similarity_table(top_idx, top_scores, metas, texts):
 
 # ─── 核心類別 ──────────────────────────────
 class RagEngine:
-    """Encapsulates RAG initialization and query logic."""
+    """
+    Responsibility:
+    Encapsulates RAG initialization (loading chunks/index/model) and query-time retrieval + LLM answering.
+    """
+
     def __init__(self):
+        """
+        Purpose:
+        Load chunks from SQLite, load vectors from FAISS, normalize vectors, and load the system prompt.
+
+        Inputs:
+        - None.
+
+        Outputs:
+        - None.
+
+        Side effects:
+        - Loads FAISS index vectors into memory.
+        - Loads an embedding model (may allocate GPU memory).
+        - Reads a prompt file from disk.
+        - Prints an initialization message.
+
+        Failure modes:
+        - Raises on DB/index read failures.
+        - Raises `ValueError` when the loaded chunk count does not match vector count.
+        - Propagates filesystem errors when reading the system prompt fails.
+        """
+
         print("Initializing RagEngine: Loading FAISS index and Embedding Model...")
         self.texts, self.metas = _load_all_chunks(DB_PATH)
         self.embedder = EmbeddingModel(
@@ -135,8 +288,21 @@ class RagEngine:
 
     def answer_question(self, question: str) -> tuple[str, str]:
         """
-        Performs the RAG pipeline. 
-        Returns: (LLM Answer, Source Table String for debugging/logging)
+        Purpose:
+        Answer a question by retrieving top-k chunks and calling the configured LLM with a context+question prompt.
+
+        Inputs:
+        - question: User question string.
+
+        Outputs:
+        - `(answer_text, table_str)` where `table_str` is a Markdown similarity table for debugging/logging.
+
+        Side effects:
+        - Runs embedding model inference and calls `call_llm`.
+
+        Failure modes:
+        - Returns `("", "")` when `question` is empty after stripping.
+        - Propagates exceptions from embedding, retrieval, and LLM calls.
         """
         q = question.strip()
         if not q:

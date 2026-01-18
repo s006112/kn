@@ -1,5 +1,22 @@
 #!/usr/bin/env python3
-"""Print contents of index/metadata.sqlite in a readable form."""
+"""
+Responsibility:
+CLI utility script for inspecting `index/metadata.sqlite` by printing rows from the `chunks` table in a readable format.
+
+Used by:
+* (no direct callers found)
+
+Pipelines:
+- locate_db -> connect_sqlite -> query_rows -> print_fields -> close_connection
+
+Invariants:
+- Exits early when the database path does not exist.
+- When `K` is not `None`, prints exactly one row using `LIMIT 1 OFFSET (K-1)`.
+
+Out of scope:
+- Building indexes or writing metadata.
+- Any schema migration or validation.
+"""
 
 import sqlite3
 from pathlib import Path

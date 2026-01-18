@@ -1,5 +1,24 @@
 #!/usr/bin/env python3
-"""PDF text extraction utilities using PyMuPDF (fitz)."""
+"""
+Responsibility:
+Extracts and sanitizes text from PDF bytes using PyMuPDF, with an OCR fallback for image-based PDFs, and converts the result into fixed-size attachment chunk tasks.
+
+Used by:
+* rag/chunk_att.py
+* archive/XX_dvt.py
+
+Pipelines:
+- extract_pymupdf -> sanitize_text -> ocr_fallback -> merge_pages -> chunk_fixed
+
+Invariants:
+- Page text is returned as a `{page_number: sanitized_text}` mapping with 1-based page numbers when extraction succeeds.
+- If PyMuPDF yields no text or raises, OCR is attempted once via `ocrmypdf.ocr(skip_text=True)`.
+- `OCR_LANGUAGES` controls OCR language selection via the `OCR_LANGUAGES` environment variable.
+
+Out of scope:
+- Email attachment iteration and routing (handled by `chunk_att`).
+- JSONL persistence (handled by `chunk_json.JsonlWriter`).
+"""
 
 from __future__ import annotations
 import os
@@ -22,7 +41,23 @@ PDF_EXTS = {".pdf"}  # 支援的副檔名（目前僅限 PDF）
 # 輔助工具函數：從呼叫堆疊中自動推測 filename（若未在參數中顯式提供）
 # -------------------------------------------------------------------------------------
 def _infer_filename_from_stack() -> str | None:
-    """從呼叫堆疊中尋找名為 'fn' 的變數，回傳其字串值（多用於自動日誌標記）。"""
+    """
+    Purpose:
+    Infer a filename from the current call stack by looking for a local variable named `fn`.
+
+    Inputs:
+    - None.
+
+    Outputs:
+    - The inferred filename string, or `None` when not found.
+
+    Side effects:
+    - Inspects the Python call stack.
+
+    Failure modes:
+    - None.
+    """
+
     for frame in inspect.stack()[1:]:
         fn = frame.frame.f_locals.get("fn")
         if isinstance(fn, str):
@@ -33,9 +68,41 @@ def _infer_filename_from_stack() -> str | None:
 # 核心 PDF 解析器（使用 PyMuPDF）
 # -------------------------------------------------------------------------------------
 def _extract_text_with_pymupdf(data: bytes) -> dict[int, str]:
-    """使用 PyMuPDF 將 PDF 二進位資料轉換為 {頁碼: 淨化後文字} 的字典。"""
+    """
+    Purpose:
+    Extract and sanitize text from PDF bytes using PyMuPDF, with OCR fallback when no text is returned or extraction fails.
+
+    Inputs:
+    - data: Raw PDF file bytes.
+
+    Outputs:
+    - Mapping of 1-based page number to sanitized page text.
+
+    Side effects:
+    - Emits log messages about extraction outcomes and fallback usage.
+
+    Failure modes:
+    - Returns `{}` when both PyMuPDF extraction and OCR fallback fail to produce text.
+    """
 
     def _run_extraction(pdf_bytes: bytes) -> dict[int, str]:
+        """
+        Purpose:
+        Run a single PyMuPDF extraction pass over PDF bytes and sanitize per-page text.
+
+        Inputs:
+        - pdf_bytes: Raw PDF bytes to parse.
+
+        Outputs:
+        - Mapping of 1-based page number to sanitized page text.
+
+        Side effects:
+        - Opens a PyMuPDF document handle.
+
+        Failure modes:
+        - Propagates exceptions from PyMuPDF operations.
+        """
+
         with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
             return {
                 i: sanitize_text(t)
@@ -64,7 +131,26 @@ def _extract_text_with_ocr_fallback(
     data: bytes,
     extractor: Callable[[bytes], dict[int, str]],
 ) -> dict[int, str]:
-    """使用 OCR 產生可搜尋 PDF 後重新提取文字。"""
+    """
+    Purpose:
+    Run OCR to produce a searchable PDF and then re-run a provided extractor on the OCR output.
+
+    Inputs:
+    - data: Raw PDF bytes to OCR.
+    - extractor: Callable that extracts `{page_number: text}` from PDF bytes.
+
+    Outputs:
+    - Mapping of 1-based page number to sanitized page text.
+
+    Side effects:
+    - Creates temporary files/directories.
+    - Runs `ocrmypdf.ocr` as an OCR step.
+    - Emits log messages about OCR outcomes.
+
+    Failure modes:
+    - Returns `{}` on any OCR failure or when extraction yields no text.
+    """
+
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             src_path = Path(tmpdir, "source.pdf")
@@ -91,7 +177,25 @@ def _extract_text_with_ocr_fallback(
 # 封裝提取流程：對外公開的頁面文字提取接口
 # -------------------------------------------------------------------------------------
 def extract_text_from_pdf_bytes(data: bytes, filename: str | None = None) -> dict[int, str]:
-    """封裝 PyMuPDF 的文字擷取函式，並自動記錄頁數與檔名資訊。"""
+    """
+    Purpose:
+    Extract per-page text from PDF bytes and log the result, optionally annotating logs with a filename.
+
+    Inputs:
+    - data: Raw PDF bytes.
+    - filename: Optional filename used for logging; when omitted, `_infer_filename_from_stack()` is attempted.
+
+    Outputs:
+    - Mapping of 1-based page number to sanitized page text.
+
+    Side effects:
+    - Inspects the call stack when `filename` is not provided.
+    - Emits log messages describing extraction results.
+
+    Failure modes:
+    - Returns `{}` when extraction yields no text.
+    """
+
     filename = filename or _infer_filename_from_stack()  # 若未提供 filename，則自動嘗試推測
     pages = _extract_text_with_pymupdf(data)  # 調用實際的 PDF 擷取器
     ctx = f" ({filename})" if filename else ""
@@ -102,7 +206,24 @@ def extract_text_from_pdf_bytes(data: bytes, filename: str | None = None) -> dic
 # PDF text aggregation helpers shared by downstream processing steps
 # -------------------------------------------------------------------------------------
 def get_pdf_full_text(data: bytes, filename: str | None = None) -> str:
-    """將所有頁面文字合併為單一段文字（用於全文分析或匯出）。"""
+    """
+    Purpose:
+    Aggregate extracted per-page PDF text into a single string.
+
+    Inputs:
+    - data: Raw PDF bytes.
+    - filename: Optional filename forwarded to `extract_text_from_pdf_bytes`.
+
+    Outputs:
+    - A single string containing all non-empty pages joined by blank lines.
+
+    Side effects:
+    - Calls `extract_text_from_pdf_bytes` (and therefore may log and run OCR fallback).
+
+    Failure modes:
+    - Returns an empty string when no text is extracted.
+    """
+
     return join_nonempty_segments(
         text for _, text in sorted(extract_text_from_pdf_bytes(data, filename).items())
     )
@@ -117,10 +238,25 @@ def extract_pdf_attachment_tasks(
     max_len: int,
 ) -> List[Tuple[str, dict]]:
     """
-    根據輸入 PDF，產生分段（chunked）任務清單：
-    每段固定長度文字搭配其 metadata，格式為 (chunk_text, metadata)。
-    適用於 email 附件、語料切割等應用。
+    Purpose:
+    Produce fixed-size `(chunk_text, metadata)` tuples for a single PDF attachment.
+
+    Inputs:
+    - data: Attachment bytes.
+    - filename: Attachment filename used for logging and metadata.
+    - base_meta: Base metadata applied to all generated chunks.
+    - max_len: Maximum chunk length in characters.
+
+    Outputs:
+    - List of `(chunk_text, metadata)` tuples; returns `[]` when extraction yields no text.
+
+    Side effects:
+    - Calls PDF extraction (which may run OCR fallback and log progress).
+
+    Failure modes:
+    - Returns `[]` when no non-empty chunks are produced.
     """
+
     return build_attachment_tasks(
         get_pdf_full_text(data, filename),
         base_meta=base_meta,

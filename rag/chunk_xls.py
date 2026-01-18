@@ -1,5 +1,23 @@
 #!/usr/bin/env python3
-"""Excel (XLS/XLSX) text extraction utilities，修复并行/兼容问题并针对多核优化。"""
+"""
+Responsibility:
+Extracts and sanitizes text from Excel workbooks (XLS/XLSX and variants), merges sheet text into a single document, and converts it into fixed-size attachment chunk tasks.
+
+Used by:
+* rag/chunk_att.py
+
+Pipelines:
+- read_excel -> process_sheets -> sanitize_text -> merge_sheets -> chunk_fixed -> build_tasks
+
+Invariants:
+- Only filenames with extensions in `XLS_EXTS` produce tasks.
+- Sheet processing is attempted in a `ProcessPoolExecutor` and falls back to sequential processing on failure.
+- Returned task tuples contain 1-based `seq` values within a single workbook.
+
+Out of scope:
+- Email attachment iteration and routing (handled by `chunk_att`).
+- PDF/Word extraction (handled by `chunk_pdf` / `chunk_doc`).
+"""
 
 from __future__ import annotations
 import io
@@ -22,9 +40,23 @@ def _process_single_sheet(
     sheet_name: str, df: pd.DataFrame
 ) -> Optional[Tuple[str, str]]:
     """
-    处理单个 sheet：向量化每行（tab 分隔）、合并整张 sheet 生成文本并 sanitize。
-    返回 (sheet_name, sanitized_text) 或 None on failure/empty.
+    Purpose:
+    Convert a single sheet DataFrame into a sanitized text block.
+
+    Inputs:
+    - sheet_name: Worksheet name.
+    - df: Sheet contents as a pandas DataFrame.
+
+    Outputs:
+    - `(sheet_name, sanitized_text)` when non-empty; otherwise `None`.
+
+    Side effects:
+    - Emits a warning log on processing errors.
+
+    Failure modes:
+    - Returns `None` for empty sheets, empty sanitized output, or processing exceptions.
     """
+
     try:
         df = df.fillna("").astype(str)
         # 向量化每行 tab 连接，避免慢的 apply(lambda ...)
@@ -45,9 +77,25 @@ def _extract_text_from_excel_bytes(
     data: bytes, filename: str | None = None
 ) -> Dict[str, str]:
     """
-    Return {sheet_name: sanitized text} from Excel bytes.
-    并行处理每个 sheet 以最大化多核利用。
+    Purpose:
+    Extract and sanitize text from an Excel workbook, returning per-sheet text.
+
+    Inputs:
+    - data: Raw workbook bytes.
+    - filename: Optional filename used to choose a pandas engine based on suffix.
+
+    Outputs:
+    - Mapping of `sheet_name` to sanitized sheet text.
+
+    Side effects:
+    - Reads workbook bytes via `pandas.read_excel`.
+    - Uses a `ProcessPoolExecutor` for per-sheet processing and logs fallback behavior.
+
+    Failure modes:
+    - Returns `{}` when required engines are missing or workbook parsing fails.
+    - Falls back to sequential processing when parallel processing fails.
     """
+
     suffix = Path(filename or "").suffix.lower()
     engine = None
     if suffix in {".xlsx", ".xlsm"}:
@@ -111,11 +159,27 @@ def extract_excel_attachment_tasks(
     base_meta: dict,
     max_len: int,
 ) -> List[Tuple[str, dict]]:
-    """Return (text, metadata) chunks for a single Excel attachment.
-
-    Each workbook is treated independently; sheets are merged into one large text
-    (with sheet separators) then split to fixed-size chunks.
     """
+    Purpose:
+    Produce fixed-size `(chunk_text, metadata)` tuples for a single Excel attachment.
+
+    Inputs:
+    - data: Attachment bytes.
+    - filename: Attachment filename (used for suffix detection and metadata).
+    - content_type: Attachment content type (currently unused; retained for compatibility).
+    - base_meta: Base metadata applied to all generated chunks.
+    - max_len: Maximum chunk length in characters.
+
+    Outputs:
+    - List of `(chunk_text, metadata)` tuples; returns `[]` when unsupported or empty.
+
+    Side effects:
+    - Logs extraction progress and warnings/errors.
+
+    Failure modes:
+    - Returns `[]` when extraction fails or yields no text.
+    """
+
     suffix = Path(filename).suffix.lower()
     if suffix not in XLS_EXTS:
         return []

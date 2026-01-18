@@ -1,5 +1,24 @@
 #!/usr/bin/env python3
-"""Word document text extraction utilities (minimal, drop-in)."""
+"""
+Responsibility:
+Extracts and sanitizes text from Word documents (DOCX natively; legacy DOC via external tools) and converts the result into fixed-size attachment chunk tasks.
+
+Used by:
+* rag/chunk_att.py
+
+Pipelines:
+- read_docx -> sanitize_text -> join_segments -> chunk_fixed -> build_tasks
+- run_tool -> sanitize_text -> join_segments -> chunk_fixed -> build_tasks
+
+Invariants:
+- Only filenames with extensions in `WORD_EXTS` produce tasks.
+- Legacy `.doc` extraction attempts `antiword`, then `catdoc`, then `soffice/libreoffice` with timeouts.
+- Returned task tuples contain 1-based `seq` values within a single document.
+
+Out of scope:
+- Email attachment iteration and routing (handled by `chunk_att`).
+- PDF/Excel extraction (handled by `chunk_pdf` / `chunk_xls`).
+"""
 
 import io
 import logging
@@ -19,7 +38,23 @@ WORD_EXTS = {".doc", ".docx"}
 
 
 def _extract_text_from_docx(data: bytes) -> dict[int, str]:
-    """Return {index: sanitized text} from DOCX bytes."""
+    """
+    Purpose:
+    Extract and sanitize text from DOCX bytes.
+
+    Inputs:
+    - data: Raw DOCX file bytes.
+
+    Outputs:
+    - Mapping of 1-based paragraph index to sanitized paragraph text; may fall back to a single entry built from tables.
+
+    Side effects:
+    - Emits log messages about extraction outcomes.
+
+    Failure modes:
+    - Returns `{}` when parsing fails or no extractable text is found.
+    """
+
     try:
         doc = docx.Document(io.BytesIO(data))
 
@@ -52,11 +87,25 @@ def _extract_text_from_docx(data: bytes) -> dict[int, str]:
 
 
 def extract_text_from_doc(data: bytes, *, timeout: int = 15) -> dict[int, str]:
-    """Extract text from legacy .doc via external tools.
-
-    优先 antiword → 其次 catdoc → 最终兜底 soffice/libreoffice。
-    所有子进程均设置 timeout，避免阻塞。
     """
+    Purpose:
+    Extract and sanitize text from legacy `.doc` bytes via external tools with a timeout.
+
+    Inputs:
+    - data: Raw `.doc` file bytes.
+    - timeout: Maximum seconds to allow any single subprocess attempt to run.
+
+    Outputs:
+    - Mapping of 1-based paragraph index to sanitized paragraph text.
+
+    Side effects:
+    - Runs external subprocesses when available (`antiword`, `catdoc`, `soffice`/`libreoffice`).
+    - Emits log messages describing failures and fallbacks.
+
+    Failure modes:
+    - Returns `{}` when no tool is available or all tools fail/produce empty output.
+    """
+
     last_error = None
 
     # antiword
@@ -143,11 +192,27 @@ def extract_word_attachment_tasks(
     base_meta: dict,
     max_len: int,
 ) -> List[Tuple[str, dict]]:
-    """Return (text, metadata) chunks for a single Word document.
-
-    Each document is treated independently: seq starts from 1 per document.
-    Supports .docx natively; legacy .doc via external tool (antiword/catdoc/soffice).
     """
+    Purpose:
+    Produce fixed-size `(chunk_text, metadata)` tuples for a single Word attachment.
+
+    Inputs:
+    - data: Attachment bytes.
+    - filename: Attachment filename (used for extension detection and logging).
+    - content_type: Attachment content type (currently unused; retained for compatibility).
+    - base_meta: Base metadata applied to all generated chunks.
+    - max_len: Maximum chunk length in characters.
+
+    Outputs:
+    - List of `(chunk_text, metadata)` tuples; returns `[]` when unsupported or empty.
+
+    Side effects:
+    - Emits log messages describing extraction outcomes.
+
+    Failure modes:
+    - Returns `[]` when extraction fails or yields no text.
+    """
+
     suffix = Path(filename).suffix.lower()
     if suffix not in WORD_EXTS:
         return []
