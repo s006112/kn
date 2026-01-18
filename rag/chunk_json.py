@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Iterable, List, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
 
-from helper.utils_text_sanitize import sanitize_text
+from helper.helper_sanitize_txt import sanitize_text
 
 logger = logging.getLogger(__name__)
 

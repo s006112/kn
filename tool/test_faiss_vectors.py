@@ -1,5 +1,25 @@
 #!/usr/bin/env python3
-"""Utility to inspect the first N vectors stored in a FAISS index."""
+"""
+Responsibility:
+Inspect and print the first N stored vectors from a FAISS index file, including a
+per-vector identifier and a truncated preview of vector values.
+
+Used by:
+* (no direct callers found)
+
+Pipelines:
+- read_index -> resolve_ids -> extract_vectors -> format_output -> stdout
+
+Invariants:
+- Never mutates the index file.
+- If the index is not an IndexIDMap, ids are sequential (0..ntotal-1).
+- Vector extraction requires an index that exposes `get_xb()`.
+
+Out of scope:
+- Building or writing FAISS indexes.
+- Performing similarity search.
+- Supporting index types that do not expose stored vectors.
+"""
 
 import argparse
 from pathlib import Path
@@ -11,7 +31,25 @@ DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/index/faiss.ind
 
 
 def load_index(index_path: Path):
-    """Load a FAISS IndexIDMap and return ids array + dense vector matrix."""
+    """
+    Purpose:
+    Load a FAISS index and return per-vector ids and a dense vector matrix.
+
+    Inputs:
+    - index_path: Path to a FAISS index readable by `faiss.read_index`.
+
+    Outputs:
+    - ids: 1D numpy array of int64 ids; from `id_map` when present, otherwise
+      sequential (0..ntotal-1).
+    - vectors: 2D numpy array of float32 vectors with shape (ntotal, d).
+
+    Side effects:
+    - Reads the index file from disk.
+
+    Failure modes:
+    - RuntimeError if the index does not expose stored vectors via `get_xb()`.
+    - Exceptions raised by FAISS if the file cannot be read or is invalid.
+    """
     index = faiss.read_index(str(index_path))
 
     if hasattr(index, "id_map"):
@@ -34,6 +72,23 @@ def load_index(index_path: Path):
 
 
 def main() -> None:
+    """
+    Purpose:
+    Parse CLI args and print the first N vectors from the index.
+
+    Inputs:
+    - CLI args: `--index-path`, `--num`, `--dims`.
+
+    Outputs:
+    - Writes formatted vector previews to stdout.
+
+    Side effects:
+    - Reads an index file from disk.
+
+    Failure modes:
+    - Exits with SystemExit if the index file path does not exist.
+    - Propagates errors from `load_index`.
+    """
     parser = argparse.ArgumentParser(
         description="Display the first N entries from a FAISS index."
     )

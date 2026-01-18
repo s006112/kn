@@ -13,7 +13,7 @@ from typing import Callable, List, Tuple
 import fitz  # PyMuPDF：用於處理 PDF 文件的主要函式庫
 import ocrmypdf  # OCR fallback for image-based PDFs
 from chunk_att import build_attachment_tasks, join_nonempty_segments
-from helper.utils_text_sanitize import sanitize_text  # 自訂的文字清洗函數，用來淨化提取出的 PDF 文字
+from helper.helper_sanitize_txt import sanitize_text  # 自訂的文字清洗函數，用來淨化提取出的 PDF 文字
 
 logger = logging.getLogger(__name__)  # 初始化日誌記錄器
 
