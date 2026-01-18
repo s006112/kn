@@ -3,6 +3,12 @@
 Responsibility:
 PDF extraction helpers for the standard-document pipeline: extract per-page text from PDFs using PyMuPDF, optionally run OCR, and produce either raw text or fixed-size chunk tasks with metadata.
 
+Open improvement tasks:
+- non-English language support (e.g., Chinese OCR tuning).
+- Deflating JPEGs, Recompressing JPEGs , JBIG2 compression verification.
+- Improve background preprocessing for OCR (currently basic filters).
+- cannot find ExtGState resource 'GS9' error handling.
+
 Used by:
 * core_per_report.py
 * core_so_import.py
