@@ -10,9 +10,10 @@ import psutil
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-RAW_MBOX_DIR = (PROJECT_ROOT / "data/raw/mbox").resolve()
-OUTPUT_JSONL = (PROJECT_ROOT / "data/clean/email_chunks.jsonl").resolve()
-PROCESSED_MBOX_TXT = (PROJECT_ROOT / "data/clean/processed_mboxes.txt").resolve()
+REPO_ROOT = Path(__file__).resolve().parents[1]
+RAW_MBOX_DIR = (REPO_ROOT / "data/mbox/raw").resolve()
+OUTPUT_JSONL = (REPO_ROOT / "data/mbox/json/email_chunks.jsonl").resolve()
+PROCESSED_MBOX_TXT = (REPO_ROOT / "data/mbox/json/processed_mboxes.txt").resolve()
 
 
 @dataclass

@@ -12,23 +12,21 @@ from email.parser import BytesParser
 from pathlib import Path
 from typing import Iterable, List, Tuple
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
-
-from rag_config import Config, PerformanceTracker
-from helper.utils_text_processing import extract_email_body_tasks
-from chunk_json import Task, BatchProcessor, JsonlWriter
-from chunk_att import extract_attachment_tasks
-
 # ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
 
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 PROJECT_ROOT = Path(__file__).resolve().parent
-RAW_MBOX_DIR = (PROJECT_ROOT / "data/raw/mbox").resolve()
-OUTPUT_JSONL = (PROJECT_ROOT / "data/clean/email_chunks.jsonl").resolve()
-PROCESSED_MBOX_TXT = (PROJECT_ROOT / "data/clean/processed_mboxes.txt").resolve()
+
+# Local imports (after sys.path setup for script execution)
+from rag_config import Config, PerformanceTracker
+from helper.utils_text_processing import extract_email_body_tasks
+from chunk_json import Task, BatchProcessor, JsonlWriter
+from chunk_att import extract_attachment_tasks
 
 # ---------------------------------------------------------------------------
 # Message parsing utilities
@@ -138,7 +136,7 @@ def process_batch(
 # ---------------------------------------------------------------------------
 
 def bootstrap() -> Config:
-    log_dir = PROJECT_ROOT / "logs"
+    log_dir = PROJECT_ROOT / "log"
     log_dir.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
