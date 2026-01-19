@@ -167,7 +167,7 @@ def main():
     """
     # ── LOAD CHUNKS ────────────────────────────────────────────────────────────
     if not CHUNKS_JSONL_FILES:
-        print(f"❌ No .jsonl files found in {CHUNKS_DIR}")
+        print(f"❌ No .jsonl files found in {CHUNKS_JSONL_FILES}")
         print("   Run 01_extract.py first to generate chunk files")
         return
 
