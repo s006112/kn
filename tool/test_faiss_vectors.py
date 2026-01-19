@@ -31,6 +31,7 @@ import faiss
 import numpy as np
 
 DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/mbox/index/faiss.index"
+#DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/standard/index/faiss.index"
 
 
 def load_index(index_path: Path):
@@ -156,19 +157,6 @@ def main() -> None:
         print("Index is empty; nothing to show.")
         return
 
-    np.set_printoptions(suppress=True, linewidth=120)
-
-    dims_to_show = None if args.dims == 0 else args.dims
-
-    for offset in range(count):
-        vector = vectors[offset]
-        slice_len = vector.size if dims_to_show is None else min(vector.size, dims_to_show)
-        snippet = vector[:slice_len]
-        ellipsis = "" if slice_len == vector.size else " ..."
-
-        print(f"[{offset}] vector_id={ids[offset]} dim={vector.size}")
-        print(f"      values={snippet}{ellipsis}")
-
     metadata_path = args.index_path.with_name("metadata.sqlite")
     if not metadata_path.exists():
         print(f"Metadata store not found: {metadata_path}")
@@ -182,6 +170,19 @@ def main() -> None:
     print("\nMetadata preview:")
     for offset, row in enumerate(metadata_rows):
         print(f"[{offset}] {dict(row)}")
+
+    np.set_printoptions(suppress=True, linewidth=120)
+
+    dims_to_show = None if args.dims == 0 else args.dims
+
+    for offset in range(count):
+        vector = vectors[offset]
+        slice_len = vector.size if dims_to_show is None else min(vector.size, dims_to_show)
+        snippet = vector[:slice_len]
+        ellipsis = "" if slice_len == vector.size else " ..."
+
+        print(f"[{offset}] vector_id={ids[offset]} dim={vector.size}")
+        print(f"      values={snippet}{ellipsis}")
 
 
 if __name__ == "__main__":
