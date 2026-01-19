@@ -27,7 +27,8 @@ from pathlib import Path
 import faiss
 import numpy as np
 
-DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/index/faiss.index"
+DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/standard/index/faiss.index"
+DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/mbox/index/vectors.faiss"
 
 
 def load_index(index_path: Path):
