@@ -227,7 +227,8 @@ def build_similarity_table(top_idx, top_scores, metas, texts):
     total_words = 0
     for i, s in zip(top_idx, top_scores):
         meta = metas[i] or {}
-        doc = meta.get("doc_code")
+        #doc = meta.get("doc_code")
+        doc = meta.get("heading")
         page = meta.get("page")
         # 從 metadata 中直接讀取 word 數
         word_count = meta.get("word", 0) or 0

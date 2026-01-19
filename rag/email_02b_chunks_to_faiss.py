@@ -208,25 +208,30 @@ def load_chunks():
                     elif part:
                         location_path = f"part:{part}"
 
-                    meta = {
-                        "doc_type": "email_chunk",
-                        "doc_id": email_id,
-                        "doc_code": email_id,
-                        "location_path": location_path,
-                        "heading": subject,
-                        "email_id": email_id,
-                        "thread_id": meta_obj.get("thread_id"),
-                        "from": meta_obj.get("from"),
-                        "to": meta_obj.get("to"),
-                        "subject": subject,
-                        "date": meta_obj.get("date"),
-                        "part": part,
-                        "file_type": meta_obj.get("file_type"),
-                        "attachment": meta_obj.get("attachment"),
-                        "seq": seq,
-                        "chunk_length": meta_obj.get("chunk_length"),
-                        "word_count": meta_obj.get("word_count"),
-                    }
+                meta = {
+                    # ── std schema fields ──
+                    "doc_type": "email",
+                    "doc_id": email_id,
+                    "doc_code": email_id,
+                    "location_path": location_path,
+                    "heading": subject,
+                    "page": seq,
+                    "word": meta_obj.get("word_count"),
+
+                    # ── email native fields ──
+                    "email_id": email_id,
+                    "thread_id": meta_obj.get("thread_id"),
+                    "from": meta_obj.get("from"),
+                    "to": meta_obj.get("to"),
+                    "subject": subject,
+                    "date": meta_obj.get("date"),
+                    "part": part,
+                    "attachment_type": meta_obj.get("file_type"),
+                    "attachment_name": meta_obj.get("attachment"),
+                    "seq": seq,
+                    "chunk_length": meta_obj.get("chunk_length"),
+                    "word_count": meta_obj.get("word_count"),
+                }
 
                 chunks.append((text, meta))
 
