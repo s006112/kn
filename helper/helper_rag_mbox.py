@@ -7,6 +7,7 @@ Implements a self-contained RAG engine (`RagEngine`) for the standard document i
 Used by:
 * ali_email/ali_llm.py
 * tool/test_std_rag.py
+* rag/email_03_query_rag.py
 
 Pipelines:
 - load_chunks -> load_index -> normalize_vectors -> embed_query -> knn_search -> build_prompt -> call_llm
@@ -19,6 +20,59 @@ Invariants:
 Out of scope:
 - Building the FAISS index and populating the SQLite metadata store.
 - Chunking/sanitization of source documents.
+
+Planned semantic extensions (Email RAG compatibility roadmap):
+
+Step 1 (DONE):
+- Brute-force KNN retrieval on embedding matrix.
+  - Acts as the baseline retrieval engine.
+
+Step 2 (NEXT):
+- Add MMR (Maximal Marginal Relevance) reranking.
+  - Purpose: diversify retrieved chunks and reduce redundancy.
+  - Pipeline:
+    brute_force_knn -> candidate_pool -> MMR selection.
+
+Step 3:
+- Add email_id grouping semantics.
+  - Treat chunks with the same metadata["email_id"] as belonging to one logical document.
+  - Ensure top results represent distinct emails, not isolated chunks.
+
+Step 4:
+- Add score threshold filtering.
+  - Discard low-confidence hits based on similarity score.
+  - Fallback behavior: keep the best hit when all scores fall below threshold.
+
+Step 5:
+- Add email-level expansion policy.
+  - After selecting top emails, expand each email into multiple chunks:
+    - Order by seq / page
+    - Limit by CHUNKS_PER_EMAIL
+    - Stop when token budget is exceeded.
+
+Step 6:
+- Add token budget control.
+  - Approximate token usage from chunk length.
+  - Guarantee LLM prompt stays under MAX_TOKENS.
+
+Step 7:
+- Restore Email UI semantics.
+  - subject / date display
+  - per-email similarity ranking table
+  - expanded chunk count per email
+
+Design principle:
+This engine intentionally separates:
+- Core retrieval infrastructure (vectors, DB, embeddings)
+from
+- Domain-specific semantic policies (Email grouping, MMR, thresholds, expansion).
+
+This allows:
+- One unified RAG engine
+- Multiple semantic policies layered on top
+- Safe, incremental migration from legacy Email RAG to standard architecture
+without rebuilding storage or embeddings.
+
 """
 from __future__ import annotations
 
