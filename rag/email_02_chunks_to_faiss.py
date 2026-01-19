@@ -1,3 +1,24 @@
+"""
+Responsibility:
+Build and persist a FAISS vector index for email chunks stored in a JSONL file,
+including basic metadata normalization (ensuring `email_id`) and archiving any
+existing index directory before saving the new one.
+
+Pipelines:
+- chunks jsonl -> records -> texts -> embeddings -> faiss store -> index files
+
+Invariants:
+- The input chunks file is validated at import time; the module raises if
+  `OUTPUT_JSONL` is missing or unreadable.
+- Each indexed item stores a metadata dict that includes `email_id`.
+- Embeddings are L2-normalized before being added to the FAISS-backed store.
+- Index output is written under `INDEX_DIR` after archiving prior contents.
+
+Out of scope:
+- Extracting emails or generating the chunks JSONL file.
+- Query-time retrieval, reranking, or serving APIs.
+"""
+
 import gc
 import json
 import os
@@ -39,6 +60,23 @@ CHUNKS_JSONL_FILES = [OUTPUT_JSONL]
 print(f"ℹ️ Using chunks file: {OUTPUT_JSONL}")
 
 def gpu_memory_cleanup():
+    """
+    Purpose:
+    Best-effort GPU and CPU memory cleanup between embedding batches.
+
+    Inputs:
+    - None.
+
+    Outputs:
+    - None.
+
+    Side effects:
+    - Calls CUDA cache clearing and synchronization when available.
+    - Triggers Python garbage collection and sleeps briefly.
+
+    Failure modes:
+    - Suppresses CUDA cleanup exceptions; other exceptions may propagate.
+    """
     if GPU_AVAILABLE:
         try:
             torch.cuda.empty_cache()
@@ -49,6 +87,23 @@ def gpu_memory_cleanup():
     time.sleep(0.1)
 
 def setup_faiss_gpu():
+    """
+    Purpose:
+    Initialize FAISS GPU resources when the FAISS GPU API is available.
+
+    Inputs:
+    - None.
+
+    Outputs:
+    - A `faiss.StandardGpuResources` instance, or `None` when unavailable or when
+      initialization fails.
+
+    Side effects:
+    - Prints initialization status to stdout.
+
+    Failure modes:
+    - Returns `None` on initialization errors (CPU fallback is expected).
+    """
     if not FAISS_GPU_AVAILABLE:
         return None
     try:
@@ -63,7 +118,23 @@ def setup_faiss_gpu():
         return None
 
 def _resolve_email_id(rec: dict, metadata: dict) -> str | None:
-    """Return the first non-empty identifier that lets us trace a chunk back to its email."""
+    """
+    Purpose:
+    Resolve a stable identifier for an email chunk from record fields.
+
+    Inputs:
+    - rec: Parsed JSON object for a chunk record.
+    - metadata: The record's `metadata` mapping (typically a shallow copy).
+
+    Outputs:
+    - The first non-empty candidate identifier, or `None` if no candidates exist.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - None (pure lookup).
+    """
     for candidate in (
         metadata.get("email_id"),
         rec.get("email_id"),
@@ -75,6 +146,25 @@ def _resolve_email_id(rec: dict, metadata: dict) -> str | None:
     return None
 
 def main():
+    """
+    Purpose:
+    Load email chunks from JSONL, build embeddings, create a FAISS-backed store,
+    and save index artifacts under `INDEX_DIR`.
+
+    Inputs:
+    - None.
+
+    Outputs:
+    - None.
+
+    Side effects:
+    - Reads `OUTPUT_JSONL`, prints progress, computes embeddings, archives prior
+      index contents, and writes new index files.
+
+    Failure modes:
+    - Continues after per-line JSON/encoding issues by skipping invalid chunks.
+    - Falls back to CPU-only embedding on exceptions during batched processing.
+    """
     # ── LOAD CHUNKS ────────────────────────────────────────────────────────────
     if not CHUNKS_JSONL_FILES:
         print(f"❌ No .jsonl files found in {CHUNKS_DIR}")
