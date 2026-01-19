@@ -17,8 +17,6 @@ from dotenv import load_dotenv
 from helper.helper_rag_mbox import RagEngine
     
 # ─── Environment setup ──────────────────────────────────────────────────────
-os.environ.update({"CUDA_VISIBLE_DEVICES": "", "TORCH_USE_CUDA_DSA": "0"})  # force CPU
-sys.modules["torchvision"] = None  # avoid accidental heavy imports
 load_dotenv()  # load API keys if present
 
 rag_engine = RagEngine()
