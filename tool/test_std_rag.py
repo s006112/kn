@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from typing import Tuple
 
 # 引入核心 RAG 邏輯
-from helper.helper_rag_worker import RagEngine
+from helper.helper_rag import RagEngine
 
 # 保持原有的對外函數簽名 (Preserve original function signature)
 def answer_standard_question(question: str) -> Tuple[str, str]:

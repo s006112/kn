@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
 
 from helper.utils_config import load_prompt_text
 from helper.utils_llm import call_llm
+from helper.helper_rag import RagEngine
 from helper.utils_imap_types import EmailMessage
 from ali_email.ali_router import RouteResult, route_email
 from ali_email.ali_mail_parse import (
@@ -28,20 +29,6 @@ from ali_email.ali_mail_parse import (
     extract_override_instructions,
     normalize_email_input,
 )
-
-# -----------------------------------------------------------------------------
-# RAG imports 
-# -----------------------------------------------------------------------------
-if TYPE_CHECKING:
-    from helper.helper_rag_worker import RagEngine as RagEngineType
-
-try:
-    from helper.helper_rag_worker import RagEngine
-except ImportError:
-    RagEngine = None
-    print("Warning: RagEngine could not be imported. RAG functionality disabled.")
-
-_RAG_ENGINE: Optional["RagEngineType"] = None
 
 
 @dataclass(frozen=True)
@@ -60,31 +47,11 @@ def step2_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalR
         return RetrievalResult(used=True, context=rag_answer, source="rag")
     return RetrievalResult(used=False, context=None, source=None)
 
-# -----------------------------------------------------------------------------
-# RAG Execution 
-# -----------------------------------------------------------------------------
-
-def _load_rag_engine() -> Optional["RagEngineType"]:
-    global _RAG_ENGINE
-    if _RAG_ENGINE is not None:
-        return _RAG_ENGINE
-    if RagEngine is None:
-        return None
-    _RAG_ENGINE = RagEngine()
-    return _RAG_ENGINE
-
-
-def _get_rag_answer_lazy(question: str) -> str:
-    rag_engine = _load_rag_engine()
-    if rag_engine is None:
-        return ""
-
+def _get_rag_answer_lazy(question: str, _engine=lru_cache(maxsize=1)(RagEngine)) -> str:
     try:
-        answer, table_str = rag_engine.answer_question(question)
+        answer, table_str = _engine().answer_question(question)
         if table_str:
-            print("\n[RAG] FAISS similarity table:\n")
-            print(table_str)
-            print()
+            print(f"\n[RAG] FAISS similarity table:\n\n{table_str}\n")
         return answer
     except Exception as e:
         print(f"RAG Retrieval or Generation failed: {e}")

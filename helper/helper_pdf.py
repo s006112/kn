@@ -8,6 +8,7 @@ Open improvement tasks:
 - Deflating JPEGs, Recompressing JPEGs , JBIG2 compression verification.
 - Improve background preprocessing for OCR (currently basic filters).
 - cannot find ExtGState resource 'GS9' error handling.
+- evaluate adding def sanitize_text in _raw_extraction for better text cleanup.
 
 Used by:
 * core_per_report.py
