@@ -169,27 +169,64 @@ def load_chunks():
                     continue
                 obj = json.loads(line)
 
-                text = obj.get("text", "").strip()
-                if not text:
-                    continue
+                text = obj.get("text")
+                if text is not None:
+                    text = text.strip()
+                    if not text:
+                        continue
 
-                file_id = obj.get("file_id")
-                page = obj.get("page", 0)
-                block_id = obj.get("block_id")
+                    file_id = obj.get("file_id")
+                    page = obj.get("page", 0)
+                    block_id = obj.get("block_id")
 
-                # 給 SQLite 那幾個固定欄位一個合理映射
-                meta = {
-                    "doc_type": "page_block",
-                    "doc_id": file_id,                  # 可以理解成檔案 ID
-                    "doc_code": file_id,                # Keep doc_code identical to doc_id for traceability.
-                    "location_path": f"page:{page}",    # 粗略定位
-                    "heading": None,                    # Page blocks do not provide headings in this pipeline.
-                    # 其餘信息原樣保留
-                    "block_id": block_id,
-                    "page": page,
-                    "char": obj.get("char"),
-                    "word": obj.get("word"),
-                }
+                    # 給 SQLite 那幾個固定欄位一個合理映射
+                    meta = {
+                        "doc_type": "page_block",
+                        "doc_id": file_id,                  # 可以理解成檔案 ID
+                        "doc_code": file_id,                # Keep doc_code identical to doc_id for traceability.
+                        "location_path": f"page:{page}",    # 粗略定位
+                        "heading": None,                    # Page blocks do not provide headings in this pipeline.
+                        # 其餘信息原樣保留
+                        "block_id": block_id,
+                        "page": page,
+                        "char": obj.get("char"),
+                        "word": obj.get("word"),
+                    }
+                else:
+                    meta_obj = obj.get("metadata") or {}
+                    text = obj.get("content", "").strip()
+                    if not text:
+                        continue
+
+                    email_id = meta_obj.get("email_id")
+                    seq = meta_obj.get("seq")
+                    part = meta_obj.get("part")
+                    subject = meta_obj.get("subject")
+                    location_path = None
+                    if seq is not None:
+                        location_path = f"seq:{seq}"
+                    elif part:
+                        location_path = f"part:{part}"
+
+                    meta = {
+                        "doc_type": "email_chunk",
+                        "doc_id": email_id,
+                        "doc_code": email_id,
+                        "location_path": location_path,
+                        "heading": subject,
+                        "email_id": email_id,
+                        "thread_id": meta_obj.get("thread_id"),
+                        "from": meta_obj.get("from"),
+                        "to": meta_obj.get("to"),
+                        "subject": subject,
+                        "date": meta_obj.get("date"),
+                        "part": part,
+                        "file_type": meta_obj.get("file_type"),
+                        "attachment": meta_obj.get("attachment"),
+                        "seq": seq,
+                        "chunk_length": meta_obj.get("chunk_length"),
+                        "word_count": meta_obj.get("word_count"),
+                    }
 
                 chunks.append((text, meta))
 

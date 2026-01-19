@@ -2,13 +2,15 @@
 """
 Responsibility:
 Inspect and print the first N stored vectors from a FAISS index file, including a
-per-vector identifier and a truncated preview of vector values.
+per-vector identifier and a truncated preview of vector values. Also inspect and
+print the first N metadata rows from the accompanying SQLite store.
 
 Used by:
 * (no direct callers found)
 
 Pipelines:
 - read_index -> resolve_ids -> extract_vectors -> format_output -> stdout
+- read_metadata -> format_output -> stdout
 
 Invariants:
 - Never mutates the index file.
@@ -22,13 +24,13 @@ Out of scope:
 """
 
 import argparse
+import sqlite3
 from pathlib import Path
 
 import faiss
 import numpy as np
 
-DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/standard/index/faiss.index"
-DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/mbox/index/vectors.faiss"
+DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/mbox/index/faiss.index"
 
 
 def load_index(index_path: Path):
@@ -72,6 +74,35 @@ def load_index(index_path: Path):
     return ids, vectors
 
 
+def load_metadata_rows(metadata_path: Path, limit: int) -> list[sqlite3.Row]:
+    """
+    Purpose:
+    Load up to `limit` rows from the SQLite metadata store.
+
+    Inputs:
+    - metadata_path: Path to metadata.sqlite.
+    - limit: Max number of rows to return.
+
+    Outputs:
+    - List of sqlite3.Row objects from the `chunks` table.
+
+    Side effects:
+    - Opens and closes an SQLite connection.
+
+    Failure modes:
+    - Raises sqlite3.Error on connection or query failures.
+    """
+    conn = sqlite3.connect(metadata_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        return conn.execute(
+            "SELECT * FROM chunks ORDER BY vector_id LIMIT ?",
+            (limit,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
 def main() -> None:
     """
     Purpose:
@@ -84,7 +115,7 @@ def main() -> None:
     - Writes formatted vector previews to stdout.
 
     Side effects:
-    - Reads an index file from disk.
+    - Reads an index file and metadata store from disk.
 
     Failure modes:
     - Exits with SystemExit if the index file path does not exist.
@@ -137,6 +168,20 @@ def main() -> None:
 
         print(f"[{offset}] vector_id={ids[offset]} dim={vector.size}")
         print(f"      values={snippet}{ellipsis}")
+
+    metadata_path = args.index_path.with_name("metadata.sqlite")
+    if not metadata_path.exists():
+        print(f"Metadata store not found: {metadata_path}")
+        return
+
+    metadata_rows = load_metadata_rows(metadata_path, count)
+    if not metadata_rows:
+        print("Metadata store is empty; nothing to show.")
+        return
+
+    print("\nMetadata preview:")
+    for offset, row in enumerate(metadata_rows):
+        print(f"[{offset}] {dict(row)}")
 
 
 if __name__ == "__main__":
