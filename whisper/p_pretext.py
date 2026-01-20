@@ -75,12 +75,14 @@ class PretextHandler(FileSystemEventHandler):
         - Propagates exceptions from queue operations.
         """
         pretext_suffix = str(self.ctx.config["PRETEXT_SUFFIX"]).lower()
-        extract_suffix = str(self.ctx.config["EXTRACT_SUFFIX"]).lower()
+        extract_suffixes = tuple(
+            str(s).lower() for s in self.ctx.config["EXTRACT_SUFFIX"] if str(s)
+        )
         if not _is_pretext_candidate(
             path,
             self.watch_folder,
             pretext_suffix=pretext_suffix,
-            extract_suffix=extract_suffix,
+            extract_suffixes=extract_suffixes,
         ):
             return
         if request_pretext_processing(self.ctx, path):
@@ -209,7 +211,7 @@ def _is_pretext_candidate(
     watch_folder: str,
     *,
     pretext_suffix: str,
-    extract_suffix: str,
+    extract_suffixes: list[str],
 ) -> bool:
     """
     Purpose:
@@ -231,8 +233,9 @@ def _is_pretext_candidate(
         return False
     name = os.path.basename(normalized).lower()
     pretext_suffix = pretext_suffix.lower()
-    extract_suffix = extract_suffix.lower()
-    return name.endswith(pretext_suffix) and not name.endswith(extract_suffix)
+    return name.endswith(pretext_suffix) and not any(
+        name.endswith(s) for s in extract_suffixes
+    )
 
 
 def process_pretext_file(ctx: PipelineContext, file_path: str) -> None:
@@ -327,7 +330,7 @@ def process_pretext_file(ctx: PipelineContext, file_path: str) -> None:
         )
 
         pretext_target_path = os.path.join(
-            config['PRETEXT_WATCH_FOLDER'], f"{base_name}{config['EXTRACT_SUFFIX']}"
+            config['PRETEXT_WATCH_FOLDER'], f"{base_name}{config['EXTRACT_SUFFIX'][0]}"
         )
         with open(pretext_target_path, 'w', encoding='utf-8') as f:
             f.write(pretext_result)

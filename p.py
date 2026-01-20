@@ -67,7 +67,7 @@ CONFIG = {
     "MODEL_EXTRACT_MATRIX": MODEL_EXTRACT_MATRIX,
     "MODEL_DISTILL": MODEL_DISTILL,
     "PRETEXT_SUFFIX": ".txt",
-    "EXTRACT_SUFFIX": ".md",
+    "EXTRACT_SUFFIX": ("_p.txt", ".md"),
     **RETRY_CONFIG,
     # 由 orchestration 注入
     "PRETEXT_PROMPT": None,

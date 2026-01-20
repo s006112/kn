@@ -262,7 +262,9 @@ def scan_existing_files(ctx: PipelineContext) -> None:
     extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
     premium_watch_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
     pretext_suffix = str(ctx.config["PRETEXT_SUFFIX"]).lower()
-    extract_suffix = str(ctx.config["EXTRACT_SUFFIX"]).lower()
+    extract_suffixes = tuple(
+        str(s).lower() for s in ctx.config["EXTRACT_SUFFIX"] if str(s)
+    )
 
     for filename in os.listdir(pretext_watch_folder):
         filename_lower = filename.lower()
@@ -285,16 +287,20 @@ def scan_existing_files(ctx: PipelineContext) -> None:
                 logging.error("Error renaming file: %s", e)
                 continue
 
-        if filename_lower.endswith(pretext_suffix) and not filename_lower.endswith(extract_suffix):
+        if filename_lower.endswith(pretext_suffix) and not any(
+            filename_lower.endswith(s) for s in extract_suffixes
+        ):
             request_pretext_processing(ctx, file_path)
 
     for filename in os.listdir(extract_watch_folder):
-        if filename.lower().endswith(extract_suffix):
+        filename_lower = filename.lower()
+        if any(filename_lower.endswith(s) for s in extract_suffixes):
             file_path = os.path.join(extract_watch_folder, filename)
             enqueue_if_absent(ctx.extract_queue, file_path)
 
     for filename in os.listdir(premium_watch_folder):
-        if filename.lower().endswith(extract_suffix):
+        filename_lower = filename.lower()
+        if any(filename_lower.endswith(s) for s in extract_suffixes):
             file_path = os.path.join(premium_watch_folder, filename)
             enqueue_if_absent(ctx.premium_extract_queue, file_path)
 
@@ -323,7 +329,9 @@ def periodic_file_scanner(ctx: PipelineContext) -> None:
     extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
     premium_watch_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
     pretext_suffix = str(ctx.config["PRETEXT_SUFFIX"]).lower()
-    extract_suffix = str(ctx.config["EXTRACT_SUFFIX"]).lower()
+    extract_suffixes = tuple(
+        str(s).lower() for s in ctx.config["EXTRACT_SUFFIX"] if str(s)
+    )
 
     processed = set()
     extract_done = set()
@@ -336,21 +344,23 @@ def periodic_file_scanner(ctx: PipelineContext) -> None:
             current = list_matching_files(
                 pretext_watch_folder,
                 lambda f: f.lower().endswith(pretext_suffix)
-                and not f.lower().endswith(extract_suffix),
+                and not any(f.lower().endswith(s) for s in extract_suffixes),
             )
             for path in current - processed:
                 request_pretext_processing(ctx, path)
             processed = current
 
             extract_current = list_matching_files(
-                extract_watch_folder, lambda f: f.lower().endswith(extract_suffix)
+                extract_watch_folder,
+                lambda f: any(f.lower().endswith(s) for s in extract_suffixes),
             )
             for path in extract_current - extract_done:
                 enqueue_if_absent(ctx.extract_queue, path)
             extract_done = extract_current
 
             premium_current = list_matching_files(
-                premium_watch_folder, lambda f: f.lower().endswith(extract_suffix)
+                premium_watch_folder,
+                lambda f: any(f.lower().endswith(s) for s in extract_suffixes),
             )
             for path in premium_current - premium_processed:
                 enqueue_if_absent(ctx.premium_extract_queue, path)

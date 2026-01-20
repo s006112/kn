@@ -119,9 +119,13 @@ class BaseExtractHandler(FileSystemEventHandler):
         Failure modes:
         - Propagates exceptions from queue operations.
         """
+        extract_suffixes = tuple(
+            str(s).lower() for s in self.config["EXTRACT_SUFFIX"] if str(s)
+        )
+
         cond = (
             os.path.abspath(os.path.dirname(file_path)) == os.path.abspath(self.watch_folder)
-            and file_path.lower().endswith(str(self.config["EXTRACT_SUFFIX"]).lower())
+            and any(file_path.lower().endswith(s) for s in extract_suffixes)
             and file_path not in self.processed_files
             and file_path not in list(self.queue.queue)
         )
@@ -167,9 +171,13 @@ def process(self, file_path, get_next_available_filename):
     """
     filename = os.path.basename(file_path)
     logging.info(f"{self.__class__.__name__}: Start processing {filename}")
-    extract_suffix = str(self.config["EXTRACT_SUFFIX"]).lower()
+    extract_suffixes = tuple(
+        str(s).lower() for s in self.config["EXTRACT_SUFFIX"] if str(s)
+    )
+
     filename_lower = filename.lower()
-    base = filename[: -len(extract_suffix)] if filename_lower.endswith(extract_suffix) else os.path.splitext(filename)[0]
+    matched_suffix = next((s for s in sorted(extract_suffixes, key=len, reverse=True) if filename_lower.endswith(s)), None)
+    base = filename[: -len(matched_suffix)] if matched_suffix else os.path.splitext(filename)[0]
 
     try:
         content, enc = read_file_with_encodings(file_path)
