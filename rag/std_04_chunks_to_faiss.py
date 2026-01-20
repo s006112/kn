@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """
-Refactor out embedding and FAISS index building from page-level chunk JSONL files
-
 Responsibility:
 Build a FAISS vector index and a SQLite metadata table from page-level chunk JSONL
 files under `data/standard/json`, using a locally cached HuggingFace BGE-M3 model.
@@ -40,7 +38,7 @@ from helper.helper_embedding import embed
 # Input directory containing `*.page_blocks.jsonl` files.
 STANDARD_JSON_DIR = Path("data/standard/json")
 STANDARD_INDEX_DIR = Path("data/faiss")
-PAGE_BLOCK_SUFFIX = ".page_blocks.jsonl"
+STD_BLOCK_SUFFIX = "chunks.jsonl"
 
 os.makedirs(STANDARD_INDEX_DIR, exist_ok=True)
 
@@ -100,7 +98,7 @@ def load_chunks():
     `(text, metadata)` tuples suitable for indexing and SQLite storage.
 
     Inputs:
-    - None (reads files from `STANDARD_JSON_DIR` matching `PAGE_BLOCK_SUFFIX`).
+    - None (reads files from `STANDARD_JSON_DIR` matching `STD_BLOCK_SUFFIX`).
 
     Outputs:
     - List of `(text, meta)` tuples where `meta` is a dict containing fixed
@@ -113,7 +111,7 @@ def load_chunks():
     Failure modes:
     - Raises exceptions from file I/O or `json.loads` for malformed inputs.
     """
-    pattern = os.path.join(STANDARD_JSON_DIR, f"*{PAGE_BLOCK_SUFFIX}")
+    pattern = os.path.join(STANDARD_JSON_DIR, f"*{STD_BLOCK_SUFFIX}")
     files = glob(pattern)
     chunks = []
 

@@ -7,7 +7,7 @@ import json, re, sys
 TXT_SPLITTED_DIR = Path("data/standard/txt_splitted") 
 OUTPUT = Path("data/standard/json")
 IN_SUFFIX = ".page_splited"
-OUT_SUFFIX = ".page_blocks.jsonl"
+STD_BLOCK_SUFFIX = ".chunks.jsonl"
 PAGE_RE = re.compile(r"^<<<PAGE_BREAK_(\d+)>>>$")
 
 def main() -> None:
@@ -18,7 +18,7 @@ def main() -> None:
     OUTPUT.mkdir(parents=True, exist_ok=True)
 
     for src in sorted(TXT_SPLITTED_DIR.rglob(f"*{IN_SUFFIX}")):
-        dst = OUTPUT / src.with_suffix(OUT_SUFFIX).name
+        dst = OUTPUT / src.with_suffix(STD_BLOCK_SUFFIX).name
         file_id = src.stem   # 例如 s935_10.page_splited
         print(f"[INFO] {src} -> {dst}")
 

@@ -31,21 +31,17 @@ if str(ROOT_DIR) not in sys.path:
 
 from helper.helper_embedding import embed
 
-
+TARGET_CHUNK_FOLDER = "mbox"  #  or "standard"
 
 # ============================================================
 # Paths
 # ============================================================
 # Input directory containing `*.page_blocks.jsonl` files.
 STANDARD_JSON_DIR = Path("data/standard/json")
-STANDARD_INDEX_DIR = Path("data/standard/index")
-PAGE_BLOCK_SUFFIX = ".page_blocks.jsonl"
 MBOX_JSON_DIR = Path("data/mbox/json")
-MBOX_INDEX_DIR = Path("data/faiss")
-MBOX_BLOCK_SUFFIX = "chunks.jsonl"
+FAISS_DIR = Path("data/faiss")
+BLOCK_SUFFIX = "chunks.jsonl"
 
-os.makedirs(STANDARD_INDEX_DIR, exist_ok=True)
-os.makedirs(MBOX_INDEX_DIR, exist_ok=True)
 
 
 # ============================================================
@@ -103,7 +99,7 @@ def load_chunks():
     `(text, metadata)` tuples suitable for indexing and SQLite storage.
 
     Inputs:
-    - None (reads files from `MBOX_JSON_DIR` matching `PAGE_BLOCK_SUFFIX`).
+    - None (reads files from `MBOX_JSON_DIR` matching `STD_BLOCK_SUFFIX`).
 
     Outputs:
     - List of `(text, meta)` tuples where `meta` is a dict containing fixed
@@ -116,7 +112,7 @@ def load_chunks():
     Failure modes:
     - Raises exceptions from file I/O or `json.loads` for malformed inputs.
     """
-    pattern = os.path.join(MBOX_JSON_DIR, f"*{MBOX_BLOCK_SUFFIX}")
+    pattern = os.path.join(MBOX_JSON_DIR, f"*{BLOCK_SUFFIX}")
     files = glob(pattern)
     chunks = []
 
@@ -246,7 +242,7 @@ def build_index(chunks):
 
     Side effects:
     - Computes embeddings via `embed()`.
-    - Writes `faiss.index` and `metadata.sqlite` under `MBOX_INDEX_DIR`.
+    - Writes `faiss.index` and `metadata.sqlite` under `FAISS_DIR`.
     - Prints progress to stdout.
 
     Failure modes:
@@ -261,7 +257,7 @@ def build_index(chunks):
     dim = embed(["test"]).shape[1]
     index = faiss.IndexFlatIP(dim)
 
-    sqlite_path = os.path.join(MBOX_INDEX_DIR, "mbox_metadata.sqlite")
+    sqlite_path = os.path.join(FAISS_DIR, "mbox_metadata.sqlite")
     conn = init_sqlite(sqlite_path)
     cur = conn.cursor()
 
@@ -298,7 +294,7 @@ def build_index(chunks):
         progress_bar(done, total)
 
     print()  # 换行
-    faiss.write_index(index, os.path.join(MBOX_INDEX_DIR, "mbox_faiss.index"))
+    faiss.write_index(index, os.path.join(FAISS_DIR, "mbox_faiss.index"))
     print("FAISS index + metadata saved.")
     conn.close()
 
