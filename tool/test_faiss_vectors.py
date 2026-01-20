@@ -30,8 +30,13 @@ from pathlib import Path
 import faiss
 import numpy as np
 
-DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/mbox/index/faiss.index"
-#DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/standard/index/faiss.index"
+DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/faiss/std_faiss.index"
+#DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/faiss/mbox_faiss.index"
+DEFAULT_METADATA_PATH = Path(__file__).resolve().parents[1] / "data/faiss/std_metadata.sqlite"
+
+DEFAULT_NUM = 5
+DEFAULT_DIMS = 10
+DEFAULT_CHUNK_TEXT_LIMIT = 500
 
 
 def load_index(index_path: Path):
@@ -129,7 +134,7 @@ def main() -> None:
         "-n",
         "--num",
         type=int,
-        default=10,
+        default=DEFAULT_NUM,
         help="Number of vectors to display (default: 5)",
     )
     parser.add_argument(
@@ -141,8 +146,14 @@ def main() -> None:
     parser.add_argument(
         "--dims",
         type=int,
-        default=20,
+        default=DEFAULT_DIMS,
         help="How many dimensions to show per vector (default: 8; use 0 to show all)",
+    )
+    parser.add_argument(
+        "--chunk-text-limit",
+        type=int,
+        default=DEFAULT_CHUNK_TEXT_LIMIT,
+        help="Maximum characters to show for chunk_text (default: 500; use 0 to show all)",
     )
 
     args = parser.parse_args()
@@ -157,7 +168,7 @@ def main() -> None:
         print("Index is empty; nothing to show.")
         return
 
-    metadata_path = args.index_path.with_name("metadata.sqlite")
+    metadata_path = DEFAULT_METADATA_PATH
     if not metadata_path.exists():
         print(f"Metadata store not found: {metadata_path}")
         return
@@ -169,7 +180,10 @@ def main() -> None:
 
     print("\nMetadata preview:")
     for offset, row in enumerate(metadata_rows):
-        print(f"[{offset}] {dict(row)}")
+        row_dict = dict(row)
+        if 'chunk_text' in row_dict and args.chunk_text_limit > 0:
+            row_dict['chunk_text'] = row_dict['chunk_text'][:args.chunk_text_limit]
+        print(f"[{offset}] {row_dict}")
 
     np.set_printoptions(suppress=True, linewidth=120)
 

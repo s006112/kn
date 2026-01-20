@@ -79,7 +79,7 @@ STANDARD_JSON_DIR = Path("data/standard/json")
 STANDARD_INDEX_DIR = Path("data/standard/index")
 PAGE_BLOCK_SUFFIX = ".page_blocks.jsonl"
 MBOX_JSON_DIR = Path("data/mbox/json")
-MBOX_INDEX_DIR = Path("data/mbox/index")
+MBOX_INDEX_DIR = Path("data/faiss")
 MBOX_BLOCK_SUFFIX = "chunks.jsonl"
 
 os.makedirs(STANDARD_INDEX_DIR, exist_ok=True)
@@ -299,7 +299,7 @@ def build_index(chunks):
     dim = embed(["test"]).shape[1]
     index = faiss.IndexFlatIP(dim)
 
-    sqlite_path = os.path.join(MBOX_INDEX_DIR, "metadata.sqlite")
+    sqlite_path = os.path.join(MBOX_INDEX_DIR, "mbox_metadata.sqlite")
     conn = init_sqlite(sqlite_path)
     cur = conn.cursor()
 
@@ -336,7 +336,7 @@ def build_index(chunks):
         progress_bar(done, total)
 
     print()  # 换行
-    faiss.write_index(index, os.path.join(MBOX_INDEX_DIR, "faiss.index"))
+    faiss.write_index(index, os.path.join(MBOX_INDEX_DIR, "mbox_faiss.index"))
     print("FAISS index + metadata saved.")
     conn.close()
 

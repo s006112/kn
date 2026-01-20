@@ -91,8 +91,8 @@ from sentence_transformers import SentenceTransformer
 
 # ─── Config (保持原有的配置) ────────────────────────────────
 # 由於這些是常數，可以保留在這裡
-DB_PATH = Path("data/mbox/index/metadata.sqlite")
-INDEX_PATH = Path("data/mbox/index/faiss.index")
+DB_PATH = Path("data/faiss/mbox_metadata.sqlite")
+INDEX_PATH = Path("data/faiss/mbox_faiss.index")
 EMBED_MODEL = "BAAI/bge-m3"
 EMBED_BATCH_SIZE = 16
 LLM_MODEL = "sonar"

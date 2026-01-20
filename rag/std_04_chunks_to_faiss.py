@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+Refactor out embedding and FAISS index building from page-level chunk JSONL files
+
 Responsibility:
 Build a FAISS vector index and a SQLite metadata table from page-level chunk JSONL
 files under `data/standard/json`, using a locally cached HuggingFace BGE-M3 model.
@@ -76,7 +78,7 @@ def embed(texts):
 # ============================================================
 # Input directory containing `*.page_blocks.jsonl` files.
 STANDARD_JSON_DIR = Path("data/standard/json")
-STANDARD_INDEX_DIR = Path("data/standard/index")
+STANDARD_INDEX_DIR = Path("data/faiss")
 PAGE_BLOCK_SUFFIX = ".page_blocks.jsonl"
 
 os.makedirs(STANDARD_INDEX_DIR, exist_ok=True)
@@ -253,7 +255,7 @@ def build_index(chunks):
     dim = embed(["test"]).shape[1]
     index = faiss.IndexFlatIP(dim)
 
-    sqlite_path = os.path.join(STANDARD_INDEX_DIR, "metadata.sqlite")
+    sqlite_path = os.path.join(STANDARD_INDEX_DIR, "std_metadata.sqlite")
     conn = init_sqlite(sqlite_path)
     cur = conn.cursor()
 
@@ -290,7 +292,7 @@ def build_index(chunks):
         progress_bar(done, total)
 
     print()  # 换行
-    faiss.write_index(index, os.path.join(STANDARD_INDEX_DIR, "faiss.index"))
+    faiss.write_index(index, os.path.join(STANDARD_INDEX_DIR, "std_faiss.index"))
     print("FAISS index + metadata saved.")
     conn.close()
 
