@@ -30,11 +30,11 @@ from pathlib import Path
 import faiss
 import numpy as np
 
-DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/faiss/std_faiss.index"
-#DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/faiss/mbox_faiss.index"
-DEFAULT_METADATA_PATH = Path(__file__).resolve().parents[1] / "data/faiss/std_metadata.sqlite"
+#DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/faiss/std_faiss.index"
+DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/faiss/mbox_faiss.index"
+DEFAULT_METADATA_PATH = Path(__file__).resolve().parents[1] / "data/faiss/mbox_metadata.sqlite"
 
-DEFAULT_NUM = 5
+DEFAULT_NUM = 2
 DEFAULT_DIMS = 10
 DEFAULT_CHUNK_TEXT_LIMIT = 500
 

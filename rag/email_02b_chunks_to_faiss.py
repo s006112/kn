@@ -31,7 +31,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from helper.helper_embedding import embed
 
-TARGET_CHUNK_FOLDER = "standard"  #  mbox or standard
+TARGET_CHUNK_FOLDER = "mbox"  #  mbox or standard
 
 # ============================================================
 # Paths
@@ -135,8 +135,19 @@ def load_chunks():
                 seq = meta_obj.get("seq")
                 part = meta_obj.get("part")
                 subject = meta_obj.get("subject")
+                location_path = f"seq:{seq}" if seq is not None else None
 
                 meta = {
+                    # ── std schema fields ──
+                    "doc_type": "email",
+                    "doc_id": email_id,
+                    "doc_code": email_id,
+                    "location_path": location_path,
+                    "heading": subject,
+                    "page": seq,
+                    "word": meta_obj.get("word_count"),
+
+                    # ── email native fields ──
                     "email_id": email_id,
                     "thread_id": meta_obj.get("thread_id"),
                     "from": meta_obj.get("from"),
