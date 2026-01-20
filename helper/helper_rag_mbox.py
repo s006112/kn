@@ -86,14 +86,13 @@ from typing import Optional, Any, Dict, List, Tuple
 
 # Assume these helpers are in place
 from helper.utils_llm import call_llm
-from sentence_transformers import SentenceTransformer
+from helper.helper_embedding import embed
 
 
 # ─── Config (保持原有的配置) ────────────────────────────────
 # 由於這些是常數，可以保留在這裡
 DB_PATH = Path("data/faiss/mbox_metadata.sqlite")
 INDEX_PATH = Path("data/faiss/mbox_faiss.index")
-EMBED_MODEL = "BAAI/bge-m3"
 EMBED_BATCH_SIZE = 16
 LLM_MODEL = "sonar"
 TOP_K = 10
@@ -105,37 +104,31 @@ SYSTEM_PROMPT_PATH = Path("prompt/prompt_rag_system.txt")
 class EmbeddingModel:
     """
     Responsibility:
-    Thin wrapper around `SentenceTransformer` to produce a normalized query embedding.
+    Thin wrapper around helper_embedding to produce a normalized query embedding.
     """
 
     def __init__(self, model_name: str, device: str, batch_size: int, task: str = None):
         """
         Purpose:
-        Initialize a sentence-transformers model on the requested device with a CPU fallback.
+        Initialize the embedding model using helper_embedding.
 
         Inputs:
-        - model_name: SentenceTransformer model name or local path.
-        - device: Target device string (e.g. `"cpu"`, `"cuda"`, `"cuda:0"`).
-        - batch_size: Batch size retained for API compatibility; used by this wrapper as stored config.
-        - task: Optional task parameter (currently unused by this wrapper).
+        - model_name: Model name (kept for API compatibility).
+        - device: Target device string (kept for API compatibility).
+        - batch_size: Batch size retained for API compatibility.
+        - task: Optional task parameter (currently unused).
 
         Outputs:
         - None.
 
         Side effects:
-        - Loads model weights and may allocate GPU memory.
-        - Prints a notice when CUDA is requested but unavailable.
+        - Loads the embedding model via helper_embedding.
 
         Failure modes:
-        - Propagates exceptions from `SentenceTransformer` initialization.
+        - Propagates exceptions from helper_embedding initialization.
         """
-
-        actual_device = device
-        if device.startswith("cuda") and not torch.cuda.is_available():
-            print("CUDA not available, falling back to CPU for embeddings.")
-            actual_device = "cpu"
-        self.model = SentenceTransformer(model_name, device=actual_device)
         self.batch_size = batch_size
+        # Model is loaded lazily in helper_embedding
 
     def embed_query(self, text):
         """
@@ -152,17 +145,9 @@ class EmbeddingModel:
         - Runs the underlying transformer model.
 
         Failure modes:
-        - Propagates exceptions from `SentenceTransformer.encode`.
+        - Propagates exceptions from helper_embedding.embed.
         """
-
-        v = self.model.encode(
-            [text],
-            batch_size=1,
-            normalize_embeddings=True,
-            convert_to_numpy=True,
-            show_progress_bar=False,
-        )
-        return v[0]
+        return embed([text])[0]
 
 
 # 所有的 load/knn/format 函數都移到這裡作為內部函數 (不公開，但 RagEngine 會調用)
@@ -326,7 +311,7 @@ class RagEngine:
         print("Initializing RagEngine: Loading FAISS index and Embedding Model...")
         self.texts, self.metas = _load_all_chunks(DB_PATH)
         self.embedder = EmbeddingModel(
-            model_name=EMBED_MODEL,
+            model_name=None,
             device="cuda:0", # Use original device setting
             batch_size=EMBED_BATCH_SIZE,
         )
