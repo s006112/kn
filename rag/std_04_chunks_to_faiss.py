@@ -2,14 +2,14 @@
 """
 Responsibility:
 Build a FAISS vector index and a SQLite metadata table from page-level chunk JSONL
-files under `data/standard/json`, using a locally cached HuggingFace BGE-M3 model.
+files under `data/{TARGET_CHUNK_FOLDER}/json`, using a locally cached HuggingFace BGE-M3 model.
 
 Pipelines:
 - jsonl -> chunks -> embeddings -> faiss index -> sqlite metadata -> index files
 
 Invariants:
 - Embeddings are L2-normalized and indexed with `faiss.IndexFlatIP`.
-- The SQLite database file at `data/standard/index/metadata.sqlite` is rebuilt on
+- The SQLite database file at `data/faiss/{TARGET_CHUNK_FOLDER}_metadata.sqlite` is rebuilt on
   each run (any existing file is removed).
 - Empty lines and chunks with empty `text` are skipped when loading JSONL.
 
@@ -31,16 +31,16 @@ if str(ROOT_DIR) not in sys.path:
 
 from helper.helper_embedding import embed
 
+TARGET_CHUNK_FOLDER = "standard"  #  mbox or standard
 
 # ============================================================
 # Paths
 # ============================================================
 # Input directory containing `*.page_blocks.jsonl` files.
-STANDARD_JSON_DIR = Path("data/standard/json")
-STANDARD_INDEX_DIR = Path("data/faiss")
-STD_BLOCK_SUFFIX = "chunks.jsonl"
+JSON_DIR = Path(f"data/{TARGET_CHUNK_FOLDER}/json")
+FAISS_DIR = Path("data/faiss")
+BLOCK_SUFFIX = "chunks.jsonl"
 
-os.makedirs(STANDARD_INDEX_DIR, exist_ok=True)
 
 
 # ============================================================
@@ -98,7 +98,7 @@ def load_chunks():
     `(text, metadata)` tuples suitable for indexing and SQLite storage.
 
     Inputs:
-    - None (reads files from `STANDARD_JSON_DIR` matching `STD_BLOCK_SUFFIX`).
+    - None (reads files from `JSON_DIR` matching `BLOCK_SUFFIX`).
 
     Outputs:
     - List of `(text, meta)` tuples where `meta` is a dict containing fixed
@@ -111,7 +111,7 @@ def load_chunks():
     Failure modes:
     - Raises exceptions from file I/O or `json.loads` for malformed inputs.
     """
-    pattern = os.path.join(STANDARD_JSON_DIR, f"*{STD_BLOCK_SUFFIX}")
+    pattern = os.path.join(JSON_DIR, f"*{BLOCK_SUFFIX}")
     files = glob(pattern)
     chunks = []
 
@@ -151,6 +151,7 @@ def load_chunks():
                 chunks.append((text, meta))
 
     print(f"Loaded {len(chunks)} chunks")
+    
     return chunks
 
 
@@ -199,7 +200,7 @@ def build_index(chunks):
 
     Side effects:
     - Computes embeddings via `embed()`.
-    - Writes `faiss.index` and `metadata.sqlite` under `STANDARD_INDEX_DIR`.
+    - Writes `faiss.index` and `metadata.sqlite` under `FAISS_DIR`.
     - Prints progress to stdout.
 
     Failure modes:
@@ -214,7 +215,7 @@ def build_index(chunks):
     dim = embed(["test"]).shape[1]
     index = faiss.IndexFlatIP(dim)
 
-    sqlite_path = os.path.join(STANDARD_INDEX_DIR, "std_metadata.sqlite")
+    sqlite_path = os.path.join(FAISS_DIR, f"{TARGET_CHUNK_FOLDER}_metadata.sqlite")
     conn = init_sqlite(sqlite_path)
     cur = conn.cursor()
 
@@ -251,7 +252,7 @@ def build_index(chunks):
         progress_bar(done, total)
 
     print()  # 换行
-    faiss.write_index(index, os.path.join(STANDARD_INDEX_DIR, "std_faiss.index"))
+    faiss.write_index(index, os.path.join(FAISS_DIR, f"{TARGET_CHUNK_FOLDER}_faiss.index"))
     print("FAISS index + metadata saved.")
     conn.close()
 
