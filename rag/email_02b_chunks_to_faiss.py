@@ -76,11 +76,6 @@ def init_sqlite(path: str) -> sqlite3.Connection:
         """
         CREATE TABLE chunks (
             vector_id INTEGER PRIMARY KEY,
-            doc_type TEXT,
-            doc_id TEXT,
-            doc_code TEXT,
-            location_path TEXT,
-            heading TEXT,
             chunk_text TEXT,
             metadata_json TEXT
         )
@@ -128,40 +123,27 @@ def load_chunks():
                     continue
                 obj = json.loads(line)
 
-                meta_obj = obj.get("metadata") or {}
-                text = obj.get("content", "").strip()
+                text = (obj.get("text") or obj.get("content") or "").strip()
                 if not text:
                     continue
-
-                email_id = meta_obj.get("email_id")
-                seq = meta_obj.get("seq")
-                part = meta_obj.get("part")
-                subject = meta_obj.get("subject")
-                location_path = f"seq:{seq}" if seq is not None else None
 
                 meta = {
                     # ── std schema fields ──
                     "doc_type": "email",
-                    "doc_id": email_id,
-                    "doc_code": email_id,
-                    "location_path": location_path,
-                    "heading": subject,
-                    "page": seq,
-                    "word": meta_obj.get("word_count"),
+                    "doc_id":  obj.get("subject"),
+                    "chunk_id": obj.get("email_id") + "_" + str(obj.get("seq")),
+                    "page": obj.get("seq"),
+                    "char": obj.get("char"),
+                    "word": obj.get("word"),
 
                     # ── email native fields ──
-                    "email_id": email_id,
-                    "thread_id": meta_obj.get("thread_id"),
-                    "from": meta_obj.get("from"),
-                    "to": meta_obj.get("to"),
-                    "subject": subject,
-                    "date": meta_obj.get("date"),
-                    "part": part,
-                    "attachment_type": meta_obj.get("file_type"),
-                    "attachment_name": meta_obj.get("attachment"),
-                    "seq": seq,
-                    "chunk_length": meta_obj.get("chunk_length"),
-                    "word_count": meta_obj.get("word_count"),
+                    "thread_id": obj.get("thread_id"),
+                    "from": obj.get("from"),
+                    "to": obj.get("to"),
+                    "date": obj.get("date"),
+                    "part": obj.get("part"),
+                    "attachment_type": obj.get("file_type"),
+                    "attachment_name": obj.get("attachment"),
                 }
 
                 chunks.append((text, meta))
@@ -248,14 +230,9 @@ def build_index(chunks):
         for j, meta in enumerate(metas):
             meta_json = json.dumps(meta, ensure_ascii=False)
             cur.execute(
-                "INSERT INTO chunks VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO chunks VALUES (?, ?, ?)",
                 (
                     vector_id,
-                    meta.get("doc_type"),
-                    meta.get("doc_id"),
-                    meta.get("doc_code"),
-                    meta.get("location_path"),
-                    meta.get("heading"),
                     texts[j],
                     meta_json,
                 ),

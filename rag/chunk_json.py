@@ -17,7 +17,7 @@ Invariants:
 - `Task` carries `text` and `metadata` and is the unit of work for batch chunking.
 - Output chunk metadata includes a 1-based `seq` per source task.
 - `BatchProcessor` prefers `ProcessPoolExecutor` unless `FORCE_CHUNK_THREAD=1`, and falls back to threads on process-pool failure.
-- `JsonlWriter` writes one JSON object per line with `metadata` and `content`.
+- `JsonlWriter` writes one JSON object per line with top-level metadata fields plus `text`, `char`, and `word`.
 
 Out of scope:
 - Attachment extraction (handled by `chunk_att` and type-specific modules).
@@ -614,7 +614,7 @@ class JsonlWriter:
 
     Invariants:
     - `write_chunks` requires the writer to be opened via `__enter__`.
-    - Each output line is a JSON object with `metadata` and `content` keys.
+    - Each output line is a JSON object with top-level metadata fields plus `text`, `char`, and `word`.
     """
 
     def __init__(self, path: Path) -> None:
@@ -636,6 +636,13 @@ class JsonlWriter:
         """
 
         self.path = path
+        self._record_builder = lambda chunk, meta, *, seq, char, word: {
+            **meta,
+            "seq": seq,
+            "char": char,
+            "word": word,
+            "text": chunk,
+        }
         self.handle = None
         self.chunk_count = 0
 
@@ -684,15 +691,10 @@ class JsonlWriter:
 
         count = 0
         for chunk, meta in chunks:
-            record = {
-                "metadata": {
-                    **meta,
-                    "seq": meta.get("seq", 1),  # fallback to 1 if not present
-                    "chunk_length": len(chunk),
-                    "word_count": len(re.findall(r"\b\w+\b", chunk)),
-                },
-                "content": chunk,
-            }
+            seq = meta.get("seq", 1)
+            char = len(chunk)
+            word = len(re.findall(r"\b\w+\b", chunk))
+            record = self._record_builder(chunk, meta, seq=seq, char=char, word=word)
             try:
                 self.handle.write(json.dumps(record, ensure_ascii=False) + "\n")
                 self.chunk_count += 1

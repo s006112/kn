@@ -30,7 +30,7 @@ from pathlib import Path
 import faiss
 import numpy as np
 
-META_TYPE = "standard"  # standard or mbox 
+META_TYPE = "mbox"  # standard or mbox 
 
 INDEX_PATH = Path("data/faiss") / f"{META_TYPE}_faiss.index"
 METADATA_PATH = Path("data/faiss") / f"{META_TYPE}_metadata.sqlite"

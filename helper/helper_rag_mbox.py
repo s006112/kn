@@ -262,17 +262,17 @@ def build_similarity_table(top_idx, top_scores, metas, texts):
     - Propagates exceptions if indices are out of range or metadata is not dict-like.
     """
 
-    table = ["| score | doc | page | word |", "|---:|---|---:|---:|"]
+    table = ["| score | subject | date | word |", "|---:|---|---:|---:|"]
     total_words = 0
     for i, s in zip(top_idx, top_scores):
         meta = metas[i] or {}
         #doc = meta.get("doc_code")
-        doc = meta.get("heading")
-        page = meta.get("page")
+        doc = meta.get("doc_id")
+        date = meta.get("date")
         # 從 metadata 中直接讀取 word 數
         word_count = meta.get("word", 0) or 0
         total_words += int(word_count)
-        table.append(f"| {float(s):.4f} | {doc} | {page} | {word_count} |")
+        table.append(f"| {float(s):.4f} | {doc} | {date} | {word_count} |")
     # 在表格之後加一行總詞數
     table.append(f"Total word count: {total_words}")
     return "\n".join(table)

@@ -4,20 +4,20 @@ email_01_mbox_to_chunks.py
 Responsibility:
 Parse mbox files into email body/attachment tasks, chunk them via `chunk_json.BatchProcessor`, and write JSONL records with per-chunk metadata.
 
-JSON metadata schema (per JSONL line):
-- content: str, chunk text from the email body or an extracted attachment.
-- metadata.email_id: str, Message-ID header (empty string when missing).
-- metadata.thread_id: str, In-Reply-To header (empty string when missing).
-- metadata.from: str, From header (empty string when missing).
-- metadata.to: str, To header (empty string when missing).
-- metadata.subject: str, Subject header (empty string when missing).
-- metadata.date: str, Date header with weekday prefix and numeric timezone removed when present.
-- metadata.part: str, "body" or "attachment".
-- metadata.file_type: str, "text" for bodies; "pdf", "doc", "docx", or "excel" for attachments.
-- metadata.attachment: str | None, attachment filename for attachments; None for bodies.
-- metadata.seq: int, 1-based chunk sequence assigned during chunking.
-- metadata.chunk_length: int, character length of `content`.
-- metadata.word_count: int, regex word-count of `content`.
+JSON schema (per JSONL line):
+- email_id: str, Message-ID header (empty string when missing).
+- thread_id: str, In-Reply-To header (empty string when missing).
+- from: str, From header (empty string when missing).
+- to: str, To header (empty string when missing).
+- subject: str, Subject header (empty string when missing).
+- date: str, Date header with weekday prefix and numeric timezone removed when present.
+- part: str, "body" or "attachment".
+- file_type: str, "text" for bodies; "pdf", "doc", "docx", or "excel" for attachments.
+- attachment: str | None, attachment filename for attachments; None for bodies.
+- seq: int, 1-based chunk sequence assigned during chunking.
+- char: int, character length of `text`.
+- word: int, regex word-count of `text`.
+- text: str, chunk text from the email body or an extracted attachment.
 
 Pipelines:
 - iter_mbox -> parse_headers -> extract_body -> extract_attachments -> chunk_tasks -> write_jsonl
@@ -25,7 +25,7 @@ Pipelines:
 Invariants:
 - Messages missing Message-ID, From, and Subject are skipped.
 - Email bodies yield at most one task per message.
-- Output JSONL lines always contain `metadata` and `content` keys.
+- Output JSONL lines always contain email fields + `text`.
 
 Out of scope:
 - Attachment parsing details (handled by `chunk_att` and type-specific helpers).
