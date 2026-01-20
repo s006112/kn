@@ -121,7 +121,7 @@ class BaseExtractHandler(FileSystemEventHandler):
         """
         cond = (
             os.path.abspath(os.path.dirname(file_path)) == os.path.abspath(self.watch_folder)
-            and file_path.lower().endswith('_p.txt')
+            and file_path.lower().endswith(str(self.config["EXTRACT_SUFFIX"]).lower())
             and file_path not in self.processed_files
             and file_path not in list(self.queue.queue)
         )
@@ -167,7 +167,9 @@ def process(self, file_path, get_next_available_filename):
     """
     filename = os.path.basename(file_path)
     logging.info(f"{self.__class__.__name__}: Start processing {filename}")
-    base = filename[:-6] if filename.lower().endswith('_p.txt') else os.path.splitext(filename)[0]
+    extract_suffix = str(self.config["EXTRACT_SUFFIX"]).lower()
+    filename_lower = filename.lower()
+    base = filename[: -len(extract_suffix)] if filename_lower.endswith(extract_suffix) else os.path.splitext(filename)[0]
 
     try:
         content, enc = read_file_with_encodings(file_path)

@@ -22,7 +22,7 @@ MODEL_EXTRACT_MATRIX = {
         "gpt-5-mini",
         #"sonar",
         "grok-4-1-fast-non-reasoning",
-        "gemini-3-flash-preview",
+        "gemini-3-pro-preview",
     ],
     "PREMIUM_WATCH_FOLDER": [
         "gpt-5.1",
@@ -66,6 +66,8 @@ CONFIG = {
     "MODEL_PRETEXT": MODEL_PRETEXT,
     "MODEL_EXTRACT_MATRIX": MODEL_EXTRACT_MATRIX,
     "MODEL_DISTILL": MODEL_DISTILL,
+    "PRETEXT_SUFFIX": ".txt",
+    "EXTRACT_SUFFIX": ".md",
     **RETRY_CONFIG,
     # 由 orchestration 注入
     "PRETEXT_PROMPT": None,

@@ -261,15 +261,18 @@ def scan_existing_files(ctx: PipelineContext) -> None:
     pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
     extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
     premium_watch_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
+    pretext_suffix = str(ctx.config["PRETEXT_SUFFIX"]).lower()
+    extract_suffix = str(ctx.config["EXTRACT_SUFFIX"]).lower()
 
     for filename in os.listdir(pretext_watch_folder):
-        if not filename.lower().endswith(".txt"):
+        filename_lower = filename.lower()
+        if not filename_lower.endswith(pretext_suffix):
             continue
         file_path = os.path.join(pretext_watch_folder, filename)
         if len(os.path.splitext(filename)[0]) > 60:
             base_name = os.path.splitext(filename)[0]
             sanitized_base = sanitize_and_trim_filename(base_name)
-            new_name = sanitized_base + ".txt"
+            new_name = sanitized_base + pretext_suffix
             new_path = os.path.join(pretext_watch_folder, new_name)
             try:
                 if not os.path.exists(new_path):
@@ -282,18 +285,16 @@ def scan_existing_files(ctx: PipelineContext) -> None:
                 logging.error("Error renaming file: %s", e)
                 continue
 
-        if filename.lower().endswith(".txt") and not filename.lower().endswith(
-            "_p.txt"
-        ):
+        if filename_lower.endswith(pretext_suffix) and not filename_lower.endswith(extract_suffix):
             request_pretext_processing(ctx, file_path)
 
     for filename in os.listdir(extract_watch_folder):
-        if filename.lower().endswith("_p.txt"):
+        if filename.lower().endswith(extract_suffix):
             file_path = os.path.join(extract_watch_folder, filename)
             enqueue_if_absent(ctx.extract_queue, file_path)
 
     for filename in os.listdir(premium_watch_folder):
-        if filename.lower().endswith("_p.txt"):
+        if filename.lower().endswith(extract_suffix):
             file_path = os.path.join(premium_watch_folder, filename)
             enqueue_if_absent(ctx.premium_extract_queue, file_path)
 
@@ -321,6 +322,8 @@ def periodic_file_scanner(ctx: PipelineContext) -> None:
     pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
     extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
     premium_watch_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
+    pretext_suffix = str(ctx.config["PRETEXT_SUFFIX"]).lower()
+    extract_suffix = str(ctx.config["EXTRACT_SUFFIX"]).lower()
 
     processed = set()
     extract_done = set()
@@ -332,22 +335,22 @@ def periodic_file_scanner(ctx: PipelineContext) -> None:
 
             current = list_matching_files(
                 pretext_watch_folder,
-                lambda f: f.lower().endswith(".txt")
-                and not f.lower().endswith("_p.txt"),
+                lambda f: f.lower().endswith(pretext_suffix)
+                and not f.lower().endswith(extract_suffix),
             )
             for path in current - processed:
                 request_pretext_processing(ctx, path)
             processed = current
 
             extract_current = list_matching_files(
-                extract_watch_folder, lambda f: f.lower().endswith("_p.txt")
+                extract_watch_folder, lambda f: f.lower().endswith(extract_suffix)
             )
             for path in extract_current - extract_done:
                 enqueue_if_absent(ctx.extract_queue, path)
             extract_done = extract_current
 
             premium_current = list_matching_files(
-                premium_watch_folder, lambda f: f.lower().endswith("_p.txt")
+                premium_watch_folder, lambda f: f.lower().endswith(extract_suffix)
             )
             for path in premium_current - premium_processed:
                 enqueue_if_absent(ctx.premium_extract_queue, path)
@@ -425,6 +428,7 @@ def process_ttml_pipeline(ctx: PipelineContext) -> None:
                             watch_folder,
                             original_folder,
                             sanitize_and_trim_filename,
+                            str(ctx.config["PRETEXT_SUFFIX"]),
                         )
                     except Exception as e:
                         logging.error(

@@ -74,7 +74,14 @@ class PretextHandler(FileSystemEventHandler):
         Failure modes:
         - Propagates exceptions from queue operations.
         """
-        if not _is_pretext_candidate(path, self.watch_folder):
+        pretext_suffix = str(self.ctx.config["PRETEXT_SUFFIX"]).lower()
+        extract_suffix = str(self.ctx.config["EXTRACT_SUFFIX"]).lower()
+        if not _is_pretext_candidate(
+            path,
+            self.watch_folder,
+            pretext_suffix=pretext_suffix,
+            extract_suffix=extract_suffix,
+        ):
             return
         if request_pretext_processing(self.ctx, path):
             logging.info("Pretext: Queued %s", os.path.basename(path))
@@ -197,7 +204,13 @@ def release_pretext_request(ctx: PipelineContext, file_path: str) -> None:
         ctx.processed_files_global.discard(normalized)
 
 
-def _is_pretext_candidate(path: Optional[str], watch_folder: str) -> bool:
+def _is_pretext_candidate(
+    path: Optional[str],
+    watch_folder: str,
+    *,
+    pretext_suffix: str,
+    extract_suffix: str,
+) -> bool:
     """
     Purpose:
     Decide if a path is a pretext candidate within the watch folder.
@@ -217,7 +230,9 @@ def _is_pretext_candidate(path: Optional[str], watch_folder: str) -> bool:
     if os.path.dirname(normalized) != watch_folder:
         return False
     name = os.path.basename(normalized).lower()
-    return name.endswith('.txt') and not name.endswith('_p.txt')
+    pretext_suffix = pretext_suffix.lower()
+    extract_suffix = extract_suffix.lower()
+    return name.endswith(pretext_suffix) and not name.endswith(extract_suffix)
 
 
 def process_pretext_file(ctx: PipelineContext, file_path: str) -> None:
@@ -312,7 +327,7 @@ def process_pretext_file(ctx: PipelineContext, file_path: str) -> None:
         )
 
         pretext_target_path = os.path.join(
-            config['PRETEXT_WATCH_FOLDER'], f"{base_name}_p.txt"
+            config['PRETEXT_WATCH_FOLDER'], f"{base_name}{config['EXTRACT_SUFFIX']}"
         )
         with open(pretext_target_path, 'w', encoding='utf-8') as f:
             f.write(pretext_result)

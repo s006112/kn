@@ -252,7 +252,8 @@ def process_audio_file(file_path: str, folder_path: str, config: dict, done_fold
             os.remove(wav_file)
         return False
 
-    txt_path = os.path.join(config['AUDIO_TRANSCRIBED_TXT_FOLDER'], sanitized + '.txt')
+    pretext_suffix = str(config["PRETEXT_SUFFIX"]).lower()
+    txt_path = os.path.join(config['AUDIO_TRANSCRIBED_TXT_FOLDER'], sanitized + pretext_suffix)
     with open(txt_path, 'w', encoding='utf-8') as f:
         f.write(text)
     release_text_file_permissions(txt_path)

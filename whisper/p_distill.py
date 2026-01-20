@@ -81,7 +81,7 @@ def _write_distill_error(extract_folder: str, base_name: str, message: str) -> N
         logging.error("Distillation: failed to write error file for %s: %s", base_name, exc)
 
 
-def _collect_extracts(extract_folder: str, base_name: str) -> List[Tuple[str, str, str]]:
+def _collect_extracts(extract_folder: str, base_name: str, pretext_suffix: str) -> List[Tuple[str, str, str]]:
     """
     Purpose:
     Collect extract contents and labels for a base name.
@@ -99,10 +99,11 @@ def _collect_extracts(extract_folder: str, base_name: str) -> List[Tuple[str, st
         return []
 
     prefix = f"{base_name}_"
+    suffix = pretext_suffix.lower()
     candidates = sorted(
         fn
         for fn in os.listdir(extract_folder)
-        if fn.startswith(prefix) and fn.lower().endswith(".txt")
+        if fn.startswith(prefix) and fn.lower().endswith(suffix)
     )
 
     extracts: List[Tuple[str, str, str]] = []
@@ -175,7 +176,7 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
         return None
 
     try:
-        extracts = _collect_extracts(extract_folder, base_name)
+        extracts = _collect_extracts(extract_folder, base_name, str(config["PRETEXT_SUFFIX"]))
     except Exception as exc:
         _write_distill_error(extract_folder, base_name, f"Read error: {exc}\n")
         raise

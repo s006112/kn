@@ -28,7 +28,7 @@ def is_file_ready(path, wait=1.0):
     return size1 == os.path.getsize(path)
 
 # Convert TTML subtitle file to plain text and archive the original
-def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename):
+def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename, pretext_suffix: str):
     """Convert a TTML file to plain text and archive the original."""
     lock = path + '.processing'
     filename = os.path.basename(path)
@@ -48,7 +48,7 @@ def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename)
 
         base_name = sanitize_and_trim_filename(os.path.splitext(filename)[0])
         # Destination text file in watch folder
-        out_txt = os.path.join(watch_folder, base_name + '.txt')
+        out_txt = os.path.join(watch_folder, base_name + pretext_suffix)
 
         if not first.lstrip().startswith('<'):
             with open(out_txt, 'w', encoding='utf-8') as f:
