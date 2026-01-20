@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+std_04_chunks_to_faiss.py
+
 Responsibility:
 Build a FAISS vector index and a SQLite metadata table from page-level chunk JSONL
 files under `data/{TARGET_CHUNK_FOLDER}/json`, using a locally cached HuggingFace BGE-M3 model.
@@ -140,8 +142,6 @@ def load_chunks():
                     "doc_id": file_id,                  # 可以理解成檔案 ID
                     "doc_code": file_id,                # Keep doc_code identical to doc_id for traceability.
                     "location_path": f"page:{page}",    # 粗略定位
-                    "heading": None,                    # Page blocks do not provide headings in this pipeline.
-                    # 其餘信息原樣保留
                     "block_id": block_id,
                     "page": page,
                     "char": obj.get("char"),
