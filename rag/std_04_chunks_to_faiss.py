@@ -3,8 +3,8 @@
 std_04_chunks_to_faiss.py
 
 Responsibility:
-Build a FAISS vector index and a SQLite metadata table from page-level chunk JSONL
-files under `data/{TARGET_CHUNK_FOLDER}/json`, using a locally cached HuggingFace BGE-M3 model.
+Build a FAISS vector index and a SQLite metadata table from chunk JSONL files under
+`data/{TARGET_CHUNK_FOLDER}/json`, using the project's embedding helper.
 
 Pipelines:
 - jsonl -> chunks -> embeddings -> faiss index -> sqlite metadata -> index files
@@ -15,8 +15,29 @@ Invariants:
   each run (any existing file is removed).
 - Empty lines and chunks with empty `text` are skipped when loading JSONL.
 
+Input JSONL schema (per line):
+- Required:
+  - `text` (string): chunk content; empty/whitespace-only entries are skipped.
+- Optional:
+  - `file_id` (string|null): source document identifier.
+  - `page` (int): page number; defaults to 0 when missing.
+  - `block_id` (int|string|null): chunk identifier within the document.
+  - `char` (int|null): character count as provided by upstream chunker.
+  - `word` (int|null): word count as provided by upstream chunker.
+
+Stored metadata schema (`metadata_json`):
+- `source` (string): constant `"standard"`.
+- `doc_id` (string|null): copied from input `file_id`.
+- `chunk_id` (int|string|null): copied from input `block_id`.
+- `page` (int): copied from input `page` (default 0).
+- `char` (int|null): copied from input `char`.
+- `word` (int|null): copied from input `word`.
+
+SQLite schema:
+- Table `chunks(vector_id INTEGER PRIMARY KEY, chunk_text TEXT, metadata_json TEXT)`
+
 Out of scope:
-- Producing or validating the `*.page_blocks.jsonl` inputs.
+- Producing or validating the `*chunks.jsonl` inputs.
 - Query-time retrieval, reranking, or serving APIs.
 """
 
@@ -76,9 +97,6 @@ def init_sqlite(path: str) -> sqlite3.Connection:
         """
         CREATE TABLE chunks (
             vector_id INTEGER PRIMARY KEY,
-            doc_type TEXT,
-            doc_id TEXT,
-            page INTEGER,
             chunk_text TEXT,
             metadata_json TEXT
         )
@@ -94,15 +112,15 @@ def init_sqlite(path: str) -> sqlite3.Connection:
 def load_chunks():
     """
     Purpose:
-    Load page-level text blocks from `*.page_blocks.jsonl` files and map them to
-    `(text, metadata)` tuples suitable for indexing and SQLite storage.
+    Load chunk records from `*chunks.jsonl` files and map them to `(text, metadata)` tuples
+    suitable for indexing and SQLite storage.
 
     Inputs:
     - None (reads files from `JSON_DIR` matching `BLOCK_SUFFIX`).
 
     Outputs:
-    - List of `(text, meta)` tuples where `meta` is a dict containing fixed
-      fields used by the SQLite schema plus original block identifiers.
+    - List of `(text, meta)` tuples where `meta` is a dict containing the flattened metadata
+      fields written to `metadata_json`.
 
     Side effects:
     - Reads JSONL files from disk.
@@ -130,16 +148,12 @@ def load_chunks():
                 if not text:
                     continue
 
-                file_id = obj.get("file_id")
-                page = obj.get("page", 0)
-                block_id = obj.get("block_id")
-
-                # 給 SQLite 那幾個固定欄位一個合理映射
+                # 統一 metadata 結構：頂層常用欄位 + extra 放可選/領域欄位
                 meta = {
-                    "doc_type": "standard",
-                    "doc_id": file_id,                  # 可以理解成檔案 ID
-                    "block_id": block_id,
-                    "page": page,
+                    "source": "standard",
+                    "doc_id": obj.get("file_id"),  # 可以理解成檔案 ID
+                    "chunk_id": obj.get("block_id"),
+                    "page": obj.get("page", 0),
                     "char": obj.get("char"),
                     "word": obj.get("word"),
                 }
@@ -229,11 +243,9 @@ def build_index(chunks):
         for j, meta in enumerate(metas):
             meta_json = json.dumps(meta, ensure_ascii=False)
             cur.execute(
-                "INSERT INTO chunks VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO chunks VALUES (?, ?, ?)",
                 (
                     vector_id,
-                    meta.get("doc_id"),
-                    meta.get("page"),
                     texts[j],
                     meta_json,
                 ),
