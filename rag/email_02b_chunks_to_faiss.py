@@ -23,52 +23,7 @@ import sqlite3
 from glob import glob
 from pathlib import Path
 import faiss
-import torch
-from transformers import AutoTokenizer, AutoModel
-
-# ============================================================
-# Model: BGE-M3
-# ============================================================
-MODEL_PATH = "/root/.cache/huggingface/hub/models--BAAI--bge-m3/snapshots/5617a9f61b028005a4858fdac845db406aefb181"
-os.environ["HF_HUB_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
-
-print(f"Loading embedding model: {MODEL_PATH}")
-tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True)
-model = AutoModel.from_pretrained(MODEL_PATH, local_files_only=True).cuda()  # assume GPU exists
-
-
-def embed(texts):
-    """
-    Purpose:
-    Compute dense embeddings for input texts using the loaded transformer model.
-
-    Inputs:
-    - texts: List of strings to embed.
-
-    Outputs:
-    - Numpy array of shape (len(texts), dim) with L2-normalized vectors.
-
-    Side effects:
-    - Runs model inference on the current model device.
-
-    Failure modes:
-    - Raises exceptions from tokenization or model execution (e.g., missing model
-      files, CUDA/device errors).
-    """
-    with torch.no_grad():
-        tokens = tokenizer(
-            texts,
-            padding=True,
-            truncation=True,
-            max_length=2048,  # 足够覆盖大部分頁級內容
-            return_tensors="pt",
-        ).to(model.device)
-
-        out = model(**tokens)
-        emb = out.last_hidden_state[:, 0]  # CLS pooling
-        emb = torch.nn.functional.normalize(emb, p=2, dim=1)
-        return emb.cpu().numpy()
+from helper.helper_embedding import embed
 
 
 # ============================================================
