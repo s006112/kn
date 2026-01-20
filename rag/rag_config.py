@@ -3,9 +3,7 @@ Responsibility:
 Centralizes path constants and lightweight runtime helpers used by the email RAG scripts (directory layout, batching/parallelism defaults, and simple performance accounting).
 
 Used by:
-* rag/email_01_mbox_to_chunks.py
-* rag/email_02_chunks_to_faiss.py
-* rag/email_03_web_gui.py
+* rag/mbox_to_json.py
 
 Pipelines:
 - resolve_paths -> init_config -> ensure_dirs -> track_performance -> log_summary

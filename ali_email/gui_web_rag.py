@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
-"""Gradio UI for querying email data via FAISS + embeddings.
-Designed for Hugging Face Spaces (sdk: gradio).
-Phase 0: keep functionality identical, no Pydantic, no langchain_core.output_parsers.
-"""
+# gui_web_rag.py
+
 
 import os
 import sys
