@@ -1,4 +1,30 @@
 #!/usr/bin/env python3
+"""
+Responsibility:
+Convert split text files into page-scoped JSONL blocks with an injected UL
+standard/page prefix and basic size counters.
+
+JSON metadata schema (per line):
+- block_id: str, "{file_id}_p{page:04d}"
+- file_id: str, source stem (e.g., "s935_10.page_splited" -> "s935_10")
+- page: int, page number from <<<PAGE_BREAK_N>>> markers
+- char: int, length of the text field
+- word: int, whitespace-split token count of the text field
+- text: str, "UL {standard_number}, page {page} " + page body
+
+Pipelines:
+- read_files -> split_pages -> inject_prefix -> write_jsonl
+
+Invariants:
+- Each output line is a JSON object with keys: block_id, file_id, page, char,
+  word, text.
+- The text field always includes a "UL {standard_number}, page {page}" prefix.
+- Page numbers come only from <<<PAGE_BREAK_N>>> markers and start at 0.
+
+Out of scope:
+- Vectorization or embedding metadata.
+- Downstream schemas with doc_type, doc_id, or vector fields.
+"""
 from __future__ import annotations
 from pathlib import Path
 import json, re, sys
@@ -11,6 +37,23 @@ STD_BLOCK_SUFFIX = ".chunks.jsonl"
 PAGE_RE = re.compile(r"^<<<PAGE_BREAK_(\d+)>>>$")
 
 def main() -> None:
+    """
+    Purpose:
+    Walk TXT_SPLITTED_DIR for *.page_splited files and emit per-page JSONL
+    blocks into OUTPUT.
+    Inputs:
+    - TXT_SPLITTED_DIR
+    - IN_SUFFIX
+    - PAGE_RE
+    Outputs:
+    - JSONL files in OUTPUT with one block per page.
+    Side effects:
+    - Creates OUTPUT directories as needed.
+    - Writes files to disk and prints progress/errors.
+    Failure modes:
+    - Exits with status 1 if TXT_SPLITTED_DIR is missing.
+    - Propagates I/O errors from file reads or writes.
+    """
     if not TXT_SPLITTED_DIR.exists():
         print(f"[ERROR] {TXT_SPLITTED_DIR} not found", file=sys.stderr)
         sys.exit(1)

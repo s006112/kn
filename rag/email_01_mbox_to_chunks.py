@@ -1,3 +1,35 @@
+"""
+Responsibility:
+Parse mbox files into email body/attachment tasks, chunk them via `chunk_json.BatchProcessor`, and write JSONL records with per-chunk metadata.
+
+JSON metadata schema (per JSONL line):
+- content: str, chunk text from the email body or an extracted attachment.
+- metadata.email_id: str, Message-ID header (empty string when missing).
+- metadata.thread_id: str, In-Reply-To header (empty string when missing).
+- metadata.from: str, From header (empty string when missing).
+- metadata.to: str, To header (empty string when missing).
+- metadata.subject: str, Subject header (empty string when missing).
+- metadata.date: str, Date header with weekday prefix and numeric timezone removed when present.
+- metadata.part: str, "body" or "attachment".
+- metadata.file_type: str, "text" for bodies; "pdf", "doc", "docx", or "excel" for attachments.
+- metadata.attachment: str | None, attachment filename for attachments; None for bodies.
+- metadata.seq: int, 1-based chunk sequence assigned during chunking.
+- metadata.chunk_length: int, character length of `content`.
+- metadata.word_count: int, regex word-count of `content`.
+
+Pipelines:
+- iter_mbox -> parse_headers -> extract_body -> extract_attachments -> chunk_tasks -> write_jsonl
+
+Invariants:
+- Messages missing Message-ID, From, and Subject are skipped.
+- Email bodies yield at most one task per message.
+- Output JSONL lines always contain `metadata` and `content` keys.
+
+Out of scope:
+- Attachment parsing details (handled by `chunk_att` and type-specific helpers).
+- Embedding generation and FAISS indexing.
+"""
+
 import logging
 import os
 import re
@@ -34,7 +66,23 @@ def parse_emails(
     emails: Iterable[bytes],
     cfg: Config,
 ) -> tuple[List[Task], int]:
-    """Convert raw emails into processing tasks and count bodies."""
+    """
+    Purpose:
+    Convert raw email bytes into chunking tasks and count how many messages yield a body task.
+
+    Inputs:
+    - emails: Iterable of raw RFC822 message bytes.
+    - cfg: Config object providing `max_text_len`.
+
+    Outputs:
+    - Tuple of (tasks, body_count).
+
+    Side effects:
+    - Logs warnings for missing metadata and errors for parse failures.
+
+    Failure modes:
+    - Per-message parsing errors are caught and logged; processing continues.
+    """
     tasks: List[Task] = []
     body_count = 0  # track how many plain text bodies were extracted
 
@@ -86,11 +134,44 @@ def parse_emails(
 # ---------------------------------------------------------------------------
 
 def load_processed(cfg: Config) -> set[str]:
+    """
+    Purpose:
+    Load the list of already-processed mailbox filenames.
+
+    Inputs:
+    - cfg: Config object containing `processed_mbox_txt`.
+
+    Outputs:
+    - Set of processed mailbox filenames.
+
+    Side effects:
+    - Reads the processed list from disk when it exists.
+
+    Failure modes:
+    - Propagates filesystem errors raised by `read_text`.
+    """
     if cfg.processed_mbox_txt.exists():
         return set(cfg.processed_mbox_txt.read_text().splitlines())
     return set()
 
 def mark_processed(cfg: Config, name: str) -> None:
+    """
+    Purpose:
+    Append a mailbox filename to the processed list file.
+
+    Inputs:
+    - cfg: Config object containing `processed_mbox_txt`.
+    - name: Mailbox filename to record.
+
+    Outputs:
+    - None.
+
+    Side effects:
+    - Appends a line to the processed list file.
+
+    Failure modes:
+    - Propagates filesystem errors raised by `open` or `write`.
+    """
     with cfg.processed_mbox_txt.open("a", encoding="utf-8") as handle:
         handle.write(name + "\n")
 
@@ -99,6 +180,22 @@ def mark_processed(cfg: Config, name: str) -> None:
 # ---------------------------------------------------------------------------
 
 def _to_tasks(items: Iterable[Tuple[str, dict]]) -> List[Task]:
+    """
+    Purpose:
+    Convert `(text, metadata)` pairs into `Task` objects.
+
+    Inputs:
+    - items: Iterable of `(text, metadata)` tuples.
+
+    Outputs:
+    - List of `Task` objects.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - None.
+    """
     return [Task(text, meta) for text, meta in items]
 # ---------------------------------------------------------------------------
 # Batch processing of a group of raw emails
@@ -111,6 +208,28 @@ def process_batch(
     writer: JsonlWriter,       # JSONL 写入器
     tracker: PerformanceTracker,  # 性能追踪器
 ) -> None:
+    """
+    Purpose:
+    Parse a batch of raw emails, chunk tasks, and write JSONL records.
+
+    Inputs:
+    - emails: List of raw RFC822 email bytes.
+    - folder: Mailbox stem name used for logging.
+    - processor: BatchProcessor instance for chunking tasks.
+    - writer: JsonlWriter instance for JSONL output.
+    - tracker: PerformanceTracker used to record batch metrics.
+
+    Outputs:
+    - None.
+
+    Side effects:
+    - Logs progress and warnings.
+    - Writes chunk records to the JSONL output.
+    - Updates tracker metrics.
+
+    Failure modes:
+    - Propagates exceptions from chunking or writing.
+    """
     if not emails:
         return
     logging.info(
@@ -134,6 +253,23 @@ def process_batch(
 # ---------------------------------------------------------------------------
 
 def bootstrap() -> Config:
+    """
+    Purpose:
+    Initialize logging and return the runtime configuration.
+
+    Inputs:
+    - None.
+
+    Outputs:
+    - Config instance.
+
+    Side effects:
+    - Creates the log directory.
+    - Configures logging handlers.
+
+    Failure modes:
+    - Propagates filesystem errors raised while creating the log directory.
+    """
     log_dir = ROOT_DIR / "log"
     log_dir.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
@@ -152,6 +288,25 @@ def bootstrap() -> Config:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    """
+    Purpose:
+    Orchestrate mailbox scanning, batch parsing, chunking, and JSONL writing.
+
+    Inputs:
+    - None.
+
+    Outputs:
+    - None.
+
+    Side effects:
+    - Spawns a monitoring thread.
+    - Reads mbox files, writes JSONL output, and logs progress.
+    - Updates processed mailbox tracking.
+
+    Failure modes:
+    - Logs mailbox open failures and continues to the next file.
+    - Propagates unhandled exceptions outside per-mailbox processing.
+    """
     cfg = bootstrap()
     tracker = PerformanceTracker()
     monitor = threading.Thread(target=tracker.monitor_loop, daemon=True)

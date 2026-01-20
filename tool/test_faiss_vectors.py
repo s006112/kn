@@ -30,9 +30,14 @@ from pathlib import Path
 import faiss
 import numpy as np
 
+META_TYPE = "standard"  # standard or mbox 
+
+INDEX_PATH = Path("data/faiss") / f"{META_TYPE}_faiss.index"
+METADATA_PATH = Path("data/faiss") / f"{META_TYPE}_metadata.sqlite"
+
 #DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/faiss/std_faiss.index"
-DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/faiss/mbox_faiss.index"
-DEFAULT_METADATA_PATH = Path(__file__).resolve().parents[1] / "data/faiss/mbox_metadata.sqlite"
+#DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/faiss/mbox_faiss.index"
+#DEFAULT_METADATA_PATH = Path(__file__).resolve().parents[1] / "data/faiss/mbox_metadata.sqlite"
 
 DEFAULT_NUM = 2
 DEFAULT_DIMS = 10
@@ -140,7 +145,7 @@ def main() -> None:
     parser.add_argument(
         "--index-path",
         type=Path,
-        default=DEFAULT_INDEX_PATH,
+        default=INDEX_PATH,
         help="Path to the vectors.faiss file (default: data/index/vectors.faiss from repo root)",
     )
     parser.add_argument(
@@ -168,7 +173,7 @@ def main() -> None:
         print("Index is empty; nothing to show.")
         return
 
-    metadata_path = DEFAULT_METADATA_PATH
+    metadata_path = METADATA_PATH
     if not metadata_path.exists():
         print(f"Metadata store not found: {metadata_path}")
         return
