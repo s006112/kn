@@ -2,21 +2,25 @@
 #!/usr/bin/env python3
 """
 Responsibility:
-Implements a self-contained RAG engine (`RagEngine`) for both the standard and mbox indexes: loads chunk text/metadata from SQLite, loads FAISS embeddings, embeds queries, performs a KNN-style search, and calls an LLM with retrieved context.
+Implements a self-contained RAG engine (`RagEngine`) for the local `"standard"` and `"mbox"` indexes: loads chunk text/metadata from SQLite, reconstructs an in-memory embedding matrix from a FAISS index, embeds queries, performs brute-force top-k similarity search, and calls an LLM with retrieved context.
 
 Used by:
+* ali_email/ali_llm.py
+* rag/email_03b_web_gui.py
 
 Pipelines:
-- load_chunks -> load_index -> normalize_vectors -> embed_query -> knn_search -> build_prompt -> call_llm
+- load_chunks -> load_vectors -> normalize_vectors -> load_system_prompt -> embed_query -> knn_search -> build_prompt -> call_llm
 
 Invariants:
 - Embedding matrix `E` is L2-normalized once after loading.
+- Query embeddings returned by `helper.helper_embedding.embed` are L2-normalized.
 - `answer_question` returns `("", "")` for empty/whitespace-only questions.
-- Raises when the number of loaded texts does not match the FAISS vector count.
+- Raises `ValueError` when the number of loaded texts does not match the FAISS vector count.
 
 Out of scope:
 - Building the FAISS index and populating the SQLite metadata store.
 - Chunking/sanitization of source documents.
+- Any retrieval semantics beyond brute-force top-k.
 
 Planned semantic extensions (Email RAG compatibility roadmap):
 
@@ -93,11 +97,22 @@ SYSTEM_PROMPT_PATH = Path("prompt/prompt_rag_system.txt")
 
 def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
     """
+    Purpose:
     Return `(sqlite_path, index_path)` for the given RAG mode.
 
-    Mode must be either `"standard"` or `"mbox"`, matching existing index naming:
-    - `data/faiss/{mode}_metadata.sqlite`
-    - `data/faiss/{mode}_faiss.index`
+    Inputs:
+    - mode: Either `"standard"` or `"mbox"`.
+
+    Outputs:
+    - `(sqlite_path, index_path)` matching:
+      - `data/faiss/{mode}_metadata.sqlite`
+      - `data/faiss/{mode}_faiss.index`
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - Raises `ValueError` when `mode` is not one of `"standard"` or `"mbox"`.
     """
     if mode not in {"standard", "mbox"}:
         raise ValueError(f"Unknown RAG mode: {mode!r} (expected 'standard' or 'mbox')")
@@ -110,7 +125,20 @@ def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
 
 def get_rag_engine(mode: str = "standard"):
     """
-    Shared helper entrypoint: return a correctly wired RagEngine for `mode`.
+    Purpose:
+    Return a newly constructed `RagEngine` configured for `mode`.
+
+    Inputs:
+    - mode: Either `"standard"` or `"mbox"`.
+
+    Outputs:
+    - A `RagEngine` instance.
+
+    Side effects:
+    - Loads SQLite chunks, FAISS vectors, and the system prompt during initialization.
+
+    Failure modes:
+    - Propagates exceptions from `RagEngine` initialization (missing files, DB errors, etc.).
     """
     return RagEngine(mode=mode)
 
@@ -120,7 +148,7 @@ def get_rag_engine(mode: str = "standard"):
 class EmbeddingModel:
     """
     Responsibility:
-    Thin wrapper around helper_embedding to produce a normalized query embedding.
+    Thin wrapper around `helper.helper_embedding.embed` for producing L2-normalized query embeddings.
     """
 
     def __init__(
@@ -132,22 +160,22 @@ class EmbeddingModel:
     ):
         """
         Purpose:
-        Initialize the embedding model using helper_embedding.
+        Initialize a lightweight wrapper for query embedding.
 
         Inputs:
-        - model_name: Model name (kept for API compatibility).
-        - device: Target device string (kept for API compatibility).
-        - batch_size: Batch size retained for API compatibility.
-        - task: Optional task parameter (currently unused).
+        - model_name: Model name (kept for API compatibility; unused).
+        - device: Target device string (kept for API compatibility; unused).
+        - batch_size: Batch size (kept for API compatibility; stored only).
+        - task: Optional task parameter (kept for API compatibility; unused).
 
         Outputs:
         - None.
 
         Side effects:
-        - Loads the embedding model via helper_embedding.
+        - None. The underlying embedding model is loaded lazily on first call to `embed_query`.
 
         Failure modes:
-        - Propagates exceptions from helper_embedding initialization.
+        - None.
         """
         self.batch_size = batch_size
         # Model is loaded lazily in helper_embedding
@@ -164,7 +192,8 @@ class EmbeddingModel:
         - 1D NumPy array embedding.
 
         Side effects:
-        - Runs the underlying transformer model.
+        - Runs the underlying embedding model.
+        - May lazily load model weights and allocate accelerator memory on the first call.
 
         Failure modes:
         - Propagates exceptions from helper_embedding.embed.
@@ -250,6 +279,7 @@ def brute_force_knn(E: np.ndarray, q: np.ndarray, k: int):
 
     Outputs:
     - `(idx, scores)` where `idx` is a 1D array of selected row indices and `scores` are the corresponding dot products.
+      The number of returned neighbors is `min(k, E.shape[0])`.
 
     Side effects:
     - None.
@@ -264,6 +294,25 @@ def brute_force_knn(E: np.ndarray, q: np.ndarray, k: int):
 
 
 def _build_similarity_table(top_idx, top_scores, metas, *, page_key: str):
+    """
+    Purpose:
+    Build a Markdown table summarizing retrieval scores and selected metadata fields.
+
+    Inputs:
+    - top_idx: 1D iterable of row indices selected from `metas`.
+    - top_scores: 1D iterable of similarity scores aligned with `top_idx`.
+    - metas: List of metadata dicts aligned to the embedding matrix rows.
+    - page_key: Metadata key to use for the "page" column (e.g. `"page"`).
+
+    Outputs:
+    - A Markdown string containing a table and a total word count line.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - Propagates exceptions if `top_idx` contains out-of-range indices.
+    """
     table = ["| score | doc | page | word |", "|---:|---|---:|---:|"]
     total_words = 0
     for i, s in zip(top_idx, top_scores):
@@ -290,14 +339,14 @@ class RagEngine:
         Load chunks from SQLite, load vectors from FAISS, normalize vectors, and load the system prompt.
 
         Inputs:
-        - None.
+        - mode: Either `"standard"` or `"mbox"`.
 
         Outputs:
         - None.
 
         Side effects:
         - Loads FAISS index vectors into memory.
-        - Loads an embedding model (may allocate GPU memory).
+        - Initializes an embedding wrapper; the underlying embedding model is loaded lazily on first embedding call.
         - Reads a prompt file from disk.
         - Prints an initialization message.
 
@@ -356,12 +405,7 @@ class RagEngine:
         context = "\n\n".join(snippets)
 
         prompt = f"{context}\n\nQuestion: {q}"
-        table_str = _build_similarity_table(
-            top_idx,
-            top_scores,
-            self.metas,
-            page_key="page" if self.mode == "standard" else "date",
-        )
+        table_str = _build_similarity_table(top_idx, top_scores, self.metas, page_key="page")
         
         result_text = call_llm(
             LLM_MODEL,
