@@ -1,4 +1,6 @@
 """
+email_01_mbox_to_chunks.py
+
 Responsibility:
 Parse mbox files into email body/attachment tasks, chunk them via `chunk_json.BatchProcessor`, and write JSONL records with per-chunk metadata.
 

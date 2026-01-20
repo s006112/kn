@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+email_02b_chunks_to_faiss.py
+
 Responsibility:
 Build a FAISS vector index and a SQLite metadata table from page-level chunk JSONL
 files under `data/{TARGET_CHUNK_FOLDER}/json`, using a locally cached HuggingFace BGE-M3 model.

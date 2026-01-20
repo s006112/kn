@@ -229,7 +229,6 @@ def build_similarity_table(top_idx, top_scores, metas, texts):
         meta = metas[i] or {}
         doc = meta.get("doc_id")
         page = meta.get("page")
-        # 從 metadata 中直接讀取 word 數
         word_count = meta.get("word", 0) or 0
         total_words += int(word_count)
         table.append(f"| {float(s):.4f} | {doc} | {page} | {word_count} |")

@@ -76,6 +76,7 @@ def init_sqlite(path: str) -> sqlite3.Connection:
         """
         CREATE TABLE chunks (
             vector_id INTEGER PRIMARY KEY,
+            doc_type TEXT,
             doc_id TEXT,
             page INTEGER,
             chunk_text TEXT,
@@ -135,7 +136,8 @@ def load_chunks():
 
                 # 給 SQLite 那幾個固定欄位一個合理映射
                 meta = {
-                    "doc_id": block_id,                  # 可以理解成檔案 ID
+                    "doc_type": "standard",
+                    "doc_id": file_id,                  # 可以理解成檔案 ID
                     "block_id": block_id,
                     "page": page,
                     "char": obj.get("char"),
