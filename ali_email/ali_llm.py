@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
 
 from helper.utils_config import load_prompt_text
 from helper.utils_llm import call_llm
-from helper.helper_rag import RagEngine
+from helper.helper_rag_general import get_rag_engine
 from helper.utils_imap_types import EmailMessage
 from ali_email.ali_router import RouteResult, route_email
 from ali_email.ali_mail_parse import (
@@ -47,7 +47,10 @@ def step2_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalR
         return RetrievalResult(used=True, context=rag_answer, source="rag")
     return RetrievalResult(used=False, context=None, source=None)
 
-def _get_rag_answer_lazy(question: str, _engine=lru_cache(maxsize=1)(RagEngine)) -> str:
+def _get_rag_answer_lazy(
+    question: str,
+    _engine=lru_cache(maxsize=1)(lambda: get_rag_engine("standard")),
+) -> str:
     try:
         answer, table_str = _engine().answer_question(question)
         if table_str:

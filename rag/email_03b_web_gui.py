@@ -14,12 +14,12 @@ if str(ROOT) not in sys.path:
 
 import gradio as gr
 from dotenv import load_dotenv
-from helper.helper_rag_mbox import RagEngine
+from helper.helper_rag_general import get_rag_engine
     
 # ─── Environment setup ──────────────────────────────────────────────────────
 load_dotenv()  # load API keys if present
 
-rag_engine = RagEngine()
+rag_engine = get_rag_engine("mbox")
 
 def answer_question(raw_query: str):
     return rag_engine.answer_question(raw_query or "")

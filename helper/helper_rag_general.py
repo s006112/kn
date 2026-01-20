@@ -2,7 +2,7 @@
 #!/usr/bin/env python3
 """
 Responsibility:
-Implements a self-contained RAG engine (`RagEngine`) for the standard document index: loads chunk text/metadata from SQLite, loads FAISS embeddings, embeds queries, performs a KNN-style search, and calls an LLM with retrieved context.
+Implements a self-contained RAG engine (`RagEngine`) for both the standard and mbox indexes: loads chunk text/metadata from SQLite, loads FAISS embeddings, embeds queries, performs a KNN-style search, and calls an LLM with retrieved context.
 
 Used by:
 
@@ -77,9 +77,8 @@ import sqlite3
 import json
 import numpy as np
 import faiss
-import torch
 from pathlib import Path
-from typing import Optional, Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 # Assume these helpers are in place
 from helper.utils_llm import call_llm
@@ -87,13 +86,33 @@ from helper.helper_embedding import embed
 
 
 # ─── Config (保持原有的配置) ────────────────────────────────
-# 由於這些是常數，可以保留在這裡
-DB_PATH = Path("data/faiss/mbox_metadata.sqlite")
-INDEX_PATH = Path("data/faiss/mbox_faiss.index")
 EMBED_BATCH_SIZE = 16
 LLM_MODEL = "sonar"
 TOP_K = 10
 SYSTEM_PROMPT_PATH = Path("prompt/prompt_rag_system.txt")
+
+def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
+    """
+    Return `(sqlite_path, index_path)` for the given RAG mode.
+
+    Mode must be either `"standard"` or `"mbox"`, matching existing index naming:
+    - `data/faiss/{mode}_metadata.sqlite`
+    - `data/faiss/{mode}_faiss.index`
+    """
+    if mode not in {"standard", "mbox"}:
+        raise ValueError(f"Unknown RAG mode: {mode!r} (expected 'standard' or 'mbox')")
+    faiss_dir = Path("data/faiss")
+    return (
+        faiss_dir / f"{mode}_metadata.sqlite",
+        faiss_dir / f"{mode}_faiss.index",
+    )
+
+
+def get_rag_engine(mode: str = "standard"):
+    """
+    Shared helper entrypoint: return a correctly wired RagEngine for `mode`.
+    """
+    return RagEngine(mode=mode)
 
 
 # ─── Helper Classes/Functions (保留在內部) ────────────────
@@ -104,7 +123,13 @@ class EmbeddingModel:
     Thin wrapper around helper_embedding to produce a normalized query embedding.
     """
 
-    def __init__(self, model_name: str, device: str, batch_size: int, task: str = None):
+    def __init__(
+        self,
+        model_name: str | None = None,
+        device: str = "",
+        batch_size: int = 0,
+        task: str | None = None,
+    ):
         """
         Purpose:
         Initialize the embedding model using helper_embedding.
@@ -238,39 +263,16 @@ def brute_force_knn(E: np.ndarray, q: np.ndarray, k: int):
     return idx, scores[idx]
 
 
-def build_similarity_table(top_idx, top_scores, metas, texts):
-    """
-    Purpose:
-    Build a Markdown table summarizing retrieved chunks with scores and selected metadata fields.
-
-    Inputs:
-    - top_idx: Iterable of selected indices into `metas`/`texts`.
-    - top_scores: Iterable of scores aligned to `top_idx`.
-    - metas: List of metadata dicts.
-    - texts: List of chunk texts (currently unused by this formatter).
-
-    Outputs:
-    - Markdown string containing a table plus a trailing total-word-count line.
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - Propagates exceptions if indices are out of range or metadata is not dict-like.
-    """
-
-    table = ["| score | subject | date | word |", "|---:|---|---:|---:|"]
+def _build_similarity_table(top_idx, top_scores, metas, *, page_key: str):
+    table = ["| score | doc | page | word |", "|---:|---|---:|---:|"]
     total_words = 0
     for i, s in zip(top_idx, top_scores):
         meta = metas[i] or {}
-        #doc = meta.get("doc_code")
         doc = meta.get("doc_id")
-        date = meta.get("date")
-        # 從 metadata 中直接讀取 word 數
+        page = meta.get(page_key)
         word_count = meta.get("word", 0) or 0
         total_words += int(word_count)
-        table.append(f"| {float(s):.4f} | {doc} | {date} | {word_count} |")
-    # 在表格之後加一行總詞數
+        table.append(f"| {float(s):.4f} | {doc} | {page} | {word_count} |")
     table.append(f"Total word count: {total_words}")
     return "\n".join(table)
 
@@ -282,7 +284,7 @@ class RagEngine:
     Encapsulates RAG initialization (loading chunks/index/model) and query-time retrieval + LLM answering.
     """
 
-    def __init__(self):
+    def __init__(self, *, mode: str = "mbox"):
         """
         Purpose:
         Load chunks from SQLite, load vectors from FAISS, normalize vectors, and load the system prompt.
@@ -305,14 +307,15 @@ class RagEngine:
         - Propagates filesystem errors when reading the system prompt fails.
         """
 
+        self.mode = mode
+        db_path, index_path = get_faiss_artifact_paths(mode)
         print("Initializing RagEngine: Loading FAISS index and Embedding Model...")
-        self.texts, self.metas = _load_all_chunks(DB_PATH)
+        self.texts, self.metas = _load_all_chunks(db_path)
         self.embedder = EmbeddingModel(
-            model_name=None,
             device="cuda:0", # Use original device setting
             batch_size=EMBED_BATCH_SIZE,
         )
-        self.E = _load_embedding_matrix(INDEX_PATH)
+        self.E = _load_embedding_matrix(index_path)
         if len(self.texts) != self.E.shape[0]:
             raise ValueError("Mismatch between metadata rows and embedding matrix size")
         
@@ -353,7 +356,12 @@ class RagEngine:
         context = "\n\n".join(snippets)
 
         prompt = f"{context}\n\nQuestion: {q}"
-        table_str = build_similarity_table(top_idx, top_scores, self.metas, self.texts)
+        table_str = _build_similarity_table(
+            top_idx,
+            top_scores,
+            self.metas,
+            page_key="page" if self.mode == "standard" else "date",
+        )
         
         result_text = call_llm(
             LLM_MODEL,
