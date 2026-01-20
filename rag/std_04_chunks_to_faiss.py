@@ -76,11 +76,8 @@ def init_sqlite(path: str) -> sqlite3.Connection:
         """
         CREATE TABLE chunks (
             vector_id INTEGER PRIMARY KEY,
-            doc_type TEXT,
             doc_id TEXT,
-            doc_code TEXT,
-            location_path TEXT,
-            heading TEXT,
+            page INTEGER,
             chunk_text TEXT,
             metadata_json TEXT
         )
@@ -138,10 +135,7 @@ def load_chunks():
 
                 # 給 SQLite 那幾個固定欄位一個合理映射
                 meta = {
-                    "doc_type": "page_block",
-                    "doc_id": file_id,                  # 可以理解成檔案 ID
-                    "doc_code": file_id,                # Keep doc_code identical to doc_id for traceability.
-                    "location_path": f"page:{page}",    # 粗略定位
+                    "doc_id": block_id,                  # 可以理解成檔案 ID
                     "block_id": block_id,
                     "page": page,
                     "char": obj.get("char"),
@@ -233,14 +227,11 @@ def build_index(chunks):
         for j, meta in enumerate(metas):
             meta_json = json.dumps(meta, ensure_ascii=False)
             cur.execute(
-                "INSERT INTO chunks VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO chunks VALUES (?, ?, ?, ?, ?)",
                 (
                     vector_id,
-                    meta.get("doc_type"),
                     meta.get("doc_id"),
-                    meta.get("doc_code"),
-                    meta.get("location_path"),
-                    meta.get("heading"),
+                    meta.get("page"),
                     texts[j],
                     meta_json,
                 ),
