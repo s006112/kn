@@ -18,12 +18,19 @@ Out of scope:
 - Query-time retrieval, reranking, or serving APIs.
 """
 
-import os, json
+import os, json, sys
 import sqlite3
 from glob import glob
 from pathlib import Path
 import faiss
+
+# Add project root to sys.path for helper imports
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from helper.helper_embedding import embed
+
 
 
 # ============================================================
