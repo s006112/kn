@@ -1,27 +1,32 @@
 {
   "name": "kn-dev",
   "image": "ubuntu:22.04-custom",
-
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
-
-  // 关键：不强制 GPU，让 VSCode 自动侦测
   "runArgs": [
     "--name=kn-dev",
-    "--gpus=all"
+    "--gpus=all",
+
+    "--device=/dev/snd",                 // 映射 ALSA 音频设备
+    "--group-add=audio",                 // 加入 audio 组以访问 /dev/snd
+
+    "-e", "PULSE_SERVER=unix:/run/user/1000/pulse/native",   // 指向主机 PulseAudio
+    "-v", "/run/user/1000/pulse/native:/run/user/1000/pulse/native"  // 映射 PulseAudio socket
   ],
 
   "mounts": [
     "source=${localEnv:HOME}/Desktop,target=/desktop,type=bind",
     "source=${localEnv:HOME}/Desktop/Sync/Software/Whisper,target=/root/.cache/whisper,type=bind",
-    "source=${localEnv:HOME}/Desktop/Sync/Software/Linux/offline-cache/apt-archives,target=/offline-deb,type=bind",
+    "source=${localEnv:HOME}/Desktop/Sync/Software/Linux/offline-cache/apt-lists,target=/var/lib/apt/lists,type=bind",
+    "source=${localEnv:HOME}/Desktop/Sync/Software/Linux/offline-cache/apt-archives,target=/var/cache/apt/archives,type=bind",
     "source=${localEnv:HOME}/Desktop/Sync/Software/Linux/offline-cache/pip-wheels,target=/wheels,type=bind",
+    // 可选：映射主机 ALSA 配置（增强兼容性）
+    "source=/etc/asound.conf,target=/etc/asound.conf,type=bind,consistency=cached",
     "source=${localEnv:HOME}/Desktop/Sync/Software/Linux/hf_models,target=/root/.cache/huggingface/hub,type=bind"
   ],
-
-  // GPU 信息交给 VSCode 自动处理
-  "containerEnv": {},
-
-  // 让 VSCode 自动探测是否可用 GPU
-  "features": {}
+  
+  "containerEnv": {
+    "NVIDIA_VISIBLE_DEVICES": "all",
+    "NVIDIA_DRIVER_CAPABILITIES": "compute,utility,graphics"
+  }
 }
