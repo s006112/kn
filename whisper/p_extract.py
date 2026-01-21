@@ -35,7 +35,6 @@ from helper.utils_llm import call_llm
 from utils_md import (
     merge_to_markdown,
     create_or_find_note_for_base_name,
-    find_most_recent_md_by_prefix,
 )
 from utils_text import sanitize_filename
 
