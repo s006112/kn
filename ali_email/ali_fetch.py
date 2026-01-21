@@ -35,7 +35,12 @@ from email.policy import default as email_default_policy
 from email.utils import parseaddr
 from typing import Iterable, List
 
-from helper.utils_config import configure_logging  # type: ignore
+from helper.utils_config import (
+    configure_logging,
+    load_env,
+    get_env_flag,
+    get_env_str,
+)  # type: ignore
 from helper.utils_imap_client import ImapClient, RawFetchedRecord  # type: ignore
 from helper.utils_imap_config import load_imap_config  # type: ignore
 from helper.utils_imap_types import EmailMessage  # type: ignore
@@ -46,6 +51,14 @@ from ali_email.ali_mail_parse import (
 )  # review-thread detection
 
 _ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"
+
+
+# Load environment and derive debug-bypass behavior.
+# When DEBUG_MODE is set to "false" in the environment, bypass any unread
+# messages coming from the configured IMAP_USERNAME (e.g. kennyng@ampco.com.hk).
+load_env()
+_DEBUG_MODE = get_env_flag("DEBUG_MODE", default=True)
+_KENNY_ADDR = get_env_str("kennyng@ampco.com.hk").lower()
 
 
 # ---------------------------------------------------------------------
@@ -177,6 +190,16 @@ def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
         for rec in records:
             email = _raw_to_email_message(rec)
 
+            # If DEBUG_MODE is explicitly disabled, bypass messages from the
+            # configured IMAP user (commonly the internal IT account).
+            if not _DEBUG_MODE and (email.from_addr or "").lower() == _KENNY_ADDR:
+                logger.info(
+                    "Bypassing message from %s uid=%s due to DEBUG_MODE=FALSE",
+                    email.from_addr,
+                    rec.uid,
+                )
+                continue
+
             if not _is_allowed_sender(email.from_addr):
                 logger.warning(
                     "Rejecting non-allowlisted sender uid=%s from=%s",
@@ -236,6 +259,14 @@ def fetch_sender_replies() -> List[EmailMessage]:
 
         for rec in records:
             email = _raw_to_email_message(rec)
+            # Skip internal IT/IMAP user when DEBUG_MODE is disabled
+            if not _DEBUG_MODE and (email.from_addr or "").lower() == _KENNY_ADDR:
+                logger.info(
+                    "Bypassing reply from %s uid=%s due to DEBUG_MODE=FALSE",
+                    email.from_addr,
+                    rec.uid,
+                )
+                continue
             if not _is_allowed_sender(email.from_addr):
                 logger.warning(
                     "Rejecting non-allowlisted sender uid=%s from=%s",
