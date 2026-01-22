@@ -18,7 +18,7 @@ pip3 download -d /wheels --only-binary=:all: \
 sudo apt-get install -y --no-download --fix-missing python3-pip # install from cached .deb
 sudo apt-get install -y --no-download --fix-missing ghostscript tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra # per
 sudo apt-get install -y --no-download --fix-missing ffmpeg # whisper
-sudo apt-get install -y --no-download --fix-missing
+sudo apt-get install -y --no-download --fix-missing xxxxxxxx
 
 # offline install wheels
 pip3 install --no-index --find-links=/wheels python-dotenv==1.2.1 openai==2.8.1 jinja2==3.1.6 requests==2.32.5 gradio==5.46.0 gradio_client==1.13.0 # per
