@@ -4,7 +4,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
 # --- Configuration ---
 # Original local path (from your script)
-model_id = "/root/.cache/huggingface/hub/models--mistralai--Mistral-7B-Instruct-v0.3/mistral_7b_int4_offline" 
+model_id = "/root/.cache/huggingface/hub/Ministral-3-3B-Instruct-2512" 
 # --- End Configuration ---
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
