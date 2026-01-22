@@ -233,10 +233,10 @@ def process(self, file_path, get_next_available_filename):
                 logging.error(f"{self.__class__.__name__}: model {model} failed for {filename}: {e}")
                 # Write a per-model error file (best-effort)
                 try:
-                    os.makedirs(self.config['EXTRACT_FOLDER'], exist_ok=True)
+                    os.makedirs(self.config['PRETEXT_WATCH_FOLDER'], exist_ok=True)
                     err_key = sanitize_filename(model) or "unknown_model"
                     err_path = os.path.join(
-                        self.config['EXTRACT_FOLDER'],
+                        self.config['PRETEXT_WATCH_FOLDER'],
                         f"{base}.{err_key}.error",
                     )
                     with open(err_path, 'w', encoding='utf-8') as ef:
@@ -272,9 +272,9 @@ def process(self, file_path, get_next_available_filename):
         base_nm = os.path.splitext(filename)[0]
         # Preserve a top-level error marker for troubleshooting.
         try:
-            os.makedirs(self.config['EXTRACT_FOLDER'], exist_ok=True)
+            os.makedirs(self.config['PRETEXT_WATCH_FOLDER'], exist_ok=True)
             err_path = os.path.join(
-                self.config['EXTRACT_FOLDER'], f"{base_nm}.error"
+                self.config['PRETEXT_WATCH_FOLDER'], f"{base_nm}.error"
             )
             with open(err_path, 'w', encoding='utf-8') as f:
                 f.write(f"Error: {e}\n")
@@ -283,10 +283,9 @@ def process(self, file_path, get_next_available_filename):
             logging.error(f"Write error file failed: {w}")
         # Only move if the source still exists to avoid duplicate errors.
         try:
-            fail = self.config['FAIL_FOLDER']
-            os.makedirs(fail, exist_ok=True)
+            os.makedirs(self.config['FAIL_FOLDER'], exist_ok=True)
             if os.path.exists(file_path):
-                shutil.move(file_path, os.path.join(fail, filename))
+                shutil.move(file_path, os.path.join(self.config['FAIL_FOLDER'], filename))
                 logging.info(f"Moved failed file to Fail folder: {filename}")
             else:
                 logging.info(f"Fail move skipped; source missing: {filename}")
