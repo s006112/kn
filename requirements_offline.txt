@@ -1,0 +1,39 @@
+# download apt
+sudo apt-get update # update package lists
+sudo apt-get autoclean   #只会删除「过期的 .deb」
+sudo apt-get install -y --download-only python3-pip # download .deb
+sudo apt-get install -y --reinstall --download-only libportaudio2 # force-cache PortAudio runtime .deb (needed by sounddevice)
+
+# offline install apt
+sudo dpkg -i /offline-deb/*.deb || true # 强制解压全部 .deb（不检查依赖）
+sudo apt-get update --no-download # 生成依赖树，告诉 apt “全部以离线为准”生成依赖树，告诉 apt “全部以离线为准”
+
+sudo apt-get install -y --no-download --fix-missing python3-pip # install from cached .deb
+sudo apt-get install -y --no-download --fix-missing ghostscript tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra # per
+sudo apt-get install -y --no-download --fix-missing ffmpeg # whisper
+sudo apt-get install -y --no-download --fix-missing xxxxxxxx
+
+
+# download wheels
+pip3 index versions xxxxx # check versions from PyPI
+pip3 download -d /wheels --only-binary=:all: xxxxxxxxxxx
+pip3 download -d /wheels --only-binary=:all: \
+  torch==2.2.2+cu118 \
+  --index-url https://download.pytorch.org/whl/cu118 \
+
+# offline install wheels
+pip3 install --no-index --find-links=/wheels python-dotenv==1.2.1 watchdog==6.0.0 Flask==3.1.2 jinja2==3.1.6 requests==2.32.5 gradio==5.46.0 gradio_client==1.13.0 # core packages
+pip3 install --no-index --find-links=/wheels scipy==1.15.3 opencv_python_headless==4.12.0.88 sounddevice==0.5.3 # other modules
+pip3 install --no-index --find-links=/wheels openai==2.8.1 perplexityai==0.20.0 google-genai==1.52.0 openai-whisper==20240930 # llm, openai-whisper只有源码包（.tar.gz）
+pip3 install --no-index --find-links=/wheels diffusers==0.35.2 sentence-transformers==5.1.0 kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1 # llm
+pip3 install --no-index --find-links=/wheels bs4==0.0.2 PyMuPDF==1.24.10 ocrmypdf==16.11.0 python-docx==0.8.11 openpyxl==3.1.5 xlrd==2.0.1 einops==0.8.1 # parse documents
+pip3 install --no-index --find-links=/wheels torch==2.2.2+cu118 # Nvidia P100 only, 2.1.2 pytree transformer problem
+pip3 install --no-index --find-links=/wheels faiss-gpu==1.7.2  # Conflict with Nvidia P100, to be clarify
+pip3 install --no-index --find-links=/wheels numpy==1.26.2 # downgrade from numpy==2.2.6 for faiss-gpu compatibility
+pip3 install --no-deps -U yt-dlp --break-system-packages # latest yt-dlp for video download
+
+# opensource llm
+pip3 install --no-index --find-links=/wheels mistral-common==1.8.6
+pip3 install --no-index --find-links=/wheels diffusers==0.36.0 # need for Z-image, may conflict with earlier diffusers==0.35.2
+
+
