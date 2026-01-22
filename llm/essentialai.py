@@ -29,7 +29,7 @@ input_ids = tokenizer.apply_chat_template(
 print("Generating prediction...")
 output_ids = model.generate(
     input_ids,
-    max_new_tokens=512,
+    max_new_tokens=2048,
     pad_token_id=tokenizer.eos_token_id, 
     do_sample=True, 
     temperature=0.2,

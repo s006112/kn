@@ -1,49 +1,107 @@
+import json
+import os
+
 import torch
-import os # NEW: Added for checking if the saved directory exists
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig # NEW: Added for quantization
+from transformers import AutoTokenizer, Mistral3Config, Mistral3ForConditionalGeneration, PreTrainedTokenizerFast
+from safetensors import safe_open
 
-# --- Configuration ---
-# Original local path (from your script)
-model_id = "/root/.cache/huggingface/hub/models--mistralai--Mistral-7B-Instruct-v0.3/mistral_7b_int4_offline" 
-# --- End Configuration ---
-device = "cuda" if torch.cuda.is_available() else "cpu"
+MODEL_PATH = "/root/.cache/huggingface/hub/Ministral-3-3B-Instruct-2512"
 
-# Int4 Quantization Configuration (Recommended for 8GB VRAM)
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_compute_dtype=torch.bfloat16, 
-    bnb_4bit_quant_type="nf4", 
-    bnb_4bit_use_double_quant=True
+
+def load_tokenizer(model_path: str):
+    try:
+        return AutoTokenizer.from_pretrained(model_path, local_files_only=True)
+    except ValueError as exc:
+        if "Tokenizer class" not in str(exc):
+            raise
+        tokenizer_json = os.path.join(model_path, "tokenizer.json")
+        config_path = os.path.join(model_path, "tokenizer_config.json")
+        if not os.path.exists(tokenizer_json):
+            raise
+        config: dict = {}
+        if os.path.exists(config_path):
+            with open(config_path, "r", encoding="utf-8") as handle:
+                cfg = json.load(handle)
+            keys = ("bos_token", "eos_token", "pad_token", "unk_token", "model_max_length")
+            config.update({key: cfg[key] for key in keys if key in cfg})
+            extra_tokens = cfg.get("additional_special_tokens")
+            if extra_tokens is None and isinstance(cfg.get("extra_special_tokens"), list):
+                extra_tokens = cfg["extra_special_tokens"]
+            if extra_tokens is not None:
+                config["additional_special_tokens"] = extra_tokens
+        return PreTrainedTokenizerFast(tokenizer_file=tokenizer_json, **config)
+
+
+def load_config(model_path: str):
+    config_path = os.path.join(model_path, "config.json")
+    with open(config_path, "r", encoding="utf-8") as handle:
+        config_dict = json.load(handle)
+    config_dict.pop("quantization_config", None)
+    text_config = config_dict.get("text_config")
+    if isinstance(text_config, dict) and text_config.get("model_type") == "ministral3":
+        text_config["model_type"] = "mistral"
+    return Mistral3Config.from_dict(config_dict)
+
+def dequantize_fp8_weights(model, model_path: str):
+    if not any(
+        p.dtype in (torch.float8_e4m3fn, torch.float8_e5m2) for p in model.parameters()
+    ):
+        return
+
+    weights_path = os.path.join(model_path, "model.safetensors")
+    if not os.path.exists(weights_path):
+        return
+
+    def to_checkpoint_key(param_name: str) -> str:
+        if not param_name.startswith("model."):
+            return param_name
+        key = param_name[len("model.") :]
+        if key.startswith("language_model."):
+            key = "language_model.model." + key[len("language_model.") :]
+        return key
+
+    with safe_open(weights_path, framework="pt", device="cpu") as f:
+        keys = set(f.keys())
+        for name, p in model.named_parameters():
+            if p.dtype not in (torch.float8_e4m3fn, torch.float8_e5m2):
+                continue
+            ckpt_key = to_checkpoint_key(name)
+            if not ckpt_key.endswith(".weight"):
+                continue
+            scale_key = ckpt_key[: -len(".weight")] + ".weight_scale_inv"
+            if scale_key not in keys:
+                raise KeyError(f"Missing FP8 scale for {name}: {scale_key}")
+            scale_inv = f.get_tensor(scale_key).to(device=p.device, dtype=torch.float32)
+            p.data = (p.to(torch.float32) * scale_inv).to(torch.bfloat16)
+
+
+# 載入模型和分詞器
+tokenizer = load_tokenizer(MODEL_PATH)
+
+model = Mistral3ForConditionalGeneration.from_pretrained(
+    MODEL_PATH,
+    config=load_config(MODEL_PATH),
+    dtype=torch.bfloat16,  # float32, bfloat16
+    device_map="auto",
+    local_files_only=True
 )
+dequantize_fp8_weights(model, MODEL_PATH)
 
-# --- Core Loading and Saving Logic ---
-if os.path.isdir(model_id):
-    # 1. Fully Offline Load (Subsequent Runs)
-    print(f"Loading fully offline model from: {model_id}")
-    tokenizer = AutoTokenizer.from_pretrained(model_id, local_files_only=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        device_map="auto",
-        local_files_only=True
-    )
+# 定義提示
+PROMPT = "Eleborate the concept of 'Laplace transform' followed by simple examples illustration. no need follow up question"
 
-    # Save the fully loaded model for subsequent fast loads
-    print("Saving quantized model. This will create a faster-loading checkpoint...")
-    tokenizer.save_pretrained(model_id)
-    model.save_pretrained(model_id, safe_serialization=True)
-    print("Save complete. Rerunning will now use the fast-loading version.")
+# 準備輸入
+inputs = tokenizer(PROMPT, return_tensors="pt")
+inputs.pop("token_type_ids", None)  # Some tokenizers return this but Mistral3 doesn't use it.
+inputs = inputs.to(model.device)
 
-
-# --- Inference ---
-#prompt = "Eleborate the concept of 'Fourier transform' followed by simple examples illustration."
-prompt = "What is meta-physics? Please explain concisely based on your understanding."
-inputs = tokenizer(prompt, return_tensors="pt").to(device)
+GEN_KWARGS = {
+    "do_sample": False,
+    "max_new_tokens": 4096,
+    "pad_token_id": tokenizer.eos_token_id,
+}
 
 with torch.no_grad():
-    outputs = model.generate(
-        **inputs,
-        do_sample=False,
-        max_new_tokens=2048
-    )
+    outputs = model.generate(**inputs, **GEN_KWARGS)
 
 print(tokenizer.decode(outputs[0], skip_special_tokens=True))
