@@ -1,5 +1,13 @@
+"""
+Docstring for llm.z-image
+ZImagePipeline requires diffusers==0.36.0, then need a newer torch version that includes XPU support
+while current hardware is Nvidia P100, so use diffusers==0.35.2 plus torch==2.2.2+cu118 to workaround the pytree transformer problem.
+"""
+
 import torch
 from diffusers import ZImagePipeline
+
+
 
 # 1. Load the pipeline
 # Use bfloat16 for optimal performance on supported GPUs
