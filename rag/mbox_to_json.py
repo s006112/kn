@@ -39,8 +39,6 @@ import sys
 import threading
 import time
 import mailbox
-import psutil
-from collections import deque
 from email import policy
 from email.parser import BytesParser
 from pathlib import Path
