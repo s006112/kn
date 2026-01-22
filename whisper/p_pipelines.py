@@ -1,7 +1,7 @@
 """
 Responsibility:
-Run pipeline worker loops for pretext/extract/premium, audio, TTML, and wikilink
-cleanup; manage queue scanning, enqueueing, and file lock coordination for the
+Run pipeline worker loops for pretext, extract, premium extract, audio, TTML,
+and wikilink cleanup; provide queue scanning and file lock coordination for the
 orchestrator.
 
 Used by:
@@ -9,14 +9,21 @@ Used by:
 
 Pipelines:
 - scan -> enqueue -> lock -> process -> finalize
+- audio watch -> audio queue -> wav convert -> transcribe -> text write -> audio archive
+- ttml watch -> ready check -> file lock -> ttml convert -> text write -> ttml archive
+- pretext watch -> pretext queue -> llm pretext -> write outputs -> pretext archive
+- extract watch -> extract queue -> llm extract -> merge markdown -> distill -> extract archive
+- notes watch -> unlink clean -> link backup
 
 Invariants:
 - Queue consumers requeue files when file lock acquisition fails.
-- Queue consumers defer lower-priority work when higher-priority queues are non-empty.
+- Queue workers do not impose cross-queue priority; each worker consumes its own queue as items appear.
+- `periodic_file_scanner()` and watchdog handlers can enqueue the same paths; `request_pretext_processing()` de-duplicates pretext jobs via `ctx.processed_files_global`.
 
 Out of scope:
 - Constructing PipelineContext or application configuration.
 - Implementing the underlying text/audio/TTML processing logic.
+- Enforcing that outputs from one stage are placed into another stage's watch folder; that is controlled by configuration and the producing modules.
 """
 
 import logging
@@ -92,27 +99,6 @@ def enqueue_if_absent(queue: Queue, path: str) -> None:
         queue.put(path)
 
 
-def _should_defer_processing(ctx: PipelineContext, method_name: str) -> bool:
-    """
-    Purpose:
-    Decide whether to defer processing based on queue priority.
-    Inputs:
-    - ctx: PipelineContext with queues.
-    - method_name: Handler method name used to infer priority.
-    Outputs:
-    - True when processing should be deferred, otherwise False.
-    Side effects:
-    - None.
-    Failure modes:
-    - None.
-    """
-    if method_name == "process_pretext":
-        return (not ctx.extract_queue.empty()) or (not ctx.premium_extract_queue.empty())
-    if method_name == "process_premium_extract":
-        return not ctx.extract_queue.empty()
-    return False
-
-
 def process_queue(
     ctx: PipelineContext,
     queue: Queue,
@@ -137,7 +123,7 @@ def process_queue(
     process = getattr(handler, method_name)
     while True:
         try:
-            if queue.empty() or _should_defer_processing(ctx, method_name):
+            if queue.empty():
                 time.sleep(0.5)
                 continue
             file_path = queue.get()
@@ -148,11 +134,10 @@ def process_queue(
                     time.sleep(1)
                     continue
                 try:
-                    with ctx.text_processing_lock:
-                        process(file_path, get_next_available_filename)
-                        processed = getattr(handler, "processed_files", None)
-                        if processed and file_path in processed:
-                            processed.discard(file_path)
+                    process(file_path, get_next_available_filename)
+                    processed = getattr(handler, "processed_files", None)
+                    if processed and file_path in processed:
+                        processed.discard(file_path)
                 except LLMPermanentFailure as e:
                     logging.error(
                         "Resilient Queue: OpenAI API permanent failure for file %s "

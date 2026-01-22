@@ -1,23 +1,32 @@
 """
 Responsibility:
 p_orchestrator.py 負責組裝與啟動； p_pipelines.py 負責做事。
-Coordinate pipeline startup and lifecycle by loading prompt strings into a config dict, creating a `PipelineContext`, starting worker threads, and running a watchdog `Observer` for file events.
+Coordinate pipeline startup and lifecycle by loading prompt strings into a config
+dict, creating a `PipelineContext`, starting worker threads, and running a
+watchdog `Observer` for file events that enqueue work into queues.
 
 Used by:
 * p.py
 
 Pipelines:
-- config -> read prompts -> create context -> start threads -> start watchdog -> monitor
+- config -> read prompts -> create context -> start workers -> start watchdog -> enqueue -> process
+- audio -> transcribe -> text file
+- ttml -> convert -> text file
+- text file -> pretext -> pretext output
+- pretext file -> extract -> markdown
+- notes folder -> unlink clean -> backup
 
 Invariants:
 - `CURRENT_CONTEXT` is set by `start_system()` after context creation and cleared by `stop_system()`.
 - `start_system()` validates `cfg` is non-None and mutates it by setting `PRETEXT_PROMPT`, `EXTRACT_PROMPT`, and `DISTILL_PROMPT`.
 - Worker threads created here are started as daemon threads.
+- This module starts workers concurrently; sequencing between stages is determined by filesystem locations and queueing in other modules, not by this module.
 
 Out of scope:
 - Implementing pipeline worker logic (handled by `p_pipelines.py` and related modules).
 - Parsing or generating prompt content beyond reading prompt files.
 - Providing a process manager; shutdown is limited to setting a flag and stopping the observer.
+- Enforcing that audio/ttml outputs are placed into any particular downstream watch folder.
 """
 
 import logging
