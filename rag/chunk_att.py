@@ -4,8 +4,6 @@ Routes email attachments to type-specific extractors (PDF/Word/Excel), normalize
 
 Used by:
 * rag/email_01_mbox_to_chunks.py
-* rag/chunk_doc.py
-* rag/chunk_pdf.py
 
 Pipelines:
 - iter_attachments -> detect_type -> extract_text -> chunk_fixed -> build_tasks
@@ -24,10 +22,10 @@ import logging
 from pathlib import Path
 from typing import Iterable, Iterator, List, Tuple
 
-from chunk_doc import WORD_EXTS, extract_text_from_doc, extract_text_from_docx
+from helper.helper_parsing_doc import WORD_EXTS, extract_text_from_doc, extract_text_from_docx
 from chunk_json import Task
-from helper.helper_pdf import PDF_EXTS, extract_pdf_attachment_tasks
-from helper.helper_xls import XLS_EXTS, extract_excel_text
+from helper.helper_parsing_pdf import PDF_EXTS, extract_pdf_attachment_tasks
+from helper.helper_parsing_xls import XLS_EXTS, extract_excel_text
 
 def extract_word_attachment_tasks(
     data: bytes,

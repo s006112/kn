@@ -5,7 +5,7 @@ This project hosts a Gradio interface (`gradio_per_report.py`) backed by a core 
 
 Processing Pipeline
 -------------------
-- **PDF ingestion** – `handle_upload()` reads the uploaded file, uses `helper/helper_pdf.get_pdf_full_text()` to recover full text, and guards against empty or unreadable PDFs.
+- **PDF ingestion** – `handle_upload()` reads the uploaded file, uses `helper/helper_parsing_pdf.get_pdf_full_text()` to recover full text, and guards against empty or unreadable PDFs.
 - **Prompt-driven analysis** – The raw text is fed to the shared LLM helper twice (`utils_llm.call_llm()` using a PER-specific model): first with `Prompt_md.txt` to obtain a structured markdown analysis, then with `Prompt_summary.txt` to condense that analysis into an executive summary.
 - **Report assembly** – A templated header/ footer wraps the AI responses with branding, placeholder checkboxes, and a link back to the shared PDF on Nextcloud (`helper_nextcloud.upload_and_share_file(..., share=True)`).
 - **CIE PNG coordination** – A deterministic timestamp defines the expected PNG artefact name so the frontend can later upload the rendered chart.
@@ -59,7 +59,7 @@ Module Highlights
   - `parse_po_response_text()` uses `ast` to safely interpret the AI-generated `self.field = value` statements, enforcing required fields and data types.
   - `create_sale_order()` builds the XML-RPC payload, normalizes dates, parses quantities, retries with a fallback company if necessary, and reads back the created order.
   - `attach_pdf_to_sale_order()` uploads the PDF as an `ir.attachment`, posts a note on the sale order, optionally shares the PDF to Nextcloud (per partner folder), and appends any share log messages to the running status log.
-- `helper/helper_pdf.py`
+- `helper/helper_parsing_pdf.py`
   - `get_pdf_full_text()` uses PyMuPDF with automatic fallback to OCR (`ocrmypdf`) when no text is returned.
   - `extract_pdf_attachment_tasks()` supports services that need chunked PDF text.
 Key Environment Variables

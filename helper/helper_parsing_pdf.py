@@ -1,31 +1,25 @@
 #!/usr/bin/env python3
 """
 Responsibility:
-PDF extraction helpers for the standard-document pipeline: extract per-page text from PDFs using PyMuPDF, optionally run OCR, and produce either raw text or fixed-size chunk tasks with metadata.
-
-Open improvement tasks:
-- non-English language support (e.g., Chinese OCR tuning).
-- Deflating JPEGs, Recompressing JPEGs , JBIG2 compression verification.
-- Improve background preprocessing for OCR (currently basic filters).
-- cannot find ExtGState resource 'GS9' error handling.
-- evaluate adding def sanitize_text in _raw_extraction for better text cleanup.
+PDF parsing helpers that extract per-page text with PyMuPDF, optionally run OCR, and optionally emit fixed-size chunks with metadata.
 
 Used by:
 * core_per_report.py
 * core_so_import.py
-* rag/std_01_pdf_to_txt.py
 * rag/chunk_att.py
+* rag/standard_pdf_to_txt.py
+* tool/tool_pdf_parser.py
 
 Pipelines:
-- open_pdf -> extract_text -> ocr_fallback -> merge_pages -> chunk_fixed
+- pdf_bytes -> text_pages -> ocr_fallback -> merged_text -> chunk_fixed
 
 Invariants:
 - `get_pdf_full_text` returns a merged string (page texts joined by newlines) when extraction succeeds.
 - OCR fallback writes temporary files and re-extracts text from the OCR output PDF.
 
 Out of scope:
-- Email attachment routing and processing (handled elsewhere).
-- Embedding/indexing/retrieval.
+- Upload validation and file routing.
+- Embedding, indexing, or retrieval.
 """
 
 from __future__ import annotations
@@ -56,7 +50,7 @@ def _preprocess_pdf_background(data: bytes) -> bytes | None:
     - data: Raw PDF bytes.
 
     Outputs:
-    - New PDF bytes containing rasterized pages, or `None` when preprocessing is skipped/fails.
+    - New PDF bytes containing rasterized pages, or `None` when preprocessing is skipped or fails.
 
     Side effects:
     - Renders pages via PyMuPDF and creates in-memory images.
@@ -142,17 +136,16 @@ def _extract_text_with_ocr_fallback(
 def _raw_extraction(pdf_bytes: bytes) -> dict[int, str]:
     """
     Purpose:
-    Perform a single text-extraction pass over PDF bytes using PyMuPDF (no OCR).
-
-    Used by:
-    - `get_pdf_full_text()` as the primary extraction pass.
-    - `_extract_text_with_ocr_fallback()` as the extractor applied to the OCR output PDF.
+    Perform a single text-extraction pass over PDF bytes using PyMuPDF without OCR.
 
     Inputs:
     - pdf_bytes: Raw PDF bytes.
 
     Outputs:
     - Mapping of 1-based page index to extracted text (whitespace-only pages omitted).
+
+    Side effects:
+    - None.
 
     Failure modes:
     - Propagates exceptions raised by PyMuPDF operations.
@@ -175,11 +168,6 @@ def get_pdf_full_text(data: bytes, filename: str) -> str:
     """
     Purpose:
     Extract full text from a PDF payload, using PyMuPDF with an OCR fallback, then merge pages into one string.
-
-    Directly used by:
-    * core_per_report.py
-    * core_so_import.py
-    * rag/std_01_pdf_to_txt.py
 
     Inputs:
     - data: Raw PDF bytes.
@@ -220,9 +208,6 @@ def extract_pdf_attachment_tasks(
     """
     Purpose:
     Produce fixed-size `(chunk_text, metadata)` tuples for a PDF payload.
-
-    Directly Used by:
-    * rag/chunk_att.py
 
     Inputs:
     - data: PDF bytes.
