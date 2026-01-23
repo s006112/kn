@@ -1,100 +1,25 @@
 """
+helper_performance_tracker.py
+
 Responsibility:
-Centralizes path constants and lightweight runtime helpers used by the email RAG scripts (directory layout, batching/parallelism defaults, and simple performance accounting).
+Provides a lightweight performance tracker for the email RAG scripts.
 
 Used by:
 * rag/mbox_to_json.py
 
 Pipelines:
-- resolve_paths -> init_config -> ensure_dirs -> track_performance -> log_summary
+- track_performance -> log_summary
 
 Invariants:
-- All exported path constants are absolute `Path` objects resolved from the repository root.
-- `Config.parallel_workers` is capped at 32.
 - `PerformanceTracker` updates are protected by a lock.
-
-Out of scope:
-- Chunking, embedding, indexing, and retrieval logic.
-- Any persistence beyond ensuring configured directories exist.
 """
 
 import logging
-import os
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass, field
-from pathlib import Path
 
 import psutil
-
-
-PROJECT_ROOT = Path(__file__).resolve().parent
-REPO_ROOT = Path(__file__).resolve().parents[1]
-RAW_MBOX_DIR = (REPO_ROOT / "data/mbox/raw").resolve()
-OUTPUT_JSONL = (REPO_ROOT / "data/mbox/json/email_chunks.jsonl").resolve()
-PROCESSED_MBOX_TXT = (REPO_ROOT / "data/mbox/json/processed_mboxes.txt").resolve()
-
-# Embedding / vector index paths (used by other rag scripts)
-INDEX_DIR = (REPO_ROOT / "data/mbox/index").resolve()
-
-
-@dataclass
-class Config:
-    """
-    Responsibility:
-    Holds filesystem paths and tunables for the email chunking/indexing scripts, and ensures required directories exist.
-
-    Invariants:
-    - `raw_mbox_dir`, `output_jsonl`, and `processed_mbox_txt` are created (parents included) during initialization.
-    - `parallel_workers` is derived from `os.cpu_count()` and capped at 32.
-    """
-
-    # Path and processing settings
-    raw_mbox_dir: Path = field(default=RAW_MBOX_DIR, init=False)
-    output_jsonl: Path = field(default=OUTPUT_JSONL, init=False)
-    processed_mbox_txt: Path = field(default=PROCESSED_MBOX_TXT, init=False)
-    chunk_size: int = 2000
-    chunk_overlap: int = 200
-    min_chunk_size: int = 100
-    max_text_len: int = 50000  # max characters for bodies or pages
-
-    # Runtime options
-    batch_size: int = 128
-    parallel_workers: int = field(init=False)
-
-    def __post_init__(self):
-        """
-        Purpose:
-        Derive parallel worker count, create required directories, and log key runtime settings.
-
-        Inputs:
-        - None.
-
-        Outputs:
-        - None.
-
-        Side effects:
-        - Sets `self.parallel_workers`.
-        - Creates directories for configured paths.
-        - Emits `logging.info` messages.
-
-        Failure modes:
-        - Raises filesystem errors if directories cannot be created.
-        """
-
-        # Cap workers to avoid oversubscription on high-core machines.
-        cpu_cores = os.cpu_count() or 8
-        self.parallel_workers = min(cpu_cores, 32)
-
-        # Ensure downstream scripts can write outputs without additional setup.
-        self.raw_mbox_dir.mkdir(parents=True, exist_ok=True)
-        self.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
-        self.processed_mbox_txt.parent.mkdir(parents=True, exist_ok=True)
-
-        # logging summary
-        logging.info("PARALLEL_WORKERS = %s", self.parallel_workers)
-        logging.info("BATCH_SIZE = %s", self.batch_size)
 
 
 class PerformanceTracker:

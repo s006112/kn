@@ -22,8 +22,10 @@ Out of scope:
 import gc
 import json
 import os
+import sys
 import time
 from math import ceil
+from pathlib import Path
 
 import faiss
 import torch
@@ -31,7 +33,11 @@ import torch
 from rag_embeddings import build_embeddings, l2_normalize
 from rag_io_jsonl import safe_read_jsonl_line
 from rag_vectorstore import FaissStore, archive_existing_index
-from rag_config import OUTPUT_JSONL, INDEX_DIR
+RAG_DIR = Path(__file__).resolve().parents[1] / "rag"
+if str(RAG_DIR) not in sys.path:
+    sys.path.insert(0, str(RAG_DIR))
+
+from mbox_to_json import OUTPUT_JSONL, INDEX_DIR
 
 _BGE_M3_SNAPSHOT_PATH = "/root/.cache/huggingface/hub/models--BAAI--bge-m3/snapshots/5617a9f61b028005a4858fdac845db406aefb181"
 HF_EMBEDDING_MODEL = (

@@ -39,6 +39,7 @@ import time
 import mailbox
 from email import policy
 from email.parser import BytesParser
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, List, Tuple
 
@@ -51,10 +52,77 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 # Local imports (after sys.path setup for script execution)
-from rag_config import Config, PerformanceTracker
+from helper.helper_performance_tracker import PerformanceTracker
 from helper.utils_text_processing import extract_email_body_tasks
 from chunk_json import Task, BatchProcessor, JsonlWriter
 from chunk_att import extract_attachment_tasks
+
+# ---------------------------------------------------------------------------
+# Paths and runtime configuration
+# ---------------------------------------------------------------------------
+
+RAW_MBOX_DIR = (ROOT_DIR / "data/mbox/raw").resolve()
+OUTPUT_JSONL = (ROOT_DIR / "data/mbox/json/email_chunks.jsonl").resolve()
+PROCESSED_MBOX_TXT = (ROOT_DIR / "data/mbox/json/processed_mboxes.txt").resolve()
+INDEX_DIR = (ROOT_DIR / "data/mbox/index").resolve()
+
+
+@dataclass
+class Config:
+    """
+    Responsibility:
+    Holds filesystem paths and tunables for the email chunking/indexing scripts, and ensures required directories exist.
+
+    Invariants:
+    - `raw_mbox_dir`, `output_jsonl`, and `processed_mbox_txt` are created (parents included) during initialization.
+    - `parallel_workers` is derived from `os.cpu_count()` and capped at 32.
+    """
+
+    # Path and processing settings
+    raw_mbox_dir: Path = field(default=RAW_MBOX_DIR, init=False)
+    output_jsonl: Path = field(default=OUTPUT_JSONL, init=False)
+    processed_mbox_txt: Path = field(default=PROCESSED_MBOX_TXT, init=False)
+    chunk_size: int = 2000
+    chunk_overlap: int = 200
+    min_chunk_size: int = 100
+    max_text_len: int = 50000  # max characters for bodies or pages
+
+    # Runtime options
+    batch_size: int = 128
+    parallel_workers: int = field(init=False)
+
+    def __post_init__(self):
+        """
+        Purpose:
+        Derive parallel worker count, create required directories, and log key runtime settings.
+
+        Inputs:
+        - None.
+
+        Outputs:
+        - None.
+
+        Side effects:
+        - Sets `self.parallel_workers`.
+        - Creates directories for configured paths.
+        - Emits `logging.info` messages.
+
+        Failure modes:
+        - Raises filesystem errors if directories cannot be created.
+        """
+
+        # Cap workers to avoid oversubscription on high-core machines.
+        cpu_cores = os.cpu_count() or 8
+        self.parallel_workers = min(cpu_cores, 32)
+
+        # Ensure downstream scripts can write outputs without additional setup.
+        self.raw_mbox_dir.mkdir(parents=True, exist_ok=True)
+        self.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
+        self.processed_mbox_txt.parent.mkdir(parents=True, exist_ok=True)
+
+        # logging summary
+        logging.info("PARALLEL_WORKERS = %s", self.parallel_workers)
+        logging.info("BATCH_SIZE = %s", self.batch_size)
 
 # ---------------------------------------------------------------------------
 # Message parsing utilities

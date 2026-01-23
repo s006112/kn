@@ -14,7 +14,11 @@ import faiss
 import gradio as gr
 from openai import OpenAI
 from dotenv import load_dotenv
-from rag_config import INDEX_DIR
+RAG_DIR = Path(__file__).resolve().parents[1] / "rag"
+if str(RAG_DIR) not in sys.path:
+    sys.path.insert(0, str(RAG_DIR))
+
+from mbox_to_json import INDEX_DIR
 from rag_embeddings import EmbeddingModel
 from rag_retrieval import (
     build_grouped_docs,
