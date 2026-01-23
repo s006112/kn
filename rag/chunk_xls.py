@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 """
 Responsibility:
-Extracts and sanitizes text from Excel workbooks (XLS/XLSX and variants), merges sheet text into a single document, and converts it into fixed-size attachment chunk tasks.
+Extracts and sanitizes text from Excel workbooks (XLS/XLSX and variants), merging sheet text into a single document.
 
 Used by:
 * rag/chunk_att.py
 
 Pipelines:
-- read_excel -> process_sheets -> sanitize_text -> merge_sheets -> chunk_fixed -> build_tasks
+- read_excel -> process_sheets -> sanitize_text -> merge_sheets
 
 Invariants:
-- Only filenames with extensions in `XLS_EXTS` produce tasks.
 - Sheet processing is attempted in a `ProcessPoolExecutor` and falls back to sequential processing on failure.
-- Returned task tuples contain 1-based `seq` values within a single workbook.
 
 Out of scope:
-- Email attachment iteration and routing (handled by `chunk_att`).
+- Email attachment iteration, routing, and chunk task building (handled by `chunk_att`).
 - PDF/Word extraction (handled by `chunk_pdf` / `chunk_doc`).
 """
 
@@ -24,11 +22,10 @@ import io
 import logging
 import os
 from pathlib import Path
-from typing import List, Tuple, Dict, Optional
+from typing import List, Dict, Optional
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import pandas as pd  # pandas 會用 openpyxl / xlrd 等底層 engine 處理 xlsx/xls
-from chunk_att import build_attachment_tasks, join_nonempty_segments
 from helper.helper_sanitize import sanitize_text
 
 logger = logging.getLogger(__name__)
@@ -152,60 +149,42 @@ def _extract_text_from_excel_bytes(
     return sheet_texts
 
 
-def extract_excel_attachment_tasks(
-    data: bytes,
-    filename: str,
-    content_type: str,
-    base_meta: dict,
-    max_len: int,
-) -> List[Tuple[str, dict]]:
+def extract_excel_text(data: bytes, filename: str) -> str:
     """
     Purpose:
-    Produce fixed-size `(chunk_text, metadata)` tuples for a single Excel attachment.
+    Extract and merge sheet text from a single Excel attachment.
 
     Inputs:
     - data: Attachment bytes.
     - filename: Attachment filename (used for suffix detection and metadata).
-    - content_type: Attachment content type (currently unused; retained for compatibility).
-    - base_meta: Base metadata applied to all generated chunks.
-    - max_len: Maximum chunk length in characters.
 
     Outputs:
-    - List of `(chunk_text, metadata)` tuples; returns `[]` when unsupported or empty.
+    - Merged text string; returns an empty string when unsupported or empty.
 
     Side effects:
     - Logs extraction progress and warnings/errors.
 
     Failure modes:
-    - Returns `[]` when extraction fails or yields no text.
+    - Returns an empty string when extraction fails or yields no text.
     """
 
     suffix = Path(filename).suffix.lower()
     if suffix not in XLS_EXTS:
-        return []
+        return ""
 
     sheets = _extract_text_from_excel_bytes(data, filename)
     if not sheets:
-        return []
+        return ""
 
     # 合并所有 sheet，加入分隔标记
     merged_parts: List[str] = []
     for sheet_name, text in sorted(sheets.items()):
         merged_parts.append(f"=== Sheet: {sheet_name} ===")
         merged_parts.append(text)
-    full_text = join_nonempty_segments(merged_parts)
+    full_text = "\n\n".join(part for part in merged_parts if part and part.strip())
 
     if not full_text.strip():
-        return []
+        return ""
 
-    tasks = build_attachment_tasks(
-        full_text,
-        base_meta=base_meta,
-        file_type="excel",
-        filename=filename,
-        max_len=max_len,
-    )
-
-    if tasks:
-        logger.info("Extracted Excel attachment %s (%d chunks)", filename, len(tasks))
-    return tasks
+    logger.info("Extracted Excel attachment %s", filename)
+    return full_text

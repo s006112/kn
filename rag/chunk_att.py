@@ -6,7 +6,6 @@ Used by:
 * rag/email_01_mbox_to_chunks.py
 * rag/chunk_doc.py
 * rag/chunk_pdf.py
-* rag/chunk_xls.py
 
 Pipelines:
 - iter_attachments -> detect_type -> extract_text -> chunk_fixed -> build_tasks
@@ -25,7 +24,66 @@ import logging
 from pathlib import Path
 from typing import Iterable, Iterator, List, Tuple
 
+from chunk_doc import WORD_EXTS, extract_text_from_doc, extract_text_from_docx
 from chunk_json import Task
+
+
+def extract_word_attachment_tasks(
+    data: bytes,
+    filename: str,
+    content_type: str,  # 保持签名不变
+    base_meta: dict,
+    max_len: int,
+) -> List[Tuple[str, dict]]:
+    """
+    Purpose:
+    Produce fixed-size `(chunk_text, metadata)` tuples for a single Word attachment.
+
+    Inputs:
+    - data: Attachment bytes.
+    - filename: Attachment filename (used for extension detection and logging).
+    - content_type: Attachment content type (currently unused; retained for compatibility).
+    - base_meta: Base metadata applied to all generated chunks.
+    - max_len: Maximum chunk length in characters.
+
+    Outputs:
+    - List of `(chunk_text, metadata)` tuples; returns `[]` when unsupported or empty.
+
+    Side effects:
+    - Emits log messages describing extraction outcomes.
+
+    Failure modes:
+    - Returns `[]` when extraction fails or yields no text.
+    """
+
+    suffix = Path(filename).suffix.lower()
+    if suffix not in WORD_EXTS:
+        return []
+
+    # choose extractor
+    if suffix == ".docx":
+        paragraphs = extract_text_from_docx(data)
+    else:  # .doc legacy
+        paragraphs = extract_text_from_doc(data)
+
+    if not paragraphs:
+        return []
+
+    # 1) 合并所有段落为一段（维持现有策略）
+    full_text = join_nonempty_segments(text for _, text in sorted(paragraphs.items()))
+
+    file_type = "docx" if suffix == ".docx" else "doc"
+    tasks = build_attachment_tasks(
+        full_text,
+        base_meta=base_meta,
+        file_type=file_type,
+        filename=filename,
+        max_len=max_len,
+    )
+
+    if tasks:
+        logging.info("Extracted attachment %s (%d chunks)", filename, len(tasks))
+    return tasks
 
 
 def join_nonempty_segments(segments: Iterable[str], *, separator: str = "\n\n") -> str:
@@ -172,9 +230,8 @@ def extract_attachment_tasks(
     - Exceptions raised by individual attachment handlers are caught; failing attachments yield no tasks.
     """
 
-    from chunk_doc import WORD_EXTS, extract_word_attachment_tasks
     from helper.helper_pdf import PDF_EXTS, extract_pdf_attachment_tasks
-    from chunk_xls import XLS_EXTS, extract_excel_attachment_tasks
+    from chunk_xls import XLS_EXTS, extract_excel_text
 
     tasks: List[Task] = []
     for part in email.iter_attachments():
@@ -201,7 +258,15 @@ def extract_attachment_tasks(
             elif ext in WORD_EXTS:
                 items = extract_word_attachment_tasks(data, fn, ctype, base_meta, max_text_len)
             elif ext in XLS_EXTS:
-                items = extract_excel_attachment_tasks(data, fn, ctype, base_meta, max_text_len)
+                text = extract_excel_text(data, fn)
+                if text:
+                    items = build_attachment_tasks(
+                        text,
+                        base_meta=base_meta,
+                        file_type="excel",
+                        filename=fn,
+                        max_len=max_text_len,
+                    )
             else:
                 logging.debug("Unsupported attachment type: %s", fn)
         except Exception as e:

@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 """
 Responsibility:
-Extracts and sanitizes text from Word documents (DOCX natively; legacy DOC via external tools) and converts the result into fixed-size attachment chunk tasks.
+Extract and sanitize text from Word documents (DOCX natively; legacy DOC via external tools).
 
 Used by:
 * rag/chunk_att.py
 
 Pipelines:
-- read_docx -> sanitize_text -> join_segments -> chunk_fixed -> build_tasks
-- run_tool -> sanitize_text -> join_segments -> chunk_fixed -> build_tasks
+- read_docx -> sanitize_text
+- run_tool -> sanitize_text
 
 Invariants:
-- Only filenames with extensions in `WORD_EXTS` produce tasks.
 - Legacy `.doc` extraction attempts `antiword`, then `catdoc`, then `soffice/libreoffice` with timeouts.
-- Returned task tuples contain 1-based `seq` values within a single document.
 
 Out of scope:
+- Attachment chunking and metadata (handled by `chunk_att`).
 - Email attachment iteration and routing (handled by `chunk_att`).
 - PDF/Excel extraction (handled by `chunk_pdf` / `chunk_xls`).
 """
@@ -25,11 +24,7 @@ import logging
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path
-from typing import List, Tuple
-
 import docx
-from chunk_att import build_attachment_tasks, join_nonempty_segments
 from helper.helper_sanitize import sanitize_text
 
 logger = logging.getLogger(__name__)
@@ -37,7 +32,7 @@ logger = logging.getLogger(__name__)
 WORD_EXTS = {".doc", ".docx"}
 
 
-def _extract_text_from_docx(data: bytes) -> dict[int, str]:
+def extract_text_from_docx(data: bytes) -> dict[int, str]:
     """
     Purpose:
     Extract and sanitize text from DOCX bytes.
@@ -183,61 +178,3 @@ def extract_text_from_doc(data: bytes, *, timeout: int = 15) -> dict[int, str]:
     else:
         logger.warning("No tool available to process legacy .doc (need antiword, catdoc, or soffice/libreoffice)")
     return {}
-
-
-def extract_word_attachment_tasks(
-    data: bytes,
-    filename: str,
-    content_type: str,  # 保持签名不变
-    base_meta: dict,
-    max_len: int,
-) -> List[Tuple[str, dict]]:
-    """
-    Purpose:
-    Produce fixed-size `(chunk_text, metadata)` tuples for a single Word attachment.
-
-    Inputs:
-    - data: Attachment bytes.
-    - filename: Attachment filename (used for extension detection and logging).
-    - content_type: Attachment content type (currently unused; retained for compatibility).
-    - base_meta: Base metadata applied to all generated chunks.
-    - max_len: Maximum chunk length in characters.
-
-    Outputs:
-    - List of `(chunk_text, metadata)` tuples; returns `[]` when unsupported or empty.
-
-    Side effects:
-    - Emits log messages describing extraction outcomes.
-
-    Failure modes:
-    - Returns `[]` when extraction fails or yields no text.
-    """
-
-    suffix = Path(filename).suffix.lower()
-    if suffix not in WORD_EXTS:
-        return []
-
-    # choose extractor
-    if suffix == ".docx":
-        paragraphs = _extract_text_from_docx(data)
-    else:  # .doc legacy
-        paragraphs = extract_text_from_doc(data)
-
-    if not paragraphs:
-        return []
-
-    # 1) 合并所有段落为一段（维持现有策略）
-    full_text = join_nonempty_segments(text for _, text in sorted(paragraphs.items()))
-
-    file_type = "docx" if suffix == ".docx" else "doc"
-    tasks = build_attachment_tasks(
-        full_text,
-        base_meta=base_meta,
-        file_type=file_type,
-        filename=filename,
-        max_len=max_len,
-    )
-
-    if tasks:
-        logger.info("Extracted attachment %s (%d chunks)", filename, len(tasks))
-    return tasks
