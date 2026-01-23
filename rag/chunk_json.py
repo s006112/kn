@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 
 """
+chunk_json.py
 Responsibility:
 Implements email-text chunking utilities (sanitization, preprocessing, recursive splitting, and post-merge heuristics) plus parallel batch processing and JSONL writing for downstream embedding/indexing.
 
 Used by:
-* rag/email_01_mbox_to_chunks.py
+* rag/mbox_to_json.py
 * rag/chunk_att.py
-* archive/std_1_chunk.py
-* archive/std_chunker.py
 
 Pipelines:
 - sanitize_text -> preprocess_email -> split_recursive -> reconstruct_sentences -> filter_chunks -> batch_process -> write_jsonl
