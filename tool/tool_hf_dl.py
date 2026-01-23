@@ -1,7 +1,7 @@
 from huggingface_hub import list_repo_files, hf_hub_download
 
-repo = "google/embeddinggemma-300m"
-local_dir = "/workspaces/kn/data/google-embeddinggemma-300m"
+repo = "openai/gpt-oss-20b"  # Lightricks/LTX-2"
+local_dir = "/workspaces/kn/data/openai/gpt-oss-20b"
 
 files = list_repo_files(repo)
 
