@@ -3,7 +3,7 @@ Responsibility:
 Chunks Markdown files into semantically grouped text blocks and writes them as JSONL records for downstream ingestion.
 
 Used by:
-* archive/XX_md.py
+* none
 
 Pipelines:
 - discover_files -> split_markdown -> build_records -> write_jsonl
