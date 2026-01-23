@@ -26,7 +26,8 @@ from typing import Iterable, Iterator, List, Tuple
 
 from chunk_doc import WORD_EXTS, extract_text_from_doc, extract_text_from_docx
 from chunk_json import Task
-
+from helper.helper_pdf import PDF_EXTS, extract_pdf_attachment_tasks
+from helper.helper_xls import XLS_EXTS, extract_excel_text
 
 def extract_word_attachment_tasks(
     data: bytes,
@@ -229,9 +230,6 @@ def extract_attachment_tasks(
     Failure modes:
     - Exceptions raised by individual attachment handlers are caught; failing attachments yield no tasks.
     """
-
-    from helper.helper_pdf import PDF_EXTS, extract_pdf_attachment_tasks
-    from chunk_xls import XLS_EXTS, extract_excel_text
 
     tasks: List[Task] = []
     for part in email.iter_attachments():
