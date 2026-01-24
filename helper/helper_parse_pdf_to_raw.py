@@ -37,6 +37,7 @@ from PIL import Image, ImageFilter, ImageOps
 logger = logging.getLogger(__name__)
 OCR_REPLACE_RATIO = 1.5
 OCR_MIN_CHARS = 50
+TEXT_LEN_THRESHOLD = 200
 
 # -------------------------------------------------------------------------------------
 # Keep low-level extraction and OCR utilities separate so the same extractor can be reused before and after OCR.
@@ -107,7 +108,7 @@ def _preprocess_pdf_background(data: bytes) -> bytes | None:
 
 def _extract_text_with_ocr_fallback(
     data: bytes,
-    extractor: Callable[[bytes], dict[int, str]],
+    extractor: Callable[[bytes], tuple[dict[int, str], set[int]]],
 ) -> dict[int, str]:
     """
     Purpose:
@@ -147,7 +148,7 @@ def _extract_text_with_ocr_fallback(
                 optimize=1,
             )
             ocr_bytes = ocr_path.read_bytes()
-        pages = extractor(ocr_bytes)
+        pages, _suspect_pages = extractor(ocr_bytes)
         if pages:
             logger.info("OCR fallback succeeded.")
             return pages
@@ -157,7 +158,7 @@ def _extract_text_with_ocr_fallback(
     return {}
 
 
-def _raw_extraction(pdf_bytes: bytes) -> dict[int, str]:
+def _raw_extraction(pdf_bytes: bytes) -> tuple[dict[int, str], set[int]]:
     """
     Purpose:
     Perform a single text-extraction pass over PDF bytes using PyMuPDF without OCR.
@@ -167,6 +168,7 @@ def _raw_extraction(pdf_bytes: bytes) -> dict[int, str]:
 
     Outputs:
     - Mapping of 1-based page index to extracted text (whitespace-only pages omitted).
+    - Set of 1-based page indices that are considered suspect for mixed-page handling.
 
     Side effects:
     - None.
@@ -177,11 +179,16 @@ def _raw_extraction(pdf_bytes: bytes) -> dict[int, str]:
 
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
         pages: dict[int, str] = {}
+        suspect_pages: set[int] = set()
         for idx, page in enumerate(doc, start=1):
             text = page.get_text()
-            if text and text.strip():
+            text_len = len(text.strip()) if text else 0
+            has_images = bool(page.get_images(full=True))
+            if has_images and text_len < TEXT_LEN_THRESHOLD:
+                suspect_pages.add(idx)
+            if text_len:
                 pages[idx] = text
-        return pages
+        return pages, suspect_pages
 
 
 # -------------------------------------------------------------------------------------
@@ -218,18 +225,21 @@ def get_pdf_full_text(data: bytes, filename: str) -> str:
 
     try:
         # Step 0/1: Initial Raw Extraction
-        pages = _raw_extraction(data)
+        pages, suspect_pages = _raw_extraction(data)
         page_sources = {p: "raw" for p in pages}
         raw_count = len(pages)
 
-        # Step 1: Hybrid Trigger - OCR if pages are missing
-        if raw_count < total_pages:
+        # Step 1: Hybrid Trigger - OCR if pages are missing or suspect pages exist
+        if raw_count < total_pages or len(suspect_pages) > 0:
             ocr_triggered = True
             logger.info(
-                "[PDF_PARSE_RAW] file=%s, raw_pages=%d/%d, ocr_triggered=True",
-                filename, raw_count, total_pages
+                "[PDF_PARSE_RAW] file=%s, raw_pages=%d/%d, suspect_pages=%d, ocr_triggered=True",
+                filename, raw_count, total_pages, len(suspect_pages)
             )
-            logger.info("Partial extraction detected. Running OCR to recover missing pages...")
+            if raw_count < total_pages:
+                logger.info("Partial extraction detected. Running OCR to recover missing pages...")
+            else:
+                logger.info("Suspicious mixed pages detected. Running OCR to recover image-only text...")
             
             ocr_pages = _extract_text_with_ocr_fallback(data, _raw_extraction)
 
