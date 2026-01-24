@@ -23,6 +23,56 @@ Out of scope:
 - Embedding, indexing, or retrieval.
 - Semantic chunking or layout reconstruction.
 
+Improvements:
+PDF parsing steps:
+ ├─ Raw text stream       → PyMuPDF
+ ├─ Image bitmap region   → OCR
+ ├─ Vector region         → rasterize → OCR
+ ├─ Form fields           → extract
+ ├─ Annotations           → extract
+ └─ Merge all into unified page text
+
+ pdf_bytes
+   │
+   ├─ OCR pipeline  ──► ocr_pages
+   │
+   ├─ PyMuPDF raw   ──► raw_pages
+   │
+   ├─ PyMuPDF form  ──► form_pages
+   │
+   ├─ PyMuPDF annot ──► annot_pages
+   │
+   ▼
+merge_by_page( union all sources )
+   │
+   ▼
+RawDocument
+
+{
+  "page": 3,
+  "blocks": [
+    {"source": "raw",   "text": "..."},
+    {"source": "ocr",   "text": "..."},
+    {"source": "form",  "text": "..."},
+    {"source": "annot", "text": "..."},
+  ]
+}
+
+RawDocument = {
+  "filename": "...",
+  "total_pages": N,
+  "pages": [
+      {
+        "page": 1,
+        "blocks": [...]
+      },
+      {
+        "page": 2,
+        "blocks": [...]
+      }
+  ]
+}
+
 """
 
 from __future__ import annotations
