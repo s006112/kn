@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Responsibility:
-PDF parsing helpers that extract per-page text with PyMuPDF, optionally run OCR, and optionally emit fixed-size chunks with metadata.
+PDF parsing helpers that extract per-page text with PyMuPDF and, when no text is recoverable (or extraction errors), run OCR via `ocrmypdf` to generate a searchable PDF and re-extract text; also provides fixed-size chunking for attachment workflows.
 
 Used by:
 * core_per_report.py
@@ -11,15 +11,18 @@ Used by:
 * tool/tool_pdf_parser.py
 
 Pipelines:
-- pdf_bytes -> text_pages -> ocr_fallback -> merged_text -> chunk_fixed
+- pdf_bytes -> text_extract -> ocr_pdf -> text_extract -> merge_pages
+- pdf_bytes -> merge_pages -> chunk_fixed
 
 Invariants:
-- `get_pdf_full_text` returns a merged string (page texts joined by newlines) when extraction succeeds.
-- OCR fallback writes temporary files and re-extracts text from the OCR output PDF.
+- Page numbering in per-page mappings is 1-based.
+- OCR fallback is attempted only when the initial PyMuPDF pass yields no non-whitespace pages or raises an exception.
+- `get_pdf_full_text` merges extracted pages by ascending page index with newline separators.
 
 Out of scope:
 - Upload validation and file routing.
 - Embedding, indexing, or retrieval.
+- Semantic chunking or layout reconstruction.
 """
 
 from __future__ import annotations
@@ -29,7 +32,7 @@ import io
 from pathlib import Path
 from typing import Callable, List, Tuple
 
-import fitz  # PyMuPDF：用於處理 PDF 文件的主要函式庫
+import fitz  # Used for both text extraction and page rasterization in the OCR path.
 import ocrmypdf  # OCR fallback for image-based PDFs
 from PIL import Image, ImageFilter, ImageOps
 
@@ -37,12 +40,12 @@ logger = logging.getLogger(__name__)
 
 
 # -------------------------------------------------------------------------------------
-# 核心 PDF 解析器（使用 PyMuPDF）
+# Keep low-level extraction and OCR utilities separate so the same extractor can be reused before and after OCR.
 # -------------------------------------------------------------------------------------
 def _preprocess_pdf_background(data: bytes) -> bytes | None:
     """
     Purpose:
-    Render PDF pages and apply simple image filters to reduce background noise before OCR.
+    Render pages to images and apply simple filters to reduce background noise before OCR.
 
     Inputs:
     - data: Raw PDF bytes.
@@ -55,7 +58,7 @@ def _preprocess_pdf_background(data: bytes) -> bytes | None:
     - Logs debug messages when preprocessing cannot be applied.
 
     Failure modes:
-    - Returns `None` on any exception.
+    - Returns `None` on any exception (caller falls back to the original PDF bytes).
     """
 
     try:
@@ -96,7 +99,7 @@ def _extract_text_with_ocr_fallback(
 
     Side effects:
     - Creates temporary files/directories.
-    - Runs `ocrmypdf.ocr` and reads its output file.
+    - Runs `ocrmypdf.ocr` and reads its output file (configured with `force_ocr=True`, rotation, deskew, `oversample=300`, and `optimize=1`).
     - Logs OCR progress and failures.
 
     Failure modes:
@@ -146,7 +149,7 @@ def _raw_extraction(pdf_bytes: bytes) -> dict[int, str]:
     - None.
 
     Failure modes:
-    - Propagates exceptions raised by PyMuPDF operations.
+    - Raises exceptions from PyMuPDF operations (callers decide whether to fall back to OCR).
     """
 
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
@@ -159,13 +162,16 @@ def _raw_extraction(pdf_bytes: bytes) -> dict[int, str]:
 
 
 # -------------------------------------------------------------------------------------
-# 高階共用函數：回傳合併後的完整 PDF 文字（不含分頁結構）
-# 供 rag/chunk_att.py 使用，用於將整份 PDF 匯出為 .txt 檔案
+# Keep public helpers small and stable: downstream callers depend on a single merged string or fixed-size chunks.
 # -------------------------------------------------------------------------------------
 def get_pdf_full_text(data: bytes, filename: str) -> str:
     """
+    Directly called by:
+    * rag/standard_pdf_to_txt.py
+    * tool/tool_pdf_parser.py
+
     Purpose:
-    Extract full text from a PDF payload, using PyMuPDF with an OCR fallback, then merge pages into one string.
+    Extract full text from a PDF payload using a two-pass pipeline: PyMuPDF text extraction first, then OCR fallback when the first pass yields no non-whitespace text (or errors), then merge extracted pages into one string.
 
     Inputs:
     - data: Raw PDF bytes.
@@ -175,10 +181,12 @@ def get_pdf_full_text(data: bytes, filename: str) -> str:
     - Combined text with pages joined by newlines.
 
     Side effects:
-    - Logs extraction, fallback progress, and extraction summary.
+    - Logs extraction, OCR fallback progress, and extraction summary.
+    - May create temporary files and run OCR when fallback triggers.
 
     Failure modes:
     - Returns an empty string when no pages contain non-whitespace text.
+    - For PDFs where some pages have extractable text and other pages are image-only, OCR fallback is not invoked and image-only pages remain missing from the output.
     """
 
     try:
@@ -192,7 +200,7 @@ def get_pdf_full_text(data: bytes, filename: str) -> str:
 
     logger.info("Extraction complete: %d pages (%s)", len(pages), filename)
     return "\n".join(
-        text.strip() for _, text in sorted(pages.items())  # 依頁碼排序並合併
+        text.strip() for _, text in sorted(pages.items())
     )
 
 
@@ -203,6 +211,9 @@ def extract_pdf_attachment_tasks(
     max_len: int,
 ) -> List[Tuple[str, dict]]:
     """
+    Directly called by:
+    * rag/chunk_att.py
+
     Purpose:
     Produce fixed-size `(chunk_text, metadata)` tuples for a PDF payload.
 
@@ -216,28 +227,28 @@ def extract_pdf_attachment_tasks(
     - List of `(chunk_text, metadata)` tuples with 1-based `seq`.
 
     Side effects:
-    - Calls `get_pdf_full_text` (which may run OCR fallback and log).
+    - Calls `get_pdf_full_text` (which may run OCR fallback and emit logs).
 
     Failure modes:
     - Returns `[]` when no non-empty chunks are produced.
     """
 
-    full_text = get_pdf_full_text(data, filename)  # 拿到整份 PDF 的合併文字
+    full_text = get_pdf_full_text(data, filename)
 
     chunks = [
         full_text[i:i + max_len]
         for i in range(0, len(full_text), max_len)
-    ]  # 將全文以 max_len 字符為單位切割（固定長度，無語義分析）
+    ]
 
     return [
         (
             chunk,
             {
-                **base_meta,  # 合併外部提供的 metadata
-                "part": "attachment",  # 標記此為附件來源
+                **base_meta,
+                "part": "attachment",
                 "file_type": "pdf",
                 "attachment": filename,
-                "seq": i + 1,  # chunk 序號（從 1 開始）
+                "seq": i + 1,
             },
         )
         for i, chunk in enumerate(chunks)
