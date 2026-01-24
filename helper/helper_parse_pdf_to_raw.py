@@ -92,6 +92,14 @@ logger = logging.getLogger(__name__)
 # -------------------------------------------------------------------------------------
 # Keep low-level extraction and OCR utilities separate so the same extractor can be reused before and after OCR.
 # -------------------------------------------------------------------------------------
+def _get_total_pages(pdf_bytes: bytes) -> int:
+    try:
+        with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+            return doc.page_count
+    except Exception:
+        return 0
+
+
 def _preprocess_pdf_background(data: bytes) -> bytes | None:
     """
     Purpose:
@@ -239,16 +247,46 @@ def get_pdf_full_text(data: bytes, filename: str) -> str:
     - For PDFs where some pages have extractable text and other pages are image-only, OCR fallback is not invoked and image-only pages remain missing from the output.
     """
 
+    ocr_triggered = False
+    logger.info("[PDF_PARSE_START] file=%s, total_pages=%d", filename, _get_total_pages(data))
+
     try:
         pages = _raw_extraction(data)
         if not pages:
+            ocr_triggered = True
+            logger.info(
+                "[PDF_PARSE_RAW] file=%s, raw_pages=%d, ocr_triggered=%s",
+                filename,
+                len(pages),
+                ocr_triggered,
+            )
             logger.info("PyMuPDF extracted no text, attempting OCR fallback.")
             pages = _extract_text_with_ocr_fallback(data, _raw_extraction)
+        else:
+            logger.info(
+                "[PDF_PARSE_RAW] file=%s, raw_pages=%d, ocr_triggered=%s",
+                filename,
+                len(pages),
+                ocr_triggered,
+            )
     except Exception as exc:
         logger.error("Extraction failed: %s", exc)
+        ocr_triggered = True
+        logger.info(
+            "[PDF_PARSE_RAW] file=%s, raw_pages=%d, ocr_triggered=%s",
+            filename,
+            0,
+            ocr_triggered,
+        )
         pages = _extract_text_with_ocr_fallback(data, _raw_extraction)
 
     logger.info("Extraction complete: %d pages (%s)", len(pages), filename)
+    logger.info(
+        "[PDF_PARSE_DONE] file=%s, final_pages=%d, coverage=%f",
+        filename,
+        len(pages),
+        (len(pages) / _get_total_pages(data)) if _get_total_pages(data) else 0.0,
+    )
     return "\n".join(
         text.strip() for _, text in sorted(pages.items())
     )
