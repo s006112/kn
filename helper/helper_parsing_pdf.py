@@ -35,8 +35,6 @@ from PIL import Image, ImageFilter, ImageOps
 
 logger = logging.getLogger(__name__)
 
-PDF_EXTS = {".pdf"}
-
 
 # -------------------------------------------------------------------------------------
 # 核心 PDF 解析器（使用 PyMuPDF）
@@ -195,7 +193,6 @@ def get_pdf_full_text(data: bytes, filename: str) -> str:
     logger.info("Extraction complete: %d pages (%s)", len(pages), filename)
     return "\n".join(
         text.strip() for _, text in sorted(pages.items())  # 依頁碼排序並合併
-        if text and text.strip()
     )
 
 

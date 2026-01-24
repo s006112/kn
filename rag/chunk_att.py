@@ -24,8 +24,10 @@ from typing import Iterable, Iterator, List, Tuple
 
 from helper.helper_parsing_doc import WORD_EXTS, extract_text_from_doc, extract_text_from_docx
 from chunk_json import Task
-from helper.helper_parsing_pdf import PDF_EXTS, extract_pdf_attachment_tasks
+from helper.helper_parsing_pdf import extract_pdf_attachment_tasks
 from helper.helper_parsing_xls import XLS_EXTS, extract_excel_text
+
+PDF_EXTS = {".pdf"}
 
 def extract_word_attachment_tasks(
     data: bytes,
