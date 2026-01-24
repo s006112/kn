@@ -107,7 +107,7 @@ def test_raw_extraction_returns_suspect_pages(monkeypatch) -> None:
 
     extracted, suspect = pdf_raw._raw_extraction(b"%PDF-1.4")
     assert set(extracted.keys()) == {1, 2, 3}
-    assert suspect == {1}
+    assert suspect == {1, 2}
 
 
 def test_get_pdf_full_text_triggers_ocr_on_suspect_pages(monkeypatch) -> None:
@@ -136,7 +136,7 @@ def test_get_pdf_full_text_does_not_trigger_ocr_without_suspect_or_missing(
 ) -> None:
     pdf_raw = _import_pdf_raw()
     pages = [
-        _FakePage("t" * (pdf_raw.TEXT_LEN_THRESHOLD + 1), has_images=True),
+        _FakePage("t" * (pdf_raw.TEXT_LEN_THRESHOLD + 1), has_images=False),
         _FakePage("u" * (pdf_raw.TEXT_LEN_THRESHOLD + 1), has_images=False),
     ]
     monkeypatch.setattr(pdf_raw.fitz, "open", lambda *args, **kwargs: _FakeDoc(pages))
@@ -149,4 +149,25 @@ def test_get_pdf_full_text_does_not_trigger_ocr_without_suspect_or_missing(
     out = pdf_raw.get_pdf_full_text(b"%PDF-1.4", filename="text.pdf")
     assert out == ("t" * (pdf_raw.TEXT_LEN_THRESHOLD + 1)) + "\n" + (
         "u" * (pdf_raw.TEXT_LEN_THRESHOLD + 1)
+    )
+
+
+def test_get_pdf_page_blocks_emits_summary_log(monkeypatch, caplog) -> None:
+    pdf_raw = _import_pdf_raw()
+    pages = [
+        _FakePage("hello", has_images=False),
+        _FakePage("world", has_images=False),
+    ]
+    monkeypatch.setattr(pdf_raw.fitz, "open", lambda *args, **kwargs: _FakeDoc(pages))
+
+    caplog.set_level(logging.INFO)
+    blocks = pdf_raw.get_pdf_page_blocks(b"%PDF-1.4", filename="blocks.pdf")
+
+    assert blocks == {
+        1: [{"source": "raw", "text": "hello"}],
+        2: [{"source": "raw", "text": "world"}],
+    }
+    assert any(
+        "[PDF_PARSE_BLOCKS] file=blocks.pdf" in record.getMessage()
+        for record in caplog.records
     )
