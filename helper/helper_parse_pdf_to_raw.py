@@ -1,77 +1,25 @@
 #!/usr/bin/env python3
 """
 Responsibility:
-PDF parsing helpers that extract per-page text with PyMuPDF and, when no text is recoverable (or extraction errors), run OCR via `ocrmypdf` to generate a searchable PDF and re-extract text.
+Extract per-page text from PDF bytes via PyMuPDF, optionally run OCR via `ocrmypdf` when raw extraction fails or misses pages, and return a single merged text string.
 
 Used by:
-* core_per_report.py
-* core_so_import.py
-* rag/chunk_att.py
-* rag/standard_pdf_to_txt.py
-* tool/tool_pdf_parser.py
+* tests in `helper/test_parse_pdf_to_raw.py`
 
 Pipelines:
-- pdf_bytes -> text_extract -> ocr_pdf -> text_extract -> merge_pages
+- pdf_bytes -> raw_extract -> ocr_extract -> merge_pages -> full_text
 
 Invariants:
 - Page numbering in per-page mappings is 1-based.
-- OCR fallback is attempted only when the initial PyMuPDF pass yields no non-whitespace pages or raises an exception.
-- `get_pdf_full_text` merges extracted pages by ascending page index with newline separators.
+- OCR fallback is attempted only when the initial raw pass errors or yields fewer extracted pages than the PDF total.
+- OCR results are merged only when OCR produced at least one page.
+- Per-page OCR replacement requires non-empty OCR text and either an empty raw page or a significant OCR length advantage.
+- Returned full text joins final page texts in ascending page index with newline separators.
 
 Out of scope:
-- Upload validation and file routing.
-- Embedding, indexing, or retrieval.
-- Semantic chunking or layout reconstruction.
-
-Improvements:
-PDF parsing steps:
- ├─ Raw text stream       → PyMuPDF
- ├─ Image bitmap region   → OCR
- ├─ Vector region         → rasterize → OCR
- ├─ Form fields           → extract
- ├─ Annotations           → extract
- └─ Merge all into unified page text
-
- pdf_bytes
-   │
-   ├─ OCR pipeline  ──► ocr_pages
-   │
-   ├─ PyMuPDF raw   ──► raw_pages
-   │
-   ├─ PyMuPDF form  ──► form_pages
-   │
-   ├─ PyMuPDF annot ──► annot_pages
-   │
-   ▼
-merge_by_page( union all sources )
-   │
-   ▼
-RawDocument
-
-{
-  "page": 3,
-  "blocks": [
-    {"source": "raw",   "text": "..."},
-    {"source": "ocr",   "text": "..."},
-    {"source": "form",  "text": "..."},
-    {"source": "annot", "text": "..."},
-  ]
-}
-
-RawDocument = {
-  "filename": "...",
-  "total_pages": N,
-  "pages": [
-      {
-        "page": 1,
-        "blocks": [...]
-      },
-      {
-        "page": 2,
-        "blocks": [...]
-      }
-  ]
-}
+- Upload validation and routing.
+- Layout reconstruction and semantic chunking.
+- Indexing, embedding, or retrieval.
 
 """
 
@@ -94,6 +42,22 @@ OCR_MIN_CHARS = 50
 # Keep low-level extraction and OCR utilities separate so the same extractor can be reused before and after OCR.
 # -------------------------------------------------------------------------------------
 def _get_total_pages(pdf_bytes: bytes) -> int:
+    """
+    Purpose:
+    Return the total number of pages in the PDF.
+
+    Inputs:
+    - pdf_bytes: Raw PDF bytes.
+
+    Outputs:
+    - Total page count, or 0 when the PDF cannot be opened.
+
+    Side effects:
+    - None.
+
+    Failure modes:
+    - Returns 0 on any exception from PyMuPDF.
+    """
     try:
         with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
             return doc.page_count
@@ -225,32 +189,37 @@ def _raw_extraction(pdf_bytes: bytes) -> dict[int, str]:
 # -------------------------------------------------------------------------------------
 def get_pdf_full_text(data: bytes, filename: str) -> str:
     """
-    Directly called by:
-    * rag/standard_pdf_to_txt.py
-    * tool/tool_pdf_parser.py
-
     Purpose:
-    Extract full text from a PDF payload using a hybrid pipeline: 
-    1. Initial PyMuPDF text extraction.
-    2. OCR fallback/completion if any pages are missing or an error occurs.
-    3. Merging results to ensure maximum coverage per page.
+    Extract and merge per-page text from a PDF payload using a two-pass approach:
+    1. PyMuPDF text extraction.
+    2. OCR extraction when raw extraction errors or misses pages, then merge OCR into the raw result.
 
     Inputs:
     - data: Raw PDF bytes.
     - filename: Filename used for logging.
 
     Outputs:
-    - Combined text with pages joined by newlines.
+    - Combined text with page texts joined by newlines (ascending page index).
+
+    Side effects:
+    - Logs extraction progress, OCR triggering, and coverage metrics.
+    - May create temporary files and run OCR via `ocrmypdf` when fallback triggers.
+    - Internally tracks per-page source decisions ("raw" or "ocr") for pages chosen during merging.
+
+    Failure modes:
+    - Returns an empty string when no pages contain non-whitespace text.
     """
     total_pages = _get_total_pages(data)
     ocr_triggered = False
     pages: dict[int, str] = {}
+    page_sources: dict[int, str] = {}
 
     logger.info("[PDF_PARSE_START] file=%s, total_pages=%d", filename, total_pages)
 
     try:
         # Step 0/1: Initial Raw Extraction
         pages = _raw_extraction(data)
+        page_sources = {p: "raw" for p in pages}
         raw_count = len(pages)
 
         # Step 1: Hybrid Trigger - OCR if pages are missing
@@ -263,18 +232,32 @@ def get_pdf_full_text(data: bytes, filename: str) -> str:
             logger.info("Partial extraction detected. Running OCR to recover missing pages...")
             
             ocr_pages = _extract_text_with_ocr_fallback(data, _raw_extraction)
-            
-            # Step 1: Merge Strategy - Fill gaps in raw_pages with OCR content
-            for p in range(1, total_pages + 1):
-                raw_text = pages.get(p, "").strip()
-                ocr_text = ocr_pages.get(p, "").strip()
-                
-                # Update if raw is empty or if OCR found significantly more content (e.g. raw was gibberish)
-                if (
-                    not raw_text
-                    or (len(ocr_text) > OCR_MIN_CHARS and len(ocr_text) > len(raw_text) * OCR_REPLACE_RATIO)
-                ):
-                    pages[p] = ocr_text
+
+            if not ocr_pages:
+                logger.warning(
+                    "OCR produced no usable pages, keeping raw extraction only."
+                )
+            else:
+                # Step 1: Merge Strategy - Fill gaps in raw_pages with OCR content
+                for p in range(1, total_pages + 1):
+                    raw_text = pages.get(p, "").strip()
+                    ocr_text = ocr_pages.get(p, "").strip()
+
+                    use_ocr = False
+                    if ocr_text and (
+                        not raw_text
+                        or (
+                            len(ocr_text) > OCR_MIN_CHARS
+                            and len(ocr_text) > len(raw_text) * OCR_REPLACE_RATIO
+                        )
+                    ):
+                        use_ocr = True
+
+                    if use_ocr:
+                        pages[p] = ocr_text
+                        page_sources[p] = "ocr"
+                    elif raw_text:
+                        page_sources.setdefault(p, "raw")
         else:
             logger.info(
                 "[PDF_PARSE_RAW] file=%s, raw_pages=%d, ocr_triggered=False",
@@ -290,16 +273,27 @@ def get_pdf_full_text(data: bytes, filename: str) -> str:
         )
         # Full fallback on critical error
         pages = _extract_text_with_ocr_fallback(data, _raw_extraction)
+        page_sources = {p: "ocr" for p in pages}
 
-    final_count = len(pages)
-    coverage = (final_count / total_pages) if total_pages > 0 else 0.0
+    final_pages_count = len(pages)
+    covered_pages = sum(1 for t in pages.values() if t.strip())
+    coverage = covered_pages / total_pages
     
-    logger.info("Extraction complete: %d pages (%s)", final_count, filename)
     logger.info(
-        "[PDF_PARSE_DONE] file=%s, final_pages=%d, coverage=%f",
-        filename, final_count, coverage
+        "Extraction complete: %d pages, %d covered (%s)",
+        final_pages_count,
+        covered_pages,
+        filename,
     )
 
+    logger.info(
+        "[PDF_PARSE_DONE] file=%s, total_pages=%d, final_pages=%d, covered_pages=%d, coverage=%f",
+        filename,
+        total_pages,
+        final_pages_count,
+        covered_pages,
+        coverage,
+    )
     return "\n".join(
         text.strip() for _, text in sorted(pages.items())
     )
