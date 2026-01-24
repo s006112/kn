@@ -61,7 +61,8 @@ Module Highlights
   - `attach_pdf_to_sale_order()` uploads the PDF as an `ir.attachment`, posts a note on the sale order, optionally shares the PDF to Nextcloud (per partner folder), and appends any share log messages to the running status log.
 - `helper/helper_parsing_pdf.py`
   - `get_pdf_full_text()` uses PyMuPDF with automatic fallback to OCR (`ocrmypdf`) when no text is returned.
-  - `extract_pdf_attachment_tasks()` supports services that need chunked PDF text.
+- `rag/chunk_att.py`
+  - `extract_pdf_attachment_tasks()` chunks PDF attachment text for email/RAG pipelines.
 Key Environment Variables
 -------------------------
 - `OPENAI_API_KEY` – LLM client authentication.

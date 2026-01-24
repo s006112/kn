@@ -24,10 +24,45 @@ from typing import Iterable, Iterator, List, Tuple
 
 from helper.helper_parsing_doc import WORD_EXTS, extract_text_from_doc, extract_text_from_docx
 from chunk_json import Task
-from helper.helper_parsing_pdf import extract_pdf_attachment_tasks
+from helper.helper_parsing_pdf import get_pdf_full_text
 from helper.helper_parsing_xls import XLS_EXTS, extract_excel_text
 
 PDF_EXTS = {".pdf"}
+
+def extract_pdf_attachment_tasks(
+    data: bytes,
+    filename: str,
+    base_meta: dict,
+    max_len: int,
+) -> List[Tuple[str, dict]]:
+    """
+    Purpose:
+    Produce fixed-size `(chunk_text, metadata)` tuples for a PDF payload.
+
+    Inputs:
+    - data: PDF bytes.
+    - filename: Filename used for metadata fields.
+    - base_meta: Base metadata to merge into each chunk metadata dict.
+    - max_len: Fixed chunk size in characters.
+
+    Outputs:
+    - List of `(chunk_text, metadata)` tuples with 1-based `seq`.
+
+    Side effects:
+    - Calls `get_pdf_full_text` (which may run OCR fallback and emit logs).
+
+    Failure modes:
+    - Returns `[]` when no non-empty chunks are produced.
+    """
+
+    full_text = get_pdf_full_text(data, filename)
+    return build_attachment_tasks(
+        full_text,
+        base_meta=base_meta,
+        file_type="pdf",
+        filename=filename,
+        max_len=max_len,
+    )
 
 def extract_word_attachment_tasks(
     data: bytes,

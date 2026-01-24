@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Responsibility:
-PDF parsing helpers that extract per-page text with PyMuPDF and, when no text is recoverable (or extraction errors), run OCR via `ocrmypdf` to generate a searchable PDF and re-extract text; also provides fixed-size chunking for attachment workflows.
+PDF parsing helpers that extract per-page text with PyMuPDF and, when no text is recoverable (or extraction errors), run OCR via `ocrmypdf` to generate a searchable PDF and re-extract text.
 
 Used by:
 * core_per_report.py
@@ -12,7 +12,6 @@ Used by:
 
 Pipelines:
 - pdf_bytes -> text_extract -> ocr_pdf -> text_extract -> merge_pages
-- pdf_bytes -> merge_pages -> chunk_fixed
 
 Invariants:
 - Page numbering in per-page mappings is 1-based.
@@ -23,6 +22,16 @@ Out of scope:
 - Upload validation and file routing.
 - Embedding, indexing, or retrieval.
 - Semantic chunking or layout reconstruction.
+
+Improvements:
+PDF parsing steps:
+ ├─ Raw text stream       → PyMuPDF
+ ├─ Image bitmap region   → OCR
+ ├─ Vector region         → rasterize → OCR
+ ├─ Form fields           → extract
+ ├─ Annotations           → extract
+ └─ Merge all into unified page text
+
 """
 
 from __future__ import annotations
@@ -30,7 +39,7 @@ import logging
 import tempfile
 import io
 from pathlib import Path
-from typing import Callable, List, Tuple
+from typing import Callable
 
 import fitz  # Used for both text extraction and page rasterization in the OCR path.
 import ocrmypdf  # OCR fallback for image-based PDFs
@@ -202,55 +211,3 @@ def get_pdf_full_text(data: bytes, filename: str) -> str:
     return "\n".join(
         text.strip() for _, text in sorted(pages.items())
     )
-
-
-def extract_pdf_attachment_tasks(
-    data: bytes,
-    filename: str,
-    base_meta: dict,
-    max_len: int,
-) -> List[Tuple[str, dict]]:
-    """
-    Directly called by:
-    * rag/chunk_att.py
-
-    Purpose:
-    Produce fixed-size `(chunk_text, metadata)` tuples for a PDF payload.
-
-    Inputs:
-    - data: PDF bytes.
-    - filename: Filename used for metadata fields.
-    - base_meta: Base metadata to merge into each chunk metadata dict.
-    - max_len: Fixed chunk size in characters.
-
-    Outputs:
-    - List of `(chunk_text, metadata)` tuples with 1-based `seq`.
-
-    Side effects:
-    - Calls `get_pdf_full_text` (which may run OCR fallback and emit logs).
-
-    Failure modes:
-    - Returns `[]` when no non-empty chunks are produced.
-    """
-
-    full_text = get_pdf_full_text(data, filename)
-
-    chunks = [
-        full_text[i:i + max_len]
-        for i in range(0, len(full_text), max_len)
-    ]
-
-    return [
-        (
-            chunk,
-            {
-                **base_meta,
-                "part": "attachment",
-                "file_type": "pdf",
-                "attachment": filename,
-                "seq": i + 1,
-            },
-        )
-        for i, chunk in enumerate(chunks)
-        if chunk.strip()
-    ]
