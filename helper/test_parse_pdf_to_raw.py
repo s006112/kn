@@ -14,7 +14,7 @@ for _p in (str(ROOT_DIR), str(HELPER_DIR)):
 
 RAW_PDF_DIR = Path("data/pdf_evaluation")
 TXT_RAW_DIR = Path("data/pdf_evaluation/txt_raw")
-LOG_FILE = TXT_RAW_DIR / "parse_pdf_to_raw.log"
+LOG_FILE = RAW_PDF_DIR / "parse_pdf_to_raw.log"
 
 def _configure_logging(log_file: Path) -> None:
     logger = logging.getLogger()
@@ -56,7 +56,7 @@ def main():
         out.write_text(text, encoding="utf-8")
 
         logging.info(
-            "[TXT_OUTPUT] file=%s, chars=%d, out=%s",
+            "[TXT_OUTPUT] file=%s, chars=%d, out=%s\n",
             pdf.name,
             len(text),
             out,

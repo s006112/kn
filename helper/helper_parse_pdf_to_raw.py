@@ -163,32 +163,29 @@ def _raw_extraction(pdf_bytes: bytes) -> tuple[dict[int, str], set[int]]:
     Purpose:
     Perform a single text-extraction pass over PDF bytes using PyMuPDF without OCR.
 
-    Inputs:
-    - pdf_bytes: Raw PDF bytes.
-
     Outputs:
-    - Mapping of 1-based page index to extracted text (whitespace-only pages omitted).
-    - Set of 1-based page indices that are considered suspect for mixed-page handling.
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - Raises exceptions from PyMuPDF operations (callers decide whether to fall back to OCR).
+    - pages: 1-based page index → raw extracted text
+    - suspect_pages: pages that contain image objects and must be OCR-checked
     """
 
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
         pages: dict[int, str] = {}
         suspect_pages: set[int] = set()
+
         for idx, page in enumerate(doc, start=1):
             text = page.get_text()
             text_len = len(text.strip()) if text else 0
             has_images = bool(page.get_images(full=True))
-            if has_images and text_len < TEXT_LEN_THRESHOLD:
+
+            # Step 2 (final form): any image means high-risk page → must OCR
+            if has_images:
                 suspect_pages.add(idx)
+
             if text_len:
                 pages[idx] = text
+
         return pages, suspect_pages
+
 
 
 # -------------------------------------------------------------------------------------
@@ -236,10 +233,11 @@ def get_pdf_full_text(data: bytes, filename: str) -> str:
                 "[PDF_PARSE_RAW] file=%s, raw_pages=%d/%d, suspect_pages=%d, ocr_triggered=True",
                 filename, raw_count, total_pages, len(suspect_pages)
             )
+
             if raw_count < total_pages:
-                logger.info("Partial extraction detected. Running OCR to recover missing pages...")
-            else:
-                logger.info("Suspicious mixed pages detected. Running OCR to recover image-only text...")
+                logger.info("Missing pages detected → OCR to recover image-only pages.")
+            if len(suspect_pages) > 0:
+                logger.info("Image pages detected → OCR to recover embedded image text.")
             
             ocr_pages = _extract_text_with_ocr_fallback(data, _raw_extraction)
 
@@ -287,7 +285,7 @@ def get_pdf_full_text(data: bytes, filename: str) -> str:
 
     final_pages_count = len(pages)
     covered_pages = sum(1 for t in pages.values() if t.strip())
-    coverage = covered_pages / total_pages
+    coverage = covered_pages / total_pages if total_pages else 0.0
     
     logger.info(
         "Extraction complete: %d pages, %d covered (%s)",
