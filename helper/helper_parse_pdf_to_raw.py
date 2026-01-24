@@ -87,7 +87,8 @@ import ocrmypdf  # OCR fallback for image-based PDFs
 from PIL import Image, ImageFilter, ImageOps
 
 logger = logging.getLogger(__name__)
-
+OCR_REPLACE_RATIO = 1.5
+OCR_MIN_CHARS = 50
 
 # -------------------------------------------------------------------------------------
 # Keep low-level extraction and OCR utilities separate so the same extractor can be reused before and after OCR.
@@ -229,7 +230,10 @@ def get_pdf_full_text(data: bytes, filename: str) -> str:
     * tool/tool_pdf_parser.py
 
     Purpose:
-    Extract full text from a PDF payload using a two-pass pipeline: PyMuPDF text extraction first, then OCR fallback when the first pass yields no non-whitespace text (or errors), then merge extracted pages into one string.
+    Extract full text from a PDF payload using a hybrid pipeline: 
+    1. Initial PyMuPDF text extraction.
+    2. OCR fallback/completion if any pages are missing or an error occurs.
+    3. Merging results to ensure maximum coverage per page.
 
     Inputs:
     - data: Raw PDF bytes.
@@ -237,56 +241,65 @@ def get_pdf_full_text(data: bytes, filename: str) -> str:
 
     Outputs:
     - Combined text with pages joined by newlines.
-
-    Side effects:
-    - Logs extraction, OCR fallback progress, and extraction summary.
-    - May create temporary files and run OCR when fallback triggers.
-
-    Failure modes:
-    - Returns an empty string when no pages contain non-whitespace text.
-    - For PDFs where some pages have extractable text and other pages are image-only, OCR fallback is not invoked and image-only pages remain missing from the output.
     """
-
+    total_pages = _get_total_pages(data)
     ocr_triggered = False
-    logger.info("[PDF_PARSE_START] file=%s, total_pages=%d", filename, _get_total_pages(data))
+    pages: dict[int, str] = {}
+
+    logger.info("[PDF_PARSE_START] file=%s, total_pages=%d", filename, total_pages)
 
     try:
+        # Step 0/1: Initial Raw Extraction
         pages = _raw_extraction(data)
-        if not pages:
+        raw_count = len(pages)
+
+        # Step 1: Hybrid Trigger - OCR if pages are missing
+        if raw_count < total_pages:
             ocr_triggered = True
             logger.info(
-                "[PDF_PARSE_RAW] file=%s, raw_pages=%d, ocr_triggered=%s",
-                filename,
-                len(pages),
-                ocr_triggered,
+                "[PDF_PARSE_RAW] file=%s, raw_pages=%d/%d, ocr_triggered=True",
+                filename, raw_count, total_pages
             )
-            logger.info("PyMuPDF extracted no text, attempting OCR fallback.")
-            pages = _extract_text_with_ocr_fallback(data, _raw_extraction)
+            logger.info("Partial extraction detected. Running OCR to recover missing pages...")
+            
+            ocr_pages = _extract_text_with_ocr_fallback(data, _raw_extraction)
+            
+            # Step 1: Merge Strategy - Fill gaps in raw_pages with OCR content
+            for p in range(1, total_pages + 1):
+                raw_text = pages.get(p, "").strip()
+                ocr_text = ocr_pages.get(p, "").strip()
+                
+                # Update if raw is empty or if OCR found significantly more content (e.g. raw was gibberish)
+                if (
+                    not raw_text
+                    or (len(ocr_text) > OCR_MIN_CHARS and len(ocr_text) > len(raw_text) * OCR_REPLACE_RATIO)
+                ):
+                    pages[p] = ocr_text
         else:
             logger.info(
-                "[PDF_PARSE_RAW] file=%s, raw_pages=%d, ocr_triggered=%s",
-                filename,
-                len(pages),
-                ocr_triggered,
+                "[PDF_PARSE_RAW] file=%s, raw_pages=%d, ocr_triggered=False",
+                filename, raw_count
             )
+
     except Exception as exc:
         logger.error("Extraction failed: %s", exc)
         ocr_triggered = True
         logger.info(
-            "[PDF_PARSE_RAW] file=%s, raw_pages=%d, ocr_triggered=%s",
-            filename,
-            0,
-            ocr_triggered,
+            "[PDF_PARSE_RAW] file=%s, raw_pages=0, ocr_triggered=True",
+            filename
         )
+        # Full fallback on critical error
         pages = _extract_text_with_ocr_fallback(data, _raw_extraction)
 
-    logger.info("Extraction complete: %d pages (%s)", len(pages), filename)
+    final_count = len(pages)
+    coverage = (final_count / total_pages) if total_pages > 0 else 0.0
+    
+    logger.info("Extraction complete: %d pages (%s)", final_count, filename)
     logger.info(
         "[PDF_PARSE_DONE] file=%s, final_pages=%d, coverage=%f",
-        filename,
-        len(pages),
-        (len(pages) / _get_total_pages(data)) if _get_total_pages(data) else 0.0,
+        filename, final_count, coverage
     )
+
     return "\n".join(
         text.strip() for _, text in sorted(pages.items())
     )
