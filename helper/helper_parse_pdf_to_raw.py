@@ -5,7 +5,13 @@ Responsibility:
 Extract per-page text from PDF bytes via PyMuPDF, optionally run OCR via `ocrmypdf` when raw extraction fails or misses pages, and return a single merged text string.
 
 Used by:
-* tests in `helper/test_parse_pdf_to_raw.py`
+* helper/test_parse_pdf_to_raw.py
+* core_per_report.py
+* core_so_import.py
+* rag/chunk_att.py
+* rag/standard_pdf_to_txt.py
+* tool/tool_pdf_parser.py
+
 """
 
 from __future__ import annotations
