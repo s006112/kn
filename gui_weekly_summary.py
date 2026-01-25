@@ -155,7 +155,7 @@ def handle_upload(user_text: str) -> str:
 
 
 @lru_cache(maxsize=1)
-def get_demo() -> "gradio.Blocks":
+def get_demo() -> "gr.Blocks":
     """Create and cache the Gradio Blocks UI for weekly summary generation.
 
     Purpose:

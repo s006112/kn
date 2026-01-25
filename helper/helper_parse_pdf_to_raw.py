@@ -183,8 +183,9 @@ def get_pdf_page_blocks(data: bytes, filename: str) -> dict[int, list[dict]]:
         1 for blocks in blocks_by_page.values() for block in blocks if block["source"] == "annot"
     )
     logger.info(
-        "[PDF_PARSE_BLOCKS] file=%s, form_blocks=%d, annot_blocks=%d",
+        "[PDF_PARSE_BLOCKS] file=%s, total_pages=%d, form_blocks=%d, annot_blocks=%d",
         filename,
+        total_pages,
         form_blocks,
         annot_blocks,
     )
