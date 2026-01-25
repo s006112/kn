@@ -53,7 +53,7 @@ def _ocr_page_with_tesseract(page, dpi: int = 300) -> str:
 
     text = pytesseract.image_to_string(
         img,
-        lang="eng+chi_sim",
+        lang="eng+chi_sim+chi_tra",
         config="--psm 6"
     )
     return text.strip()
@@ -110,6 +110,38 @@ def _raw_extraction(pdf_bytes: bytes) -> tuple[dict[int, str], set[int], dict[in
         return pages, suspect_pages, form_pages, annot_pages
 
 
+def _extract_text_with_ocr_fallback(
+    pages: dict[int, str],
+    page_sources: dict[int, str],
+    suspect_pages: set[int],
+    doc,
+) -> tuple[dict[int, str], dict[int, str]]:
+    for idx, page in enumerate(doc, start=1):
+        raw_text = pages.get(idx, "").strip()
+
+        need_ocr = (
+            not raw_text or
+            len(raw_text) < OCR_MIN_CHARS or
+            idx in suspect_pages
+        )
+
+        if need_ocr:
+            try:
+                ocr_text = _ocr_page_with_tesseract(page)
+            except Exception as e:
+                logger.warning("OCR failed on page %d: %s", idx, e)
+                continue
+
+            if ocr_text and (
+                not raw_text or
+                (len(ocr_text) > OCR_MIN_CHARS and len(ocr_text) > len(raw_text) * OCR_REPLACE_RATIO)
+            ):
+                pages[idx] = ocr_text
+                page_sources[idx] = "ocr"
+
+    return pages, page_sources
+
+
 # -------------------------------------------------------------------------------------
 # Public API
 # -------------------------------------------------------------------------------------
@@ -120,28 +152,7 @@ def _extract_pdf_pages_and_sources( data: bytes, filename: str ) -> tuple[int, d
     page_sources = {p: "raw" for p in pages}
 
     with fitz.open(stream=data, filetype="pdf") as doc:
-        for idx, page in enumerate(doc, start=1):
-            raw_text = pages.get(idx, "").strip()
-
-            need_ocr = (
-                not raw_text or
-                len(raw_text) < OCR_MIN_CHARS or
-                idx in suspect_pages
-            )
-
-            if need_ocr:
-                try:
-                    ocr_text = _ocr_page_with_tesseract(page)
-                except Exception as e:
-                    logger.warning("OCR failed on page %d: %s", idx, e)
-                    continue
-
-                if ocr_text and (
-                    not raw_text or
-                    (len(ocr_text) > OCR_MIN_CHARS and len(ocr_text) > len(raw_text) * OCR_REPLACE_RATIO)
-                ):
-                    pages[idx] = ocr_text
-                    page_sources[idx] = "ocr"
+        pages, page_sources = _extract_text_with_ocr_fallback(pages, page_sources, suspect_pages, doc)
 
     return total_pages, pages, page_sources, form_pages, annot_pages
 
@@ -164,6 +175,19 @@ def get_pdf_page_blocks(data: bytes, filename: str) -> dict[int, list[dict]]:
             blocks.append({"source": "annot", "text": at})  #
 
         if blocks: blocks_by_page[p] = blocks
+
+    form_blocks = sum(
+        1 for blocks in blocks_by_page.values() for block in blocks if block["source"] == "form"
+    )
+    annot_blocks = sum(
+        1 for blocks in blocks_by_page.values() for block in blocks if block["source"] == "annot"
+    )
+    logger.info(
+        "[PDF_PARSE_BLOCKS] file=%s, form_blocks=%d, annot_blocks=%d",
+        filename,
+        form_blocks,
+        annot_blocks,
+    )
 
     return blocks_by_page
 

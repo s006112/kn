@@ -122,9 +122,11 @@ def test_get_pdf_full_text_triggers_ocr_on_suspect_pages(monkeypatch) -> None:
 
     calls: dict[str, int] = {"count": 0}
 
-    def _fake_ocr(data: bytes, extractor):
+    def _fake_ocr(pages, page_sources, suspect_pages, doc):
         calls["count"] += 1
-        return {1: "B" * 100, 2: ""}
+        pages[1] = "B" * 100
+        page_sources[1] = "ocr"
+        return pages, page_sources
 
     monkeypatch.setattr(pdf_raw, "_extract_text_with_ocr_fallback", _fake_ocr)
 
@@ -143,12 +145,16 @@ def test_get_pdf_full_text_does_not_trigger_ocr_without_suspect_or_missing(
     ]
     monkeypatch.setattr(pdf_raw.fitz, "open", lambda *args, **kwargs: _FakeDoc(pages))
 
-    def _should_not_run(*args, **kwargs):
-        raise AssertionError("OCR should not run for non-suspect full raw extraction")
+    calls: dict[str, int] = {"count": 0}
 
-    monkeypatch.setattr(pdf_raw, "_extract_text_with_ocr_fallback", _should_not_run)
+    def _noop_ocr(pages, page_sources, suspect_pages, doc):
+        calls["count"] += 1
+        return pages, page_sources
+
+    monkeypatch.setattr(pdf_raw, "_extract_text_with_ocr_fallback", _noop_ocr)
 
     out = pdf_raw.get_pdf_full_text(b"%PDF-1.4", filename="text.pdf")
+    assert calls["count"] == 1
     assert out == ("t" * (pdf_raw.TEXT_LEN_THRESHOLD + 1)) + "\n" + (
         "u" * (pdf_raw.TEXT_LEN_THRESHOLD + 1)
     )
