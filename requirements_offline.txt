@@ -21,6 +21,102 @@ pip3 download -d /wheels --only-binary=:all: \
   torch==2.2.2+cu118 \
   --index-url https://download.pytorch.org/whl/cu118 \
 
+# ----------------------------------------------------------------------------
+# Core packages – runtime / web UI / base infrastructure
+# ----------------------------------------------------------------------------
+pip3 install --no-index --find-links=/wheels python-dotenv==1.2.1 watchdog==6.0.0 Flask==3.1.2 jinja2==3.1.6 requests==2.32.5 gradio==5.46.0 gradio_client==1.13.0
+  python-dotenv==1.2.1 \        # Load environment variables from .env
+  watchdog==6.0.0 \             # File system watcher
+  Flask==3.1.2 \                # Lightweight backend server
+  jinja2==3.1.6 \               # HTML / text template engine
+  requests==2.32.5 \            # HTTP client
+  gradio==5.46.0 \              # Web UI for ML / LLM tools
+  gradio_client==1.13.0         # Client SDK for Gradio services
+
+# ----------------------------------------------------------------------------
+# Other modules – scientific / CV / audio I/O
+# ----------------------------------------------------------------------------
+pip3 install --no-index --find-links=/wheels scipy==1.15.3 opencv_python_headless==4.12.0.88 sounddevice==0.5.3
+  scipy==1.15.3 \               # Scientific computation
+  opencv_python_headless==4.12.0.88 \  # OpenCV without GUI dependency
+  sounddevice==0.5.3            # Audio input/output
+
+# ----------------------------------------------------------------------------
+# LLM API clients / cloud inference
+# ----------------------------------------------------------------------------
+pip3 install --no-index --find-links=/wheels openai
+  openai==2.8.1 \               # OpenAI API (new SDK style)
+  perplexityai==0.20.0 \        # Perplexity API client
+  google-genai==1.52.0 \        # Google Gemini / GenAI SDK
+  openai-whisper==20240930      # Whisper ASR (source tar.gz only, no wheel)
+
+# ----------------------------------------------------------------------------
+# Local LLM / Diffusion / HF inference stack
+# ----------------------------------------------------------------------------
+pip3 install --no-index --find-links=/wheels diffusers==0.36.0 sentence-transformers==5.1.0 kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1
+  diffusers==0.36.0 \           # Stable Diffusion / Z-Image pipeline
+  sentence-transformers==5.1.0 \# Embedding models wrapper
+  kernels==0.11.1 \             # Kernel utilities (Jupyter / runtime helpers)
+  accelerate==1.12.0 \          # Mixed precision & device mapping
+  protobuf==6.33.1 \            # Required by HF stack / gRPC
+  sentencepiece==0.2.1 \        # Tokenizer backend
+  transformers==4.57.1          # Core model loader / inference
+
+# ----------------------------------------------------------------------------
+# Document parsing / OCR / RAG ingestion
+# ----------------------------------------------------------------------------
+pip3 install --no-index --find-links=/wheels pillow==12.1.0 pytesseract==0.3.13 bs4==0.0.2 PyMuPDF==1.24.10 python-docx==0.8.11 openpyxl==3.1.5 xlrd==2.0.1 einops==0.8.1 ocrmypdf==16.11.0
+  pillow==12.1.0 \               # Image processing backend
+  pytesseract==0.3.13 \         # Tesseract OCR wrapper
+  bs4==0.0.2 \                  # BeautifulSoup wrapper
+  PyMuPDF==1.24.10 \            # PDF render & text extraction
+  python-docx==0.8.11 \         # DOCX parser
+  openpyxl==3.1.5 \             # XLSX reader/writer
+  xlrd==2.0.1 \                 # Legacy XLS reader
+  einops==0.8.1                 # Tensor reshape helper (used by embeddings)
+  ocrmypdf==16.11.0 \           # OCR pipeline for PDFs, replaced by tesseract
+
+# ----------------------------------------------------------------------------
+# PyTorch (GPU runtime) – NVIDIA P100 only
+# ----------------------------------------------------------------------------
+pip3 install --no-index --find-links=/wheels \
+  torch==2.2.2+cu118            # CUDA 11.8 build; avoid 2.1.x (pytree / transformers bugs)
+
+# ----------------------------------------------------------------------------
+# Vector database / ANN search
+# ----------------------------------------------------------------------------
+pip3 install --no-index --find-links=/wheels \
+  faiss-gpu==1.7.2              # GPU FAISS; works on P100 but requires numpy < 2.0
+
+# ----------------------------------------------------------------------------
+# Numeric compatibility layer
+# ----------------------------------------------------------------------------
+pip3 install --no-index --find-links=/wheels \
+  numpy==1.26.2                 # Downgrade from 2.x for faiss-gpu compatibility
+
+# ----------------------------------------------------------------------------
+# Media utilities (system-level override)
+# ----------------------------------------------------------------------------
+pip3 install --no-deps -U yt-dlp --break-system-packages
+# Latest yt-dlp, installed without dependency resolution to avoid system conflicts
+
+
+# ============================================================================
+# Open-source LLM ecosystem add-ons
+# ============================================================================
+
+pip3 install --no-index --find-links=/wheels \
+  mistral-common==1.8.6         # Required tokenizer/utils for Mistral models
+
+pip3 install --no-index --find-links=/wheels \
+  diffusers==0.36.0             # Reaffirm diffusers for Z-Image pipeline (idempotent)
+
+
+
+
+
+
+
 # offline install wheels
 pip3 install --no-index --find-links=/wheels python-dotenv==1.2.1 watchdog==6.0.0 Flask==3.1.2 jinja2==3.1.6 requests==2.32.5 gradio==5.46.0 gradio_client==1.13.0 # core packages
 pip3 install --no-index --find-links=/wheels scipy==1.15.3 opencv_python_headless==4.12.0.88 sounddevice==0.5.3 # other modules
@@ -35,4 +131,5 @@ pip3 install --no-deps -U yt-dlp --break-system-packages # latest yt-dlp for vid
 # opensource llm
 pip3 install --no-index --find-links=/wheels mistral-common==1.8.6
 pip3 install --no-index --find-links=/wheels diffusers==0.36.0 # need for Z-image
+
 

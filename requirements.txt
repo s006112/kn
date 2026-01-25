@@ -19,9 +19,11 @@ google-genai==1.52.0         # Google Gemini / GenAI client
 # ============================================================================
 # Document parsing / OCR / RAG ingestion
 # ============================================================================
+pillow==12.1.0 \             # Image processing backend
+pytesseract==0.3.13 \        # Tesseract OCR wrapper
 bs4==0.0.2                   # BeautifulSoup HTML wrapper
 PyMuPDF==1.24.10             # PDF rendering and parsing
-ocrmypdf==16.11.0            # OCR pipeline for PDFs
+ocrmypdf==16.11.0            # OCR pipeline for PDFs, replaced by tesseract
 python-docx==0.8.11          # DOCX reader/writer
 openpyxl==3.1.5              # XLSX reader/writer
 xlrd==2.0.1                  # Legacy XLS reader

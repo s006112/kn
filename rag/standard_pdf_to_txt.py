@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """
-chunker.py  —— 流水线入口（Pipeline Entry）
 
 职责：
 1. 扫描原始 PDF 目录
@@ -12,6 +11,7 @@ chunker.py  —— 流水线入口（Pipeline Entry）
 from __future__ import annotations
 
 from pathlib import Path
+import logging
 import sys
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
