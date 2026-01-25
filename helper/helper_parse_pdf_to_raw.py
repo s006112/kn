@@ -108,7 +108,9 @@ def _preprocess_pdf_background(data: bytes) -> bytes | None:
 
 def _extract_text_with_ocr_fallback(
     data: bytes,
-    extractor: Callable[[bytes], tuple[dict[int, str], set[int]]],
+    extractor: Callable[
+        [bytes], tuple[dict[int, str], set[int], dict[int, str], dict[int, str]]
+    ],
 ) -> dict[int, str]:
     """
     Purpose:
@@ -148,7 +150,7 @@ def _extract_text_with_ocr_fallback(
                 optimize=1,
             )
             ocr_bytes = ocr_path.read_bytes()
-        pages, _suspect_pages = extractor(ocr_bytes)
+        pages, _suspect_pages, _form_pages, _annot_pages = extractor(ocr_bytes)
         if pages:
             logger.info("OCR fallback succeeded.")
             return pages
@@ -158,7 +160,79 @@ def _extract_text_with_ocr_fallback(
     return {}
 
 
-def _raw_extraction(pdf_bytes: bytes) -> tuple[dict[int, str], set[int]]:
+def _extract_form_fields(page) -> str | None:
+    """
+    Extract readable text from PDF form widgets on a page.
+    Use page.widgets().
+    Combine:
+      - field name
+      - field value
+    Fail-soft: return None on any error or empty result.
+    """
+
+    try:
+        widgets = page.widgets()
+        if not widgets:
+            return None
+
+        lines: list[str] = []
+        for widget in widgets:
+            name = (getattr(widget, "field_name", None) or "").strip()
+            value = getattr(widget, "field_value", None)
+            value = "" if value is None else str(value).strip()
+            if not name and not value:
+                continue
+            if name and value:
+                lines.append(f"{name}: {value}")
+            else:
+                lines.append(name or value)
+
+        text = "\n".join(lines).strip()
+        return text or None
+    except Exception:
+        return None
+
+
+def _extract_annotations(page) -> str | None:
+    """
+    Extract readable text from PDF annotations on a page.
+    Use page.annots().
+    Combine:
+      - content
+      - title / subject if available
+    Fail-soft: return None on any error or empty result.
+    """
+
+    try:
+        annots = page.annots()
+        if not annots:
+            return None
+
+        lines: list[str] = []
+        for annot in annots:
+            info = getattr(annot, "info", None)
+            if not isinstance(info, dict):
+                continue
+            content = (info.get("content") or "").strip()
+            title = (info.get("title") or "").strip()
+            subject = (info.get("subject") or "").strip()
+
+            parts = [p for p in (subject, title, content) if p]
+            if parts:
+                lines.append(" - ".join(parts))
+
+        text = "\n".join(lines).strip()
+        return text or None
+    except Exception:
+        return None
+
+
+def _raw_extraction(pdf_bytes: bytes) -> tuple[
+    dict[int, str],
+    set[int],
+    dict[int, str],
+    dict[int, str],
+]:
     """
     Purpose:
     Perform a single text-extraction pass over PDF bytes using PyMuPDF without OCR.
@@ -166,16 +240,22 @@ def _raw_extraction(pdf_bytes: bytes) -> tuple[dict[int, str], set[int]]:
     Outputs:
     - pages: 1-based page index → raw extracted text
     - suspect_pages: pages that contain image objects and must be OCR-checked
+    - form_pages: 1-based page index → extracted form widget text
+    - annot_pages: 1-based page index → extracted annotation text
     """
 
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
         pages: dict[int, str] = {}
         suspect_pages: set[int] = set()
+        form_pages: dict[int, str] = {}
+        annot_pages: dict[int, str] = {}
 
         for idx, page in enumerate(doc, start=1):
             text = page.get_text()
             text_len = len(text.strip()) if text else 0
             has_images = bool(page.get_images(full=True))
+            form_text = _extract_form_fields(page)
+            annot_text = _extract_annotations(page)
 
             # Step 2 (final form): any image means high-risk page → must OCR
             if has_images:
@@ -183,15 +263,21 @@ def _raw_extraction(pdf_bytes: bytes) -> tuple[dict[int, str], set[int]]:
 
             if text_len:
                 pages[idx] = text
+            if form_text:
+                form_pages[idx] = form_text
+            if annot_text:
+                annot_pages[idx] = annot_text
 
-        return pages, suspect_pages
+        return pages, suspect_pages, form_pages, annot_pages
 
 
 
 # -------------------------------------------------------------------------------------
 # Keep public helpers small and stable: downstream callers depend on a single merged string or fixed-size chunks.
 # -------------------------------------------------------------------------------------
-def _extract_pdf_pages_and_sources(data: bytes, filename: str) -> tuple[int, dict[int, str], dict[int, str]]:
+def _extract_pdf_pages_and_sources(
+    data: bytes, filename: str
+) -> tuple[int, dict[int, str], dict[int, str], dict[int, str], dict[int, str]]:
     """
     Extract per-page text from a PDF payload using a two-pass approach:
     1. PyMuPDF text extraction.
@@ -201,18 +287,22 @@ def _extract_pdf_pages_and_sources(data: bytes, filename: str) -> tuple[int, dic
     - total_pages: total PDF pages (0 on open failure)
     - pages: 1-based page index → selected final page text (raw or OCR) after merge
     - page_sources: 1-based page index → "raw" or "ocr" indicating the selected source
+    - form_pages: 1-based page index → extracted form widget text
+    - annot_pages: 1-based page index → extracted annotation text
     """
 
     total_pages = _get_total_pages(data)
     ocr_triggered = False
     pages: dict[int, str] = {}
     page_sources: dict[int, str] = {}
+    form_pages: dict[int, str] = {}
+    annot_pages: dict[int, str] = {}
 
     logger.info("[PDF_PARSE_START] file=%s, total_pages=%d", filename, total_pages)
 
     try:
         # Step 0/1: Initial Raw Extraction
-        pages, suspect_pages = _raw_extraction(data)
+        pages, suspect_pages, form_pages, annot_pages = _raw_extraction(data)
         page_sources = {p: "raw" for p in pages}
         raw_count = len(pages)
 
@@ -293,7 +383,7 @@ def _extract_pdf_pages_and_sources(data: bytes, filename: str) -> tuple[int, dic
     )
 
     _ = ocr_triggered  # preserved for parity with previous control flow and logs
-    return total_pages, pages, page_sources
+    return total_pages, pages, page_sources, form_pages, annot_pages
 
 
 def get_pdf_page_blocks(data: bytes, filename: str) -> dict[int, list[dict]]:
@@ -311,39 +401,64 @@ def get_pdf_page_blocks(data: bytes, filename: str) -> dict[int, list[dict]]:
     Page numbering must remain 1-based.
     """
 
-    total_pages, pages, page_sources = _extract_pdf_pages_and_sources(data, filename)
+    total_pages, pages, page_sources, form_pages, annot_pages = _extract_pdf_pages_and_sources(
+        data, filename
+    )
 
     blocks_by_page: dict[int, list[dict]] = {}
     raw_blocks = 0
     ocr_blocks = 0
+    form_blocks = 0
+    annot_blocks = 0
+    raw_chars = 0
+    ocr_chars = 0
 
-    page_numbers = range(1, total_pages + 1) if total_pages else sorted(pages)
-    for p in page_numbers:
+    for p in range(1, total_pages + 1):
+        blocks: list[dict] = []
+
         text = pages.get(p)
         if not text or not text.strip():
-            continue
+            text = None
 
-        source = page_sources.get(p)
-        if source == "raw":
-            raw_blocks += 1
-        elif source == "ocr":
-            ocr_blocks += 1
-        else:
-            # Should not happen, but defaulting avoids breaking callers.
-            source = "raw"
-            raw_blocks += 1
+        if text:
+            source = page_sources.get(p)
+            if source == "raw":
+                raw_blocks += 1
+                raw_chars += len(text)
+            elif source == "ocr":
+                ocr_blocks += 1
+                ocr_chars += len(text)
+            else:
+                # Should not happen, but defaulting avoids breaking callers.
+                source = "raw"
+                raw_blocks += 1
+                raw_chars += len(text)
 
-        blocks_by_page[p] = [{"source": source, "text": text}]
+            blocks.append({"source": source, "text": text})
 
-    total_blocks = raw_blocks + ocr_blocks
-    pages_logged = total_pages or len(pages)
+        form_text = form_pages.get(p)
+        if form_text and form_text.strip():
+            blocks.append({"source": "form", "text": form_text})
+            form_blocks += 1
+
+        annot_text = annot_pages.get(p)
+        if annot_text and annot_text.strip():
+            blocks.append({"source": "annot", "text": annot_text})
+            annot_blocks += 1
+
+        if blocks:
+            blocks_by_page[p] = blocks
+
+    total_blocks = raw_blocks + ocr_blocks + form_blocks + annot_blocks
     logger.info(
-        "[PDF_PARSE_BLOCKS] file=%s, pages=%d, blocks=%d, raw_blocks=%d, ocr_blocks=%d",
-        filename,
-        pages_logged,
-        total_blocks,
-        raw_blocks,
-        ocr_blocks,
+        "[PDF_PARSE_BLOCKS] file=%s, pages=%d, blocks=%d, "
+        "raw_blocks=%d, ocr_blocks=%d, "
+        "raw_chars=%d, ocr_chars=%d, "
+        "form_blocks=%d, annot_blocks=%d",
+        filename, total_pages, total_blocks,
+        raw_blocks, ocr_blocks,
+        raw_chars, ocr_chars,
+        form_blocks, annot_blocks
     )
 
     return blocks_by_page

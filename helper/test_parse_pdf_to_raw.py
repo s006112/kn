@@ -105,9 +105,11 @@ def test_raw_extraction_returns_suspect_pages(monkeypatch) -> None:
     ]
     monkeypatch.setattr(pdf_raw.fitz, "open", lambda *args, **kwargs: _FakeDoc(pages))
 
-    extracted, suspect = pdf_raw._raw_extraction(b"%PDF-1.4")
+    extracted, suspect, form_pages, annot_pages = pdf_raw._raw_extraction(b"%PDF-1.4")
     assert set(extracted.keys()) == {1, 2, 3}
     assert suspect == {1, 2}
+    assert form_pages == {}
+    assert annot_pages == {}
 
 
 def test_get_pdf_full_text_triggers_ocr_on_suspect_pages(monkeypatch) -> None:
@@ -169,5 +171,60 @@ def test_get_pdf_page_blocks_emits_summary_log(monkeypatch, caplog) -> None:
     }
     assert any(
         "[PDF_PARSE_BLOCKS] file=blocks.pdf" in record.getMessage()
+        and "form_blocks=" in record.getMessage()
+        and "annot_blocks=" in record.getMessage()
         for record in caplog.records
     )
+
+
+class _FakeWidget:
+    def __init__(self, field_name: str, field_value: str) -> None:
+        self.field_name = field_name
+        self.field_value = field_value
+
+
+class _FakeAnnot:
+    def __init__(self, *, content: str = "", title: str = "", subject: str = "") -> None:
+        self.info = {"content": content, "title": title, "subject": subject}
+
+
+class _FakePageWithExtras(_FakePage):
+    def __init__(
+        self,
+        text: str,
+        has_images: bool,
+        *,
+        widgets: list[_FakeWidget] | None = None,
+        annots: list[_FakeAnnot] | None = None,
+    ) -> None:
+        super().__init__(text=text, has_images=has_images)
+        self._widgets = widgets or []
+        self._annots = annots or []
+
+    def widgets(self):
+        return self._widgets
+
+    def annots(self):
+        return self._annots
+
+
+def test_get_pdf_page_blocks_includes_form_and_annot_blocks(monkeypatch) -> None:
+    pdf_raw = _import_pdf_raw()
+    pages = [
+        _FakePageWithExtras(
+            "hello",
+            has_images=False,
+            widgets=[_FakeWidget("PO Number", "20595")],
+            annots=[_FakeAnnot(content="Approved by QA")],
+        )
+    ]
+    monkeypatch.setattr(pdf_raw.fitz, "open", lambda *args, **kwargs: _FakeDoc(pages))
+
+    blocks = pdf_raw.get_pdf_page_blocks(b"%PDF-1.4", filename="extras.pdf")
+    assert blocks == {
+        1: [
+            {"source": "raw", "text": "hello"},
+            {"source": "form", "text": "PO Number: 20595"},
+            {"source": "annot", "text": "Approved by QA"},
+        ]
+    }
