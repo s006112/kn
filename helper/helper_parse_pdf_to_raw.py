@@ -90,13 +90,53 @@ def _extract_annotations(page) -> str | None:
         return None
 
 
+def _extract_visual_text_blocks(page) -> str | None:
+    """
+    Fallback visual text extractor using PyMuPDF dict layout.
+    Catch text that page.get_text() may miss.
+    """
+    try:
+        d = page.get_text("dict")
+        items = []
+        for b in d.get("blocks", []):
+            if b.get("type") != 0:  # 0 = text block
+                continue
+            for line in b.get("lines", []):
+                bbox = line.get("bbox", [0, 0, 0, 0])
+                y0, x0 = bbox[1], bbox[0]
+                text = "".join(
+                    (s.get("text") or "")
+                    for s in line.get("spans", [])
+                ).strip()
+                if text:
+                    items.append((y0, x0, text))
+
+        if not items:
+            return None
+
+        # Rough reading order: top → bottom, left → right
+        items.sort(key=lambda t: (round(t[0], 1), t[1]))
+        return "\n".join(t[2] for t in items).strip() or None
+    except Exception:
+        return None
+
+
 def _raw_extraction(pdf_bytes: bytes) -> tuple[dict[int, str], set[int], dict[int, str], dict[int, str]]:
-    """Perform initial raw text extraction pass."""
+    """
+    PDF
+    ├─ Page 1 → raw OK → 不 OCR
+    ├─ Page 2 → raw 很短 → OCR
+    ├─ Page 3 → 有图片 → OCR
+    ├─ Page 4 → raw OK → 不 OCR
+    Perform initial raw text extraction pass."""
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
         pages, suspect_pages, form_pages, annot_pages = {}, set(), {}, {}
         for idx, page in enumerate(doc, start=1):
             text = page.get_text()  #
-            if text and text.strip():  # C2: Simplified conditional
+            if not text or not text.strip():
+                # visual fallback: catch text hidden in layout blocks
+                text = _extract_visual_text_blocks(page)
+            if text and text.strip():
                 pages[idx] = text
             if page.get_images(full=True):
                 suspect_pages.add(idx)
