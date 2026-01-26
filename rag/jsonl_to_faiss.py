@@ -31,7 +31,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from helper.helper_embedding import embed
 
-TARGET_CHUNK_FOLDER = "mbox"  #  mbox or standard
+TARGET_CHUNK_FOLDER = "standard"  #  mbox or standard
 
 JSON_DIR = Path(f"data/{TARGET_CHUNK_FOLDER}/jsonl")
 FAISS_DIR = Path("data/faiss")
