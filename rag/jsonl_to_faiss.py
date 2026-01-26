@@ -128,7 +128,7 @@ def load_chunks():
                 elif TARGET_CHUNK_FOLDER == "mbox":
                     meta = {
                         # ── std schema fields ──
-                        "doc_type": "email",
+                        "doc_type": obj.get("file_type"),
                         "doc_id":  obj.get("subject"),
                         "chunk_id": obj.get("email_id") + "_" + str(obj.get("seq")),
                         "page": obj.get("seq"),
@@ -140,9 +140,9 @@ def load_chunks():
                         "from": obj.get("from"),
                         "to": obj.get("to"),
                         "date": obj.get("date"),
-                        "part": obj.get("part"),
-                        "attachment_type": obj.get("file_type"),
-                        "attachment_name": obj.get("attachment"),
+                        # "part": obj.get("part"),  # redundant
+                        #"attachment_type": obj.get("file_type"),    # duplicate
+                        #"attachment_name": obj.get("attachment"),   # redundant
                     }
 
                 chunks.append((text, meta))

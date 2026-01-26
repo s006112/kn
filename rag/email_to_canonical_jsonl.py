@@ -96,6 +96,9 @@ def main():
 
     with OUTPUT_JSONL.open("w", encoding="utf-8") as out:
         for mbox_file in RAW_MBOX_DIR.iterdir():
+            if mbox_file.is_dir():
+                continue
+
             print(f"[INFO] Processing {mbox_file}")
             mbox = mailbox.mbox(str(mbox_file))
 
@@ -134,9 +137,23 @@ def main():
                         continue
 
                     ext = Path(fn).suffix.lower()
+                    if not ext:
+                        continue
+
+                    # ---------- RAW SAVE (generic) ----------
+                    suffix = ext[1:]              # ".pdf" -> "pdf"
+                    save_dir = RAW_MBOX_DIR / suffix
+                    save_dir.mkdir(exist_ok=True)
+
+                    safe_email_id = re.sub(r"[<>:\"/\\|?*]", "_", email_id)
+                    save_path = save_dir / f"{safe_email_id}__{fn}"
+                    if not save_path.exists():
+                        save_path.write_bytes(data)
+                    # ---------------------------------------
+
                     doc_id = f"email_{email_id}::{fn}"
 
-                    # PDF → CanonicalBlock
+                    # PDF
                     if ext == ".pdf":
                         blocks = parse_pdf_bytes_to_canonical_blocks(
                             pdf_bytes=data,
@@ -173,6 +190,7 @@ def main():
             mbox.close()
 
     print(f"[DONE] Canonical email JSONL written to {OUTPUT_JSONL}")
+
 
 
 if __name__ == "__main__":

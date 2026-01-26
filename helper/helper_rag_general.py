@@ -313,15 +313,18 @@ def _build_similarity_table(top_idx, top_scores, metas, *, page_key: str):
     Failure modes:
     - Propagates exceptions if `top_idx` contains out-of-range indices.
     """
-    table = ["| score | doc | page | word |", "|---:|---|---:|---:|"]
+    table = ["| score | doc | doc_type | page | word |", "|---:|---|---|---:|---:|"]
     total_words = 0
     for i, s in zip(top_idx, top_scores):
         meta = metas[i] or {}
         doc = meta.get("doc_id")
+        doc_type = meta.get("doc_type")
         page = meta.get(page_key)
         word_count = meta.get("word", 0) or 0
         total_words += int(word_count)
-        table.append(f"| {float(s):.4f} | {doc} | {page} | {word_count} |")
+        table.append(
+            f"| {float(s):.4f} | {doc} | {doc_type} | {page} | {word_count} |"
+        )
     table.append(f"Total word count: {total_words}")
     return "\n".join(table)
 
