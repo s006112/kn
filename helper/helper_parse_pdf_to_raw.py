@@ -40,6 +40,10 @@ LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# ----------------------------------------------------------------------
+# Logging configuration
+# ----------------------------------------------------------------------
+
 if not logger.handlers:  # 防止多次 import 重复加 handler
     fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
     fmt = logging.Formatter(
@@ -49,6 +53,10 @@ if not logger.handlers:  # 防止多次 import 重复加 handler
     fh.setFormatter(fmt)
     logger.addHandler(fh)
 
+
+# ----------------------------------------------------------------------
+# Helpers of PDF text extraction with OCR fallback
+# ----------------------------------------------------------------------
 
 def _ocr_page_with_tesseract(page, dpi: int = 300) -> str:
     zoom = dpi / 72
@@ -269,12 +277,19 @@ def get_pdf_page_blocks(data: bytes, filename: str) -> dict[int, list[dict]]:
     annot_blocks = sum(
         1 for blocks in blocks_by_page.values() for block in blocks if block["source"] == "annot"
     )
+    raw_pages = len(pages)
+    ocr_pages = sum(1 for v in page_sources.values() if v == "ocr")
+    empty_pages = total_pages - len(pages)
+
     logger.info(
-        "[PDF_PARSE_BLOCKS] file=%s, total_pages=%d, form_blocks=%d, annot_blocks=%d",
+        "[PDF_PARSE_BLOCKS] file=%s total_pages=%d raw_pages=%d ocr_pages=%d empty_pages=%d form_blocks=%d annot_blocks=%d\n",
         filename,
         total_pages,
+        raw_pages,
+        ocr_pages,
+        empty_pages,
         form_blocks,
-        annot_blocks,
+        annot_blocks, 
     )
 
     return blocks_by_page
