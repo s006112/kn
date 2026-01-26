@@ -24,6 +24,8 @@ import logging
 import shutil
 import subprocess
 import tempfile
+from pathlib import Path
+
 import docx
 from helper.helper_sanitize import sanitize_text
 
