@@ -24,6 +24,7 @@ from pathlib import Path
 
 OCR_REPLACE_RATIO = 1.5  #
 OCR_MIN_CHARS = 50  #
+TEXT_LEN_THRESHOLD = 100  # suspect 页的最小有效文本阈值
 
 # ----------------------------------------------------------------------
 # Paths
@@ -140,29 +141,31 @@ def _extract_visual_text_blocks(page) -> str | None:
     except Exception:
         return None
 
+
 def _need_ocr(raw_text: str, idx: int, suspect_pages: set[int]) -> bool:
     """
     Decide whether a page should enter OCR pipeline and emit explicit evaluation log.
 
-    Decision factors:
-    - empty: no raw text extracted
-    - short: raw text length < OCR_MIN_CHARS
-    - suspect: page flagged due to images or other structural signals
-
-    Log format is stable and machine-parsable for evaluation:
-    [PDF_OCR_DECISION] page=.. raw_len=.. reasons=..
+    Rules:
+    1. empty        -> always OCR
+    2. short        -> OCR (raw text too little)
+    3. suspect+short -> OCR (image page + sparse text)
     """
+
     raw_len = len(raw_text)
     in_suspect = idx in suspect_pages
-
     reasons = []
 
+    # Rule 1: absolutely no text
     if not raw_text:
         reasons.append("empty")
+
+    # Rule 2: text too short to be trusted
     elif raw_len < OCR_MIN_CHARS:
         reasons.append("short")
 
-    if in_suspect:
+    # Rule 3: image page + sparse text
+    elif in_suspect and raw_len < TEXT_LEN_THRESHOLD:
         reasons.append("suspect")
 
     need = bool(reasons)
@@ -177,6 +180,7 @@ def _need_ocr(raw_text: str, idx: int, suspect_pages: set[int]) -> bool:
     return need
 
 
+
 def _extract_text_with_ocr_fallback(
     pages: dict[int, str],
     page_sources: dict[int, str],
@@ -185,22 +189,45 @@ def _extract_text_with_ocr_fallback(
 ) -> tuple[dict[int, str], dict[int, str]]:
     for idx, page in enumerate(doc, start=1):
         raw_text = pages.get(idx, "").strip()
+        raw_len = len(raw_text)
+        source_before = page_sources.get(idx, "none")
+
+        ocr_text = None
 
         if _need_ocr(raw_text, idx, suspect_pages):
             try:
                 ocr_text = _ocr_page_with_tesseract(page)
             except Exception as e:
                 logger.warning("OCR failed on page %d: %s", idx, e)
-                continue
 
-            if ocr_text and (
-                not raw_text or
-                (len(ocr_text) > OCR_MIN_CHARS and len(ocr_text) > len(raw_text) * OCR_REPLACE_RATIO)
-            ):
-                pages[idx] = ocr_text
-                page_sources[idx] = "ocr"
+        # decide replace
+        if ocr_text and (
+            not raw_text or
+            (len(ocr_text) > OCR_MIN_CHARS and len(ocr_text) > raw_len * OCR_REPLACE_RATIO)
+        ):
+            pages[idx] = ocr_text
+            page_sources[idx] = "ocr"
+            final_source = "ocr"
+            ocr_len = len(ocr_text)
+        else:
+            final_source = source_before
+            ocr_len = len(ocr_text) if ocr_text else 0
+
+        gain = ocr_len - raw_len if final_source == "ocr" else 0
+        ratio = (ocr_len / raw_len) if raw_len > 0 and final_source == "ocr" else 0.0
+
+        logger.info(
+            "[PDF_PAGE_SOURCE] page=%d source=%s raw_len=%d ocr_len=%d gain=%d ratio=%.2f",
+            idx,
+            final_source,
+            raw_len,
+            ocr_len,
+            gain,
+            ratio,
+        )
 
     return pages, page_sources
+
 
 
 def _raw_extraction(pdf_bytes: bytes) -> tuple[dict[int, str], set[int], dict[int, str], dict[int, str]]:
