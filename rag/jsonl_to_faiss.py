@@ -117,17 +117,21 @@ def load_chunks():
 
                 if TARGET_CHUNK_FOLDER == "standard":
                     meta = {
-                        "source": "standard",
-                        "doc_id": obj.get("file_id"),  # 可以理解成檔案 ID
+                        # ── general schema fields ──
+                        "doc_type": obj.get("file_type"),
+                        "doc_id": obj.get("doc_id"),  # 可以理解成檔案 ID
                         "chunk_id": obj.get("block_id"),
-                        "page": obj.get("page", 0),
+                        "page": obj.get("seq"),
                         "char": obj.get("char"),
                         "word": obj.get("word"),
+
+                        # ── standard native fields ──
+                        "source": obj.get("source"),
                     }                    
 
                 elif TARGET_CHUNK_FOLDER == "mbox":
                     meta = {
-                        # ── std schema fields ──
+                        # ── general schema fields ──
                         "doc_type": obj.get("file_type"),
                         "doc_id":  obj.get("subject"),
                         "chunk_id": obj.get("email_id") + "_" + str(obj.get("seq")),
@@ -140,7 +144,7 @@ def load_chunks():
                         "from": obj.get("from"),
                         "to": obj.get("to"),
                         "date": obj.get("date"),
-                        # "part": obj.get("part"),  # redundant
+                        #"part": obj.get("part"),  # redundant
                         #"attachment_type": obj.get("file_type"),    # duplicate
                         #"attachment_name": obj.get("attachment"),   # redundant
                     }

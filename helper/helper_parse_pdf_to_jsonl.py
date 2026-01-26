@@ -34,7 +34,7 @@ def parse_pdf_bytes_to_canonical_blocks(
                 "doc_id": doc_id,
                 "block_id": f"{doc_id}_b{seq:05d}",
                 "page": page,
-                "source": block["source"],
+                "source": block["source"],  # raw, ocr, hybrid
 
                 "part": part,
                 "file_type": "pdf",

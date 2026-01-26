@@ -58,7 +58,7 @@ _ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"
 # messages coming from the configured IMAP_USERNAME (e.g. kennyng@ampco.com.hk).
 load_env()
 _DEBUG_MODE = get_env_flag("DEBUG_MODE", default=True)
-_KENNY_ADDR = get_env_str("kennyng@ampco.com.hk").lower()
+_KENNY_ADDR = get_env_str("IMAP_USERNAME", "").lower()
 
 
 # ---------------------------------------------------------------------
