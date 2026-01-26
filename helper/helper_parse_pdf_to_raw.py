@@ -24,19 +24,6 @@ from PIL import Image, ImageFilter, ImageOps  #
 logger = logging.getLogger(__name__)
 OCR_REPLACE_RATIO = 1.5  #
 OCR_MIN_CHARS = 50  #
-TEXT_LEN_THRESHOLD = 200  #
-
-# -------------------------------------------------------------------------------------
-# Extraction and OCR utilities
-# -------------------------------------------------------------------------------------
-
-def _get_total_pages(pdf_bytes: bytes) -> int:
-    """Return the total number of pages in the PDF."""
-    try:
-        with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-            return doc.page_count  #
-    except Exception:
-        return 0  #
 
 def _ocr_page_with_tesseract(page, dpi: int = 300) -> str:
     zoom = dpi / 72
@@ -58,22 +45,6 @@ def _ocr_page_with_tesseract(page, dpi: int = 300) -> str:
     )
     return text.strip()
 
-def _extract_form_fields(page) -> str | None:
-    """Extract text from PDF form widgets."""
-    try:
-        widgets = page.widgets()
-        if not widgets: return None  #
-        lines = []
-        for widget in widgets:
-            name = (getattr(widget, "field_name", None) or "").strip()  #
-            value = str(getattr(widget, "field_value", None) or "").strip()  #
-            if name and value: lines.append(f"{name}: {value}")
-            elif name or value: lines.append(name or value)
-        return "\n".join(lines).strip() or None  #
-    except Exception:
-        return None
-
-
 def _extract_annotations(page) -> str | None:
     """Extract text from PDF annotations."""
     try:
@@ -85,6 +56,22 @@ def _extract_annotations(page) -> str | None:
             if not isinstance(info, dict): continue  #
             parts = [p.strip() for p in (info.get("subject"), info.get("title"), info.get("content")) if p]
             if parts: lines.append(" - ".join(parts))
+        return "\n".join(lines).strip() or None  #
+    except Exception:
+        return None
+
+
+def _extract_form_fields(page) -> str | None:
+    """Extract text from PDF form widgets."""
+    try:
+        widgets = page.widgets()
+        if not widgets: return None  #
+        lines = []
+        for widget in widgets:
+            name = (getattr(widget, "field_name", None) or "").strip()  #
+            value = str(getattr(widget, "field_value", None) or "").strip()  #
+            if name and value: lines.append(f"{name}: {value}")
+            elif name or value: lines.append(name or value)
         return "\n".join(lines).strip() or None  #
     except Exception:
         return None
@@ -121,35 +108,6 @@ def _extract_visual_text_blocks(page) -> str | None:
         return None
 
 
-def _raw_extraction(pdf_bytes: bytes) -> tuple[dict[int, str], set[int], dict[int, str], dict[int, str]]:
-    """
-    PDF
-    ├─ Page 1 → raw OK → 不 OCR
-    ├─ Page 2 → raw 很短 → OCR
-    ├─ Page 3 → 有图片 → OCR
-    ├─ Page 4 → raw OK → 不 OCR
-    Perform initial raw text extraction pass."""
-    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-        pages, suspect_pages, form_pages, annot_pages = {}, set(), {}, {}
-        for idx, page in enumerate(doc, start=1):
-            text = page.get_text()  #
-            if not text or not text.strip():
-                # visual fallback: catch text hidden in layout blocks
-                text = _extract_visual_text_blocks(page)
-            if text and text.strip():
-                pages[idx] = text
-            if page.get_images(full=True):
-                suspect_pages.add(idx)
-            
-            form_text = _extract_form_fields(page)  #
-            if form_text: form_pages[idx] = form_text
-            
-            annot_text = _extract_annotations(page)  #
-            if annot_text: annot_pages[idx] = annot_text
-            
-        return pages, suspect_pages, form_pages, annot_pages
-
-
 def _extract_text_with_ocr_fallback(
     pages: dict[int, str],
     page_sources: dict[int, str],
@@ -182,9 +140,43 @@ def _extract_text_with_ocr_fallback(
     return pages, page_sources
 
 
-# -------------------------------------------------------------------------------------
-# Public API
-# -------------------------------------------------------------------------------------
+def _raw_extraction(pdf_bytes: bytes) -> tuple[dict[int, str], set[int], dict[int, str], dict[int, str]]:
+    """
+    PDF
+    ├─ Page 1 → raw OK → 不 OCR
+    ├─ Page 2 → raw 很短 → OCR
+    ├─ Page 3 → 有图片 → OCR
+    ├─ Page 4 → raw OK → 不 OCR
+    Perform initial raw text extraction pass."""
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        pages, suspect_pages, form_pages, annot_pages = {}, set(), {}, {}
+        for idx, page in enumerate(doc, start=1):
+            text = page.get_text()  #
+            if not text or not text.strip():
+                # visual fallback: catch text hidden in layout blocks
+                text = _extract_visual_text_blocks(page)
+            if text and text.strip():
+                pages[idx] = text
+            if page.get_images(full=True):
+                suspect_pages.add(idx)
+            
+            form_text = _extract_form_fields(page)  #
+            if form_text: form_pages[idx] = form_text
+            
+            annot_text = _extract_annotations(page)  #
+            if annot_text: annot_pages[idx] = annot_text
+            
+        return pages, suspect_pages, form_pages, annot_pages
+
+
+def _get_total_pages(pdf_bytes: bytes) -> int:
+    """Return the total number of pages in the PDF."""
+    try:
+        with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+            return doc.page_count  #
+    except Exception:
+        return 0  #
+
 
 def _extract_pdf_pages_and_sources( data: bytes, filename: str ) -> tuple[int, dict[int, str], dict[int, str], dict[int, str], dict[int, str]]:
     total_pages = _get_total_pages(data)
