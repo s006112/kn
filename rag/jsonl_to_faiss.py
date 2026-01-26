@@ -33,9 +33,9 @@ from helper.helper_embedding import embed
 
 TARGET_CHUNK_FOLDER = "mbox"  #  mbox or standard
 
-JSON_DIR = Path(f"data/{TARGET_CHUNK_FOLDER}/json")
+JSON_DIR = Path(f"data/{TARGET_CHUNK_FOLDER}/jsonl")
 FAISS_DIR = Path("data/faiss")
-BLOCK_SUFFIX = "chunks.jsonl"
+BLOCK_SUFFIX = "blocks.jsonl"
 
 # ============================================================
 

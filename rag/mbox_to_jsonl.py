@@ -62,7 +62,7 @@ from chunk_att import extract_attachment_tasks
 # ---------------------------------------------------------------------------
 
 RAW_MBOX_DIR = (ROOT_DIR / "data/mbox/raw").resolve()
-OUTPUT_JSONL = (ROOT_DIR / "data/mbox/json/email_chunks.jsonl").resolve()
+OUTPUT_JSONL = (ROOT_DIR / "data/mbox/jsonl/email_blocks.jsonl").resolve()
 PROCESSED_MBOX_TXT = (ROOT_DIR / "data/processed_mboxes.log").resolve()
 INDEX_DIR = (ROOT_DIR / "data/mbox/index").resolve()
 
