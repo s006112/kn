@@ -16,14 +16,39 @@ Used by:
 """
 
 from __future__ import annotations
-import logging
+import logging, sys
 import pytesseract
 import fitz  #
 from PIL import Image, ImageFilter, ImageOps  #
+from pathlib import Path
 
-logger = logging.getLogger(__name__)
 OCR_REPLACE_RATIO = 1.5  #
 OCR_MIN_CHARS = 50  #
+
+# ----------------------------------------------------------------------
+# Paths
+# ----------------------------------------------------------------------
+ROOT_DIR = Path(__file__).resolve().parents[1]
+HELPER_DIR = Path(__file__).resolve().parent
+for _p in (str(ROOT_DIR), str(HELPER_DIR)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+LOG_FILE = Path("data/parse_pdf_to_raw.log")
+LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+if not logger.handlers:  # 防止多次 import 重复加 handler
+    fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    fmt = logging.Formatter(
+        "%(asctime)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    fh.setFormatter(fmt)
+    logger.addHandler(fh)
+
 
 def _ocr_page_with_tesseract(page, dpi: int = 300) -> str:
     zoom = dpi / 72
@@ -107,6 +132,42 @@ def _extract_visual_text_blocks(page) -> str | None:
     except Exception:
         return None
 
+def _need_ocr(raw_text: str, idx: int, suspect_pages: set[int]) -> bool:
+    """
+    Decide whether a page should enter OCR pipeline and emit explicit evaluation log.
+
+    Decision factors:
+    - empty: no raw text extracted
+    - short: raw text length < OCR_MIN_CHARS
+    - suspect: page flagged due to images or other structural signals
+
+    Log format is stable and machine-parsable for evaluation:
+    [PDF_OCR_DECISION] page=.. raw_len=.. reasons=..
+    """
+    raw_len = len(raw_text)
+    in_suspect = idx in suspect_pages
+
+    reasons = []
+
+    if not raw_text:
+        reasons.append("empty")
+    elif raw_len < OCR_MIN_CHARS:
+        reasons.append("short")
+
+    if in_suspect:
+        reasons.append("suspect")
+
+    need = bool(reasons)
+
+    logger.info(
+        "[PDF_OCR_DECISION] page=%d raw_len=%d reasons=%s",
+        idx,
+        raw_len,
+        ",".join(reasons) if reasons else "none",
+    )
+
+    return need
+
 
 def _extract_text_with_ocr_fallback(
     pages: dict[int, str],
@@ -117,13 +178,7 @@ def _extract_text_with_ocr_fallback(
     for idx, page in enumerate(doc, start=1):
         raw_text = pages.get(idx, "").strip()
 
-        need_ocr = (
-            not raw_text or
-            len(raw_text) < OCR_MIN_CHARS or
-            idx in suspect_pages
-        )
-
-        if need_ocr:
+        if _need_ocr(raw_text, idx, suspect_pages):
             try:
                 ocr_text = _ocr_page_with_tesseract(page)
             except Exception as e:
