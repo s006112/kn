@@ -1,20 +1,41 @@
+#!/usr/bin/env python3
 """
 helper_parse_doc_to_raw.py
+
 Responsibility:
 Extract paragraph-level raw blocks from Word documents with unified fallback logic.
+Structure is aligned with helper_parse_pdf_to_raw.py:
+PDF  -> { page_idx : [ {source, text}, ... ] }
+Word -> { para_idx : [ {source, text}, ... ] }
+
+This version ONLY does paragraph extraction. No chunk splitting yet.
 """
 
 from pathlib import Path
 import logging
-from helper.helper_parsing_doc import extract_text_from_doc, extract_text_from_docx, WORD_EXTS
+
+from helper.helper_parsing_doc import (
+    extract_text_from_doc,
+    extract_text_from_docx,
+    WORD_EXTS,
+)
 
 logger = logging.getLogger(__name__)
 
+
 def get_doc_paragraph_blocks(data: bytes, filename: str) -> dict[int, list[dict]]:
     """
-    Return paragraph-indexed blocks, aligned with PDF get_pdf_page_blocks style.
+    Return paragraph-indexed blocks.
 
-    { para_idx : [ { "source": "...", "text": "..." } ] }
+    Output format:
+    {
+        para_idx: [
+            {
+                "source": "docx" | "doc",
+                "text": "..."
+            }
+        ]
+    }
     """
     ext = Path(filename).suffix.lower()
 
@@ -25,20 +46,28 @@ def get_doc_paragraph_blocks(data: bytes, filename: str) -> dict[int, list[dict]
         paras = extract_text_from_doc(data)
         source = "doc"
     else:
+        logger.warning("[DOC_PARSE_BLOCKS] Unsupported extension: %s", ext)
         return {}
 
-    blocks_by_para = {}
+    blocks_by_para: dict[int, list[dict]] = {}
+
     for idx, text in paras.items():
-        if text and text.strip():
-            blocks_by_para[idx] = [{
-                "source": source,
-                "text": text.strip()
-            }]
+        if not text:
+            continue
+        text = text.strip()
+        if not text:
+            continue
+
+        blocks_by_para[idx] = [{
+            "source": source,
+            "text": text,
+        }]
 
     logger.info(
-        "[DOC_PARSE_BLOCKS] file=%s paragraphs=%d",
+        "[DOC_PARSE_BLOCKS] file=%s ext=%s paragraphs=%d",
         filename,
-        len(blocks_by_para)
+        ext,
+        len(blocks_by_para),
     )
 
     return blocks_by_para

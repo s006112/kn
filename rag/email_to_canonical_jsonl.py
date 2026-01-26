@@ -21,7 +21,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from helper.helper_parse_pdf_to_jsonl import parse_pdf_bytes_to_canonical_blocks
-from helper.helper_parsing_doc import extract_text_from_doc, extract_text_from_docx, WORD_EXTS
+from helper.helper_parse_doc_to_raw import get_doc_paragraph_blocks
 from helper.helper_parsing_xls import extract_excel_text, XLS_EXTS
 
 RAW_MBOX_DIR = Path("data/mbox/raw")
@@ -166,18 +166,24 @@ def main():
                             b.update(base_meta)
                             write_block(out, b)
 
-                    # Word
-                    elif ext in WORD_EXTS:
-                        paras = (
-                            extract_text_from_docx(data)
-                            if ext == ".docx"
-                            else extract_text_from_doc(data)
-                        )
-                        full_text = "\n\n".join(paras.values())
-                        seq += 1
-                        blk = attachment_text_to_block(full_text, base_meta, fn, seq, ext[1:])
-                        if blk:
-                            write_block(out, blk)
+                    # Word (DOC / DOCX) – use helper_parse_doc_to_raw
+                    elif ext in {".doc", ".docx"}:
+                        para_blocks = get_doc_paragraph_blocks(data, fn)
+
+                        for para_idx in sorted(para_blocks):
+                            for blk_raw in para_blocks[para_idx]:
+                                text = blk_raw["text"]
+                                seq += 1
+
+                                blk = attachment_text_to_block(
+                                    text=text,
+                                    base_meta=base_meta,
+                                    filename=fn,
+                                    seq=seq,
+                                    file_type=ext[1:],   # "doc" or "docx"
+                                )
+                                if blk:
+                                    write_block(out, blk)
 
                     # Excel
                     elif ext in XLS_EXTS:
