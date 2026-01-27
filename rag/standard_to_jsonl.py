@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-standard_pdf_to_semantic_jsonl.py
+standard_to_jsonl.py
 Convert standard PDF files to canonical JSONL format.
 Also write per-file JSONL for debugging / audit.
 """
