@@ -2,6 +2,7 @@
 
 from helper.helper_parse_pdf_to_raw import get_pdf_page_blocks
 from helper.helper_parse_email_to_raw import parse_email_body_to_raw_block
+from helper.helper_parse_doc_to_raw import get_doc_paragraph_blocks
 
 
 def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None):
@@ -63,4 +64,34 @@ def parse_email_bytes_to_canonical_blocks(email, email_id):
         part="email",
         file_type=None,
         attachment=None,
+    )
+
+
+def parse_doc_bytes_to_canonical_blocks(data: bytes, filename: str, doc_id: str):
+    """
+    DOC/DOCX bytes → RawBlock → CanonicalBlock
+    """
+    para_blocks = get_doc_paragraph_blocks(data, filename)
+
+    raw_blocks = []
+    for para_idx in sorted(para_blocks):
+        for blk in para_blocks[para_idx]:
+            text = blk["text"].strip()
+            if not text:
+                continue
+
+            raw_blocks.append({
+                "doc_id": doc_id,
+                "text": text,
+                "page": para_idx,
+                "source": blk["source"],  # "doc" or "docx"
+            })
+
+    ext = filename.split(".")[-1].lower()
+
+    return raw_blocks_to_canonical_blocks(
+        raw_blocks,
+        part="attachment",
+        file_type=ext,
+        attachment=filename,
     )

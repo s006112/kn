@@ -21,12 +21,13 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from helper.helper_parse_doc_to_raw import get_doc_paragraph_blocks
 from helper.helper_parsing_xls import extract_excel_text, XLS_EXTS
 from helper.helper_parse_raw_to_jsonl import (
     parse_pdf_bytes_to_canonical_blocks,
     parse_email_bytes_to_canonical_blocks,
+    parse_doc_bytes_to_canonical_blocks,
 )
+
 
 RAW_MBOX_DIR = Path("data/mbox/raw")
 OUTPUT_JSONL = Path("data/mbox/jsonl/email_blocks.jsonl")
@@ -145,22 +146,10 @@ def main():
 
                     # Word (DOC / DOCX)
                     elif ext in {".doc", ".docx"}:
-                        para_blocks = get_doc_paragraph_blocks(data, fn)
-
-                        for para_idx in sorted(para_blocks):
-                            for blk_raw in para_blocks[para_idx]:
-                                text = blk_raw["text"]
-                                block_index += 1
-
-                                blk = attachment_text_to_block(
-                                    text=text,
-                                    base_meta=base_meta,
-                                    filename=fn,
-                                    block_id=f"{doc_id}_b{block_index:05d}",
-                                    file_type=ext[1:],   # "doc" or "docx"
-                                )
-                                if blk:
-                                    write_block(out, blk)
+                        blocks = parse_doc_bytes_to_canonical_blocks(data, fn, doc_id)
+                        for b in blocks:
+                            b.update(base_meta)
+                            write_block(out, b)
 
                     # Excel
                     elif ext in XLS_EXTS:
