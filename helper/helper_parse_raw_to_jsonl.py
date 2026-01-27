@@ -42,8 +42,8 @@ def parse_email_bytes_to_canonical_blocks(email, email_id):
     )
 
 
-def parse_pdf_bytes_to_canonical_blocks(pdf_bytes, filename, doc_id, part="document", attachment=None):
-    blocks_by_page = get_pdf_page_blocks(pdf_bytes, filename=filename)
+def parse_pdf_bytes_to_canonical_blocks(data: bytes, filename: str, doc_id: str):
+    blocks_by_page = get_pdf_page_blocks(data, filename=filename)
 
     raw_blocks = []
     for page in sorted(blocks_by_page.keys()):
@@ -61,9 +61,9 @@ def parse_pdf_bytes_to_canonical_blocks(pdf_bytes, filename, doc_id, part="docum
 
     return raw_blocks_to_canonical_blocks(
         raw_blocks,
-        part=part,
+        part="attachment",
         file_type="pdf",
-        attachment=attachment,
+        attachment=filename,
     )
 
 

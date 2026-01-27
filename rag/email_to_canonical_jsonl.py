@@ -32,18 +32,10 @@ RAW_MBOX_DIR = Path("data/mbox/raw")
 OUTPUT_JSONL = Path("data/mbox/jsonl/email_blocks.jsonl")
 
 ATTACHMENT_PARSERS = {
-    ".pdf": lambda data, fn, doc_id: parse_pdf_bytes_to_canonical_blocks(
-        pdf_bytes=data,
-        filename=fn,
-        doc_id=doc_id,
-        part="attachment",
-        attachment=fn,
-    ),
+    ".pdf":  parse_pdf_bytes_to_canonical_blocks,
     **{ext: parse_doc_bytes_to_canonical_blocks for ext in (".doc", ".docx")},
-    #**{ext: parse_xls_bytes_to_canonical_blocks for ext in (".xls", ".xlsx")},
+    **{ext: parse_xls_bytes_to_canonical_blocks for ext in (".xls", ".xlsx")},
 }
-
-
 
 def normalize_date(raw_date: str) -> str:
     if not raw_date:
@@ -82,8 +74,6 @@ def main():
                     "subject": email.get("Subject", ""),
                     "date": normalize_date(email.get("Date", "")),
                 }
-
-                block_index = 0
 
                 # 1) Email body
                 blocks = parse_email_bytes_to_canonical_blocks(email, email_id)

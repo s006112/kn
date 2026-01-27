@@ -13,7 +13,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from helper.helper_parse_pdf_to_jsonl import parse_pdf_bytes_to_canonical_blocks
+from helper.helper_parse_raw_to_jsonl import parse_pdf_bytes_to_canonical_blocks
 
 RAW_PDF_DIR = Path("data/standard/pdf")
 PER_FILE_DIR = Path("data/standard/jsonl")
@@ -35,9 +35,9 @@ def main():
 
             with per_file_path.open("w", encoding="utf-8") as per_file_out:
                 for block in parse_pdf_bytes_to_canonical_blocks(
-                    pdf_bytes=pdf.read_bytes(),
-                    filename=str(pdf),
-                    doc_id=doc_id,
+                    pdf.read_bytes(),
+                    str(pdf),
+                    doc_id,
                 ):
                     line = json.dumps(block, ensure_ascii=False) + "\n"
 
