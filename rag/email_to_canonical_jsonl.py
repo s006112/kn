@@ -6,6 +6,7 @@ New pipeline:
 MBOX → CanonicalBlock JSONL
 
 No Task, no chunk_xxx, no BatchProcessor.
+(seq completely removed)
 """
 
 from pathlib import Path
@@ -40,7 +41,7 @@ def write_block(out, block: dict):
     out.write(json.dumps(block, ensure_ascii=False) + "\n")
 
 
-def email_body_to_block(email, base_meta, seq):
+def email_body_to_block(email, base_meta, block_id):
     text = email.get_body(preferencelist=("plain", "html"))
     if not text:
         return None
@@ -50,7 +51,7 @@ def email_body_to_block(email, base_meta, seq):
 
     return {
         "doc_id": f"email_{base_meta['email_id']}",
-        "block_id": f"email_{base_meta['email_id']}_b{seq:05d}",
+        "block_id": block_id,
         "page": None,
         "source": "email_body",
 
@@ -58,7 +59,6 @@ def email_body_to_block(email, base_meta, seq):
         "file_type": "email",
         "attachment": None,
 
-        "seq": seq,
         "char": len(content),
         "word": len(content.split()),
         "text": content,
@@ -66,7 +66,7 @@ def email_body_to_block(email, base_meta, seq):
     }
 
 
-def attachment_text_to_block(text, base_meta, filename, seq, file_type):
+def attachment_text_to_block(text, base_meta, filename, block_id, file_type):
     text = text.strip()
     if not text:
         return None
@@ -75,7 +75,7 @@ def attachment_text_to_block(text, base_meta, filename, seq, file_type):
 
     return {
         "doc_id": doc_id,
-        "block_id": f"{doc_id}_b{seq:05d}",
+        "block_id": block_id,
         "page": None,
         "source": "attachment_text",
 
@@ -83,7 +83,6 @@ def attachment_text_to_block(text, base_meta, filename, seq, file_type):
         "file_type": file_type,
         "attachment": filename,
 
-        "seq": seq,
         "char": len(text),
         "word": len(text.split()),
         "text": text,
@@ -118,12 +117,17 @@ def main():
                     "date": normalize_date(email.get("Date", "")),
                 }
 
-                seq = 0
+                block_index = 0
 
                 # 1) Email body
-                body_block = email_body_to_block(email, base_meta, seq + 1)
+                body_doc_id = f"email_{email_id}"
+                block_index += 1
+                body_block = email_body_to_block(
+                    email,
+                    base_meta,
+                    f"{body_doc_id}_b{block_index:05d}",
+                )
                 if body_block:
-                    seq += 1
                     write_block(out, body_block)
 
                 # 2) Attachments
@@ -166,20 +170,20 @@ def main():
                             b.update(base_meta)
                             write_block(out, b)
 
-                    # Word (DOC / DOCX) – use helper_parse_doc_to_raw
+                    # Word (DOC / DOCX)
                     elif ext in {".doc", ".docx"}:
                         para_blocks = get_doc_paragraph_blocks(data, fn)
 
                         for para_idx in sorted(para_blocks):
                             for blk_raw in para_blocks[para_idx]:
                                 text = blk_raw["text"]
-                                seq += 1
+                                block_index += 1
 
                                 blk = attachment_text_to_block(
                                     text=text,
                                     base_meta=base_meta,
                                     filename=fn,
-                                    seq=seq,
+                                    block_id=f"{doc_id}_b{block_index:05d}",
                                     file_type=ext[1:],   # "doc" or "docx"
                                 )
                                 if blk:
@@ -188,15 +192,21 @@ def main():
                     # Excel
                     elif ext in XLS_EXTS:
                         full_text = extract_excel_text(data, fn)
-                        seq += 1
-                        blk = attachment_text_to_block(full_text, base_meta, fn, seq, "excel")
+                        block_index += 1
+
+                        blk = attachment_text_to_block(
+                            full_text,
+                            base_meta,
+                            fn,
+                            f"{doc_id}_b{block_index:05d}",
+                            "excel",
+                        )
                         if blk:
                             write_block(out, blk)
 
             mbox.close()
 
     print(f"[DONE] Canonical email JSONL written to {OUTPUT_JSONL}")
-
 
 
 if __name__ == "__main__":

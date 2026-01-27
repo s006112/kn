@@ -39,7 +39,7 @@ METADATA_PATH = Path("data/faiss") / f"{META_TYPE}_metadata.sqlite"
 #DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "data/faiss/mbox_faiss.index"
 #DEFAULT_METADATA_PATH = Path(__file__).resolve().parents[1] / "data/faiss/mbox_metadata.sqlite"
 
-DEFAULT_NUM = 2
+DEFAULT_NUM = 5
 DEFAULT_DIMS = 10
 DEFAULT_CHUNK_TEXT_LIMIT = 500
 

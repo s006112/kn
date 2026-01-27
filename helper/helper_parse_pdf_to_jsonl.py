@@ -40,7 +40,6 @@ def parse_pdf_bytes_to_canonical_blocks(
                 "file_type": "pdf",
                 "attachment": attachment,
 
-                "seq": seq,
                 "char": len(text),
                 "word": len(text.split()),
                 "text": text,

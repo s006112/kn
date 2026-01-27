@@ -31,7 +31,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from helper.helper_embedding import embed
 
-TARGET_CHUNK_FOLDER = "standard"  #  mbox or standard
+TARGET_CHUNK_FOLDER = "mbox"  #  mbox or standard
 
 JSON_DIR = Path(f"data/{TARGET_CHUNK_FOLDER}/jsonl")
 FAISS_DIR = Path("data/faiss")
@@ -121,7 +121,7 @@ def load_chunks():
                         "doc_type": obj.get("file_type"),
                         "doc_id": obj.get("doc_id"),  # 可以理解成檔案 ID
                         "chunk_id": obj.get("block_id"),
-                        "page": obj.get("seq"),
+                        "page": obj.get("page"),
                         "char": obj.get("char"),
                         "word": obj.get("word"),
 
@@ -134,8 +134,8 @@ def load_chunks():
                         # ── general schema fields ──
                         "doc_type": obj.get("file_type"),
                         "doc_id":  obj.get("subject"),
-                        "chunk_id": obj.get("email_id") + "_" + str(obj.get("seq")),
-                        "page": obj.get("seq"),
+                        "chunk_id": obj.get("block_id"),
+                        "page": obj.get("page"),
                         "char": obj.get("char"),
                         "word": obj.get("word"),
 
