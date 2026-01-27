@@ -21,16 +21,28 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from helper.helper_parsing_xls import extract_excel_text, XLS_EXTS
 from helper.helper_parse_raw_to_jsonl import (
     parse_pdf_bytes_to_canonical_blocks,
     parse_email_bytes_to_canonical_blocks,
     parse_doc_bytes_to_canonical_blocks,
+    parse_xls_bytes_to_canonical_blocks,
 )
-
 
 RAW_MBOX_DIR = Path("data/mbox/raw")
 OUTPUT_JSONL = Path("data/mbox/jsonl/email_blocks.jsonl")
+
+ATTACHMENT_PARSERS = {
+    ".pdf": lambda data, fn, doc_id: parse_pdf_bytes_to_canonical_blocks(
+        pdf_bytes=data,
+        filename=fn,
+        doc_id=doc_id,
+        part="attachment",
+        attachment=fn,
+    ),
+    **{ext: parse_doc_bytes_to_canonical_blocks for ext in (".doc", ".docx")},
+    #**{ext: parse_xls_bytes_to_canonical_blocks for ext in (".xls", ".xlsx")},
+}
+
 
 
 def normalize_date(raw_date: str) -> str:
@@ -43,31 +55,6 @@ def normalize_date(raw_date: str) -> str:
 
 def write_block(out, block: dict):
     out.write(json.dumps(block, ensure_ascii=False) + "\n")
-
-
-def attachment_text_to_block(text, base_meta, filename, block_id, file_type):
-    text = text.strip()
-    if not text:
-        return None
-
-    doc_id = f"email_{base_meta['email_id']}::{filename}"
-
-    return {
-        "doc_id": doc_id,
-        "block_id": block_id,
-        "page": None,
-        "source": "attachment_text",
-
-        "part": "attachment",
-        "file_type": file_type,
-        "attachment": filename,
-
-        "char": len(text),
-        "word": len(text.split()),
-        "text": text,
-        **base_meta,
-    }
-
 
 def main():
     OUTPUT_JSONL.parent.mkdir(parents=True, exist_ok=True)
@@ -131,40 +118,14 @@ def main():
 
                     doc_id = f"email_{email_id}::{fn}"
 
-                    # PDF
-                    if ext == ".pdf":
-                        blocks = parse_pdf_bytes_to_canonical_blocks(
-                            pdf_bytes=data,
-                            filename=fn,
-                            doc_id=doc_id,
-                            part="attachment",
-                            attachment=fn,
-                        )
-                        for b in blocks:
-                            b.update(base_meta)
-                            write_block(out, b)
+                    parser = ATTACHMENT_PARSERS.get(ext)
+                    if not parser:
+                        continue
 
-                    # Word (DOC / DOCX)
-                    elif ext in {".doc", ".docx"}:
-                        blocks = parse_doc_bytes_to_canonical_blocks(data, fn, doc_id)
-                        for b in blocks:
-                            b.update(base_meta)
-                            write_block(out, b)
-
-                    # Excel
-                    elif ext in XLS_EXTS:
-                        full_text = extract_excel_text(data, fn)
-                        block_index += 1
-
-                        blk = attachment_text_to_block(
-                            full_text,
-                            base_meta,
-                            fn,
-                            f"{doc_id}_b{block_index:05d}",
-                            "excel",
-                        )
-                        if blk:
-                            write_block(out, blk)
+                    blocks = parser(data, fn, doc_id)
+                    for b in blocks:
+                        b.update(base_meta)
+                        write_block(out, b)
 
             mbox.close()
 

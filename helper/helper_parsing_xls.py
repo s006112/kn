@@ -35,7 +35,7 @@ XLS_EXTS = {".xls", ".xlsx", ".xlsm", ".xlsb"}
 
 def _process_single_sheet(
     sheet_name: str, df: pd.DataFrame
-) -> Optional[Tuple[str, str]]:
+) -> Optional[tuple[str, str]]:
     """
     Purpose:
     Convert a single sheet DataFrame into a sanitized text block.

@@ -3,7 +3,7 @@
 from helper.helper_parse_pdf_to_raw import get_pdf_page_blocks
 from helper.helper_parse_email_to_raw import parse_email_body_to_raw_block
 from helper.helper_parse_doc_to_raw import get_doc_paragraph_blocks
-
+from helper.helper_parsing_xls import extract_excel_text
 
 def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None):
     seq = 0
@@ -27,6 +27,19 @@ def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None)
             "word": len(text.split()),
             "text": text,
         }
+
+
+def parse_email_bytes_to_canonical_blocks(email, email_id):
+    raw_block = parse_email_body_to_raw_block(email, email_id)
+    if not raw_block:
+        return []
+
+    return raw_blocks_to_canonical_blocks(
+        [raw_block],
+        part="email",
+        file_type=None,
+        attachment=None,
+    )
 
 
 def parse_pdf_bytes_to_canonical_blocks(pdf_bytes, filename, doc_id, part="document", attachment=None):
@@ -54,19 +67,6 @@ def parse_pdf_bytes_to_canonical_blocks(pdf_bytes, filename, doc_id, part="docum
     )
 
 
-def parse_email_bytes_to_canonical_blocks(email, email_id):
-    raw_block = parse_email_body_to_raw_block(email, email_id)
-    if not raw_block:
-        return []
-
-    return raw_blocks_to_canonical_blocks(
-        [raw_block],
-        part="email",
-        file_type=None,
-        attachment=None,
-    )
-
-
 def parse_doc_bytes_to_canonical_blocks(data: bytes, filename: str, doc_id: str):
     """
     DOC/DOCX bytes → RawBlock → CanonicalBlock
@@ -86,6 +86,31 @@ def parse_doc_bytes_to_canonical_blocks(data: bytes, filename: str, doc_id: str)
                 "page": para_idx,
                 "source": blk["source"],  # "doc" or "docx"
             })
+
+    ext = filename.split(".")[-1].lower()
+
+    return raw_blocks_to_canonical_blocks(
+        raw_blocks,
+        part="attachment",
+        file_type=ext,
+        attachment=filename,
+    )
+
+
+def parse_xls_bytes_to_canonical_blocks(data: bytes, filename: str, doc_id: str):
+    """
+    XLS/XLSX bytes → RawBlock → CanonicalBlock
+    """
+    text = extract_excel_text(data, filename)
+    if not text:
+        return []
+
+    raw_blocks = [{
+        "doc_id": doc_id,
+        "text": text,
+        "page": None,
+        "source": "xls",
+    }]
 
     ext = filename.split(".")[-1].lower()
 
