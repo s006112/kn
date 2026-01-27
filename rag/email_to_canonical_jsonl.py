@@ -21,9 +21,12 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from helper.helper_parse_pdf_to_jsonl import parse_pdf_bytes_to_canonical_blocks
 from helper.helper_parse_doc_to_raw import get_doc_paragraph_blocks
 from helper.helper_parsing_xls import extract_excel_text, XLS_EXTS
+from helper.helper_parse_raw_to_jsonl import (
+    parse_pdf_bytes_to_canonical_blocks,
+    parse_email_bytes_to_canonical_blocks,
+)
 
 RAW_MBOX_DIR = Path("data/mbox/raw")
 OUTPUT_JSONL = Path("data/mbox/jsonl/email_blocks.jsonl")
@@ -39,31 +42,6 @@ def normalize_date(raw_date: str) -> str:
 
 def write_block(out, block: dict):
     out.write(json.dumps(block, ensure_ascii=False) + "\n")
-
-
-def email_body_to_block(email, base_meta, block_id):
-    text = email.get_body(preferencelist=("plain", "html"))
-    if not text:
-        return None
-    content = text.get_content().strip()
-    if not content:
-        return None
-
-    return {
-        "doc_id": f"email_{base_meta['email_id']}",
-        "block_id": block_id,
-        "page": None,
-        "source": "email_body",
-
-        "part": "body",
-        "file_type": "email",
-        "attachment": None,
-
-        "char": len(content),
-        "word": len(content.split()),
-        "text": content,
-        **base_meta,
-    }
 
 
 def attachment_text_to_block(text, base_meta, filename, block_id, file_type):
@@ -120,15 +98,10 @@ def main():
                 block_index = 0
 
                 # 1) Email body
-                body_doc_id = f"email_{email_id}"
-                block_index += 1
-                body_block = email_body_to_block(
-                    email,
-                    base_meta,
-                    f"{body_doc_id}_b{block_index:05d}",
-                )
-                if body_block:
-                    write_block(out, body_block)
+                blocks = parse_email_bytes_to_canonical_blocks(email, email_id)
+                for b in blocks:
+                    b.update(base_meta)
+                    write_block(out, b)
 
                 # 2) Attachments
                 for part in email.iter_attachments():
