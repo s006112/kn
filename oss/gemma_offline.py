@@ -15,7 +15,7 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True)
 #    - 這是原始代碼中不使用量化時最穩定的載入方式。
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_PATH,
-    dtype=torch.bfloat16,   # float32, bfloat16
+    dtype=torch.float32,   # float32, bfloat16
     device_map="auto",
     # 移除 quantization_config
     local_files_only=True

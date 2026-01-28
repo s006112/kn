@@ -7,7 +7,7 @@ model_id = "/root/.cache/huggingface/hub/EssentialAI-rnj-1"
 print(f"Loading model: {model_id}...")
 model = AutoModelForCausalLM.from_pretrained(
     model_id,
-    dtype=torch.bfloat16,
+    dtype=torch.bfloat16, # float32, bfloat16
     device_map="auto",
 )
 tokenizer = AutoTokenizer.from_pretrained(model_id)
