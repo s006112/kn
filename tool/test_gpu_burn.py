@@ -3,14 +3,41 @@ import torch, time
 device = "cuda"
 dtype = torch.float16
 
-# 1. 吃显存
-N_mem = 104000
+# ============================================================
+# Phase 1 : PCIe transfer stress (no VRAM fill)
+# ============================================================
+
+print("Phase 1: PCIe transfer test")
+
+x = torch.randn((1024, 1024, 1024), device=device, dtype=dtype)  # ~2GB
+
+for i in range(10):
+    y = x.cpu()
+    x = y.cuda()
+    torch.cuda.synchronize()
+    print(f"PCIe transfer {i+1}/10 OK")
+
+del x, y
+torch.cuda.empty_cache()
+
+# ============================================================
+# Phase 2 : VRAM fill (memory integrity)
+# ============================================================
+
+print("Phase 2: VRAM fill test")
+
+N_mem = 110000   # ~23.8GB
 big = torch.empty((N_mem, N_mem), device=device, dtype=dtype)
 big.fill_(1.0)
 torch.cuda.synchronize()
 print("VRAM filled")
 
-# 2. 烧算力
+# ============================================================
+# Phase 3 : Compute burn
+# ============================================================
+
+print("Phase 3: Compute burn")
+
 N = 8192
 a = torch.randn((N, N), device=device, dtype=dtype)
 b = torch.randn((N, N), device=device, dtype=dtype)
