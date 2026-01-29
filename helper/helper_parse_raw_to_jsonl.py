@@ -30,8 +30,8 @@ def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None)
         }
 
 
-def parse_email_bytes_to_canonical_blocks(subject, email, email_id):
-    raw_block = parse_email_body_to_raw_block(subject, email, email_id)
+def parse_email_bytes_to_canonical_blocks(email, email_id):
+    raw_block = parse_email_body_to_raw_block(email, email_id)
     if not raw_block:
         return []
 
@@ -39,7 +39,7 @@ def parse_email_bytes_to_canonical_blocks(subject, email, email_id):
         [raw_block],
         part="email",
         file_type=None,
-        attachment=subject,
+        attachment=None,
     )
 
 
