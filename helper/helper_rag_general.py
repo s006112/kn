@@ -320,7 +320,7 @@ def _build_similarity_table(top_idx, top_scores, metas, *, page_key: str):
     total_words = 0
     for i, s in zip(top_idx, top_scores):
         meta = metas[i] or {}
-        doc = meta.get("doc_id")
+        doc = meta.get("subject") or meta.get("doc_id")     # 顯示用：優先 subject，其次才用 doc_id
         doc_date = meta.get("date")
         doc_type = meta.get("doc_type")
         page = meta.get(page_key)

@@ -136,13 +136,14 @@ def load_chunks():
                     meta = {
                         # ── general schema fields ──
                         "doc_type": obj.get("file_type"),
-                        "doc_id":  obj.get("subject"),
+                        "doc_id": obj.get("email_id"), 
                         "chunk_id": obj.get("block_id"),
                         "page": obj.get("page"),
                         "char": obj.get("char"),
                         "word": obj.get("word"),
 
                         # ── email native fields ──
+                        "subject": obj.get("subject"),          # 人类可读标题（显示用）
                         "thread_id": obj.get("thread_id"),
                         "from": obj.get("from"),
                         "to": obj.get("to"),

@@ -74,7 +74,7 @@ def parse_email_to_raw_blocks(email, email_id):
         blocks.append({
             "doc_id": f"email_{email_id}",
             "text": sanitize_text(body),
-            "page": None,
+            "page": 1,
             "source": "mbox",
             "part": "body",
         })
@@ -83,7 +83,7 @@ def parse_email_to_raw_blocks(email, email_id):
         blocks.append({
             "doc_id": f"email_{email_id}",
             "text": sanitize_text(quote),
-            "page": None,
+            "page": 1,
             "source": "mbox",
             "part": "quote",
         })
