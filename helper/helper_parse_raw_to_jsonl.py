@@ -1,7 +1,7 @@
 # helper_parse_raw_to_jsonl.py
 
 from helper.helper_parse_pdf_to_raw import get_pdf_page_blocks
-from helper.helper_parse_email_to_raw import parse_email_body_to_raw_block
+from helper.helper_parse_email_to_raw import parse_email_to_raw_blocks
 from helper.helper_parse_doc_to_raw import get_doc_paragraph_blocks
 from helper.helper_parsing_xls import extract_excel_text
 
@@ -17,7 +17,7 @@ def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None)
             "char": len(text),
             "word": len(text.split()),
 
-            "part": part,
+            "part": raw.get("part", part),
             "file_type": file_type,
             "attachment": attachment,
 
@@ -31,13 +31,14 @@ def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None)
 
 
 def parse_email_bytes_to_canonical_blocks(email, email_id):
-    raw_block = parse_email_body_to_raw_block(email, email_id)
-    if not raw_block:
+    raw_blocks = parse_email_to_raw_blocks(email, email_id)
+    if not raw_blocks:
         return []
 
+    # 直接一次餵進去，讓 seq 在同一 email 內自然累加
     return raw_blocks_to_canonical_blocks(
-        [raw_block],
-        part="email_body",
+        raw_blocks,
+        part=None,            # part 由 raw 自己帶
         file_type="email",
         attachment=None,
     )
