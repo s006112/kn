@@ -94,7 +94,7 @@ EMBED_BATCH_SIZE = 16
 LLM_MODEL = "sonar"
 TOP_K = 10
 CANDIDATE_K = 50
-SCORE_THRESHOLD = 0.5
+SCORE_THRESHOLD = 0.4
 SYSTEM_PROMPT_PATH = Path("prompt/prompt_rag_system.txt")
 
 def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
@@ -343,7 +343,14 @@ def mmr_select(E: np.ndarray, candidate_idx, q: np.ndarray, k: int, lambda_: flo
     return selected
 
 
-def _build_similarity_table(top_idx, top_scores, metas, *, page_key: str):
+def _build_similarity_table(
+    top_idx,
+    top_scores,
+    metas,
+    *,
+    page_key: str,
+    mmr_rank: dict | None = None,
+):
     """
     Purpose:
     Build a Markdown table summarizing retrieval scores and selected metadata fields.
@@ -363,22 +370,12 @@ def _build_similarity_table(top_idx, top_scores, metas, *, page_key: str):
     Failure modes:
     - Propagates exceptions if `top_idx` contains out-of-range indices.
     """
-    idx = np.asarray(top_idx, dtype=int)
-    scores = np.asarray(top_scores, dtype=float)
-    if scores.size and idx.size:
-        n = min(idx.size, scores.size)
-        idx = idx[:n]
-        scores = scores[:n]
-        order = np.argsort(scores)[::-1]
-        idx = idx[order]
-        scores = scores[order]
-
     table = [
-        "| score | doc | date | doc_type | page | word |",
-        "|---:|---|---|---|---:|---:|",
+        "| mmr | score | doc | date | doc_type | page | word |",
+        "|---:|---:|---|---|---|---:|---:|",
     ]
     total_words = 0
-    for i, s in zip(idx, scores):
+    for i, s in zip(top_idx, top_scores):
         meta = metas[i] or {}
         doc = meta.get("subject") or meta.get("doc_id")     # 顯示用：優先 subject，其次才用 doc_id
         doc_date = meta.get("date")
@@ -386,7 +383,10 @@ def _build_similarity_table(top_idx, top_scores, metas, *, page_key: str):
         page = meta.get(page_key)
         word_count = meta.get("word", 0) or 0
         total_words += int(word_count)
-        table.append(f"| {float(s):.4f} | {doc} | {doc_date} | {doc_type} | {page} | {word_count} |")
+        mmr = mmr_rank.get(i, "") if mmr_rank else ""
+        table.append(
+            f"| {mmr} | {float(s):.4f} | {doc} | {doc_date} | {doc_type} | {page} | {word_count} |"
+        )
     table.append(f"Total word count: {total_words}")
     return "\n".join(table)
 
@@ -465,11 +465,12 @@ class RagEngine:
         q_vec = self.embedder.embed_query(q)
         cand_idx, cand_scores = brute_force_knn(self.E, q_vec, CANDIDATE_K)
         top_idx = mmr_select(self.E, cand_idx, q_vec, TOP_K, lambda_=0.5)
+        mmr_rank = {idx: r + 1 for r, idx in enumerate(top_idx)}
         top_scores = (self.E[top_idx] @ q_vec)
         keep_mask = top_scores >= SCORE_THRESHOLD
         if not np.any(keep_mask):
-            table_str = _build_similarity_table(cand_idx, cand_scores, self.metas, page_key="page")
-            return "", table_str
+            # 保底：至少保留最相似的一个
+            keep_mask[np.argmax(top_scores)] = True
         top_idx = np.asarray(top_idx)[keep_mask]
         top_scores = top_scores[keep_mask]
 
@@ -478,7 +479,29 @@ class RagEngine:
         context = "\n\n".join(snippets)
 
         prompt = f"{context}\n\nQuestion: {q}"
-        table_str = _build_similarity_table(cand_idx, cand_scores, self.metas, page_key="page")
+        table_str = _build_similarity_table(
+            top_idx,
+            top_scores,
+            self.metas,
+            page_key="page",
+            mmr_rank=mmr_rank,
+        )
+
+        top_idx_set = set(int(i) for i in top_idx)
+        score_by_idx = {int(i): float(s) for i, s in zip(cand_idx, cand_scores)}
+        failed_idx = [int(i) for i in cand_idx if int(i) not in top_idx_set]
+        if failed_idx:
+            failed_scores = [score_by_idx[i] for i in failed_idx]
+            failed_table = _build_similarity_table(
+                failed_idx,
+                failed_scores,
+                self.metas,
+                page_key="page",
+                mmr_rank=None,
+            )
+            table_str = f"{table_str}\n\nFailed CANDIDATE_K (not selected):\n\n{failed_table}"
+        else:
+            table_str = f"{table_str}\n\nFailed CANDIDATE_K (not selected): (none)"
         
         result_text = call_llm(
             LLM_MODEL,
