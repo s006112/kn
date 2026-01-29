@@ -1,4 +1,3 @@
-# helper_rag_general.py
 #!/usr/bin/env python3
 """
 Responsibility:
@@ -6,7 +5,7 @@ Implements a self-contained RAG engine (`RagEngine`) for the local `"standard"` 
 
 Used by:
 * ali_email/ali_llm.py
-* rag/email_03b_web_gui.py
+* gui_web_rag.py
 
 Pipelines:
 - load_chunks -> load_vectors -> normalize_vectors -> load_system_prompt -> embed_query -> knn_search -> build_prompt -> call_llm
@@ -28,7 +27,7 @@ Step 1 (DONE):
 - Brute-force KNN retrieval on embedding matrix.
   - Acts as the baseline retrieval engine.
 
-Step 2 (NEXT):
+Step 2 (DONE):
 - Add MMR (Maximal Marginal Relevance) reranking.
   - Purpose: diversify retrieved chunks and reduce redundancy.
   - Pipeline:
@@ -84,17 +83,16 @@ import faiss
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-# Assume these helpers are in place
 from helper.utils_llm import call_llm
 from helper.helper_embedding import embed
 
 
-# ─── Config (保持原有的配置) ────────────────────────────────
 EMBED_BATCH_SIZE = 16
 LLM_MODEL = "sonar"
 TOP_K = 10
 CANDIDATE_K = 80
 SCORE_THRESHOLD = 0.4
+MMR_LAMBDA = 0.5
 SYSTEM_PROMPT_PATH = Path("prompt/prompt_rag_system.txt")
 
 def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
@@ -145,8 +143,6 @@ def get_rag_engine(mode: str = "standard"):
     return RagEngine(mode=mode)
 
 
-# ─── Helper Classes/Functions (保留在內部) ────────────────
-
 class EmbeddingModel:
     """
     Responsibility:
@@ -180,7 +176,6 @@ class EmbeddingModel:
         - None.
         """
         self.batch_size = batch_size
-        # Model is loaded lazily in helper_embedding
 
     def embed_query(self, text):
         """
@@ -203,7 +198,6 @@ class EmbeddingModel:
         return embed([text])[0]
 
 
-# 所有的 load/knn/format 函數都移到這裡作為內部函數 (不公開，但 RagEngine 會調用)
 def _load_all_chunks(db_path: Path) -> Tuple[List[str], List[Dict[str, Any]]]: 
     """
     Purpose:
@@ -312,6 +306,9 @@ def mmr_select(E: np.ndarray, candidate_idx, q: np.ndarray, k: int, lambda_: flo
 
     Side effects:
     - None.
+
+    Failure modes:
+    - Propagates NumPy index/shape errors for out-of-range indices or incompatible shapes.
     """
     cand = np.asarray(candidate_idx, dtype=int)
     if cand.size == 0 or k <= 0:
@@ -391,7 +388,6 @@ def _build_similarity_table(
     return "\n".join(table)
 
 
-# ─── 核心類別 ──────────────────────────────
 class RagEngine:
     """
     Responsibility:
@@ -426,14 +422,13 @@ class RagEngine:
         print("Initializing RagEngine: Loading FAISS index and Embedding Model...")
         self.texts, self.metas = _load_all_chunks(db_path)
         self.embedder = EmbeddingModel(
-            device="cuda:0", # Use original device setting
+            device="cuda:0",
             batch_size=EMBED_BATCH_SIZE,
         )
         self.E = _load_embedding_matrix(index_path)
         if len(self.texts) != self.E.shape[0]:
             raise ValueError("Mismatch between metadata rows and embedding matrix size")
         
-        # Normalize E once upon load
         norms = np.linalg.norm(self.E, axis=1, keepdims=True)
         norms[norms == 0] = 1.0
         self.E = self.E / norms
@@ -464,7 +459,7 @@ class RagEngine:
 
         q_vec = self.embedder.embed_query(q)
         cand_idx, cand_scores = brute_force_knn(self.E, q_vec, CANDIDATE_K)
-        top_idx = mmr_select(self.E, cand_idx, q_vec, TOP_K, lambda_=0.5)
+        top_idx = mmr_select(self.E, cand_idx, q_vec, TOP_K, lambda_=MMR_LAMBDA)
         mmr_rank = {idx: r + 1 for r, idx in enumerate(top_idx)}
         top_scores = (self.E[top_idx] @ q_vec)
         keep_mask = top_scores >= SCORE_THRESHOLD
