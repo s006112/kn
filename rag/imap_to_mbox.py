@@ -51,9 +51,9 @@ from helper.utils_imap_client import ImapClient, RawFetchedRecord
 DEFAULT_SERVER = "mail.ampco.com.hk"
 DEFAULT_PORT = 993
 DEFAULT_TIMEOUT = 300
-DEFAULT_SINCE_DATE = "2026-01-17"
+DEFAULT_SINCE_DATE = "2026-01-27"
 DEFAULT_OUT_DIR = Path("data/mbox/raw")
-DEFAULT_STATE_PATH = Path("data/mbox/.state/imap_state.json")
+DEFAULT_STATE_PATH = Path("data/mbox/raw/imap_state.json")
 DEFAULT_CHUNK_SIZE = 100
 
 
@@ -381,29 +381,20 @@ class SyncState:
 # mbox 寫入
 # ---------------------------------------------------------------------
 
-def records_to_mbox_messages(records: Iterable[RawFetchedRecord]) -> Iterable[mailbox.mboxMessage]:
-    """
-    Purpose:
-    Convert fetched IMAP records into mboxMessage objects with metadata headers.
-
-    Inputs:
-    - records: Iterable of RawFetchedRecord containing raw RFC822 bytes and metadata.
-
-    Outputs:
-    - Iterable of (uid, mailbox.mboxMessage) pairs via generator yields.
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - Parsing/conversion errors may propagate except for Internaldate conversion,
-      which is best-effort and swallowed.
-    """
+def records_to_mbox_messages(
+    records: Iterable[RawFetchedRecord],
+    folder: str,
+) -> Iterable[tuple[int, mailbox.mboxMessage]]:
     for record in records:
         email_message = message_from_bytes(record.raw_bytes)
         mbox_message = mailbox.mboxMessage(email_message)
-        if record.flags:
-            mbox_message["X-IMAP-Flags"] = " ".join(record.flags)
+
+        flags = record.flags or []
+        mbox_message["X-IMAP-UID"] = str(record.uid)
+        mbox_message["X-IMAP-Folder"] = folder
+        mbox_message["X-IMAP-Flags"] = " ".join(flags)
+        mbox_message["X-IMAP-Flags-Count"] = str(len(flags))
+
         if record.internaldate:
             try:
                 when = imaplib.Internaldate2tuple(
@@ -414,6 +405,7 @@ def records_to_mbox_messages(records: Iterable[RawFetchedRecord]) -> Iterable[ma
             except Exception:
                 pass
             mbox_message["X-IMAP-InternalDate"] = record.internaldate
+
         yield record.uid, mbox_message
 
 
@@ -460,10 +452,7 @@ def export_all(
     """
     client.connect()
     try:
-        folders = client.list_folders(include_system=include_system)
-        if not folders:
-            logger.warning("No folders discovered.")
-            return 0, []
+        folders = ["INBOX"]
 
         logger.info("Discovered %d folders to process.", len(folders))
 
@@ -571,7 +560,7 @@ def export_folder(
     for start in range(0, len(uids), chunk_size):
         batch = uids[start : start + chunk_size]
         raw_records = client.fetch_batch(folder, batch)
-        for uid, mbox_msg in records_to_mbox_messages(raw_records):
+        for uid, mbox_msg in records_to_mbox_messages(raw_records, folder):
             mbox.add(mbox_msg)
             written += 1
             if uid > max_uid:

@@ -154,42 +154,119 @@ class RawFetchedRecord:
     raw_bytes: bytes
 
 
-UID_PATTERN = re.compile(r"UID (?P<uid>\d+)")
-FLAGS_PATTERN = re.compile(r"FLAGS \((?P<flags>[^)]*)\)")
-INTERNALDATE_PATTERN = re.compile(r'INTERNALDATE "?(?P<date>[^"]+)"?')
-
+# add near patterns
+SEQ_PATTERN = re.compile(r"^\*?\s*(?P<seq>\d+)\s+FETCH", re.IGNORECASE)
+UID_PATTERN = re.compile(r"\bUID\s+(?P<uid>\d+)\b")
+FLAGS_PATTERN = re.compile(r"\bFLAGS\s+\((?P<flags>[^)]*)\)")
+INTERNALDATE_PATTERN = re.compile(r'\bINTERNALDATE\s+"?(?P<date>[^"]+)"?')
 
 def parse_fetch_response(data: Sequence[object]) -> Iterable[RawFetchedRecord]:
     """
-    只做 IMAP RAW 轉為 (uid, flags, internaldate, raw_bytes)
-    不做 mailbox.mboxMessage，讓 00_imap 自行決定怎麼寫入。
+    Robustly parse imaplib UID FETCH results.
+
+    Fix:
+    - Servers may split attributes across multiple tuples for the same message.
+    - Later tuples may contain FLAGS () or FLAGS with fewer keywords than earlier tuples.
+    - We must NOT overwrite a richer flag set with a poorer one.
+      => accumulate (union) flags across tuples.
     """
+
+    by_uid: dict[int, dict] = {}
+    by_seq: dict[int, dict] = {}
+    seq_to_uid: dict[int, int] = {}
+
+    def _new_entry() -> dict:
+        return {"flags": [], "flags_set": set(), "internaldate": None, "raw_bytes": None}
+
+    def _get_entry(uid: Optional[int], seq: Optional[int]) -> dict:
+        if uid is not None:
+            return by_uid.setdefault(uid, _new_entry())
+        if seq is not None:
+            return by_seq.setdefault(seq, _new_entry())
+        return _new_entry()  # throwaway
+
+    def _merge_flags(entry: dict, parsed: List[str]) -> None:
+        # union, keep first-seen order
+        if not parsed:
+            return
+        s = entry["flags_set"]
+        out = entry["flags"]
+        for f in parsed:
+            if f and f not in s:
+                s.add(f)
+                out.append(f)
+
     for item in data:
         if not item or not isinstance(item, tuple):
             continue
-        header_bytes, message_bytes = item
-        if not isinstance(header_bytes, (bytes, str)) or not isinstance(
-            message_bytes, (bytes, bytearray)
-        ):
+
+        header_bytes, payload = item
+        if not isinstance(header_bytes, (bytes, str)):
             continue
+
         header = header_bytes.decode("utf-8", errors="ignore")
-        uid_match = UID_PATTERN.search(header)
-        if not uid_match:
+
+        # seq
+        seq: Optional[int] = None
+        m_seq = SEQ_PATTERN.search(header)
+        if m_seq:
+            try:
+                seq = int(m_seq.group("seq"))
+            except Exception:
+                seq = None
+
+        # uid
+        uid: Optional[int] = None
+        m_uid = UID_PATTERN.search(header)
+        if m_uid:
+            try:
+                uid = int(m_uid.group("uid"))
+            except Exception:
+                uid = None
+
+        if uid is not None and seq is not None:
+            seq_to_uid[seq] = uid
+
+        entry = _get_entry(uid, seq)
+
+        # FLAGS
+        m_flags = FLAGS_PATTERN.search(header)
+        if m_flags is not None:
+            raw = (m_flags.group("flags") or "").strip()
+            parsed_flags = raw.split() if raw else []
+            _merge_flags(entry, parsed_flags)
+
+        # INTERNALDATE (keep first non-empty)
+        m_date = INTERNALDATE_PATTERN.search(header)
+        if m_date and entry["internaldate"] is None:
+            entry["internaldate"] = m_date.group("date")
+
+        # BODY
+        if isinstance(payload, (bytes, bytearray)) and entry["raw_bytes"] is None:
+            entry["raw_bytes"] = bytes(payload)
+
+    # Promote seq entries into uid entries when we can map seq -> uid
+    for seq, entry in list(by_seq.items()):
+        uid = seq_to_uid.get(seq)
+        if uid is None:
             continue
-        uid = int(uid_match.group("uid"))
-        flags_match = FLAGS_PATTERN.search(header)
-        flags: List[str] = []
-        if flags_match and flags_match.group("flags"):
-            flags = [flag.strip() for flag in flags_match.group("flags").split()]
-        date_match = INTERNALDATE_PATTERN.search(header)
-        internaldate = date_match.group("date") if date_match else None
+        dst = by_uid.setdefault(uid, _new_entry())
+        _merge_flags(dst, entry.get("flags", []))
+        if dst["internaldate"] is None and entry.get("internaldate") is not None:
+            dst["internaldate"] = entry["internaldate"]
+        if dst["raw_bytes"] is None and entry.get("raw_bytes") is not None:
+            dst["raw_bytes"] = entry["raw_bytes"]
+
+    # Emit only complete records
+    for uid, entry in by_uid.items():
+        if entry["raw_bytes"] is None:
+            continue
         yield RawFetchedRecord(
             uid=uid,
-            flags=flags,
-            internaldate=internaldate,
-            raw_bytes=bytes(message_bytes),
+            flags=entry["flags"] or [],
+            internaldate=entry["internaldate"],
+            raw_bytes=entry["raw_bytes"],
         )
-
 
 # ---------------------------------------------------------------------
 # 高階 ImapClient 封裝
