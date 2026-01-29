@@ -93,7 +93,7 @@ from helper.helper_embedding import embed
 EMBED_BATCH_SIZE = 16
 LLM_MODEL = "sonar"
 TOP_K = 10
-CANDIDATE_K = 50
+CANDIDATE_K = 80
 SCORE_THRESHOLD = 0.4
 SYSTEM_PROMPT_PATH = Path("prompt/prompt_rag_system.txt")
 
