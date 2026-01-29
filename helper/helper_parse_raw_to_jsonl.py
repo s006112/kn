@@ -14,23 +14,24 @@ def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None)
 
         seq += 1
         yield {
-            "doc_id": raw["doc_id"],
-            "block_id": f"{raw['doc_id']}_b{seq:05d}",
-            "page": raw.get("page"),
-            "source": raw.get("source"),
+            "char": len(text),
+            "word": len(text.split()),
 
             "part": part,
             "file_type": file_type,
             "attachment": attachment,
 
-            "char": len(text),
-            "word": len(text.split()),
+            "doc_id": raw["doc_id"],
+            "block_id": f"{raw['doc_id']}_b{seq:05d}",
+            "page": raw.get("page"),
+            "source": raw.get("source"),
+
             "text": text,
         }
 
 
-def parse_email_bytes_to_canonical_blocks(email, email_id):
-    raw_block = parse_email_body_to_raw_block(email, email_id)
+def parse_email_bytes_to_canonical_blocks(subject, email, email_id):
+    raw_block = parse_email_body_to_raw_block(subject, email, email_id)
     if not raw_block:
         return []
 
@@ -38,7 +39,7 @@ def parse_email_bytes_to_canonical_blocks(email, email_id):
         [raw_block],
         part="email",
         file_type=None,
-        attachment=None,
+        attachment=subject,
     )
 
 

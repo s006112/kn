@@ -6,7 +6,7 @@ Convert Email -> RawBlock (email body only)
 """
 
 
-def parse_email_body_to_raw_block(email, email_id):
+def parse_email_body_to_raw_block(subject, email, email_id):
     text = email.get_body(preferencelist=("plain", "html"))
     if not text:
         return None
@@ -17,6 +17,7 @@ def parse_email_body_to_raw_block(email, email_id):
     return {
         "doc_id": f"email_{email_id}",
         "text": content,
+        "attachment": subject,
         "page": None,
         "source": "email_body",
     }

@@ -66,17 +66,18 @@ def main():
                 if not email_id:
                     continue
 
+                subject = email.get("Subject", "")
                 base_meta = {
                     "email_id": email_id,
                     "thread_id": email.get("In-Reply-To", ""),
                     "from": email.get("From", ""),
                     "to": email.get("To", ""),
-                    "subject": email.get("Subject", ""),
+                    "subject": subject,
                     "date": normalize_date(email.get("Date", "")),
                 }
 
                 # 1) Email body
-                blocks = parse_email_bytes_to_canonical_blocks(email, email_id)
+                blocks = parse_email_bytes_to_canonical_blocks(subject, email, email_id)
                 for b in blocks:
                     b.update(base_meta)
                     write_block(out, b)
