@@ -87,7 +87,6 @@ from helper.utils_llm import call_llm
 from helper.helper_embedding import embed
 
 
-EMBED_BATCH_SIZE = 16
 LLM_MODEL = "sonar"
 TOP_K = 10
 CANDIDATE_K = 80
@@ -143,61 +142,6 @@ def get_rag_engine(mode: str = "standard"):
     return RagEngine(mode=mode)
 
 
-class EmbeddingModel:
-    """
-    Responsibility:
-    Thin wrapper around `helper.helper_embedding.embed` for producing L2-normalized query embeddings.
-    """
-
-    def __init__(
-        self,
-        model_name: str | None = None,
-        device: str = "",
-        batch_size: int = 0,
-        task: str | None = None,
-    ):
-        """
-        Purpose:
-        Initialize a lightweight wrapper for query embedding.
-
-        Inputs:
-        - model_name: Model name (kept for API compatibility; unused).
-        - device: Target device string (kept for API compatibility; unused).
-        - batch_size: Batch size (kept for API compatibility; stored only).
-        - task: Optional task parameter (kept for API compatibility; unused).
-
-        Outputs:
-        - None.
-
-        Side effects:
-        - None. The underlying embedding model is loaded lazily on first call to `embed_query`.
-
-        Failure modes:
-        - None.
-        """
-        self.batch_size = batch_size
-
-    def embed_query(self, text):
-        """
-        Purpose:
-        Embed a single query string into a normalized vector.
-
-        Inputs:
-        - text: Query string.
-
-        Outputs:
-        - 1D NumPy array embedding.
-
-        Side effects:
-        - Runs the underlying embedding model.
-        - May lazily load model weights and allocate accelerator memory on the first call.
-
-        Failure modes:
-        - Propagates exceptions from helper_embedding.embed.
-        """
-        return embed([text])[0]
-
-
 def _load_all_chunks(db_path: Path) -> Tuple[List[str], List[Dict[str, Any]]]: 
     """
     Purpose:
@@ -220,13 +164,13 @@ def _load_all_chunks(db_path: Path) -> Tuple[List[str], List[Dict[str, Any]]]:
     conn = sqlite3.connect(db_path)
     try:
         rows = conn.execute(
-            "SELECT vector_id, chunk_text, metadata_json FROM chunks ORDER BY vector_id"
+            "SELECT chunk_text, metadata_json FROM chunks ORDER BY vector_id"
         ).fetchall()
     finally:
         conn.close()
 
     texts, metas = [], []
-    for _vid, text, meta_json in rows:
+    for text, meta_json in rows:
         texts.append(text)
         metas.append(json.loads(meta_json) if meta_json else {})
     return texts, metas
@@ -417,14 +361,9 @@ class RagEngine:
         - Propagates filesystem errors when reading the system prompt fails.
         """
 
-        self.mode = mode
         db_path, index_path = get_faiss_artifact_paths(mode)
         print("Initializing RagEngine: Loading FAISS index and Embedding Model...")
         self.texts, self.metas = _load_all_chunks(db_path)
-        self.embedder = EmbeddingModel(
-            device="cuda:0",
-            batch_size=EMBED_BATCH_SIZE,
-        )
         self.E = _load_embedding_matrix(index_path)
         if len(self.texts) != self.E.shape[0]:
             raise ValueError("Mismatch between metadata rows and embedding matrix size")
@@ -457,7 +396,7 @@ class RagEngine:
         if not q:
             return "", ""
 
-        q_vec = self.embedder.embed_query(q)
+        q_vec = embed([q])[0]
         cand_idx, cand_scores = brute_force_knn(self.E, q_vec, CANDIDATE_K)
         top_idx = mmr_select(self.E, cand_idx, q_vec, TOP_K, lambda_=MMR_LAMBDA)
         mmr_rank = {idx: r + 1 for r, idx in enumerate(top_idx)}
