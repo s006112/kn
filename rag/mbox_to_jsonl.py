@@ -109,7 +109,7 @@ def main():
                         save_path.write_bytes(data)
                     # ---------------------------------------
 
-                    doc_id = f"email_{email_id}::{fn}"
+                    doc_id = f"{email_id}::{fn}"
 
                     parser = ATTACHMENT_PARSERS.get(ext)
                     if not parser:

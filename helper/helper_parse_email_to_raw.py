@@ -71,7 +71,7 @@ def parse_email_to_raw_blocks(email, email_id):
 
     for depth, text in segments:
         blocks.append({
-            "doc_id": f"email_{email_id}",
+            "doc_id": email_id,  # was f"email_{email_id}",
             "text": sanitize_text(text),
             "page": page,
             "source": "mbox",

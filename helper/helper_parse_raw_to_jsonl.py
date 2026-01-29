@@ -14,6 +14,7 @@ def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None)
 
         seq += 1
         yield {
+            "page": raw.get("page"),
             "char": len(text),
             "word": len(text.split()),
 
@@ -22,8 +23,7 @@ def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None)
             "attachment": attachment,
 
             "doc_id": raw["doc_id"],
-            "block_id": f"{raw['doc_id']}_b{seq:05d}",
-            "page": raw.get("page"),
+            "block_id": f"{raw['doc_id']}_b{seq:02d}",
             "source": raw.get("source"),
 
             "text": text,

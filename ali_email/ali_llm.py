@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
 
 from helper.utils_config import load_prompt_text
 from helper.utils_llm import call_llm
-from helper.helper_rag_general import get_rag_engine
+from helper.helper_rag_pipeline import get_rag_engine
 from helper.utils_imap_types import EmailMessage
 from ali_email.ali_router import RouteResult, route_email
 from ali_email.ali_mail_parse import (

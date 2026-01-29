@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+helper_rag_pipeline.py
 Responsibility:
 Implements a self-contained RAG engine (`RagEngine`) for the local `"standard"` and `"mbox"` indexes: loads chunk text/metadata from SQLite, reconstructs an in-memory embedding matrix from a FAISS index, embeds queries, performs brute-force top-k similarity search, and calls an LLM with retrieved context.
 
