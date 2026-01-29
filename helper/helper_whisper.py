@@ -1,8 +1,8 @@
 """
 Responsibility:
 Provide a small wrapper around OpenAI Whisper model loading and transcription with
-automatic device selection (CUDA when available) and a GPU out-of-memory fallback
-to CPU for file-based transcription.
+automatic device selection (CUDA when available) and GPU-friendly inference
+defaults for running large models on constrained VRAM without CPU offloading.
 
 Used by:
 * tool/tool_real_time_transription.py
@@ -29,6 +29,7 @@ from typing import Optional
 
 import torch
 import whisper
+import whisper.model
 
 # Whisper logs some harmless warnings; keep them quiet.
 warnings.filterwarnings(
@@ -83,7 +84,21 @@ class WhisperService:
         - Propagates exceptions raised by `whisper.load_model`.
         """
         if self._model is None or self._device != device:
-            self._model = whisper.load_model(self.model_name, device=device)
+            if device == "cuda":
+                # Load on CPU first to avoid transient GPU peak from FP32 weights,
+                # then move to CUDA with FP16 weights to keep VRAM headroom.
+                model = whisper.load_model(self.model_name, device="cpu")
+                model = model.to(device=device, dtype=torch.float16)
+                # Whisper's LayerNorm forward path upcasts activations to FP32, so its
+                # weights/biases must remain FP32 to avoid dtype mismatch.
+                for module in model.modules():
+                    if isinstance(module, whisper.model.LayerNorm):
+                        module.float()
+            else:
+                model = whisper.load_model(self.model_name, device=device)
+
+            model.eval()
+            self._model = model
             self._device = device
         return self._model
 
@@ -150,24 +165,25 @@ class WhisperService:
         device = self._device or "cpu"
 
         try:
-            result = model.transcribe(
-                wav_path,
-                task=task,
-                language=language,
-            )
-            text = result.get("text", "")
-        except RuntimeError as exc:
-            if "out of memory" in str(exc).lower() and device == "cuda":
-                logging.error("GPU OOM, retrying Whisper on CPU")
-                gc.collect()
-                torch.cuda.empty_cache()
-                model = self._load_model("cpu")
+            with torch.inference_mode():
                 result = model.transcribe(
                     wav_path,
                     task=task,
                     language=language,
                 )
                 text = result.get("text", "")
+        except RuntimeError as exc:
+            if "out of memory" in str(exc).lower() and device == "cuda":
+                logging.error("GPU OOM during Whisper transcription; clearing cache and retrying on CUDA")
+                gc.collect()
+                torch.cuda.empty_cache()
+                with torch.inference_mode():
+                    result = model.transcribe(
+                        wav_path,
+                        task=task,
+                        language=language,
+                    )
+                    text = result.get("text", "")
             else:
                 raise
         return text
@@ -199,11 +215,27 @@ class WhisperService:
         - Propagates exceptions from Whisper transcription.
         """
         model = self.load_model()
-        result = model.transcribe(
-            audio,
-            task=task,
-            language=language,
-        )
+        device = self._device or "cpu"
+        try:
+            with torch.inference_mode():
+                result = model.transcribe(
+                    audio,
+                    task=task,
+                    language=language,
+                )
+        except RuntimeError as exc:
+            if "out of memory" in str(exc).lower() and device == "cuda":
+                logging.error("GPU OOM during Whisper transcription; clearing cache and retrying on CUDA")
+                gc.collect()
+                torch.cuda.empty_cache()
+                with torch.inference_mode():
+                    result = model.transcribe(
+                        audio,
+                        task=task,
+                        language=language,
+                    )
+            else:
+                raise
         return result.get("text", "")
 
 
@@ -224,4 +256,4 @@ def get_service() -> WhisperService:
     Failure modes:
     - None (construction is lazy and does not load model weights).
     """
-    return WhisperService("large-v3-turbo")
+    return WhisperService("large-v3")
