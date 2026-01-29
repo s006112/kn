@@ -11,6 +11,9 @@ Used by:
 * rag/chunk_pdf.py
 * rag/chunk_xls.py
 * rag/std_02_sanitize_txt.py
+* helper/helper_parse_email_to_raw.py
+* helper/helper_parsing_doc.py
+* helper/helper_parsing_xls.py
 
 Pipelines:
 - bytes or str -> decode -> normalize -> replace chars -> mask email -> regex clean -> mask email -> collapse whitespace

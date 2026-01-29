@@ -1,9 +1,27 @@
 #!/usr/bin/env python3
 """
 helper_parse_email_to_raw.py
+
 Responsibility:
-Convert Email -> RawBlock list using quote-depth based splitting.
-This is robust, format-agnostic, and does not depend on guessing headers.
+Convert a Python email.message.EmailMessage into a list of "raw block" dicts by splitting the message body
+using leading ">" quote depth, then sanitizing each resulting segment.
+
+Used by:
+* helper/helper_parse_raw_to_jsonl.py
+
+Pipelines:
+- email_message -> body_part -> body_text -> quote_depth_split -> sanitize -> raw_blocks
+
+Invariants:
+- Only the selected body part content is parsed; headers are ignored.
+- Quote depth is derived solely from leading ">" characters.
+- Sanitization runs after splitting, per segment.
+- Output blocks use 1-based sequential "page" numbering.
+
+Out of scope:
+- MIME traversal beyond selecting a preferred body part.
+- Heuristics for signatures, reply headers, or client-specific quoting.
+- Attachment extraction or decoding beyond email API accessors.
 """
 
 import re
@@ -12,13 +30,8 @@ from helper_sanitize import sanitize_text
 # ------------------------------------------------------------
 # Quote-depth splitter
 # ------------------------------------------------------------
-# Rules:
-#   - Lines starting with one or more '>' define quote depth.
-#   - depth = number of leading '>' characters.
-#   - depth 0 = latest body
-#   - depth >=1 = quoted history
-#   - Each depth is treated as one message segment.
-#   - Sanitization is applied only after splitting.
+# Quote-depth is used because it is a stable structural signal across many clients without needing
+# to guess at language-, client-, or header-specific reply separators.
 # ------------------------------------------------------------
 
 _QUOTE_DEPTH_RE = re.compile(r"^(>+)\s*(.*)")
@@ -26,8 +39,14 @@ _QUOTE_DEPTH_RE = re.compile(r"^(>+)\s*(.*)")
 
 def _split_by_quote_depth(text: str):
     """
-    Return ordered list of (depth, text_segment).
-    Depth 0 is body, depth >=1 are nested quoted messages.
+    Purpose:
+    Group lines by leading quote depth and return ordered (depth, segment) pairs.
+
+    Inputs:
+    - text: email body text to split.
+
+    Outputs:
+    - List[Tuple[int, str]]: one entry per quote depth with non-empty, joined text.
     """
     buckets = {}
 
@@ -56,6 +75,17 @@ def _split_by_quote_depth(text: str):
 # ------------------------------------------------------------
 
 def parse_email_to_raw_blocks(email, email_id):
+    """
+    Purpose:
+    Convert an EmailMessage into raw block dicts by selecting a preferred body part and splitting by quote depth.
+
+    Inputs:
+    - email: EmailMessage-like object supporting get_body(...) and get_content().
+    - email_id: identifier stored as "doc_id" in each output block.
+
+    Outputs:
+    - List[dict]: raw blocks with keys: doc_id, text, page, source, part.
+    """
     text_part = email.get_body(preferencelist=("plain", "html"))
     if not text_part:
         return []
