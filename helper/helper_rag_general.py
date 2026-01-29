@@ -94,7 +94,7 @@ EMBED_BATCH_SIZE = 16
 LLM_MODEL = "sonar"
 TOP_K = 10
 CANDIDATE_K = 50
-SCORE_THRESHOLD = 0.4
+SCORE_THRESHOLD = 0.5
 SYSTEM_PROMPT_PATH = Path("prompt/prompt_rag_system.txt")
 
 def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
@@ -363,12 +363,22 @@ def _build_similarity_table(top_idx, top_scores, metas, *, page_key: str):
     Failure modes:
     - Propagates exceptions if `top_idx` contains out-of-range indices.
     """
+    idx = np.asarray(top_idx, dtype=int)
+    scores = np.asarray(top_scores, dtype=float)
+    if scores.size and idx.size:
+        n = min(idx.size, scores.size)
+        idx = idx[:n]
+        scores = scores[:n]
+        order = np.argsort(scores)[::-1]
+        idx = idx[order]
+        scores = scores[order]
+
     table = [
         "| score | doc | date | doc_type | page | word |",
         "|---:|---|---|---|---:|---:|",
     ]
     total_words = 0
-    for i, s in zip(top_idx, top_scores):
+    for i, s in zip(idx, scores):
         meta = metas[i] or {}
         doc = meta.get("subject") or meta.get("doc_id")     # 顯示用：優先 subject，其次才用 doc_id
         doc_date = meta.get("date")
@@ -376,9 +386,7 @@ def _build_similarity_table(top_idx, top_scores, metas, *, page_key: str):
         page = meta.get(page_key)
         word_count = meta.get("word", 0) or 0
         total_words += int(word_count)
-        table.append(
-            f"| {float(s):.4f} | {doc} | {doc_date} | {doc_type} | {page} | {word_count} |"
-        )
+        table.append(f"| {float(s):.4f} | {doc} | {doc_date} | {doc_type} | {page} | {word_count} |")
     table.append(f"Total word count: {total_words}")
     return "\n".join(table)
 
@@ -460,8 +468,8 @@ class RagEngine:
         top_scores = (self.E[top_idx] @ q_vec)
         keep_mask = top_scores >= SCORE_THRESHOLD
         if not np.any(keep_mask):
-            # 保底：至少保留最相似的一个
-            keep_mask[np.argmax(top_scores)] = True
+            table_str = _build_similarity_table(cand_idx, cand_scores, self.metas, page_key="page")
+            return "", table_str
         top_idx = np.asarray(top_idx)[keep_mask]
         top_scores = top_scores[keep_mask]
 
@@ -470,7 +478,7 @@ class RagEngine:
         context = "\n\n".join(snippets)
 
         prompt = f"{context}\n\nQuestion: {q}"
-        table_str = _build_similarity_table(top_idx, top_scores, self.metas, page_key="page")
+        table_str = _build_similarity_table(cand_idx, cand_scores, self.metas, page_key="page")
         
         result_text = call_llm(
             LLM_MODEL,

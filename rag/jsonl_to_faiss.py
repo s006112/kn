@@ -111,7 +111,7 @@ def load_chunks():
                     continue
                 obj = json.loads(line)
                 if TARGET_CHUNK_FOLDER == "mbox":
-                    if obj.get("part") != "body":
+                    if obj.get("part") == "body":
                         continue
 
                 text = (obj.get("text") or obj.get("content") or "").strip()
