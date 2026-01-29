@@ -1,4 +1,25 @@
 #!/usr/bin/env python3
+"""
+imap_to_mbox.py
+
+Responsibility:
+Fetch messages from selected IMAP folders since a fixed date and write them into a local mbox file, annotating each
+message with IMAP-derived metadata headers.
+
+Pipelines:
+- env_load -> connect -> login -> select -> search -> fetch -> parse -> annotate -> mbox_write -> logout
+
+Invariants:
+- Reads IMAP credentials from environment at import time and raises if missing.
+- Fetches message bodies using `BODY.PEEK[]` and does not set message `\\Seen` as part of the fetch call.
+- Overwrites `data/mbox/raw/test.mbox` on each run.
+
+Out of scope:
+- Incremental state tracking or resume support.
+- Server-side changes (marking, moving, deleting).
+- Robust folder discovery; folder names are hard-coded.
+"""
+
 import os
 import ssl
 import imaplib
@@ -8,9 +29,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from datetime import datetime
 
-# ============================================================
-# KEEP YOUR CONFIG (DO NOT TOUCH)
-# ============================================================
+# Configuration lives in module constants so runs are reproducible without requiring CLI arguments.
 
 DEFAULT_SERVER = "mail.ampco.com.hk"
 DEFAULT_PORT = 993
@@ -20,9 +39,7 @@ DEFAULT_OUT_DIR = Path("data/mbox/raw")
 DEFAULT_STATE_PATH = Path("data/mbox/raw/imap_state.json")
 DEFAULT_CHUNK_SIZE = 100
 
-# ============================================================
-# LOAD ACCOUNT FROM .env
-# ============================================================
+# Credentials are loaded from `.env` to avoid embedding secrets in the repo.
 
 load_dotenv()
 IMAP_USERNAME = os.getenv("IMAP_USERNAME")
@@ -33,16 +50,30 @@ IMAP_PORT = int(os.getenv("IMAP_PORT", DEFAULT_PORT))
 if not IMAP_USERNAME or not IMAP_PASSWORD:
     raise RuntimeError("IMAP_USERNAME / IMAP_PASSWORD not found in .env")
 
-# ============================================================
-# HELPERS
-# ============================================================
-
 def to_imap_date(d):
+    """
+    Purpose:
+    Convert a YYYY-MM-DD date string into an IMAP SEARCH-compatible date string.
+
+    Inputs:
+    - d: Date string in %Y-%m-%d format.
+
+    Outputs:
+    - IMAP date string in %d-%b-%Y format.
+    """
     return datetime.strptime(d, "%Y-%m-%d").strftime("%d-%b-%Y")
 
 def parse_flags_from_line(line):
-    # line example:
-    # 4757 (UID 887724 FLAGS (\Seen $label2))
+    """
+    Purpose:
+    Extract IMAP flags from a FETCH response header line containing a FLAGS list.
+
+    Inputs:
+    - line: Text line that may contain a substring like "FLAGS ( ... )".
+
+    Outputs:
+    - List of flag tokens (strings). Returns an empty list if no FLAGS section is present.
+    """
     i = line.find("FLAGS (")
     if i == -1:
         return []
@@ -50,11 +81,20 @@ def parse_flags_from_line(line):
     raw = line[i + 7 : j].strip()
     return raw.split()
 
-# ============================================================
-# MAIN
-# ============================================================
-
 def fetch_folder(imap, folder, since, mbox):
+    """
+    Purpose:
+    Search an IMAP folder for messages since a given date and append each message to an mbox mailbox file.
+
+    Inputs:
+    - imap: Connected and logged-in IMAP4_SSL client.
+    - folder: Folder name to select (e.g., "INBOX", "SENT").
+    - since: IMAP date string in %d-%b-%Y format used in the SEARCH SINCE query.
+    - mbox: Open `mailbox.mbox` instance to append messages into.
+
+    Outputs:
+    - None. Appends messages to `mbox` and prints progress and label hits to stdout.
+    """
     imap.select(folder)
     typ, data = imap.uid("SEARCH", None, f"SINCE {since}")
     uids = data[0].decode().split()
@@ -113,7 +153,17 @@ def fetch_folder(imap, folder, since, mbox):
             print(f"[HIT] UID {uid} FLAGS {flags}")
 
 def main():
-    # TLS: allow weak DH
+    """
+    Purpose:
+    Connect to the configured IMAP server, export messages from fixed folders to an mbox file, and close the session.
+
+    Inputs:
+    - None.
+
+    Outputs:
+    - None. Writes `data/mbox/raw/test.mbox` and prints status to stdout.
+    """
+    # Some servers require legacy cipher suites during TLS negotiation.
     ctx = ssl.create_default_context()
     ctx.set_ciphers("DEFAULT:@SECLEVEL=1")
 

@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
 """
-email_to_canonical_jsonl.py
+Responsibility:
+Convert one or more local mbox files into a JSONL stream of "canonical block" records derived from each email body and
+optionally from parsed attachments.
 
-New pipeline:
-MBOX → CanonicalBlock JSONL
+Pipelines:
+- mbox_iterate -> message_parse -> metadata_build -> body_parse -> block_enrich -> jsonl_write -> attachment_save -> attachment_parse
 
-No Task, no chunk_xxx, no BatchProcessor.
-(seq completely removed)
+Invariants:
+- Overwrites `data/mbox/jsonl/email_blocks.jsonl` on each run.
+- Skips any message that lacks a `Message-ID` header.
+- Saves each attachment payload to disk before attempting any attachment parsing.
+
+Out of scope:
+- IMAP fetching or mailbox synchronization.
+- Deduplication across mbox files or across messages.
+- Thread reconstruction beyond copying `In-Reply-To` into `thread_id`.
 """
 
 from pathlib import Path
@@ -38,6 +47,16 @@ ATTACHMENT_PARSERS = {
 }
 
 def normalize_date(raw_date: str) -> str:
+    """
+    Purpose:
+    Normalize an email `Date` header value by removing a leading weekday and stripping a trailing timezone suffix.
+
+    Inputs:
+    - raw_date: Raw date header string.
+
+    Outputs:
+    - Normalized date string, or an empty string if input is falsy.
+    """
     if not raw_date:
         return ""
     raw_date = re.sub(r"^[A-Za-z]{3},\s*", "", raw_date)
@@ -46,12 +65,33 @@ def normalize_date(raw_date: str) -> str:
 
 
 def write_block(out, block: dict):
+    """
+    Purpose:
+    Write a single canonical block dict as one JSON object line to an open JSONL output stream.
+
+    Inputs:
+    - out: Writable text file-like object.
+    - block: JSON-serializable dict representing a canonical block.
+
+    Outputs:
+    - None. Writes one line to `out`.
+    """
     if "text" in block:
         text_value = block.pop("text")
         block["text"] = text_value
     out.write(json.dumps(block, ensure_ascii=False) + "\n")
 
 def main():
+    """
+    Purpose:
+    Iterate all files in the raw mbox directory, parse each message, and emit canonical block JSONL to a fixed output path.
+
+    Inputs:
+    - None.
+
+    Outputs:
+    - None. Writes JSONL to `data/mbox/jsonl/email_blocks.jsonl` and saves attachment payloads under `data/mbox/raw/<ext>/`.
+    """
     OUTPUT_JSONL.parent.mkdir(parents=True, exist_ok=True)
 
     with OUTPUT_JSONL.open("w", encoding="utf-8") as out:
@@ -78,13 +118,13 @@ def main():
                     "thread_id": email.get("In-Reply-To", ""),
                 }
 
-                # 1) Email body
+                # Body blocks are always emitted when message parsing succeeds and Message-ID is present.
                 blocks = parse_email_bytes_to_canonical_blocks(email, email_id)
                 for b in blocks:
                     b.update(base_meta)
                     write_block(out, b)
 
-                # 2) Attachments
+                # Attachments are saved generically; parsing is optional and controlled by ATTACHMENT_PARSERS.
                 for part in email.iter_attachments():
                     fn = part.get_filename()
                     if not fn:
@@ -98,7 +138,7 @@ def main():
                     if not ext:
                         continue
 
-                    # ---------- RAW SAVE (generic) ----------
+                    # Saving raw payloads preserves inputs for later parsing runs or offline inspection.
                     suffix = ext[1:]              # ".pdf" -> "pdf"
                     save_dir = RAW_MBOX_DIR / suffix
                     save_dir.mkdir(exist_ok=True)
@@ -107,7 +147,6 @@ def main():
                     save_path = save_dir / f"{safe_email_id}__{fn}"
                     if not save_path.exists():
                         save_path.write_bytes(data)
-                    # ---------------------------------------
 
                     doc_id = f"{email_id}::{fn}"
 

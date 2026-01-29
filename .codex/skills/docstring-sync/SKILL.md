@@ -57,8 +57,10 @@ MODULE DOCSTRING STANDARD
 
 Every module docstring must contain, in this order:
 
+Own file name xxxxx.py
+
 1. Responsibility  
-   One paragraph describing what this module does in the system.
+   One paragraph describing what this module does in the system, followed by 
 2. Used by (mandatory for helpers)  
    As defined above.
 3. Pipelines  
@@ -94,8 +96,6 @@ Each function must use this structure:
 Purpose:
 Inputs:
 Outputs:
-Side effects:
-Failure modes:
 
 No narrative. No filler. Only facts.
 
