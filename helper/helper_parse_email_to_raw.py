@@ -9,19 +9,32 @@ import re
 
 
 _QUOTE_SPLIT_PATTERNS = [
-    re.compile(r"^>+", re.M),
-    re.compile(r"^-----Original Message-----", re.M),
-    re.compile(r"^From: .*", re.M),
-    re.compile(r"^.*於 .* 寫道:", re.M),
-    re.compile(r"^.* wrote:", re.M),
+    re.compile(r"^From:\s.+$", re.M),
+    re.compile(r"^On .+ wrote:\s*$", re.M),
+    re.compile(r"^.*於 .+ 寫道:\s*$", re.M),
 ]
 
 
 def _split_body_and_quote(text: str):
     for pat in _QUOTE_SPLIT_PATTERNS:
         m = pat.search(text)
-        if m:
-            return text[:m.start()].strip(), text[m.start():].strip()
+        if not m:
+            continue
+
+        before = text[:m.start()].strip()
+        after = text[m.start():].strip()
+
+        # 最小条件：quote 不能只是一行 header
+        after_lines = after.splitlines()
+        if len(after_lines) < 2:
+            continue
+
+        # 第二行必须有内容
+        if not after_lines[1].strip():
+            continue
+
+        return before, after
+
     return text.strip(), ""
 
 
