@@ -32,9 +32,9 @@ RAW_MBOX_DIR = Path("data/mbox/raw")
 OUTPUT_JSONL = Path("data/mbox/jsonl/email_blocks.jsonl")
 
 ATTACHMENT_PARSERS = {
-    ".pdf":  parse_pdf_bytes_to_canonical_blocks,
-    **{ext: parse_doc_bytes_to_canonical_blocks for ext in (".doc", ".docx")},
-    **{ext: parse_xls_bytes_to_canonical_blocks for ext in (".xls", ".xlsx")},
+    #".pdf":  parse_pdf_bytes_to_canonical_blocks,
+    #**{ext: parse_doc_bytes_to_canonical_blocks for ext in (".doc", ".docx")},
+    #**{ext: parse_xls_bytes_to_canonical_blocks for ext in (".xls", ".xlsx")},
 }
 
 def normalize_date(raw_date: str) -> str:
@@ -46,6 +46,9 @@ def normalize_date(raw_date: str) -> str:
 
 
 def write_block(out, block: dict):
+    if "text" in block:
+        text_value = block.pop("text")
+        block["text"] = text_value
     out.write(json.dumps(block, ensure_ascii=False) + "\n")
 
 def main():
@@ -67,12 +70,12 @@ def main():
                     continue
 
                 base_meta = {
-                    "email_id": email_id,
-                    "thread_id": email.get("In-Reply-To", ""),
-                    "from": email.get("From", ""),
-                    "to": email.get("To", ""),
                     "subject": email.get("Subject", ""),
                     "date": normalize_date(email.get("Date", "")),
+                    "from": email.get("From", ""),
+                    "to": email.get("To", ""),
+                    "email_id": email_id,
+                    "thread_id": email.get("In-Reply-To", ""),
                 }
 
                 # 1) Email body

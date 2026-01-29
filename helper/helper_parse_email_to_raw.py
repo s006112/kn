@@ -15,9 +15,9 @@ def parse_email_body_to_raw_block(email, email_id):
         return None
 
     return {
-        "doc_id": f"email_{email_id}",
+        "doc_id": None,  # was f"email_{email_id}"
         "text": content,
         "page": None,
-        "source": "email_body",
+        "source": "mbox",
     }
 

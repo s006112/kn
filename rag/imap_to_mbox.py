@@ -15,7 +15,7 @@ from datetime import datetime
 DEFAULT_SERVER = "mail.ampco.com.hk"
 DEFAULT_PORT = 993
 DEFAULT_TIMEOUT = 300
-DEFAULT_SINCE_DATE = "2026-01-27"
+DEFAULT_SINCE_DATE = "2026-01-17"
 DEFAULT_OUT_DIR = Path("data/mbox/raw")
 DEFAULT_STATE_PATH = Path("data/mbox/raw/imap_state.json")
 DEFAULT_CHUNK_SIZE = 100
