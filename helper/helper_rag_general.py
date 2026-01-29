@@ -27,12 +27,6 @@ Step 1 (DONE):
 - Brute-force KNN retrieval on embedding matrix.
   - Acts as the baseline retrieval engine.
 
-Step 2 (DONE):
-- Add MMR (Maximal Marginal Relevance) reranking.
-  - Purpose: diversify retrieved chunks and reduce redundancy.
-  - Pipeline:
-    brute_force_knn -> candidate_pool -> MMR selection.
-
 Step 3:
 - Add email_id grouping semantics.
   - Treat chunks with the same metadata["email_id"] as belonging to one logical document.
@@ -91,7 +85,6 @@ LLM_MODEL = "sonar"
 TOP_K = 10
 CANDIDATE_K = 80
 SCORE_THRESHOLD = 0.4
-MMR_LAMBDA = 0.5
 SYSTEM_PROMPT_PATH = Path("prompt/prompt_rag_system.txt")
 
 def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
@@ -233,100 +226,28 @@ def brute_force_knn(E: np.ndarray, q: np.ndarray, k: int):
     return idx, scores[idx]
 
 
-def mmr_select(E: np.ndarray, candidate_idx, q: np.ndarray, k: int, lambda_: float):
-    """
-    Purpose:
-    Select a diverse subset of indices using Maximal Marginal Relevance (MMR).
-
-    Inputs:
-    - E: Embedding matrix shaped `(n, d)` (L2-normalized rows).
-    - candidate_idx: 1D iterable of candidate row indices.
-    - q: Query vector shaped `(d,)` (L2-normalized).
-    - k: Number of selections to return.
-    - lambda_: MMR tradeoff parameter in [0, 1].
-
-    Outputs:
-    - List of selected indices, length `min(k, len(candidate_idx))`.
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - Propagates NumPy index/shape errors for out-of-range indices or incompatible shapes.
-    """
-    cand = np.asarray(candidate_idx, dtype=int)
-    if cand.size == 0 or k <= 0:
-        return []
-
-    k = min(k, cand.size)
-    q_scores = E[cand] @ q
-    selected = []
-    selected_mask = np.zeros(cand.size, dtype=bool)
-
-    for _ in range(k):
-        if not selected:
-            pick_pos = int(np.argmax(q_scores))
-        else:
-            remaining_pos = np.where(~selected_mask)[0]
-            if remaining_pos.size == 0:
-                break
-            sim_to_selected = E[cand[remaining_pos]] @ E[np.asarray(selected, dtype=int)].T
-            if sim_to_selected.ndim == 1:
-                max_sim = sim_to_selected
-            else:
-                max_sim = sim_to_selected.max(axis=1)
-            mmr_scores = lambda_ * q_scores[remaining_pos] - (1.0 - lambda_) * max_sim
-            pick_pos = int(remaining_pos[np.argmax(mmr_scores)])
-
-        selected_mask[pick_pos] = True
-        selected.append(int(cand[pick_pos]))
-
-    return selected
-
-
 def _build_similarity_table(
     top_idx,
     top_scores,
     metas,
     *,
     page_key: str,
-    mmr_rank: dict | None = None,
 ):
-    """
-    Purpose:
-    Build a Markdown table summarizing retrieval scores and selected metadata fields.
-
-    Inputs:
-    - top_idx: 1D iterable of row indices selected from `metas`.
-    - top_scores: 1D iterable of similarity scores aligned with `top_idx`.
-    - metas: List of metadata dicts aligned to the embedding matrix rows.
-    - page_key: Metadata key to use for the "page" column (e.g. `"page"`).
-
-    Outputs:
-    - A Markdown string containing a table and a total word count line.
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - Propagates exceptions if `top_idx` contains out-of-range indices.
-    """
     table = [
-        "| mmr | score | doc | date | doc_type | page | word |",
-        "|---:|---:|---|---|---|---:|---:|",
+        "| score | doc | date | doc_type | page | word |",
+        "|---:|---|---|---|---:|---:|",
     ]
     total_words = 0
     for i, s in zip(top_idx, top_scores):
         meta = metas[i] or {}
-        doc = meta.get("subject") or meta.get("doc_id")     # 顯示用：優先 subject，其次才用 doc_id
+        doc = meta.get("subject") or meta.get("doc_id")
         doc_date = meta.get("date")
         doc_type = meta.get("doc_type")
         page = meta.get(page_key)
         word_count = meta.get("word", 0) or 0
         total_words += int(word_count)
-        mmr = mmr_rank.get(i, "") if mmr_rank else ""
         table.append(
-            f"| {mmr} | {float(s):.4f} | {doc} | {doc_date} | {doc_type} | {page} | {word_count} |"
+            f"| {float(s):.4f} | {doc} | {doc_date} | {doc_type} | {page} | {word_count} |"
         )
     table.append(f"Total word count: {total_words}")
     return "\n".join(table)
@@ -398,9 +319,11 @@ class RagEngine:
 
         q_vec = embed([q])[0]
         cand_idx, cand_scores = brute_force_knn(self.E, q_vec, CANDIDATE_K)
-        top_idx = mmr_select(self.E, cand_idx, q_vec, TOP_K, lambda_=MMR_LAMBDA)
-        mmr_rank = {idx: r + 1 for r, idx in enumerate(top_idx)}
-        top_scores = (self.E[top_idx] @ q_vec)
+
+        # brute_force_knn score 由高到低排序
+        top_idx = np.asarray(cand_idx[:TOP_K], dtype=int)
+        top_scores = np.asarray(cand_scores[:TOP_K], dtype=float)
+
         keep_mask = top_scores >= SCORE_THRESHOLD
         if not np.any(keep_mask):
             # 保底：至少保留最相似的一个
@@ -418,7 +341,6 @@ class RagEngine:
             top_scores,
             self.metas,
             page_key="page",
-            mmr_rank=mmr_rank,
         )
 
         top_idx_set = set(int(i) for i in top_idx)
@@ -431,7 +353,6 @@ class RagEngine:
                 failed_scores,
                 self.metas,
                 page_key="page",
-                mmr_rank=None,
             )
             table_str = f"{table_str}\n\nFailed CANDIDATE_K (not selected):\n\n{failed_table}"
         else:
