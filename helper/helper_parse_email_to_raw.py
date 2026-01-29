@@ -2,90 +2,81 @@
 """
 helper_parse_email_to_raw.py
 Responsibility:
-Convert Email -> RawBlock list (email body + quoted history)
+Convert Email -> RawBlock list using quote-depth based splitting.
+This is robust, format-agnostic, and does not depend on guessing headers.
 """
 
 import re
 from helper_sanitize import sanitize_text
 
-# 全局开关
-ENABLE_QUOTE_SPLIT = True
+# ------------------------------------------------------------
+# Quote-depth splitter
+# ------------------------------------------------------------
+# Rules:
+#   - Lines starting with one or more '>' define quote depth.
+#   - depth = number of leading '>' characters.
+#   - depth 0 = latest body
+#   - depth >=1 = quoted history
+#   - Each depth is treated as one message segment.
+#   - Sanitization is applied only after splitting.
+# ------------------------------------------------------------
+
+_QUOTE_DEPTH_RE = re.compile(r"^(>+)\s*(.*)")
 
 
-_QUOTE_SPLIT_PATTERNS = [
-    re.compile(r"^<<<QUOTE_START>>>$", re.M),     # HTML blockquote / moz-cite-prefix
-    re.compile(r"^发件人", re.M),                 # 业务流水邮件：发件人:
-    re.compile(r"^-{3,}.*-{3,}$", re.M),          # -------- 轉寄郵件 -------- / -------- Forwarded Message -------- / ----- Original Message -----
-    re.compile(r"^From:\s.+$", re.M),             # From: Kenny Ng <kennyng@ampco.com.hk>
-    re.compile(r"^On .+ wrote:\s*$", re.M),       # On Jan 16, 2026, Kenny Ng wrote:
-    re.compile(r"^.*於 .+ 寫道:\s*$", re.M),      # Dorothy Lo 於 21/1/2026 17:13 寫道:
-]
+def _split_by_quote_depth(text: str):
+    """
+    Return ordered list of (depth, text_segment).
+    Depth 0 is body, depth >=1 are nested quoted messages.
+    """
+    buckets = {}
+
+    for line in text.splitlines():
+        m = _QUOTE_DEPTH_RE.match(line)
+        if m:
+            depth = len(m.group(1))
+            content = m.group(2)
+        else:
+            depth = 0
+            content = line
+
+        buckets.setdefault(depth, []).append(content)
+
+    segments = []
+    for depth in sorted(buckets.keys()):
+        seg = "\n".join(buckets[depth]).strip()
+        if seg:
+            segments.append((depth, seg))
+
+    return segments
 
 
-def _split_body_and_quote(text: str):
-    if not ENABLE_QUOTE_SPLIT:
-        return text.strip(), ""
-
-    # 最小修复：保证「发件人:」一定在新行
-    text = re.sub(r"(发件人:)", r"\n\1", text)
-
-    # 标准化 HTML 引用起点
-    text = re.sub(r"<blockquote[^>]*>", "\n<<<QUOTE_START>>>\n", text, flags=re.I)
-    text = re.sub(r'<div[^>]*class="moz-cite-prefix"[^>]*>', "\n<<<QUOTE_START>>>\n", text, flags=re.I)
-
-    for pat in _QUOTE_SPLIT_PATTERNS:
-        m = pat.search(text)
-        if not m:
-            continue
-
-        before = text[:m.start()].strip()
-        after = text[m.start():].strip()
-
-        after_lines = after.splitlines()
-        if len(after_lines) < 2:
-            continue
-
-        if not after_lines[1].strip():
-            continue
-
-        # 把 <<<QUOTE_START>>> 本身从 quote 里移除
-        after = re.sub(r"^<<<QUOTE_START>>>\s*", "", after)
-
-        return before, after
-
-    return text.strip(), ""
-
-
+# ------------------------------------------------------------
+# Main API (drop-in)
+# ------------------------------------------------------------
 
 def parse_email_to_raw_blocks(email, email_id):
     text_part = email.get_body(preferencelist=("plain", "html"))
     if not text_part:
         return []
 
-    content = text_part.get_content().strip()
+    content = text_part.get_content()
     if not content:
         return []
 
-    body, quote = _split_body_and_quote(content)
+    segments = _split_by_quote_depth(content)
 
     blocks = []
+    page = 1
 
-    if body:
+    for depth, text in segments:
         blocks.append({
             "doc_id": f"email_{email_id}",
-            "text": sanitize_text(body),
-            "page": 1,
+            "text": sanitize_text(text),
+            "page": page,
             "source": "mbox",
-            "part": "body",
+            "part": "body" if depth == 0 else "quote",
         })
-
-    if quote:
-        blocks.append({
-            "doc_id": f"email_{email_id}",
-            "text": sanitize_text(quote),
-            "page": 1,
-            "source": "mbox",
-            "part": "quote",
-        })
+        page += 1
 
     return blocks

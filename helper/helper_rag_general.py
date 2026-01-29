@@ -27,11 +27,6 @@ Step 1 (DONE):
 - Brute-force KNN retrieval on embedding matrix.
   - Acts as the baseline retrieval engine.
 
-Step 3:
-- Add email_id grouping semantics.
-  - Treat chunks with the same metadata["email_id"] as belonging to one logical document.
-  - Ensure top results represent distinct emails, not isolated chunks.
-
 Step 4:
 - Add score threshold filtering.
   - Discard low-confidence hits based on similarity score.

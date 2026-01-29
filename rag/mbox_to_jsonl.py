@@ -32,7 +32,7 @@ RAW_MBOX_DIR = Path("data/mbox/raw")
 OUTPUT_JSONL = Path("data/mbox/jsonl/email_blocks.jsonl")
 
 ATTACHMENT_PARSERS = {
-    ".pdf":  parse_pdf_bytes_to_canonical_blocks,
+    #".pdf":  parse_pdf_bytes_to_canonical_blocks,
     #**{ext: parse_doc_bytes_to_canonical_blocks for ext in (".doc", ".docx")},
     #**{ext: parse_xls_bytes_to_canonical_blocks for ext in (".xls", ".xlsx")},
 }
