@@ -7,8 +7,8 @@ from pathlib import Path
 from email import policy
 from email.parser import BytesParser
 
-import helper_parse_email_to_raw as email_raw_mod
-from helper_parse_email_to_raw import parse_email_to_raw_blocks
+from helper_parse_email_to_raw_based import parse_email_to_raw_blocks as parse_base_email_to_raw_blocks
+from helper_parse_email_to_raw_enhanced import parse_email_to_raw_blocks as parse_enhanced_email_to_raw_blocks
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,12 +20,9 @@ OUT_JSONL = Path("data/mbox/jsonl/email_split_compare.jsonl")
 
 LARGE_BLOCK_CHAR = 1000
 
-def fake_should_split_threads(text: str, *, char_threshold: int = 2000) -> bool:
-    return False
-
-def run_once(email, email_id):
+def run_once(parse_fn, email, email_id):
     t0 = time.perf_counter()
-    blocks = parse_email_to_raw_blocks(email, email_id)
+    blocks = parse_fn(email, email_id)
     t1 = time.perf_counter()
     return blocks, round((t1 - t0) * 1000, 3)
 
@@ -71,13 +68,8 @@ def main():
                     "char_len": len(content),
                 }
 
-                orig_fn = email_raw_mod.should_split_threads
-
-                email_raw_mod.should_split_threads = fake_should_split_threads
-                base_blocks, base_ms = run_once(email, email_id)
-
-                email_raw_mod.should_split_threads = orig_fn
-                enh_blocks, enh_ms = run_once(email, email_id)
+                base_blocks, base_ms = run_once(parse_base_email_to_raw_blocks, email, email_id)
+                enh_blocks, enh_ms = run_once(parse_enhanced_email_to_raw_blocks, email, email_id)
 
                 base_m = compute_metrics(base_blocks)
                 enh_m = compute_metrics(enh_blocks)
