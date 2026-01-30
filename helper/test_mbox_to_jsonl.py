@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+test_mbox_to_jsonl.py
 Responsibility:
 Convert one or more local mbox files into a JSONL stream of "canonical block" records derived from each email body and
 optionally from parsed attachments.
@@ -40,6 +41,7 @@ from helper.test_parse_raw_to_jsonl import (
 RAW_MBOX_DIR = ROOT_DIR / "data" / "mbox" / "raw"
 OUTPUT_JSONL_BASED = ROOT_DIR / "data" / "mbox" / "jsonl" / "email_blocks_based.jsonl"
 OUTPUT_JSONL_ENHANCED = ROOT_DIR / "data" / "mbox" / "jsonl" / "email_blocks_enhanced.jsonl"
+OUTPUT_JSONL_DISCREPENCY = ROOT_DIR / "data" / "mbox" / "jsonl" / "email_blocks_discrepency_collection.jsonl"
 
 ATTACHMENT_PARSERS = {
     #".pdf":  parse_pdf_bytes_to_canonical_blocks,
@@ -82,6 +84,62 @@ def write_block(out, block: dict):
         block["text"] = text_value
     out.write(json.dumps(block, ensure_ascii=False) + "\n")
 
+def jsonl_blocks_discrepency_collection(
+    *,
+    out,
+    email_id: str,
+    subject: str,
+    blocks_based: list[dict],
+    blocks_enhanced: list[dict],
+):
+    """
+    Emit page-aligned JSONL records for human inspection when discrepancies exist.
+
+    Output (JSONL):
+    {"based": [...]}
+    {"enhanced": [...]}
+    <blank line between different email_id>
+    """
+
+    def _sig(blocks):
+        return [
+            (
+                b.get("page"),
+                b.get("char"),
+                b.get("part"),
+            )
+            for b in blocks
+        ]
+
+    if _sig(blocks_based) == _sig(blocks_enhanced):
+        return  # no discrepancy → skip entirely
+
+    pages = sorted(
+        {
+            b.get("page")
+            for b in blocks_based + blocks_enhanced
+            if b.get("page") is not None
+        }
+    )
+
+    for page in pages:
+        based_page_blocks = [b for b in blocks_based if b.get("page") == page]
+        enhanced_page_blocks = [b for b in blocks_enhanced if b.get("page") == page]
+
+        if based_page_blocks:
+            out.write(
+                json.dumps({"based": based_page_blocks}, ensure_ascii=False) + "\n"
+            )
+
+        if enhanced_page_blocks:
+            out.write(
+                json.dumps({"enhanced": enhanced_page_blocks}, ensure_ascii=False) + "\n"
+            )
+
+    # visual separator between different email_id (JSONL-safe)
+    out.write("\n")
+
+
 def main():
     """
     Purpose:
@@ -98,7 +156,9 @@ def main():
     with (
         OUTPUT_JSONL_BASED.open("w", encoding="utf-8") as out_based,
         OUTPUT_JSONL_ENHANCED.open("w", encoding="utf-8") as out_enhanced,
+        OUTPUT_JSONL_DISCREPENCY.open("w", encoding="utf-8") as out_diff,
     ):
+
         for mbox_file in RAW_MBOX_DIR.iterdir():
             if mbox_file.is_dir():
                 continue
@@ -118,13 +178,29 @@ def main():
                 }
 
                 # Body blocks emitted in both variants for side-by-side comparison.
-                for b in parse_email_bytes_to_canonical_blocks_based(email, email_id):
+
+                blocks_based = list(
+                    parse_email_bytes_to_canonical_blocks_based(email, email_id)
+                )
+                blocks_enhanced = list(
+                    parse_email_bytes_to_canonical_blocks_enhanced(email, email_id)
+                )
+
+                for b in blocks_based:
                     b.update(base_meta)
                     write_block(out_based, b)
 
-                for b in parse_email_bytes_to_canonical_blocks_enhanced(email, email_id):
+                for b in blocks_enhanced:
                     b.update(base_meta)
                     write_block(out_enhanced, b)
+
+                jsonl_blocks_discrepency_collection(
+                    out=out_diff,
+                    email_id=email_id,
+                    subject=base_meta.get("subject", ""),
+                    blocks_based=blocks_based,
+                    blocks_enhanced=blocks_enhanced,
+                )
 
                 # Attachments are saved generically; parsing is optional and controlled by ATTACHMENT_PARSERS.
                 for part in email.iter_attachments():
