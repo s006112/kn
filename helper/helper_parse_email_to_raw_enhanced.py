@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
 """
-helper_parse_email_to_raw_enhanced.py
-
-Convert Email -> RawBlock list using:
-  1) strong quote-depth splitting via leading '>' (RFC-ish)
-  2) fallback weak body/quote boundary for Outlook/Exchange variants (no leading '>')
-
-Weak rules (as required):
-  - part="body" never runs weak chunking
-  - part="quote" and word_count > 1000 may run weak chunking
-Trigger segment (for now): "发件人："
+helper_parse_email_to_raw.py
+Responsibility:
+Convert Email -> RawBlock list using quote-depth based splitting.
+This is robust, format-agnostic, and does not depend on guessing headers.
 """
 
 import re
+
 try:
     from .helper_sanitize import sanitize_text
 except ImportError:  # pragma: no cover
@@ -20,11 +15,9 @@ except ImportError:  # pragma: no cover
 
 
 _QUOTE_DEPTH_RE = re.compile(r"^(>+)\s*(.*)")
-_FROM_ZH_LINE_RE = re.compile(r"(?m)^[\t ]*发件人\s*[:：].*$")
 
-
-def _word_count(text: str) -> int:
-    return len(text.split())
+_ON_WROTE_RE = re.compile(r"^\s*On .{0,200}\bwrote\s*:\s*$")
+_HDR_RE = re.compile(r"^\s*(From|Sent|Date|To|Cc|Subject)\s*:\s*", re.I)
 
 
 def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
@@ -49,42 +42,51 @@ def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
     return segments
 
 
-def _split_body_quote_by_first_sender_zh(text: str) -> tuple[str, str]:
+def _split_quote_by_on_wrote(text: str) -> list[str]:
     """
-    Fallback: if no RFC '>' quotes detected, try find the first '发件人：' line.
-    Return (body, quote). If not found -> (text, "").
+    Minimal, robust-enough step:
+    Split quote segment by 'On ... wrote:' anchors only, with light confirmation:
+      - anchor is followed by a blank line; OR
+      - within next 2 lines, we see a typical header line (From/Sent/Date/To/Cc/Subject).
+    Otherwise, don't split.
     """
-    m = _FROM_ZH_LINE_RE.search(text)
-    if not m:
-        return text.strip(), ""
-    return text[: m.start()].strip(), text[m.start() :].strip()
+    t = (text or "").strip()
+    if not t:
+        return []
 
+    lines = t.splitlines()
+    if len(lines) < 3:
+        return [t]
 
-def _split_quote_weak_by_sender_zh(text: str) -> list[str]:
-    """
-    Weak chunking inside quote: split by repeated '发件人：' markers.
-    If none -> [text]
-    """
-    matches = list(_FROM_ZH_LINE_RE.finditer(text))
-    if not matches:
-        return [text]
+    cuts = [0]
+    last_cut = 0
+    n = len(lines)
 
-    starts = [m.start() for m in matches]
-    parts: list[str] = []
+    for i in range(1, n - 1):
+        if i - last_cut < 2:
+            continue
+        if not _ON_WROTE_RE.match(lines[i]):
+            continue
 
-    prev = 0
-    for s in starts:
-        if s > prev:
-            chunk = text[prev:s].strip()
-            if chunk:
-                parts.append(chunk)
-        prev = s
+        # confirm: next line blank OR header soon after
+        next1 = lines[i + 1].strip()
+        next2 = lines[i + 2].strip() if i + 2 < n else ""
+        ok = (next1 == "") or _HDR_RE.match(next1) or _HDR_RE.match(next2)
 
-    tail = text[prev:].strip()
-    if tail:
-        parts.append(tail)
+        if ok:
+            cuts.append(i)
+            last_cut = i
 
-    return parts or [text]
+    if len(cuts) == 1:
+        return [t]
+
+    cuts.append(n)
+    out: list[str] = []
+    for a, b in zip(cuts, cuts[1:]):
+        seg = "\n".join(lines[a:b]).strip()
+        if seg:
+            out.append(seg)
+    return out if out else [t]
 
 
 def parse_email_to_raw_blocks(email, email_id):
@@ -96,40 +98,30 @@ def parse_email_to_raw_blocks(email, email_id):
     if not content:
         return []
 
-    # 1) strong split first
     segments = _split_by_quote_depth(content)
-
-    # 2) if no quote detected (only depth=0), do fallback boundary split by "发件人："
-    has_quote = any(depth >= 1 for depth, _ in segments)
-    if not has_quote and len(segments) == 1 and segments[0][0] == 0:
-        body, quote = _split_body_quote_by_first_sender_zh(segments[0][1])
-        segments = []
-        if body:
-            segments.append((0, body))
-        if quote:
-            segments.append((1, quote))  # mark as quote; do NOT weak-chunk body
 
     blocks = []
     page = 1
 
     for depth, text in segments:
-        part = "body" if depth == 0 else "quote"
+        if depth == 0:
+            blocks.append({
+                "doc_id": email_id,
+                "text": sanitize_text(text),
+                "page": page,
+                "source": "mbox",
+                "part": "body",
+            })
+            page += 1
+            continue
 
-        sub_texts = [text]
-        # weak condition chunking: only for big quote segments
-        if part == "quote" and _word_count(text) > 500:
-            sub_texts = _split_quote_weak_by_sender_zh(text)
-
-        for sub in sub_texts:
-            sub = sub.strip()
-            if not sub:
-                continue
+        for sub in _split_quote_by_on_wrote(text):
             blocks.append({
                 "doc_id": email_id,
                 "text": sanitize_text(sub),
                 "page": page,
                 "source": "mbox",
-                "part": part,
+                "part": "quote",
             })
             page += 1
 
