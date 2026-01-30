@@ -128,22 +128,48 @@ def _split_quote_by_header_block(text: str, *, min_keys: int = 3, lookahead: int
     return out if out else [t]
 
 
-# Phase 3: forwarded markers (only add this pattern family)
-_FWD_LINE_RE = re.compile(
-    r"^\s*(?:-+\s*)?(?:"
-    r"轉寄郵件|转寄邮件|"                      # Chinese
-    r"Forwarded message|Forwarded Message|"    # English common
-    r"Begin forwarded message"                 # Apple Mail common
-    r")\s*(?:-+)?\s*:?\s*$",
+# ------------------------------------------------------------
+# Phase 3: forwarded markers (line-level, strict)
+# ------------------------------------------------------------
+
+"""
+轉寄郵件
+Subject: Fwd: RE: Refresh LED information", Maybe you can ask Kevin for any up...
+not yet cut
+"""
+# Chinese clients: "-------- 轉寄郵件 --------" / "-------- 转寄邮件 --------"
+_FWD_CN_LINE_RE = re.compile(r"^\s*-+\s*(?:轉寄郵件|转寄邮件)\s*-+\s*$")
+
+# Apple Mail: "Begin forwarded message:"
+_FWD_BEGIN_LINE_RE = re.compile(
+    r"^\s*Begin forwarded message\s*:?\s*$",
     re.I,
 )
 
+# Generic English: "Forwarded message:"
+_FWD_SIMPLE_LINE_RE = re.compile(
+    r"^\s*Forwarded message\s*:?\s*$",
+    re.I,
+)
+
+def _is_forwarded_marker_line(line: str) -> bool:
+    """Return True if line is a strict forwarded-email separator."""
+    return (
+        _FWD_CN_LINE_RE.match(line)
+        or _FWD_BEGIN_LINE_RE.match(line)
+        or _FWD_SIMPLE_LINE_RE.match(line)
+    )
+
 def _split_quote_by_forward_email(text: str) -> list[str]:
     """
-    Split quote segment by forwarded-email separator lines, e.g.:
-      - "-------- 轉寄郵件 --------"
-      - "-------- 转寄邮件 --------"
-      - tolerant to number of dashes/spaces
+    Phase 3:
+    Split quote segment by forwarded-email separator lines.
+
+    Strict behavior:
+    - Line-level markers only
+    - No tolerance for trailing garbage
+    - No context guessing
+    - Miss = no split
 
     If no boundary detected, return [text] unchanged.
     """
@@ -162,7 +188,7 @@ def _split_quote_by_forward_email(text: str) -> list[str]:
     for i in range(1, n):
         if i - last_cut < 2:
             continue
-        if _FWD_LINE_RE.match(lines[i]):
+        if _is_forwarded_marker_line(lines[i]):
             cuts.append(i)
             last_cut = i
 
@@ -175,7 +201,9 @@ def _split_quote_by_forward_email(text: str) -> list[str]:
         seg = "\n".join(lines[a:b]).strip()
         if seg:
             out.append(seg)
+
     return out if out else [t]
+
 
 
 # Strategy registry
