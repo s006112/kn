@@ -18,7 +18,10 @@ from __future__ import annotations
 import re
 from typing import List
 
-from helper_sanitize import sanitize_text
+try:
+    from .helper_sanitize import sanitize_text
+except ImportError:  # pragma: no cover
+    from helper_sanitize import sanitize_text
 
 _THREAD_SPLIT_PATTERNS = [
     re.compile(r"^On .+ wrote:$", re.M),

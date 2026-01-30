@@ -25,7 +25,10 @@ Out of scope:
 """
 
 import re
-from helper_sanitize import sanitize_text
+try:
+    from .helper_sanitize import sanitize_text
+except ImportError:  # pragma: no cover
+    from helper_sanitize import sanitize_text
 
 # ------------------------------------------------------------
 # Quote-depth splitter

@@ -7,7 +7,10 @@ This is robust, format-agnostic, and does not depend on guessing headers.
 """
 
 import re
-from helper_sanitize import sanitize_text
+try:
+    from .helper_sanitize import sanitize_text
+except ImportError:  # pragma: no cover
+    from helper_sanitize import sanitize_text
 
 # ------------------------------------------------------------
 # Quote-depth splitter
