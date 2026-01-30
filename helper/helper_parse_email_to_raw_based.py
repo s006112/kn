@@ -1,27 +1,100 @@
 #!/usr/bin/env python3
 """
-helper_parse_email_to_raw.py
+helper_parse_email_to_raw_enhanced.py
 Responsibility:
 Convert Email -> RawBlock list using quote-depth based splitting.
-This is robust, format-agnostic, and does not depend on guessing headers.
+
+Enhanced (minimal step):
+Apply pluggable QUOTE_SPLIT_STRATEGIES on quote segments.
+Currently enabled:
+- split by "On ... wrote:"
 """
 
 import re
+
 try:
     from .helper_sanitize import sanitize_text
 except ImportError:  # pragma: no cover
     from helper_sanitize import sanitize_text
 
+
 # ------------------------------------------------------------
-# Quote-depth splitter
+# Quote split strategies (phase 1)
 # ------------------------------------------------------------
-# Rules:
-#   - Lines starting with one or more '>' define quote depth.
-#   - depth = number of leading '>' characters.
-#   - depth 0 = latest body
-#   - depth >=1 = quoted history
-#   - Each depth is treated as one message segment.
-#   - Sanitization is applied only after splitting.
+
+_ON_WROTE_RE = re.compile(r"^\s*On .{0,200}\bwrote\s*:\s*$")
+_HDR_RE = re.compile(r"^\s*(From|Sent|Date|To|Cc|Subject)\s*:\s*", re.I)
+
+
+def _split_quote_by_on_wrote(text: str) -> list[str]:
+    """
+    Strategy 1:
+    Split quote segment by 'On ... wrote:' anchors only, with light confirmation:
+      - anchor is followed by a blank line; OR
+      - within next 2 lines, we see a typical header line.
+    Otherwise, no split.
+    """
+    t = (text or "").strip()
+    if not t:
+        return []
+
+    lines = t.splitlines()
+    n = len(lines)
+    if n < 3:
+        return [t]
+
+    cuts = [0]
+    last_cut = 0
+
+    for i in range(1, n - 1):
+        if i - last_cut < 2:
+            continue
+        if not _ON_WROTE_RE.match(lines[i]):
+            continue
+
+        next1 = lines[i + 1].strip()
+        next2 = lines[i + 2].strip() if i + 2 < n else ""
+        ok = (next1 == "") or bool(_HDR_RE.match(next1)) or bool(_HDR_RE.match(next2))
+
+        if ok:
+            cuts.append(i)
+            last_cut = i
+
+    if len(cuts) == 1:
+        return [t]
+
+    cuts.append(n)
+    out: list[str] = []
+    for a, b in zip(cuts, cuts[1:]):
+        seg = "\n".join(lines[a:b]).strip()
+        if seg:
+            out.append(seg)
+    return out if out else [t]
+
+
+# Strategy registry (shell)
+QUOTE_SPLIT_STRATEGIES = [
+    _split_quote_by_on_wrote,
+]
+
+
+def _apply_quote_split_strategies(text: str) -> list[str]:
+    """
+    Apply quote split strategies sequentially.
+    Each strategy may further split segments; no-op if no match.
+    """
+    segments = [text]
+    for strat in QUOTE_SPLIT_STRATEGIES:
+        next_segments: list[str] = []
+        for seg in segments:
+            parts = strat(seg)
+            next_segments.extend(parts if parts else [])
+        segments = next_segments
+    return segments
+
+
+# ------------------------------------------------------------
+# Quote-depth splitter strategies (phase 0)
 # ------------------------------------------------------------
 
 _QUOTE_DEPTH_RE = re.compile(r"^(>+)\s*(.*)")
@@ -67,14 +140,23 @@ def parse_email_to_raw_blocks(email, email_id):
     blocks = []
     page = 1
 
-    for depth, text in segments:
+    def _emit(part: str, txt: str):
+        nonlocal page
         blocks.append({
-            "doc_id": email_id,  # was f"email_{email_id}",
-            "text": sanitize_text(text),
+            "doc_id": email_id,
+            "text": sanitize_text(txt),
             "page": page,
             "source": "mbox",
-            "part": "body" if depth == 0 else "quote",
+            "part": part,
         })
         page += 1
+
+    for depth, text in segments:
+        if depth == 0:
+            _emit("body", text)
+            continue
+
+        for sub in _apply_quote_split_strategies(text):
+            _emit("quote", sub)
 
     return blocks

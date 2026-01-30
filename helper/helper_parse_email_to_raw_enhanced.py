@@ -19,7 +19,7 @@ except ImportError:  # pragma: no cover
 
 
 # ------------------------------------------------------------
-# Quote split strategies (phase 1)
+# Quote split on_wrote strategies (phase 1)
 # ------------------------------------------------------------
 
 _ON_WROTE_RE = re.compile(r"^\s*On .{0,200}\bwrote\s*:\s*$")
@@ -71,10 +71,67 @@ def _split_quote_by_on_wrote(text: str) -> list[str]:
             out.append(seg)
     return out if out else [t]
 
+# ------------------------------------------------------------
+# Quote split header_block strategies (phase 2)
+# ------------------------------------------------------------
+
+
+_HDR_KEY_RE = re.compile(r"^\s*(From|Date|Sent|To|Subject|Cc)\s*:\s*", re.I)
+
+def _split_quote_by_header_block(text: str, *, min_keys: int = 3, lookahead: int = 6) -> list[str]:
+    """
+    Strategy C (independent, not wired):
+    Split quote segment by detecting RFC-like header blocks.
+
+    Rule:
+    - A new segment starts at a line where, within a lookahead window,
+      >= min_keys distinct header keys appear.
+    - Header keys: From, Date/Sent, To, Subject (Cc optional)
+    - If no boundary detected, return [text] unchanged.
+    """
+    t = (text or "").strip()
+    if not t:
+        return []
+
+    lines = t.splitlines()
+    n = len(lines)
+    if n < lookahead:
+        return [t]
+
+    cuts = [0]
+    last_cut = 0
+
+    for i in range(1, n):
+        if i - last_cut < lookahead:
+            continue
+
+        keys = set()
+        for j in range(i, min(i + lookahead, n)):
+            m = _HDR_KEY_RE.match(lines[j])
+            if m:
+                keys.add(m.group(1).lower())
+
+        if len(keys) >= min_keys:
+            cuts.append(i)
+            last_cut = i
+
+    if len(cuts) == 1:
+        return [t]
+
+    cuts.append(n)
+    out: list[str] = []
+    for a, b in zip(cuts, cuts[1:]):
+        seg = "\n".join(lines[a:b]).strip()
+        if seg:
+            out.append(seg)
+
+    return out if out else [t]
+
 
 # Strategy registry (shell)
 QUOTE_SPLIT_STRATEGIES = [
     _split_quote_by_on_wrote,
+    _split_quote_by_header_block,
 ]
 
 
