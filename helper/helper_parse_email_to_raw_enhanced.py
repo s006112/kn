@@ -24,8 +24,9 @@ except ImportError:  # pragma: no cover
 # Quote split strategies
 # ------------------------------------------------------------
 
-# Phase 1: on_wrote
-_ON_WROTE_RE = re.compile(r"^\s*On .{0,200}\bwrote\s*:\s*$")
+# Phase 1: on_wrote (line-level anchors only)
+_ON_WROTE_LINE_RE = re.compile(r"^\s*On .{0,200}\bwrote\s*:\s*$", re.I)
+_CN_WROTE_LINE_RE = re.compile(r"^\s*.{1,200}\s+於\s+.{1,50}\s+寫道\s*:\s*$")
 _HDR_RE = re.compile(r"^\s*(From|Sent|Date|To|Cc|Subject)\s*:\s*", re.I)
 
 
@@ -51,7 +52,8 @@ def _split_quote_by_on_wrote(text: str) -> list[str]:
     for i in range(1, n - 1):
         if i - last_cut < 2:
             continue
-        if not _ON_WROTE_RE.match(lines[i]):
+        line = lines[i]
+        if not (_ON_WROTE_LINE_RE.match(line) or _CN_WROTE_LINE_RE.match(line)):
             continue
 
         next1 = lines[i + 1].strip()
@@ -204,8 +206,19 @@ _QUOTE_DEPTH_RE = re.compile(r"^(>+)\s*(.*)")
 
 
 def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
-    """Return ordered list of (depth, text_segment). Depth 0 is body; depth>=1 is quote."""
-    buckets: dict[int, list[str]] = {}
+    """
+    Phase 0 (order-preserving run splitter)
+
+    - Scan lines in original order
+    - Compute quote depth per line
+    - Split segments whenever depth changes
+    - Do NOT merge non-consecutive runs
+    - Do NOT reorder by depth
+    """
+    segments: list[tuple[int, str]] = []
+
+    current_depth = None
+    buf: list[str] = []
 
     for line in text.splitlines():
         m = _QUOTE_DEPTH_RE.match(line)
@@ -215,13 +228,26 @@ def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
         else:
             depth = 0
             content = line
-        buckets.setdefault(depth, []).append(content)
 
-    segments: list[tuple[int, str]] = []
-    for depth in sorted(buckets.keys()):
-        seg = "\n".join(buckets[depth]).strip()
+        if current_depth is None:
+            current_depth = depth
+            buf.append(content)
+            continue
+
+        if depth == current_depth:
+            buf.append(content)
+        else:
+            seg = "\n".join(buf).strip()
+            if seg:
+                segments.append((current_depth, seg))
+            current_depth = depth
+            buf = [content]
+
+    if buf:
+        seg = "\n".join(buf).strip()
         if seg:
-            segments.append((depth, seg))
+            segments.append((current_depth, seg))
+
     return segments
 
 
