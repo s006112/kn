@@ -27,12 +27,9 @@ except ImportError:  # pragma: no cover
 _QUOTE_DEPTH_RE = re.compile(r"^(>+)\s*(.*)")
 
 
-def _split_by_quote_depth(text: str):
-    """
-    Return ordered list of (depth, text_segment).
-    Depth 0 is body, depth >=1 are nested quoted messages.
-    """
-    buckets = {}
+def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
+    """Return ordered list of (depth, text_segment). Depth 0 is body; depth>=1 is quote."""
+    buckets: dict[int, list[str]] = {}
 
     for line in text.splitlines():
         m = _QUOTE_DEPTH_RE.match(line)
@@ -42,15 +39,13 @@ def _split_by_quote_depth(text: str):
         else:
             depth = 0
             content = line
-
         buckets.setdefault(depth, []).append(content)
 
-    segments = []
+    segments: list[tuple[int, str]] = []
     for depth in sorted(buckets.keys()):
         seg = "\n".join(buckets[depth]).strip()
         if seg:
             segments.append((depth, seg))
-
     return segments
 
 

@@ -13,7 +13,6 @@ Trigger segment (for now): "发件人："
 """
 
 import re
-
 try:
     from .helper_sanitize import sanitize_text
 except ImportError:  # pragma: no cover

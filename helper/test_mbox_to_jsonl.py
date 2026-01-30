@@ -115,11 +115,6 @@ def main():
 
                 base_meta = {
                     "subject": email.get("Subject", ""),
-                    "date": normalize_date(email.get("Date", "")),
-                    "from": email.get("From", ""),
-                    "to": email.get("To", ""),
-                    "email_id": email_id,
-                    "thread_id": email.get("In-Reply-To", ""),
                 }
 
                 # Body blocks emitted in both variants for side-by-side comparison.
