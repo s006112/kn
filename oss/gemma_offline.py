@@ -3,8 +3,9 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # ⚠️ 注意：將此路徑設置為直接包含 model.safetensors 和 tokenizer.json 的目錄。
 #MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-270m-it/snapshots/ac82b4e820549b854eebf28ce6dedaf9fdfa17b3"
-MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752"
+#MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752"
 #MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-4b-it/"
+MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-12b-it/"
 
 # 設置計算設備
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -22,7 +23,7 @@ model = AutoModelForCausalLM.from_pretrained(
 )
 
 # 定義提示
-PROMPT = "Explain the concept of 'Laplace transform', eleborated with sample examples for illustration"
+PROMPT = "Eleborate the concept of 'Laplace transform' followed by simple examples illustration. no need follow up question"
 messages = [{"role": "user", "content": PROMPT}]
 
 # 準備輸入
