@@ -27,6 +27,8 @@ import re
 import sys
 from email import policy
 from email.parser import BytesParser
+import test_email_splitting as test_email_splitting
+
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -242,6 +244,9 @@ def main():
 
     print(f"[DONE] Canonical email JSONL written to {OUTPUT_JSONL_BASED}")
     print(f"[DONE] Canonical email JSONL written to {OUTPUT_JSONL_ENHANCED}")
+    print("[INFO] Running email splitting summary...")
+    test_email_splitting.main()
+    print("[DONE] Email splitting summary completed")
 
 
 if __name__ == "__main__":
