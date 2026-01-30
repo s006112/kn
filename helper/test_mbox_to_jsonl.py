@@ -8,7 +8,8 @@ Pipelines:
 - mbox_iterate -> message_parse -> metadata_build -> body_parse -> block_enrich -> jsonl_write -> attachment_save -> attachment_parse
 
 Invariants:
-- Overwrites `data/mbox/jsonl/email_blocks.jsonl` on each run.
+- Overwrites `data/mbox/jsonl/email_blocks_based.jsonl` and
+  `data/mbox/jsonl/email_blocks_enhanced.jsonl` on each run.
 - Skips any message that lacks a `Message-ID` header.
 - Saves each attachment payload to disk before attempting any attachment parsing.
 
@@ -32,10 +33,13 @@ if str(ROOT_DIR) not in sys.path:
 
 from helper.test_parse_raw_to_jsonl import (
     parse_email_bytes_to_canonical_blocks,
+    parse_email_bytes_to_canonical_blocks_based,
+    parse_email_bytes_to_canonical_blocks_enhanced,
 )
 
 RAW_MBOX_DIR = ROOT_DIR / "data" / "mbox" / "raw"
-OUTPUT_JSONL = ROOT_DIR / "data" / "mbox" / "jsonl" / "email_blocks.jsonl"
+OUTPUT_JSONL_BASED = ROOT_DIR / "data" / "mbox" / "jsonl" / "email_blocks_based.jsonl"
+OUTPUT_JSONL_ENHANCED = ROOT_DIR / "data" / "mbox" / "jsonl" / "email_blocks_enhanced.jsonl"
 
 ATTACHMENT_PARSERS = {
     #".pdf":  parse_pdf_bytes_to_canonical_blocks,
@@ -89,9 +93,12 @@ def main():
     Outputs:
     - None. Writes JSONL to `data/mbox/jsonl/email_blocks.jsonl` and saves attachment payloads under `data/mbox/raw/<ext>/`.
     """
-    OUTPUT_JSONL.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT_JSONL_BASED.parent.mkdir(parents=True, exist_ok=True)
 
-    with OUTPUT_JSONL.open("w", encoding="utf-8") as out:
+    with (
+        OUTPUT_JSONL_BASED.open("w", encoding="utf-8") as out_based,
+        OUTPUT_JSONL_ENHANCED.open("w", encoding="utf-8") as out_enhanced,
+    ):
         for mbox_file in RAW_MBOX_DIR.iterdir():
             if mbox_file.is_dir():
                 continue
@@ -115,11 +122,14 @@ def main():
                     "thread_id": email.get("In-Reply-To", ""),
                 }
 
-                # Body blocks are always emitted when message parsing succeeds and Message-ID is present.
-                blocks = parse_email_bytes_to_canonical_blocks(email, email_id)
-                for b in blocks:
+                # Body blocks emitted in both variants for side-by-side comparison.
+                for b in parse_email_bytes_to_canonical_blocks_based(email, email_id):
                     b.update(base_meta)
-                    write_block(out, b)
+                    write_block(out_based, b)
+
+                for b in parse_email_bytes_to_canonical_blocks_enhanced(email, email_id):
+                    b.update(base_meta)
+                    write_block(out_enhanced, b)
 
                 # Attachments are saved generically; parsing is optional and controlled by ATTACHMENT_PARSERS.
                 for part in email.iter_attachments():
@@ -154,11 +164,13 @@ def main():
                     blocks = parser(data, fn, doc_id)
                     for b in blocks:
                         b.update(base_meta)
-                        write_block(out, b)
+                        write_block(out_based, b)
+                        write_block(out_enhanced, b)
 
             mbox.close()
 
-    print(f"[DONE] Canonical email JSONL written to {OUTPUT_JSONL}")
+    print(f"[DONE] Canonical email JSONL written to {OUTPUT_JSONL_BASED}")
+    print(f"[DONE] Canonical email JSONL written to {OUTPUT_JSONL_ENHANCED}")
 
 
 if __name__ == "__main__":

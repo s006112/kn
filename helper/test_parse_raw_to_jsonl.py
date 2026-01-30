@@ -22,7 +22,12 @@ Out of scope:
   blocks.
 """
 
-from helper.helper_parse_email_to_raw_based import parse_email_to_raw_blocks
+from helper.helper_parse_email_to_raw_based import (
+    parse_email_to_raw_blocks as parse_email_to_raw_blocks_based,
+)
+from helper.helper_parse_email_to_raw_enhanced import (
+    parse_email_to_raw_blocks as parse_email_to_raw_blocks_enhanced,
+)
 
 def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None):
     """
@@ -70,7 +75,12 @@ def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None)
         }
 
 
-def parse_email_bytes_to_canonical_blocks(email, email_id):
+def parse_email_bytes_to_canonical_blocks(
+    email,
+    email_id,
+    *,
+    raw_parser=parse_email_to_raw_blocks_enhanced,
+):
     """
     Purpose:
     Parse an email payload into canonical blocks.
@@ -91,7 +101,7 @@ def parse_email_bytes_to_canonical_blocks(email, email_id):
     - Propagates exceptions raised by raw_blocks_to_canonical_blocks() for invalid
       raw blocks.
     """
-    raw_blocks = parse_email_to_raw_blocks(email, email_id)
+    raw_blocks = raw_parser(email, email_id)
     if not raw_blocks:
         return []
 
@@ -101,4 +111,20 @@ def parse_email_bytes_to_canonical_blocks(email, email_id):
         part=None,            # part 由 raw 自己帶
         file_type="email",
         attachment=None,
+    )
+
+
+def parse_email_bytes_to_canonical_blocks_based(email, email_id):
+    return parse_email_bytes_to_canonical_blocks(
+        email,
+        email_id,
+        raw_parser=parse_email_to_raw_blocks_based,
+    )
+
+
+def parse_email_bytes_to_canonical_blocks_enhanced(email, email_id):
+    return parse_email_bytes_to_canonical_blocks(
+        email,
+        email_id,
+        raw_parser=parse_email_to_raw_blocks_enhanced,
     )
