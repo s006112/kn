@@ -4,10 +4,12 @@ helper_parse_email_to_raw_enhanced.py
 Responsibility:
 Convert Email -> RawBlock list using quote-depth based splitting.
 
-Enhanced (minimal step):
+Enhanced:
 Apply pluggable QUOTE_SPLIT_STRATEGIES on quote segments.
-Currently enabled:
-- split by "On ... wrote:"
+Phases:
+- Phase 1: split by "On ... wrote:"
+- Phase 2: split by header blocks (From/Date/Sent/To/Subject/Cc)
+- Phase 3: split by forwarded markers (incl. Chinese "-------- 轉寄郵件 --------")
 """
 
 import re
@@ -19,16 +21,16 @@ except ImportError:  # pragma: no cover
 
 
 # ------------------------------------------------------------
-# Quote split on_wrote strategies (phase 1)
+# Quote split strategies
 # ------------------------------------------------------------
 
+# Phase 1: on_wrote
 _ON_WROTE_RE = re.compile(r"^\s*On .{0,200}\bwrote\s*:\s*$")
 _HDR_RE = re.compile(r"^\s*(From|Sent|Date|To|Cc|Subject)\s*:\s*", re.I)
 
 
 def _split_quote_by_on_wrote(text: str) -> list[str]:
     """
-    Strategy 1:
     Split quote segment by 'On ... wrote:' anchors only, with light confirmation:
       - anchor is followed by a blank line; OR
       - within next 2 lines, we see a typical header line.
@@ -71,22 +73,18 @@ def _split_quote_by_on_wrote(text: str) -> list[str]:
             out.append(seg)
     return out if out else [t]
 
-# ------------------------------------------------------------
-# Quote split header_block strategies (phase 2)
-# ------------------------------------------------------------
 
-
+# Phase 2: header_block
 _HDR_KEY_RE = re.compile(r"^\s*(From|Date|Sent|To|Subject|Cc)\s*:\s*", re.I)
+
 
 def _split_quote_by_header_block(text: str, *, min_keys: int = 3, lookahead: int = 6) -> list[str]:
     """
-    Strategy C (independent, not wired):
     Split quote segment by detecting RFC-like header blocks.
 
     Rule:
     - A new segment starts at a line where, within a lookahead window,
       >= min_keys distinct header keys appear.
-    - Header keys: From, Date/Sent, To, Subject (Cc optional)
     - If no boundary detected, return [text] unchanged.
     """
     t = (text or "").strip()
@@ -128,18 +126,62 @@ def _split_quote_by_header_block(text: str, *, min_keys: int = 3, lookahead: int
     return out if out else [t]
 
 
-# Strategy registry (shell)
+# Phase 3: forwarded markers (only add this pattern family)
+_FWD_LINE_RE = re.compile(
+    r"^\s*(?:-+\s*)?(?:轉寄郵件|转寄邮件)\s*(?:-+)?\s*$",
+    re.I,
+)
+
+def _split_quote_by_forward_email(text: str) -> list[str]:
+    """
+    Split quote segment by forwarded-email separator lines, e.g.:
+      - "-------- 轉寄郵件 --------"
+      - "-------- 转寄邮件 --------"
+      - tolerant to number of dashes/spaces
+
+    If no boundary detected, return [text] unchanged.
+    """
+    t = (text or "").strip()
+    if not t:
+        return []
+
+    lines = t.splitlines()
+    n = len(lines)
+    if n < 2:
+        return [t]
+
+    cuts = [0]
+    last_cut = 0
+
+    for i in range(1, n):
+        if i - last_cut < 2:
+            continue
+        if _FWD_LINE_RE.match(lines[i]):
+            cuts.append(i)
+            last_cut = i
+
+    if len(cuts) == 1:
+        return [t]
+
+    cuts.append(n)
+    out: list[str] = []
+    for a, b in zip(cuts, cuts[1:]):
+        seg = "\n".join(lines[a:b]).strip()
+        if seg:
+            out.append(seg)
+    return out if out else [t]
+
+
+# Strategy registry
 QUOTE_SPLIT_STRATEGIES = [
     _split_quote_by_on_wrote,
     _split_quote_by_header_block,
+    _split_quote_by_forward_email,
 ]
 
 
 def _apply_quote_split_strategies(text: str) -> list[str]:
-    """
-    Apply quote split strategies sequentially.
-    Each strategy may further split segments; no-op if no match.
-    """
+    """Apply quote split strategies sequentially. Each strategy may further split segments."""
     segments = [text]
     for strat in QUOTE_SPLIT_STRATEGIES:
         next_segments: list[str] = []
@@ -151,7 +193,7 @@ def _apply_quote_split_strategies(text: str) -> list[str]:
 
 
 # ------------------------------------------------------------
-# Quote-depth splitter strategies (phase 0)
+# Quote-depth splitter (phase 0)
 # ------------------------------------------------------------
 
 _QUOTE_DEPTH_RE = re.compile(r"^(>+)\s*(.*)")

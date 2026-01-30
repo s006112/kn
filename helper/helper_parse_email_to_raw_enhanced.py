@@ -128,7 +128,11 @@ def _split_quote_by_header_block(text: str, *, min_keys: int = 3, lookahead: int
 
 # Phase 3: forwarded markers (only add this pattern family)
 _FWD_LINE_RE = re.compile(
-    r"^\s*(?:-+\s*)?(?:轉寄郵件|转寄邮件)\s*(?:-+)?\s*$",
+    r"^\s*(?:-+\s*)?(?:"
+    r"轉寄郵件|转寄邮件|"                      # Chinese
+    r"Forwarded message|Forwarded Message|"    # English common
+    r"Begin forwarded message"                 # Apple Mail common
+    r")\s*(?:-+)?\s*:?\s*$",
     re.I,
 )
 
