@@ -276,15 +276,8 @@ def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
         return segments
 
     # ------------------------------------------------------------------
-    # NEW minimal fallback: header-block depth mapping for plain-text threads
-    # (only activates when there is strong evidence of repeated header blocks)
+    # Fallback: header-block depth mapping for plain-text threads
     # ------------------------------------------------------------------
-    def _is_hdr_line(s: str) -> bool:
-        # reuse existing regex from Phase 2/4
-        return bool(_HDR_KEY_RE.match(s) or _CN_HDR_KEY_RE.match(s))
-
-    # Find candidate cut points: a header-block "start" = a window with >=3 keys
-    # We keep it minimal: small lookahead, require >=2 blocks to avoid false cuts.
     lookahead = 10
     min_keys = 3
     cut_points = [0]
@@ -293,27 +286,37 @@ def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
 
     n = len(lines)
     for i in range(1, n):
-        # spacing guard (avoid ultra-dense cutting)
+        # spacing guard
         if i - last_cut < lookahead:
             continue
 
         keys = set()
+        matches = []  # record real header line positions
+
         for j in range(i, min(i + lookahead, n)):
             m1 = _HDR_KEY_RE.match(lines[j])
             if m1:
                 keys.add(m1.group(1).lower())
+                matches.append(j)
                 continue
             m2 = _CN_HDR_KEY_RE.match(lines[j])
             if m2:
                 keys.add(m2.group(1))
+                matches.append(j)
                 continue
 
-        if len(keys) >= min_keys:
-            block_starts.append(i)
-            cut_points.append(i)
-            last_cut = i
+        if len(keys) >= min_keys and matches:
+            first_header_j = matches[0]
 
-    # Not enough evidence => treat as single body (safe fallback)
+            # spacing guard should be evaluated on real header start
+            if first_header_j - last_cut < lookahead:
+                continue
+
+            block_starts.append(first_header_j)
+            cut_points.append(first_header_j)
+            last_cut = first_header_j
+
+    # Not enough evidence => treat as single body
     if len(block_starts) < 1:
         return [(0, text.strip())] if text.strip() else []
 
@@ -325,7 +328,7 @@ def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
         seg = "\n".join(lines[a:b]).strip()
         if not seg:
             continue
-        depth = 0 if idx == 0 else idx  # monotonic deepening
+        depth = 0 if idx == 0 else idx
         out.append((depth, seg))
 
     return out
