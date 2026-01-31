@@ -13,11 +13,7 @@ Phases:
 """
 
 import re
-
-try:
-    from .helper_sanitize import sanitize_text
-except ImportError:  # pragma: no cover
-    from helper_sanitize import sanitize_text
+from helper_sanitize import sanitize_text
 
 
 # ------------------------------------------------------------
@@ -132,13 +128,10 @@ def _split_quote_by_header_block(text: str, *, min_keys: int = 3, lookahead: int
 # Phase 3: forwarded markers (line-level, strict)
 # ------------------------------------------------------------
 
-"""
-轉寄郵件
-Subject: Fwd: RE: Refresh LED information", Maybe you can ask Kevin for any up...
-not yet cut
-"""
 # Chinese clients: "-------- 轉寄郵件 --------" / "-------- 转寄邮件 --------"
-_FWD_CN_LINE_RE = re.compile(r"^\s*-+\s*(?:轉寄郵件|转寄邮件)\s*-+\s*$")
+#_FWD_CN_LINE_RE = re.compile(r"^\s*-+\s*(?:轉寄郵件|转寄邮件)\s*-+\s*$")   # strict    
+_FWD_CN_LINE_RE = re.compile(r"^\s*(?:-+\s*)?(?:轉寄郵件|转寄邮件)\s*(?:-+)?\s*$")  # looser
+
 
 # Apple Mail: "Begin forwarded message:"
 _FWD_BEGIN_LINE_RE = re.compile(
@@ -302,6 +295,7 @@ def parse_email_to_raw_blocks(email, email_id):
         blocks.append({
             "doc_id": email_id,
             "text": sanitize_text(txt),
+            #"text": txt,
             "page": page,
             "source": "mbox",
             "part": part,
