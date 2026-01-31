@@ -26,9 +26,18 @@ from helper_save_email_raw_text import save_raw_email_text
 
 _FWD_LINE_RE = re.compile(
     r"""^\s*(?:
-        -+\s*(?:轉寄郵件|转寄邮件)\s*-+ |   # Chinese
-        -+\s*Forwarded\s+Message\s*-+   |   # Outlook/Gmail style
-        Begin\s+forwarded\s+message:?       # Apple Mail
+        # ----------------------------
+        # forwarded separators
+        # ----------------------------
+        -+\s*(?:轉寄郵件|转寄邮件)\s*-+ |      # Chinese
+        -+\s*Forwarded\s+Message\s*-+    |      # Outlook/Gmail
+        Begin\s+forwarded\s+message:?    |      # Apple Mail
+
+        # ----------------------------
+        # reply header lines (NEW)
+        # ----------------------------
+        .+?\s+於\s+.+?\s+寫道:            |      # Chinese reply header
+        On\s+.+?\s+wrote:                       # English reply header
     )\s*$""",
     re.I | re.X,
 )
@@ -131,18 +140,12 @@ def parse_email_to_raw_blocks(email, email_id):
     if not content:
         return []
 
-    # save BEFORE normalization
-    save_raw_email_text(
-        email_id=f"{email_id}_raw",
-        content=content,
-    )
-
     # Phase -1 normalize
     content = insert_quote_markers(content)
 
-    # save AFTER normalization
+    # save enhanced normalization
     save_raw_email_text(
-        email_id=f"{email_id}_normalized",
+        email_id=f"{email_id}_enhanced",
         content=content,
     )
 
