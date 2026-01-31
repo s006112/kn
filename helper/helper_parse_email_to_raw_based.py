@@ -8,6 +8,7 @@ This is robust, format-agnostic, and does not depend on guessing headers.
 
 import re
 from helper_sanitize import sanitize_text
+from helper_save_email_raw_text import save_raw_email_text
 
 # ------------------------------------------------------------
 # Quote-depth splitter (phase 0)
@@ -71,6 +72,7 @@ def parse_email_to_raw_blocks(email, email_id):
         return []
 
     content = text_part.get_content()
+    save_raw_email_text(email_id=email_id, content=content)
     if not content:
         return []
 

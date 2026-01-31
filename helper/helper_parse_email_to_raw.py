@@ -16,6 +16,7 @@ Phases:
 import re
 from helper_sanitize import sanitize_text
 from html import unescape
+from helper_save_email_raw_text import save_raw_email_text
 
 # ------------------------------------------------------------
 # Phase 0: quote-depth splitter (plain + HTML)
@@ -343,6 +344,7 @@ def parse_email_to_raw_blocks(email, email_id):
         return []
 
     content = text_part.get_content()
+    save_raw_email_text(email_id=email_id, content=content)
     if not content:
         return []
 
