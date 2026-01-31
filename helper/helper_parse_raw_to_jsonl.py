@@ -29,7 +29,7 @@ Out of scope:
 from helper.helper_parse_pdf_to_raw import get_pdf_page_blocks
 #from helper.helper_parse_email_to_raw import parse_email_to_raw_blocks
 #from helper.helper_parse_email_to_raw_based import parse_email_to_raw_blocks
-from helper.helper_parse_email_to_raw_enhanced import parse_email_to_raw_blocks
+from helper.helper_parse_email_to_raw import parse_email_to_raw_blocks
 from helper.helper_parse_doc_to_raw import get_doc_paragraph_blocks
 from helper.helper_parsing_xls import extract_excel_text
 

@@ -1,76 +1,336 @@
 #!/usr/bin/env python3
 """
-helper_parse_email_to_raw.py
-
+helper_parse_email_to_raw_enhanced.py
 Responsibility:
-Convert a Python email.message.EmailMessage into a list of "raw block" dicts by splitting the message body
-using leading ">" quote depth, then sanitizing each resulting segment.
+Convert Email -> RawBlock list using quote-depth based splitting.
 
-Used by:
-* helper/helper_parse_raw_to_jsonl.py
-
-Pipelines:
-- email_message -> body_part -> body_text -> quote_depth_split -> sanitize -> raw_blocks
-
-Invariants:
-- Only the selected body part content is parsed; headers are ignored.
-- Quote depth is derived solely from leading ">" characters.
-- Sanitization runs after splitting, per segment.
-- Output blocks use 1-based sequential "page" numbering.
-
-Out of scope:
-- MIME traversal beyond selecting a preferred body part.
-- Heuristics for signatures, reply headers, or client-specific quoting.
-- Attachment extraction or decoding beyond email API accessors.
+Enhanced:
+Apply pluggable QUOTE_SPLIT_STRATEGIES on quote segments.
+Phases:
+- Phase 1: split by "On ... wrote:"
+- Phase 2: split by header blocks (From/Date/Sent/To/Subject/Cc)
+- Phase 3: split by forwarded markers
+- Phase 4: split by Chinese header blocks (发件人/发送时间/收件人/抄送/主题)
 """
 
 import re
-try:
-    from .helper_sanitize import sanitize_text
-except ImportError:  # pragma: no cover
-    from helper_sanitize import sanitize_text
+from helper_sanitize import sanitize_text
+from html import unescape
 
 # ------------------------------------------------------------
-# Quote-depth splitter
-# ------------------------------------------------------------
-# Quote-depth is used because it is a stable structural signal across many clients without needing
-# to guess at language-, client-, or header-specific reply separators.
+# Phase 0: quote-depth splitter (plain + HTML)
 # ------------------------------------------------------------
 
-_QUOTE_DEPTH_RE = re.compile(r"^(>+)\s*(.*)")
+_QUOTE_DEPTH_RE = re.compile(r"^(>+)\s*(.*)", re.M)
+_CN_HDR_KEY_RE = re.compile(
+    r"^\s*(发件人|寄件人|发送时间|发送日期|收件人|抄送|副本|主题)\s*[:：]\s*"
+)
 
-
-def _split_by_quote_depth(text: str):
+def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
     """
-    Purpose:
-    Group lines by leading quote depth and return ordered (depth, segment) pairs.
+    Phase 0 quote-depth splitter (minimum drop-in)
 
-    Inputs:
-    - text: email body text to split.
-
-    Outputs:
-    - List[Tuple[int, str]]: one entry per quote depth with non-empty, joined text.
+    - If '>' quote markers exist: keep ORIGINAL behavior 100% unchanged.
+    - Else (Foxmail/plain flattened threads): detect repeated header-blocks
+      (CN/EN) and map each block start to deeper quote depth.
     """
-    buckets = {}
+    if not text:
+        return []
 
-    for line in text.splitlines():
-        m = _QUOTE_DEPTH_RE.match(line)
-        if m:
-            depth = len(m.group(1))
-            content = m.group(2)
-        else:
-            depth = 0
-            content = line
+    lines = text.splitlines()
 
-        buckets.setdefault(depth, []).append(content)
+    # ------------------------------------------------------------------
+    # Fast path: ORIGINAL behavior when RFC-style '>' quoting exists
+    # ------------------------------------------------------------------
+    has_gt_quote = any(l.lstrip().startswith(">") for l in lines)
+    if has_gt_quote:
+        segments = []
+        current_depth = None
+        buf = []
 
-    segments = []
-    for depth in sorted(buckets.keys()):
-        seg = "\n".join(buckets[depth]).strip()
-        if seg:
-            segments.append((depth, seg))
+        for line in lines:
+            m = _QUOTE_DEPTH_RE.match(line)
+            depth, content = (len(m.group(1)), m.group(2)) if m else (0, line)
 
+            if current_depth is None:
+                current_depth = depth
+                buf.append(content)
+            elif depth == current_depth:
+                buf.append(content)
+            else:
+                seg = "\n".join(buf).strip()
+                if seg:
+                    segments.append((current_depth, seg))
+                current_depth = depth
+                buf = [content]
+
+        if buf:
+            seg = "\n".join(buf).strip()
+            if seg:
+                segments.append((current_depth, seg))
+
+        return segments
+
+    # ------------------------------------------------------------------
+    # Fallback: header-block depth mapping for plain-text threads
+    # ------------------------------------------------------------------
+    lookahead = 10  # 在未来 10 行内找 header
+    min_keys = 3    # 至少看到 3 种不同 header key
+    cut_points = [0]
+    last_cut = 0
+    block_starts = []
+
+    n = len(lines)
+    for i in range(1, n):
+        # spacing guard
+        if i - last_cut < lookahead:
+            continue
+
+        keys = set()
+        matches = []  # record real header line positions
+
+        for j in range(i, min(i + lookahead, n)):
+            m1 = _HDR_KEY_RE.match(lines[j])
+            if m1:
+                keys.add(m1.group(1).lower())
+                matches.append(j)
+                continue
+            m2 = _CN_HDR_KEY_RE.match(lines[j])
+            if m2:
+                keys.add(m2.group(1))
+                matches.append(j)
+                continue
+
+        if len(keys) >= min_keys and matches:
+            first_header_j = matches[0]
+
+            # spacing guard should be evaluated on real header start
+            if first_header_j - last_cut < lookahead:
+                continue
+
+            block_starts.append(first_header_j)
+            cut_points.append(first_header_j)
+            last_cut = first_header_j
+
+    # Not enough evidence => treat as single body
+    if len(block_starts) < 1:
+        return [(0, text.strip())] if text.strip() else []
+
+    cut_points.append(n)
+
+    # Build segments: first = depth 0, subsequent blocks = depth 1..k
+    out: list[tuple[int, str]] = []
+    for idx, (a, b) in enumerate(zip(cut_points, cut_points[1:])):
+        seg = "\n".join(lines[a:b]).strip()
+        if not seg:
+            continue
+        depth = 0 if idx == 0 else idx
+        out.append((depth, seg))
+
+    return out
+
+# ------------------------------------------------------------
+# Phase 1: on_wrote
+# ------------------------------------------------------------
+
+_ON_WROTE_LINE_RE = re.compile(r"^\s*On .{0,200}\bwrote\s*:\s*$", re.I)
+_CN_WROTE_LINE_RE = re.compile(r"^\s*.{1,200}\s+於\s+.{1,50}\s+寫道\s*:\s*$")
+_HDR_RE = re.compile(r"^\s*(From|Sent|Date|To|Cc|Subject)\s*:\s*", re.I)
+
+def _split_quote_by_on_wrote(text: str) -> list[str]:
+    t = (text or "").strip()
+    if not t:
+        return []
+
+    lines = t.splitlines()
+    if len(lines) < 3:
+        return [t]
+
+    cuts = [0]
+    last_cut = 0
+
+    for i in range(1, len(lines) - 1):
+        if i - last_cut < 2:
+            continue
+        line = lines[i]
+        if not (_ON_WROTE_LINE_RE.match(line) or _CN_WROTE_LINE_RE.match(line)):
+            continue
+
+        next1 = lines[i + 1].strip()
+        next2 = lines[i + 2].strip() if i + 2 < len(lines) else ""
+        if next1 == "" or _HDR_RE.match(next1) or _HDR_RE.match(next2):
+            cuts.append(i)
+            last_cut = i
+
+    if len(cuts) == 1:
+        return [t]
+
+    cuts.append(len(lines))
+    return [
+        "\n".join(lines[a:b]).strip()
+        for a, b in zip(cuts, cuts[1:])
+        if "\n".join(lines[a:b]).strip()
+    ]
+
+
+# ------------------------------------------------------------
+# Phase 2: RFC-like header block (English)
+# ------------------------------------------------------------
+
+_HDR_KEY_RE = re.compile(r"^\s*(From|Date|Sent|To|Subject|Cc)\s*:\s*", re.I)
+
+def _split_quote_by_header_block(text: str, *, min_keys: int = 3, lookahead: int = 6) -> list[str]:
+    t = (text or "").strip()
+    if not t:
+        return []
+
+    lines = t.splitlines()
+    if len(lines) < lookahead:
+        return [t]
+
+    cuts = [0]
+    last_cut = 0
+
+    for i in range(1, len(lines)):
+        if i - last_cut < lookahead:
+            continue
+        keys = {
+            _HDR_KEY_RE.match(lines[j]).group(1).lower()
+            for j in range(i, min(i + lookahead, len(lines)))
+            if _HDR_KEY_RE.match(lines[j])
+        }
+        if len(keys) >= min_keys:
+            cuts.append(i)
+            last_cut = i
+
+    if len(cuts) == 1:
+        return [t]
+
+    cuts.append(len(lines))
+    return [
+        "\n".join(lines[a:b]).strip()
+        for a, b in zip(cuts, cuts[1:])
+        if "\n".join(lines[a:b]).strip()
+    ]
+
+
+# ------------------------------------------------------------
+# Phase 3: forwarded markers
+# ------------------------------------------------------------
+
+_FWD_CN_LINE_RE = re.compile(r"^\s*(?:-+\s*)?(?:轉寄郵件|转寄邮件)\s*(?:-+)?\s*$")
+_FWD_BEGIN_LINE_RE = re.compile(r"^\s*Begin forwarded message\s*:?\s*$", re.I)
+_FWD_SIMPLE_LINE_RE = re.compile(r"^\s*Forwarded message\s*:?\s*$", re.I)
+
+def _is_forwarded_marker_line(line: str) -> bool:
+    return (
+        _FWD_CN_LINE_RE.match(line)
+        or _FWD_BEGIN_LINE_RE.match(line)
+        or _FWD_SIMPLE_LINE_RE.match(line)
+    )
+
+def _split_quote_by_forward_email(text: str) -> list[str]:
+    t = (text or "").strip()
+    if not t:
+        return []
+
+    lines = t.splitlines()
+    if len(lines) < 2:
+        return [t]
+
+    cuts = [0]
+    last_cut = 0
+
+    for i in range(1, len(lines)):
+        if i - last_cut < 2:
+            continue
+        if _is_forwarded_marker_line(lines[i]):
+            cuts.append(i)
+            last_cut = i
+
+    if len(cuts) == 1:
+        return [t]
+
+    cuts.append(len(lines))
+    return [
+        "\n".join(lines[a:b]).strip()
+        for a, b in zip(cuts, cuts[1:])
+        if "\n".join(lines[a:b]).strip()
+    ]
+
+
+# ------------------------------------------------------------
+# Phase 4: Chinese header block (NEW)
+# ------------------------------------------------------------
+
+def _split_quote_by_cn_header_block(
+    text: str, *, min_keys: int = 3, lookahead: int = 8
+) -> list[str]:
+    """
+    Detect Chinese email header blocks such as:
+      发件人：
+      发送时间：
+      收件人：
+      抄送：
+      主题：
+
+    Rule identical to Phase 2, but with Chinese keys.
+    """
+    t = (text or "").strip()
+    if not t:
+        return []
+
+    lines = t.splitlines()
+    if len(lines) < lookahead:
+        return [t]
+
+    cuts = [0]
+    last_cut = 0
+
+    for i in range(1, len(lines)):
+        if i - last_cut < lookahead:
+            continue
+        keys = {
+            _CN_HDR_KEY_RE.match(lines[j]).group(1)
+            for j in range(i, min(i + lookahead, len(lines)))
+            if _CN_HDR_KEY_RE.match(lines[j])
+        }
+        if len(keys) >= min_keys:
+            cuts.append(i)
+            last_cut = i
+
+    if len(cuts) == 1:
+        return [t]
+
+    cuts.append(len(lines))
+    return [
+        "\n".join(lines[a:b]).strip()
+        for a, b in zip(cuts, cuts[1:])
+        if "\n".join(lines[a:b]).strip()
+    ]
+
+
+# ------------------------------------------------------------
+# Strategy registry (ORDER MATTERS)
+# ------------------------------------------------------------
+
+QUOTE_SPLIT_STRATEGIES = [
+    _split_quote_by_on_wrote,
+    _split_quote_by_header_block,
+    _split_quote_by_forward_email,
+    _split_quote_by_cn_header_block,   # Phase 4 appended, no interference
+]
+
+def _apply_quote_split_strategies(text: str) -> list[str]:
+    segments = [text]
+    for strat in QUOTE_SPLIT_STRATEGIES:
+        next_segments = []
+        for seg in segments:
+            parts = strat(seg)
+            next_segments.extend(parts if parts else [])
+        segments = next_segments
     return segments
+
 
 
 # ------------------------------------------------------------
@@ -78,17 +338,6 @@ def _split_by_quote_depth(text: str):
 # ------------------------------------------------------------
 
 def parse_email_to_raw_blocks(email, email_id):
-    """
-    Purpose:
-    Convert an EmailMessage into raw block dicts by selecting a preferred body part and splitting by quote depth.
-
-    Inputs:
-    - email: EmailMessage-like object supporting get_body(...) and get_content().
-    - email_id: identifier stored as "doc_id" in each output block.
-
-    Outputs:
-    - List[dict]: raw blocks with keys: doc_id, text, page, source, part.
-    """
     text_part = email.get_body(preferencelist=("plain", "html"))
     if not text_part:
         return []
@@ -98,18 +347,25 @@ def parse_email_to_raw_blocks(email, email_id):
         return []
 
     segments = _split_by_quote_depth(content)
-
     blocks = []
     page = 1
 
-    for depth, text in segments:
+    def _emit(part: str, txt: str):
+        nonlocal page
         blocks.append({
-            "doc_id": email_id,  # was f"email_{email_id}",
-            "text": sanitize_text(text),
+            "doc_id": email_id,
+            "text": sanitize_text(txt),
             "page": page,
             "source": "mbox",
-            "part": "body" if depth == 0 else "quote",
+            "part": part,
         })
         page += 1
+
+    for depth, text in segments:
+        if depth == 0:
+            _emit("body", text)
+        else:
+            for sub in _apply_quote_split_strategies(text):
+                _emit("quote", sub)
 
     return blocks
