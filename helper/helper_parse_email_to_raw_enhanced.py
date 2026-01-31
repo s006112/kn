@@ -42,6 +42,8 @@ _FWD_LINE_RE = re.compile(
     re.I | re.X,
 )
 
+
+
 _QUOTE_PREFIX_RE = re.compile(r"^(>+)\s*(.*)")
 
 
@@ -79,9 +81,6 @@ def insert_quote_markers(text: str) -> str:
 # Quote-depth splitter (phase 0)
 # ------------------------------------------------------------
 
-_QUOTE_DEPTH_RE = re.compile(r"^(>+)\s*(.*)")
-
-
 def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
     """
     Phase 0 (order-preserving run splitter)
@@ -98,7 +97,7 @@ def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
     buf: list[str] = []
 
     for line in text.splitlines():
-        m = _QUOTE_DEPTH_RE.match(line)
+        m = _QUOTE_PREFIX_RE.match(line)
         if m:
             depth = len(m.group(1))
             content = m.group(2)
@@ -143,9 +142,9 @@ def parse_email_to_raw_blocks(email, email_id):
     # Phase -1 normalize
     content = insert_quote_markers(content)
 
-    # save enhanced normalization
+    # save based normalization
     save_raw_email_text(
-        email_id=f"{email_id}_enhanced",
+        email_id=f"{email_id}_based",
         content=content,
     )
 

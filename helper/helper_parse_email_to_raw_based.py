@@ -26,12 +26,22 @@ from helper_save_email_raw_text import save_raw_email_text
 
 _FWD_LINE_RE = re.compile(
     r"""^\s*(?:
-        -+\s*(?:轉寄郵件|转寄邮件)\s*-+ |   # Chinese
-        -+\s*Forwarded\s+Message\s*-+   |   # Outlook/Gmail style
-        Begin\s+forwarded\s+message:?       # Apple Mail
+        # ----------------------------
+        # forwarded separators
+        # ----------------------------
+        -+\s*(?:轉寄郵件|转寄邮件)\s*-+ |      # Chinese
+        -+\s*Forwarded\s+Message\s*-+    |      # Outlook/Gmail
+        Begin\s+forwarded\s+message:?    |      # Apple Mail
+
+        # ----------------------------
+        # reply header lines (NEW)
+        # ----------------------------
+        .+?\s+於\s+.+?\s+寫道:            |      # Chinese reply header
+        On\s+.+?\s+wrote:                       # English reply header
     )\s*$""",
     re.I | re.X,
 )
+
 
 
 _QUOTE_PREFIX_RE = re.compile(r"^(>+)\s*(.*)")
@@ -71,9 +81,6 @@ def insert_quote_markers(text: str) -> str:
 # Quote-depth splitter (phase 0)
 # ------------------------------------------------------------
 
-_QUOTE_DEPTH_RE = re.compile(r"^(>+)\s*(.*)")
-
-
 def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
     """
     Phase 0 (order-preserving run splitter)
@@ -90,7 +97,7 @@ def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
     buf: list[str] = []
 
     for line in text.splitlines():
-        m = _QUOTE_DEPTH_RE.match(line)
+        m = _QUOTE_PREFIX_RE.match(line)
         if m:
             depth = len(m.group(1))
             content = m.group(2)
