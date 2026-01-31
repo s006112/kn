@@ -54,7 +54,7 @@ def load_config(model_path: str):
         text_config["model_type"] = "mistral"
     return Mistral3Config.from_dict(config_dict)
 
-def dequantize_fp8_weights(model, model_path: str):
+def dequantize_fp8_weights(model, model_path: str, target_dtype: torch.dtype | None = None):
     if not any(
         p.dtype in (torch.float8_e4m3fn, torch.float8_e5m2) for p in model.parameters()
     ):
@@ -84,7 +84,8 @@ def dequantize_fp8_weights(model, model_path: str):
             if scale_key not in keys:
                 raise KeyError(f"Missing FP8 scale for {name}: {scale_key}")
             scale_inv = f.get_tensor(scale_key).to(device=p.device, dtype=torch.float32)
-            p.data = (p.to(torch.float32) * scale_inv).to(torch.bfloat16)
+            dtype = target_dtype if target_dtype is not None else torch.bfloat16
+            p.data = (p.to(torch.float32) * scale_inv).to(dtype)
 
 
 def build_inputs(tokenizer, prompt: str):
@@ -107,11 +108,11 @@ tokenizer = load_tokenizer(MODEL_PATH)
 model = Mistral3ForConditionalGeneration.from_pretrained(
     MODEL_PATH,
     config=load_config(MODEL_PATH),
-    dtype=torch.bfloat16,  # float32, bfloat16
+    torch_dtype=torch.float32,  # float16, float32
     device_map="auto",
     local_files_only=True
 )
-dequantize_fp8_weights(model, MODEL_PATH)
+dequantize_fp8_weights(model, MODEL_PATH, target_dtype=model.dtype)
 
 # 定義提示
 PROMPT = "Eleborate the concept of 'Laplace transform' followed by simple examples illustration. no need follow up question"
