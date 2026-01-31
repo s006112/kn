@@ -210,7 +210,7 @@ QUOTE_SPLIT_STRATEGIES = [
     _split_quote_by_on_wrote,
     _split_quote_by_header_block,
     _split_quote_by_forward_email,
-    #_split_quote_by_cn_header_block,   # Phase 4 appended, no interference
+    _split_quote_by_cn_header_block,   # Phase 4 appended, no interference
 ]
 
 def _apply_quote_split_strategies(text: str) -> list[str]:

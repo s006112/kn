@@ -18,6 +18,118 @@ from helper_sanitize import sanitize_text
 from html import unescape
 
 # ------------------------------------------------------------
+# Phase 0: quote-depth splitter (plain + HTML)
+# ------------------------------------------------------------
+
+_QUOTE_DEPTH_RE = re.compile(r"^(>+)\s*(.*)", re.M)
+_CN_HDR_KEY_RE = re.compile(
+    r"^\s*(发件人|寄件人|发送时间|发送日期|收件人|抄送|副本|主题)\s*[:：]\s*"
+)
+
+def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
+    """
+    Phase 0 quote-depth splitter (minimum drop-in)
+
+    - If '>' quote markers exist: keep ORIGINAL behavior 100% unchanged.
+    - Else (Foxmail/plain flattened threads): detect repeated header-blocks
+      (CN/EN) and map each block start to deeper quote depth.
+    """
+    if not text:
+        return []
+
+    lines = text.splitlines()
+
+    # ------------------------------------------------------------------
+    # Fast path: ORIGINAL behavior when RFC-style '>' quoting exists
+    # ------------------------------------------------------------------
+    has_gt_quote = any(l.lstrip().startswith(">") for l in lines)
+    if has_gt_quote:
+        segments = []
+        current_depth = None
+        buf = []
+
+        for line in lines:
+            m = _QUOTE_DEPTH_RE.match(line)
+            depth, content = (len(m.group(1)), m.group(2)) if m else (0, line)
+
+            if current_depth is None:
+                current_depth = depth
+                buf.append(content)
+            elif depth == current_depth:
+                buf.append(content)
+            else:
+                seg = "\n".join(buf).strip()
+                if seg:
+                    segments.append((current_depth, seg))
+                current_depth = depth
+                buf = [content]
+
+        if buf:
+            seg = "\n".join(buf).strip()
+            if seg:
+                segments.append((current_depth, seg))
+
+        return segments
+
+    # ------------------------------------------------------------------
+    # Fallback: header-block depth mapping for plain-text threads
+    # ------------------------------------------------------------------
+    lookahead = 10  # 在未来 10 行内找 header
+    min_keys = 3    # 至少看到 3 种不同 header key
+    cut_points = [0]
+    last_cut = 0
+    block_starts = []
+
+    n = len(lines)
+    for i in range(1, n):
+        # spacing guard
+        if i - last_cut < lookahead:
+            continue
+
+        keys = set()
+        matches = []  # record real header line positions
+
+        for j in range(i, min(i + lookahead, n)):
+            m1 = _HDR_KEY_RE.match(lines[j])
+            if m1:
+                keys.add(m1.group(1).lower())
+                matches.append(j)
+                continue
+            m2 = _CN_HDR_KEY_RE.match(lines[j])
+            if m2:
+                keys.add(m2.group(1))
+                matches.append(j)
+                continue
+
+        if len(keys) >= min_keys and matches:
+            first_header_j = matches[0]
+
+            # spacing guard should be evaluated on real header start
+            if first_header_j - last_cut < lookahead:
+                continue
+
+            block_starts.append(first_header_j)
+            cut_points.append(first_header_j)
+            last_cut = first_header_j
+
+    # Not enough evidence => treat as single body
+    if len(block_starts) < 1:
+        return [(0, text.strip())] if text.strip() else []
+
+    cut_points.append(n)
+
+    # Build segments: first = depth 0, subsequent blocks = depth 1..k
+    out: list[tuple[int, str]] = []
+    for idx, (a, b) in enumerate(zip(cut_points, cut_points[1:])):
+        seg = "\n".join(lines[a:b]).strip()
+        if not seg:
+            continue
+        depth = 0 if idx == 0 else idx
+        out.append((depth, seg))
+
+    return out
+
+# ------------------------------------------------------------
 # Phase 1: on_wrote
 # ------------------------------------------------------------
 
@@ -151,10 +263,6 @@ def _split_quote_by_forward_email(text: str) -> list[str]:
 # Phase 4: Chinese header block (NEW)
 # ------------------------------------------------------------
 
-_CN_HDR_KEY_RE = re.compile(
-    r"^\s*(发件人|寄件人|发送时间|发送日期|收件人|抄送|副本|主题)\s*[:：]\s*"
-)
-
 def _split_quote_by_cn_header_block(
     text: str, *, min_keys: int = 3, lookahead: int = 8
 ) -> list[str]:
@@ -223,115 +331,6 @@ def _apply_quote_split_strategies(text: str) -> list[str]:
         segments = next_segments
     return segments
 
-
-# ------------------------------------------------------------
-# Phase 0: quote-depth splitter (plain + HTML)
-# ------------------------------------------------------------
-
-_QUOTE_DEPTH_RE = re.compile(r"^(>+)\s*(.*)", re.M)
-
-def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
-    """
-    Phase 0 quote-depth splitter (minimum drop-in)
-
-    - If '>' quote markers exist: keep ORIGINAL behavior 100% unchanged.
-    - Else (Foxmail/plain flattened threads): detect repeated header-blocks
-      (CN/EN) and map each block start to deeper quote depth.
-    """
-    if not text:
-        return []
-
-    lines = text.splitlines()
-
-    # ------------------------------------------------------------------
-    # Fast path: ORIGINAL behavior when RFC-style '>' quoting exists
-    # ------------------------------------------------------------------
-    has_gt_quote = any(l.lstrip().startswith(">") for l in lines)
-    if has_gt_quote:
-        segments = []
-        current_depth = None
-        buf = []
-
-        for line in lines:
-            m = _QUOTE_DEPTH_RE.match(line)
-            depth, content = (len(m.group(1)), m.group(2)) if m else (0, line)
-
-            if current_depth is None:
-                current_depth = depth
-                buf.append(content)
-            elif depth == current_depth:
-                buf.append(content)
-            else:
-                seg = "\n".join(buf).strip()
-                if seg:
-                    segments.append((current_depth, seg))
-                current_depth = depth
-                buf = [content]
-
-        if buf:
-            seg = "\n".join(buf).strip()
-            if seg:
-                segments.append((current_depth, seg))
-
-        return segments
-
-    # ------------------------------------------------------------------
-    # Fallback: header-block depth mapping for plain-text threads
-    # ------------------------------------------------------------------
-    lookahead = 10
-    min_keys = 3
-    cut_points = [0]
-    last_cut = 0
-    block_starts = []
-
-    n = len(lines)
-    for i in range(1, n):
-        # spacing guard
-        if i - last_cut < lookahead:
-            continue
-
-        keys = set()
-        matches = []  # record real header line positions
-
-        for j in range(i, min(i + lookahead, n)):
-            m1 = _HDR_KEY_RE.match(lines[j])
-            if m1:
-                keys.add(m1.group(1).lower())
-                matches.append(j)
-                continue
-            m2 = _CN_HDR_KEY_RE.match(lines[j])
-            if m2:
-                keys.add(m2.group(1))
-                matches.append(j)
-                continue
-
-        if len(keys) >= min_keys and matches:
-            first_header_j = matches[0]
-
-            # spacing guard should be evaluated on real header start
-            if first_header_j - last_cut < lookahead:
-                continue
-
-            block_starts.append(first_header_j)
-            cut_points.append(first_header_j)
-            last_cut = first_header_j
-
-    # Not enough evidence => treat as single body
-    if len(block_starts) < 1:
-        return [(0, text.strip())] if text.strip() else []
-
-    cut_points.append(n)
-
-    # Build segments: first = depth 0, subsequent blocks = depth 1..k
-    out: list[tuple[int, str]] = []
-    for idx, (a, b) in enumerate(zip(cut_points, cut_points[1:])):
-        seg = "\n".join(lines[a:b]).strip()
-        if not seg:
-            continue
-        depth = 0 if idx == 0 else idx
-        out.append((depth, seg))
-
-    return out
 
 
 # ------------------------------------------------------------
