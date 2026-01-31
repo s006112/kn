@@ -10,6 +10,57 @@ import re
 from helper_sanitize import sanitize_text
 from helper_save_email_raw_text import save_raw_email_text
 
+
+# ------------------------------------------------------------
+# Phase -1: quote normalization (decoupled helper)
+# Responsibility:
+#   Insert missing quote markers after forwarded separators.
+#
+# Rules:
+#   - detect "-------- 轉寄郵件 --------" / "转寄邮件"
+#   - when separator depth == current depth:
+#         all subsequent lines depth +1
+#   - supports nesting (multiple separators accumulate)
+#   - pure text rewrite, no split logic here
+# ------------------------------------------------------------
+
+_FWD_CN_LINE_RE = re.compile(
+    r"^\s*-+\s*(?:轉寄郵件|转寄邮件)\s*-+\s*$"
+)
+
+_QUOTE_PREFIX_RE = re.compile(r"^(>+)\s*(.*)")
+
+
+def insert_quote_markers(text: str) -> str:
+    if not text:
+        return text
+
+    lines = text.splitlines()
+    out = []
+
+    extra_depth = 0  # accumulated +N
+
+    for line in lines:
+        m = _QUOTE_PREFIX_RE.match(line)
+
+        if m:
+            depth = len(m.group(1))
+            content = m.group(2)
+        else:
+            depth = 0
+            content = line
+
+        new_depth = depth + extra_depth
+        new_line = (">" * new_depth + " " + content) if new_depth > 0 else content
+        out.append(new_line)
+
+        # if this line is forwarded separator → increase depth for next lines
+        if _FWD_CN_LINE_RE.match(content.strip()):
+            extra_depth += 1
+
+    return "\n".join(out)
+
+
 # ------------------------------------------------------------
 # Quote-depth splitter (phase 0)
 # ------------------------------------------------------------
@@ -72,7 +123,24 @@ def parse_email_to_raw_blocks(email, email_id):
         return []
 
     content = text_part.get_content()
-    save_raw_email_text(email_id=email_id, content=content)
+    if not content:
+        return []
+
+    # save BEFORE normalization
+    save_raw_email_text(
+        email_id=f"{email_id}_raw",
+        content=content,
+    )
+
+    # Phase -1 normalize
+    content = insert_quote_markers(content)
+
+    # save AFTER normalization
+    save_raw_email_text(
+        email_id=f"{email_id}_normalized",
+        content=content,
+    )
+
     if not content:
         return []
 
