@@ -77,7 +77,7 @@ from helper.utils_llm import call_llm
 from helper.helper_embedding import embed
 
 
-LLM_MODEL = "sonar"
+LLM_MODEL = "sonar-pro"   # sonar, gpt-5.1
 TOP_K = 10
 CANDIDATE_K = 80
 SCORE_THRESHOLD = 0.4
