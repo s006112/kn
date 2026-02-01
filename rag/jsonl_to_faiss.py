@@ -110,9 +110,9 @@ def load_chunks():
                 if not line:
                     continue
                 obj = json.loads(line)
-                if TARGET_CHUNK_FOLDER == "mbox":
-                    if obj.get("part") == "quote":
-                        continue
+                #if TARGET_CHUNK_FOLDER == "mbox":
+                #    if obj.get("part") == "quote":
+                #        continue
 
                 text = (obj.get("text") or obj.get("content") or "").strip()
                 if not text:
@@ -217,7 +217,7 @@ def build_index(chunks):
     conn = init_sqlite(sqlite_path)
     cur = conn.cursor()
 
-    SAFE_BATCH = 32
+    SAFE_BATCH = 1
     vector_id = 0
 
     for start_idx in range(0, total, SAFE_BATCH):

@@ -66,12 +66,12 @@ def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None)
             "word": len(text.split()),
 
             "part": raw.get("part", part),
-            #"file_type": file_type,
-            #"attachment": attachment,
+            "file_type": file_type,
+            "attachment": attachment,
 
-            #doc_id": raw["doc_id"],
-            #"block_id": f"{raw['doc_id']}_b{seq:02d}",
-            #"source": raw.get("source"),
+            "doc_id": raw["doc_id"],
+            "block_id": f"{raw['doc_id']}_b{seq:02d}",
+            "source": raw.get("source"),
 
             "text": text,
         }
