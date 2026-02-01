@@ -83,13 +83,15 @@ def insert_quote_markers(text: str) -> str:
             depth = 0
             content = line
 
-        new_depth = depth + extra_depth
-        out.append((">" * new_depth + " " + content) if new_depth > 0 else content)
-
+        # ⭐ pre-increment
         if _FWD_LINE_RE.match(content.strip()):
             extra_depth += 1
 
+        new_depth = depth + extra_depth
+        out.append((">" * new_depth + " " + content) if new_depth > 0 else content)
+
     return "\n".join(out)
+
 
 
 def insert_header_block_markers(text: str) -> str:
@@ -114,20 +116,20 @@ def insert_header_block_markers(text: str) -> str:
             depth = 0
             content = line
 
-        new_depth = depth + extra_depth
-        out.append((">" * new_depth + " " + content) if new_depth > 0 else content)
-
         is_header = _is_header_block_boundary(lines, i)
 
-        # trigger only on the first line of a detected header block
-        # NOTE: do NOT require depth==0, otherwise quoted header blocks never trigger
+        # ⭐ pre-increment（关键修复）
         if is_header and not prev_is_header:
             extra_depth += 1
+
+        new_depth = depth + extra_depth
+        out.append((">" * new_depth + " " + content) if new_depth > 0 else content)
 
         prev_is_header = is_header
         i += 1
 
     return "\n".join(out)
+
 
 # ------------------------------------------------------------
 # Quote-depth splitter (phase 0)
@@ -190,11 +192,8 @@ def parse_email_to_raw_blocks(email, email_id):
     content = text_part.get_content()
     if not content:
         return []
-
-    # Phase -1 normalize
+    
     content = insert_quote_markers(content)
-    save_raw_email_text(email_id=f"{email_id}_q1", content=content)
-
     content = insert_header_block_markers(content)
     save_raw_email_text(email_id=f"{email_id}_q2", content=content,)
 
