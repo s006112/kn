@@ -4,7 +4,7 @@ import json
 import sqlite3
 import faiss
 
-from helper.helper_faiss_embedding import embed
+from helper_faiss_embedding import embed
 
 SAFE_BATCH = 16
 

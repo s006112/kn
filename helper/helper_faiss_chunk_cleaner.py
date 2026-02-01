@@ -17,7 +17,7 @@ MAX_SPLIT_WORDS = 500
 SAFE_BATCH = 16
 HARD_MIN_WORDS = 10          # Rule 1: word <= 2 -> drop
 SOFT_SHORT_WORDS = 10        # Rule 2: word < 8 and low-information -> drop
-MAX_SPLIT_WORDS = 500       # Rule 3: word > MAX_SPLIT_WORDS -> split (never drop long)
+MAX_SPLIT_WORDS = 800       # Rule 3: word > MAX_SPLIT_WORDS -> split (never drop long)
 
 _EN_STOPWORDS = {
     "a","an","the","and","or","but",
