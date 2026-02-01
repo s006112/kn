@@ -86,7 +86,7 @@ from typing import Optional, Any, Dict, List, Tuple
 
 # Assume these helpers are in place
 from helper.utils_llm import call_llm
-from helper.helper_embedding import embed
+from helper.helper_faiss_embedding import embed
 
 
 # ─── Config (保持原有的配置) ────────────────────────────────
