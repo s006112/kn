@@ -9,11 +9,6 @@ from pathlib import Path
 # config
 # =========================
 
-HARD_MIN_WORDS = 3
-SOFT_SHORT_WORDS = 8
-MAX_SPLIT_WORDS = 500
-
-# ====== 你现有 helpers 原封不动贴过来 ======
 SAFE_BATCH = 16
 HARD_MIN_WORDS = 10          # Rule 1: word <= 2 -> drop
 SOFT_SHORT_WORDS = 10        # Rule 2: word < 8 and low-information -> drop
@@ -34,7 +29,7 @@ _EN_STOPWORDS = {
 }
 
 _LOW_INFO_REGEXES = [
-    re.compile(r"^(?:hi|hello|hey)[!. ,]*$", re.I),
+    re.compile(r"^(?:wrote|hi|hello|hey)[!. ,]*$", re.I),
     re.compile(r"^(?:ok|okay|k|noted|received|got it|roger|ack)[!. ,]*$", re.I),
     re.compile(r"^(?:thanks|thank you|thx|tks)[!. ,]*$", re.I),
     re.compile(r"^(?:best regards|kind regards|regards|br|cheers|sincerely)[!. ,]*$", re.I),
@@ -42,7 +37,7 @@ _LOW_INFO_REGEXES = [
     re.compile(r"^(?:--+)$"),
     # 中文常见“无信息”短句 / 签名
     re.compile(r"^(?:谢谢|多谢|感谢|謝謝|多謝|感謝)[!！。．、,， ]*$"),
-    re.compile(r"^(?:收到|已收到|收悉|悉知|已阅|已讀|已讀取|已了解|了解|明白|好的|好|可以|没问题|沒問題|OK|Ok|ok)[!！。．、,， ]*$"),
+    re.compile(r"^(?:寫道|收到|已收到|收悉|悉知|已阅|已讀|已讀取|已了解|了解|明白|好的|好|可以|没问题|沒問題|OK|Ok|ok)[!！。．、,， ]*$"),
     re.compile(r"^(?:请了解|請了解|请知悉|請知悉|请查收|請查收|烦请查收|煩請查收|敬请查收|敬請查收)[!！。．、,， ]*$"),
     re.compile(r"^(?:收到|已收到|收悉|悉知)[!！。．、,， ]*(?:谢谢|多谢|感谢|謝謝|多謝|感謝)?[!！。．、,， ]*$"),
     re.compile(r"^(?:请了解|請了解|请知悉|請知悉|请查收|請查收|烦请查收|煩請查收|敬请查收|敬請查收)[!！。．、,， ]*(?:谢谢|多谢|感谢|謝謝|多謝|感謝)?[!！。．、,， ]*$"),
@@ -169,7 +164,7 @@ def build_chunks_jsonl(json_dir: Path, block_suffix: str, out_path: Path):
 
                 word = _count_words(text)
 
-                if word <= 2:
+                if word <= HARD_MIN_WORDS:
                     stats["drop_hard"] += 1
                     continue
 
