@@ -30,16 +30,25 @@ def _progress_bar(done: int, total: int):
     bar = "█" * filled + "-" * (width - filled)
     print(f"\r[{bar}] {done}/{total}", end="", flush=True)
 
-
-def build_index(chunks_path, out_dir: str, name: str):
-    chunks = []
+def _iter_batches(chunks_path, batch_size):
+    batch = []
 
     with open(chunks_path, encoding="utf-8") as f:
         for line in f:
             obj = json.loads(line)
             text = obj.pop("text")
-            chunks.append((text, obj))
 
+            batch.append((text, obj))
+
+            if len(batch) >= batch_size:
+                yield batch
+                batch = []
+
+    if batch:
+        yield batch
+
+
+def build_index(chunks_path, out_dir, name):
     dim = embed(["test"]).shape[1]
     index = faiss.IndexFlatIP(dim)
 
@@ -47,19 +56,20 @@ def build_index(chunks_path, out_dir: str, name: str):
     conn = init_sqlite(sqlite_path)
     cur = conn.cursor()
 
+    # count total
+    with open(chunks_path, encoding="utf-8") as f:
+        total = sum(1 for _ in f)
+
     vid = 0
-    total = len(chunks)
 
-    for i in range(0, total, SAFE_BATCH):
-        batch = chunks[i:i+SAFE_BATCH]
-
+    for batch in _iter_batches(chunks_path, SAFE_BATCH):
         texts = [t for t, _ in batch]
         metas = [m for _, m in batch]
 
         embs = embed(texts)
         index.add(embs)
 
-        _progress_bar(min(i + SAFE_BATCH, total), total)
+        _progress_bar(vid + len(batch), total)
 
         for j, meta in enumerate(metas):
             cur.execute(
