@@ -137,7 +137,8 @@ def _split_long_text(text: str, *, max_words: int, word_count_hint: int | None =
 def _dump_chunks_jsonl(chunks, out_path: Path):
     with open(out_path, "w", encoding="utf-8") as f:
         for text, meta in chunks:
-            obj = {"text": text, **meta}
+            #obj = {"text": text, **meta}
+            obj = {**meta, "text": text}
             f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
 
