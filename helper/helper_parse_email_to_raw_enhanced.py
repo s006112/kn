@@ -212,19 +212,11 @@ def insert_html_blockquote_markers(text: str) -> str:
         if not tok:
             continue
 
-        # open blockquote
-        if _BLOCK_OPEN_RE.fullmatch(tok):
+        # open blockquote, close blockquote
+        if _BLOCK_OPEN_RE.fullmatch(tok) or _BLOCK_CLOSE_RE.fullmatch(tok):
             flush()
-            #depth += 1
             continue
 
-        # close blockquote
-        if _BLOCK_CLOSE_RE.fullmatch(tok):
-            flush()
-            #depth = max(0, depth - 1)
-            continue
-
-        # other tags → ignore
         if tok.startswith("<"):
             continue
 
@@ -306,8 +298,8 @@ def parse_email_to_raw_blocks(email, email_id):
 
     if _needs_html_blockquote_normalization(content):
         content = insert_html_blockquote_markers(content)    
-    #content = insert_quote_markers(content)
-    #content = insert_header_block_markers(content)
+    content = insert_quote_markers(content)
+    content = insert_header_block_markers(content)
 
 
     save_raw_email_text(email_id=f"{email_id}_q2", content=content,)
