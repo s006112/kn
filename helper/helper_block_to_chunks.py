@@ -139,8 +139,14 @@ def _split_long_text(text: str, *, max_words: int, word_count_hint: int | None =
 
 # ==========================================
 
+def _dump_chunks_jsonl(chunks, out_path: Path):
+    with open(out_path, "w", encoding="utf-8") as f:
+        for text, meta in chunks:
+            obj = {"text": text, **meta}
+            f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
-def load_and_clean_chunks(json_dir: Path, block_suffix: str):
+
+def build_chunks_jsonl(json_dir: Path, block_suffix: str, out_path: Path):
     pattern = os.path.join(json_dir, f"*{block_suffix}")
     files = glob(pattern)
 
@@ -163,19 +169,16 @@ def load_and_clean_chunks(json_dir: Path, block_suffix: str):
 
                 word = _count_words(text)
 
-                # Rule 1
                 if word <= 2:
                     stats["drop_hard"] += 1
                     continue
 
-                # Rule 2
                 if word < SOFT_SHORT_WORDS and _is_low_information(text):
                     stats["drop_soft"] += 1
                     continue
 
-                meta = obj  # 保持原样即可
+                meta = obj
 
-                # Rule 3
                 if word > MAX_SPLIT_WORDS:
                     subs = _split_long_text(text, max_words=MAX_SPLIT_WORDS, word_count_hint=word)
                     stats["split_blocks"] += 1
@@ -186,5 +189,10 @@ def load_and_clean_chunks(json_dir: Path, block_suffix: str):
 
                 chunks.append((text, meta))
 
-    print("CLEAN STATS:", stats)
-    return chunks
+    _dump_chunks_jsonl(chunks, out_path)
+
+    print(
+        f"CLEAN STATS: {stats}\n"
+        f"CHUNKS WRITTEN → {out_path}"
+    )
+

@@ -30,6 +30,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from helper.helper_block_to_chunks import build_chunks_jsonl
 from helper.helper_parse_raw_to_jsonl import (
     parse_pdf_bytes_to_canonical_blocks,
     parse_email_bytes_to_canonical_blocks,
@@ -37,8 +38,11 @@ from helper.helper_parse_raw_to_jsonl import (
     parse_xls_bytes_to_canonical_blocks,
 )
 
+BLOCK_SUFFIX = "email_blocks.jsonl"
 RAW_MBOX_DIR = Path("data/mbox/raw")
 OUTPUT_JSONL = Path("data/mbox/jsonl/email_blocks.jsonl")
+CHUNKS_JSONL = Path("data/mbox/jsonl/mbox_chunks.jsonl")
+
 
 ATTACHMENT_PARSERS = {
     ".pdf":  parse_pdf_bytes_to_canonical_blocks,
@@ -163,6 +167,13 @@ def main():
 
     print(f"[DONE] Canonical email JSONL written to {OUTPUT_JSONL}")
 
+    print("[INFO] Building chunks jsonl...")
+    build_chunks_jsonl(
+        OUTPUT_JSONL.parent,
+        BLOCK_SUFFIX,
+        CHUNKS_JSONL,
+    )
+    print(f"[DONE] Chunks JSONL written to {CHUNKS_JSONL}")
 
 if __name__ == "__main__":
     main()

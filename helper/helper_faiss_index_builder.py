@@ -31,7 +31,15 @@ def _progress_bar(done: int, total: int):
     print(f"\r[{bar}] {done}/{total}", end="", flush=True)
 
 
-def build_index(chunks, out_dir: str, name: str):
+def build_index(chunks_path, out_dir: str, name: str):
+    chunks = []
+
+    with open(chunks_path, encoding="utf-8") as f:
+        for line in f:
+            obj = json.loads(line)
+            text = obj.pop("text")
+            chunks.append((text, obj))
+
     dim = embed(["test"]).shape[1]
     index = faiss.IndexFlatIP(dim)
 
@@ -59,10 +67,10 @@ def build_index(chunks, out_dir: str, name: str):
                 (vid, texts[j], json.dumps(meta, ensure_ascii=False))
             )
             vid += 1
+
     print()
 
     conn.commit()
     conn.close()
 
     faiss.write_index(index, os.path.join(out_dir, f"{name}_faiss.index"))
-    print("FAISS index + metadata saved.")
