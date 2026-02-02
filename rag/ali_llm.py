@@ -22,8 +22,8 @@ from helper.utils_config import load_prompt_text
 from helper.utils_llm import call_llm
 from helper.helper_rag_pipeline import get_rag_engine
 from helper.utils_imap_types import EmailMessage
-from ali_email.ali_router import RouteResult, route_email
-from ali_email.ali_mail_parse import (
+from rag.ali_router import RouteResult, route_email
+from rag.ali_mail_parse import (
     REVIEW_FOOTER_LINE,
     REVIEW_HEADER_LINE_TEMPLATE,
     extract_override_instructions,
@@ -39,7 +39,7 @@ class RetrievalResult:
 
 
 def step2_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalResult:
-    if route.category != "safety_regulation":
+    if route.category != "safety_regulation":   # only RAG for safety_regulation, bypass otherwise
         return RetrievalResult(used=False, context=None, source=None)
 
     rag_answer = _get_rag_answer_lazy(body)

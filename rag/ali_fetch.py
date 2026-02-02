@@ -45,7 +45,7 @@ from helper.utils_imap_client import ImapClient, RawFetchedRecord  # type: ignor
 from helper.utils_imap_config import load_imap_config  # type: ignore
 from helper.utils_imap_types import EmailMessage  # type: ignore
 
-from ali_email.ali_mail_parse import (
+from rag.ali_mail_parse import (
     REVIEW_SUBJECT_IMAP_QUERY,
     REVIEW_SUBJECT_PATTERN,
 )  # review-thread detection
