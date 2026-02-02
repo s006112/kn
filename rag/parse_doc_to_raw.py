@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-helper_parse_doc_to_raw.py
+parse_doc_to_raw.py
 
 Used by:
-- rag/helper_parse_raw_to_jsonl.py
+- rag/parse_raw_to_jsonl.py
 
 Responsibility:
 Extract paragraph-level raw blocks from Word documents with unified fallback logic.
@@ -17,7 +17,7 @@ This version ONLY does paragraph extraction. No chunk splitting yet.
 from pathlib import Path
 import logging
 
-from rag.helper_parse_doc_helper import (
+from parse_doc_helper import (
     extract_text_from_doc,
     extract_text_from_docx,
     WORD_EXTS,

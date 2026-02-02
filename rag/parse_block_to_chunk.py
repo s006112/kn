@@ -1,13 +1,13 @@
 
 """
-helper_block_to_chunks.py
+parse_block_to_chunk.py
 
 Responsibility:
 Read canonical-block JSONL files, filter low-value blocks, split oversized blocks, and write a chunked JSONL suitable for
 downstream indexing.
 
 Used by:
-* rag/mbox_to_jsonl.py
+* rag/parse_mbox_to_chunk.py
 
 Pipelines:
 - jsonl_glob -> jsonl_read -> text_extract -> word_count -> short_drop -> low_info_drop -> long_split -> chunk_write

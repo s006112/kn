@@ -4,7 +4,7 @@ Responsibility:
 Extracts and sanitizes text from Excel workbooks (XLS/XLSX and variants), merging sheet text into a single document.
 
 Used by:
-- rag/helper_parse_raw_to_jsonl.py
+- rag/parse_raw_to_jsonl.py
 
 Pipelines:
 - read_excel -> process_sheets -> sanitize_text -> merge_sheets

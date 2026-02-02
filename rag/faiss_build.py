@@ -1,7 +1,7 @@
 # build_faiss.py
 from pathlib import Path
 
-from helper_faiss_index_builder import build_index
+from faiss_index_builder import build_index
 
 
 TARGET = "mbox" # "standard" | "mbox" | "rag"

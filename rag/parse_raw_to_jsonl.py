@@ -1,11 +1,13 @@
 """
+parse_raw_to_jsonl.py
+
 Responsibility:
 Convert parsed "raw blocks" from multiple document sources into a canonical block
 stream suitable for downstream JSONL serialization.
 
 Used by:
-- rag/mbox_to_jsonl.py
-- rag/standard_to_jsonl.py
+- rag/parse_mbox_to_chunk.py
+- rag/parse_standard_to_block.py
 
 Pipelines:
 - email_bytes -> raw_blocks -> canonical_blocks
@@ -26,10 +28,10 @@ Out of scope:
   blocks.
 """
 
-from helper_parse_pdf_to_raw import get_pdf_page_blocks
-from helper_parse_email_to_raw import parse_email_to_raw_blocks
-from helper_parse_doc_to_raw import get_doc_paragraph_blocks
-from helper_parsing_xls import extract_excel_text
+from parse_pdf_to_raw import get_pdf_page_blocks
+from parse_email_to_raw import parse_email_to_raw_blocks
+from parse_doc_to_raw import get_doc_paragraph_blocks
+from parse_xls import extract_excel_text
 
 def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None):
     """

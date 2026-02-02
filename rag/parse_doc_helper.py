@@ -5,7 +5,7 @@ Responsibility:
 Extract and sanitize text from Word documents (DOCX natively; legacy DOC via external tools).
 
 Used by:
-* rag/helper_parse_doc_to_raw.py
+* rag/parse_doc_to_raw.py
 
 Pipelines:
 - read_docx -> sanitize_text

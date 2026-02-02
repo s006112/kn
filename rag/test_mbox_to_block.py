@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-test_mbox_to_jsonl.py
+test_mbox_to_block.py
 Responsibility:
 Convert one or more local mbox files into a JSONL stream of "canonical block" records derived from each email body and
 optionally from parsed attachments.

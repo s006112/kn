@@ -6,13 +6,10 @@ Extract per-page text from PDF bytes via PyMuPDF, optionally run OCR via Tessera
 
 
 Used by:
-* helper/test_parse_pdf_to_raw.py
 * core_per_report.py
 * core_so_import.py
-* rag/chunk_att.py
-* rag/standard_pdf_to_txt.py
 * tool/tool_pdf_parser.py
-* rag/helper_parse_raw_to_jsonl.py
+* rag/parse_raw_to_jsonl.py
 
 """
 

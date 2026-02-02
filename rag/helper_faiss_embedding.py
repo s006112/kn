@@ -1,3 +1,16 @@
+"""
+helper_faiss_embedding.py
+
+Responsibility:
+Provide a local/offline embedding helper (BGE M3) for FAISS indexing and RAG retrieval workflows.
+
+Used by:
+* rag/faiss_index_builder.py
+* rag/helper_rag_pipeline.py
+* rag/jsonl_to_faiss.py
+
+"""
+
 import os
 import torch
 from transformers import AutoTokenizer, AutoModel

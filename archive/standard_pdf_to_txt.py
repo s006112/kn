@@ -19,7 +19,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 # --- helper modules ---
-from rag.helper_parse_pdf_to_raw import get_pdf_full_text
+from rag.parse_pdf_to_raw import get_pdf_full_text
 
 
 # === 配置 ===

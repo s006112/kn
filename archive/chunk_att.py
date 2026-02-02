@@ -22,10 +22,10 @@ import logging
 from pathlib import Path
 from typing import Iterable, Iterator, List, Tuple
 
-from helper.helper_parsing_doc import WORD_EXTS, extract_text_from_doc, extract_text_from_docx
+from rag.parse_doc_to_raw import WORD_EXTS, extract_text_from_doc, extract_text_from_docx
 from chunk_json import Task
-from rag.helper_parse_pdf_to_raw import get_pdf_full_text
-from rag.helper_parsing_xls import XLS_EXTS, extract_excel_text
+from rag.parse_pdf_to_raw import get_pdf_full_text
+from rag.parse_xls import XLS_EXTS, extract_excel_text
 
 PDF_EXTS = {".pdf"}
 

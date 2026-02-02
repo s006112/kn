@@ -1,7 +1,7 @@
 # helper_parse_pdf_to_jsonl.py
 from __future__ import annotations
 
-from rag.helper_parse_pdf_to_raw import get_pdf_page_blocks
+from rag.parse_pdf_to_raw import get_pdf_page_blocks
 
 
 def parse_pdf_bytes_to_canonical_blocks(

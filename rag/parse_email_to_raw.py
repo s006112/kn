@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-helper_parse_email_to_raw_based.py
+parse_email_to_raw.py
+
+Used by: 
+- rag/parse_raw_to_jsonl.py
+
 Responsibility:
 Convert Email -> RawBlock list using quote-depth based splitting.
 This is robust, format-agnostic, and does not depend on guessing headers.
@@ -8,7 +12,7 @@ This is robust, format-agnostic, and does not depend on guessing headers.
 
 import re
 from helper_sanitize import sanitize_text
-from helper_save_email_raw_text import save_raw_email_text
+from test_save_email_raw_text import save_raw_email_text
 
 
 # ------------------------------------------------------------
@@ -302,7 +306,7 @@ def parse_email_to_raw_blocks(email, email_id):
     content = insert_header_block_markers(content)
 
 
-    save_raw_email_text(email_id=f"{email_id}_q2", content=content,)
+    #save_raw_email_text(email_id=f"{email_id}_q2", content=content,)
 
     if not content:
         return []
