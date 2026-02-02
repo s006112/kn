@@ -36,90 +36,8 @@ from parse_raw_to_jsonl import count_text_metrics
 # config
 # =========================
 
-SAFE_BATCH = 16
 HARD_MIN_WORDS = 10          # Drops extremely short blocks that are unlikely to be retrievable context.
-SOFT_SHORT_WORDS = 10        # Drops short blocks when they match low-information heuristics.
-MAX_SPLIT_WORDS = 800        # Splits long blocks to cap chunk size while keeping content.
-
-_EN_STOPWORDS = {
-    "a","an","the","and","or","but",
-    "i","me","my","myself","we","our","ours","ourselves",
-    "you","your","yours","yourself","yourselves",
-    "he","him","his","himself","she","her","hers","herself",
-    "it","its","itself","they","them","their","theirs","themselves",
-    "this","that","these","those",
-    "is","am","are","was","were","be","been","being",
-    "have","has","had","having","do","does","did","doing",
-    "to","of","in","on","for","with","as","at","by","from","into","about","over","under",
-    "not","no","yes","ok","okay",
-    "so","too","very","just","only",
-}
-
-_LOW_INFO_REGEXES = [
-    re.compile(r"^(?:wrote|hi|hello|hey)[!. ,]*$", re.I),
-    re.compile(r"^(?:ok|okay|k|noted|received|got it|roger|ack)[!. ,]*$", re.I),
-    re.compile(r"^(?:thanks|thank you|thx|tks)[!. ,]*$", re.I),
-    re.compile(r"^(?:best regards|kind regards|regards|br|cheers|sincerely)[!. ,]*$", re.I),
-    re.compile(r"^(?:sent from my .+)$", re.I),
-    re.compile(r"^(?:--+)$"),
-    # 中文常见“无信息”短句 / 签名
-    re.compile(r"^(?:谢谢|多谢|感谢|謝謝|多謝|感謝)[!！。．、,， ]*$"),
-    re.compile(r"^(?:寫道|收到|已收到|收悉|悉知|已阅|已讀|已讀取|已了解|了解|明白|好的|好|可以|没问题|沒問題|OK|Ok|ok)[!！。．、,， ]*$"),
-    re.compile(r"^(?:请了解|請了解|请知悉|請知悉|请查收|請查收|烦请查收|煩請查收|敬请查收|敬請查收)[!！。．、,， ]*$"),
-    re.compile(r"^(?:收到|已收到|收悉|悉知)[!！。．、,， ]*(?:谢谢|多谢|感谢|謝謝|多謝|感謝)?[!！。．、,， ]*$"),
-    re.compile(r"^(?:请了解|請了解|请知悉|請知悉|请查收|請查收|烦请查收|煩請查收|敬请查收|敬請查收)[!！。．、,， ]*(?:谢谢|多谢|感谢|謝謝|多謝|感謝)?[!！。．、,， ]*$"),
-    re.compile(r"^(?:此致|敬礼|敬禮|祝好|順祝商祺|顺祝商祺|致礼|致禮|敬上)[!！。．、,， ]*$"),
-    re.compile(r"^(?:发自我的iPhone|發自我的iPhone|发自我的手机|發自我的手機).*$"),
-]
-
-
-def _safe_int(v):
-    """
-    Purpose:
-    Convert an arbitrary value to an int if possible.
-
-    Inputs:
-    - v: Any value.
-
-    Outputs:
-    - int value on success, otherwise None.
-    """
-    try:
-        return int(v)
-    except Exception:
-        return None
-
-def _is_low_information(text: str) -> bool:
-    """
-    Purpose:
-    Heuristically detect blocks that are likely acknowledgements, greetings, signatures, stopword-only, or non-language
-    noise.
-
-    Inputs:
-    - text: Input text.
-
-    Outputs:
-    - True if the text is considered low-information, otherwise False.
-    """
-    t = (text or "").strip()
-    if not t:
-        return True
-
-    normalized = re.sub(r"\s+", " ", t).strip()
-    for rx in _LOW_INFO_REGEXES:
-        if rx.match(normalized):
-            return True
-
-    lower = normalized.lower()
-    tokens = re.findall(r"[a-z]+(?:'[a-z]+)?", lower)
-    if tokens and all(tok in _EN_STOPWORDS for tok in tokens):
-        return True
-
-    if not re.search(r"[a-z]", lower):
-        if re.fullmatch(r"[\d\W_ ]+", lower):
-            return True
-
-    return False
+MAX_SPLIT_WORDS = 500        # Splits long blocks to cap chunk size while keeping content.
 
 
 def _split_long_text(text: str, *, max_words: int, word_count_hint: int | None = None) -> list[str]:
@@ -219,25 +137,15 @@ def _make_chunk(text: str, base_meta: dict, idx: int, total: int):
     return text, meta2
 
 def build_chunks_jsonl(json_dir: Path, block_suffix: str, out_path: Path):
-    """
-    Purpose:
-    Load canonical-block JSONL files from a directory and produce a filtered/split chunk JSONL.
-
-    Inputs:
-    - json_dir: Directory containing JSONL block files.
-    - block_suffix: Suffix used to match block files (glob: `*{block_suffix}`).
-    - out_path: Output JSONL file path.
-
-    Outputs:
-    - None. Writes JSONL to `out_path` and prints drop/split statistics.
-    """
     pattern = os.path.join(json_dir, f"*{block_suffix}")
     files = glob(pattern)
 
     chunks = []
+    drop_logs = []
+    split_logs = []
+
     stats = {
         "drop_hard": 0,
-        "drop_soft": 0,
         "split_blocks": 0,
         "split_added": 0,
     }
@@ -252,25 +160,45 @@ def build_chunks_jsonl(json_dir: Path, block_suffix: str, out_path: Path):
                     continue
 
                 _, word = count_text_metrics(text)
+                meta = obj.copy()
 
                 if word <= HARD_MIN_WORDS:
                     stats["drop_hard"] += 1
+                    drop_logs.append({
+                        **meta,
+                        "reason": "hard_min_words",
+                        "original_word": word,
+                        "text": text,
+                    })
                     continue
-
-                if word < SOFT_SHORT_WORDS and _is_low_information(text):
-                    stats["drop_soft"] += 1
-                    continue
-
-                meta = dict(obj)
 
                 if word > MAX_SPLIT_WORDS:
                     subs = _split_long_text(text, max_words=MAX_SPLIT_WORDS, word_count_hint=word)
+
                     stats["split_blocks"] += 1
-
                     total = len(subs)
-                    for i, sub in enumerate(subs, 1):
-                        chunks.append(_make_chunk(sub, meta, i, total))
 
+                    split_logs.append({
+                        **meta,
+                        "type": "split_parent",
+                        "reason": "split",
+                        "original_word": word,
+                        "split_total": total,
+                        "text": text,
+                    })
+
+                    for i, sub in enumerate(subs, 1):
+                        chunk_text, chunk_meta = _make_chunk(sub, meta, i, total)
+                        chunks.append((chunk_text, chunk_meta))
+
+                        split_logs.append({
+                            **chunk_meta,
+                            "type": "split_child",
+                            "parent_block_id": meta.get("block_id"),
+                            "text": chunk_text,
+                        })
+
+                    split_logs.append(None)
                     stats["split_added"] += total
                     continue
 
@@ -278,7 +206,19 @@ def build_chunks_jsonl(json_dir: Path, block_suffix: str, out_path: Path):
 
     _dump_chunks_jsonl(chunks, out_path)
 
-    print(
-        f"CLEAN STATS: {stats}\n"
-        f"CHUNKS WRITTEN → {out_path}"
-    )
+    if drop_logs:
+        drop_path = out_path.with_name(out_path.stem + "_chunk_drop.jsonl")
+        _dump_chunks_jsonl([(x["text"], x) for x in drop_logs], drop_path)
+
+    if split_logs:
+        split_path = out_path.with_name(out_path.stem + "_chunk_split_added.jsonl")
+        with open(split_path, "w", encoding="utf-8") as f:
+            for x in split_logs:
+                if x is None:
+                    f.write("\n")
+                else:
+                    f.write(json.dumps(x, ensure_ascii=False) + "\n")
+
+    print(f"CLEAN STATS: {stats}\nCHUNKS WRITTEN → {out_path}")
+
+

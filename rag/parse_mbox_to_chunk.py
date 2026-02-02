@@ -39,7 +39,7 @@ from parse_raw_to_jsonl import (
 )
 
 
-BLOCK_SUFFIX = "email_blocks.jsonl"
+BLOCK_SUFFIX = "mbox_blocks.jsonl"
 RAW_MBOX_DIR = ROOT_DIR / "data" / "mbox" / "raw"
 OUTPUT_JSONL = ROOT_DIR / "data" / "mbox" / "jsonl" / f"{BLOCK_SUFFIX}"
 CHUNKS_JSONL = ROOT_DIR / "data" / "mbox" / "jsonl" / f"{BLOCK_SUFFIX.replace('blocks', 'chunks')}"
