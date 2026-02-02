@@ -23,7 +23,7 @@ class BGEEmbedding:
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
         print(f"Loading embedding model: {self.MODEL_PATH}")
         self.tokenizer = AutoTokenizer.from_pretrained(self.MODEL_PATH, local_files_only=True)
-        self.model = AutoModel.from_pretrained(self.MODEL_PATH, local_files_only=True).cuda()
+        self.model = AutoModel.from_pretrained(self.MODEL_PATH, local_files_only=True).to("cuda" if torch.cuda.is_available() else "cpu")
     
     def embed(self, texts):
         with torch.no_grad():
