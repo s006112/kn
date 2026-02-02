@@ -74,14 +74,16 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from helper.utils_llm import call_llm
-from helper_faiss_embedding import embed
+from rag.helper_faiss_embedding import embed
 
 
 LLM_MODEL = "sonar-pro"   # sonar, gpt-5.1
 TOP_K = 10
 CANDIDATE_K = 80
 SCORE_THRESHOLD = 0.4
-SYSTEM_PROMPT_PATH = Path("prompt/prompt_rag_system.txt")
+ROOT = Path(__file__).resolve().parents[1]
+SYSTEM_PROMPT_PATH = ROOT / "prompt/prompt_rag_system.txt"
+faiss_dir = ROOT / "data/faiss"
 
 def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
     """
@@ -104,7 +106,7 @@ def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
     """
     if mode not in {"standard", "mbox"}:
         raise ValueError(f"Unknown RAG mode: {mode!r} (expected 'standard' or 'mbox')")
-    faiss_dir = Path("data/faiss")
+    
     return (
         faiss_dir / f"{mode}_metadata.sqlite",
         faiss_dir / f"{mode}_faiss.index",
