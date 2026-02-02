@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ali_email.ali_fetch import fetch_new_messages
+from rag.ali_fetch import fetch_new_messages
 
 # case 1：无 state_store，仅抓 UNSEEN
 msgs = fetch_new_messages(max_messages=5)

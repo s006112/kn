@@ -78,6 +78,7 @@ from rag.helper_faiss_embedding import embed
 
 
 LLM_MODEL = "sonar-pro"   # sonar, gpt-5.1
+SEARCH_BACKEND = "faiss"   # "faiss" | "brute"
 TOP_K = 10
 CANDIDATE_K = 80
 SCORE_THRESHOLD = 0.4
@@ -223,6 +224,33 @@ def brute_force_knn(E: np.ndarray, q: np.ndarray, k: int):
     idx = np.argsort(scores)[-k:][::-1]
     return idx, scores[idx]
 
+def knn_search_switch(
+    *,
+    backend: str,
+    E: np.ndarray,
+    index,
+    q: np.ndarray,
+    k: int,
+):
+    """
+    Minimal switch helper.
+
+    backend:
+        "brute"  -> numpy brute force
+        "faiss"  -> IndexFlat.search()
+
+    Returns:
+        idx, scores   (same shape/semantics as brute_force_knn)
+    """
+    if backend == "brute":
+        return brute_force_knn(E, q, k)
+
+    if backend == "faiss":
+        D, I = index.search(q[None, :], k)
+        return I[0], D[0]
+
+    raise ValueError(f"Unknown backend: {backend}")
+
 
 def _build_similarity_table(
     top_idx,
@@ -279,19 +307,28 @@ class RagEngine:
         - Raises `ValueError` when the loaded chunk count does not match vector count.
         - Propagates filesystem errors when reading the system prompt fails.
         """
-
         db_path, index_path = get_faiss_artifact_paths(mode)
+
         print("Initializing RagEngine: Loading FAISS index and Embedding Model...")
+
         self.texts, self.metas = _load_all_chunks(db_path)
+
+        # keep brute compatibility
         self.E = _load_embedding_matrix(index_path)
+
+        # faiss search path
+        self.index = faiss.read_index(str(index_path))
+
         if len(self.texts) != self.E.shape[0]:
             raise ValueError("Mismatch between metadata rows and embedding matrix size")
-        
+
+        # normalize only brute matrix (runtime safe)
         norms = np.linalg.norm(self.E, axis=1, keepdims=True)
         norms[norms == 0] = 1.0
         self.E = self.E / norms
-        
+
         self.SYSTEM_PROMPT = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
+
 
     def answer_question(self, question: str) -> tuple[str, str]:
         """
@@ -316,7 +353,13 @@ class RagEngine:
             return "", ""
 
         q_vec = embed([q])[0]
-        cand_idx, cand_scores = brute_force_knn(self.E, q_vec, CANDIDATE_K)
+        cand_idx, cand_scores = knn_search_switch(
+            backend=SEARCH_BACKEND,
+            E=self.E,
+            index=self.index,
+            q=q_vec,
+            k=CANDIDATE_K,
+        )
 
         # brute_force_knn score 由高到低排序
         top_idx = np.asarray(cand_idx[:TOP_K], dtype=int)
