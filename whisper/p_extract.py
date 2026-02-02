@@ -183,9 +183,16 @@ def process(self, file_path, get_next_available_filename):
         payload = f"《{base}》\n{content}"
 
         # Avoid repeated note selection so merges stay consistent across models.
-        md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(
-            self.config, base, allow_existing=True
-        )
+        # For markdown-source triggers, write into the existing note with the same filename
+        # (no dated note naming), and still ensure it is linked from Whisper 000000.md.
+        if matched_suffix == ".md":
+            md_path = os.path.join(self.config["OBSIDIAN_SYNC_FOLDER"], filename)
+            link_name = os.path.splitext(filename)[0]
+            md_is_new_seed = True
+        else:
+            md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(
+                self.config, base, allow_existing=True
+            )
 
         any_success = False
         any_failure = False
