@@ -6,10 +6,13 @@ import faiss
 
 from helper_faiss_embedding import embed
 
-SAFE_BATCH = 16
+SAFE_BATCH = 128
 
 
 def init_sqlite(path):
+    dir_path = os.path.dirname(os.fspath(path))
+    if dir_path:
+        os.makedirs(dir_path, exist_ok=True)
     if os.path.exists(path):
         os.remove(path)
 
@@ -49,6 +52,7 @@ def _iter_batches(chunks_path, batch_size):
 
 
 def build_index(chunks_path, out_dir, name):
+    os.makedirs(out_dir, exist_ok=True)
     dim = embed(["test"]).shape[1]
     index = faiss.IndexFlatIP(dim)  # # Using IP on L2-normalized vectors == cosine similarity
 
