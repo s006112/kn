@@ -5,7 +5,7 @@ import torch
 from transformers import AutoTokenizer, Mistral3Config, Mistral3ForConditionalGeneration, PreTrainedTokenizerFast
 from safetensors import safe_open
 
-MODEL_PATH = "/root/.cache/huggingface/hub/Ministral-3-3B-Instruct-2512"
+MODEL_PATH = "/root/.cache/huggingface/hub/Ministral-3-8B-Instruct-2512"
 MISTRAL_CHAT_TEMPLATE = (
     "{% for message in messages %}"
     "{% if loop.first %}<s>{% endif %}"
@@ -60,9 +60,19 @@ def dequantize_fp8_weights(model, model_path: str, target_dtype: torch.dtype | N
     ):
         return
 
-    weights_path = os.path.join(model_path, "model.safetensors")
-    if not os.path.exists(weights_path):
+    filenames = []
+    preferred = ("model.safetensors", "consolidated.safetensors")
+    for name in preferred:
+        path = os.path.join(model_path, name)
+        if os.path.exists(path):
+            filenames.append(name)
+    for name in sorted(os.listdir(model_path)):
+        if name.endswith(".safetensors") and name not in filenames:
+            filenames.append(name)
+    if not filenames:
         return
+
+    safetensor_paths = [os.path.join(model_path, name) for name in filenames]
 
     def to_checkpoint_key(param_name: str) -> str:
         if not param_name.startswith("model."):
@@ -72,20 +82,29 @@ def dequantize_fp8_weights(model, model_path: str, target_dtype: torch.dtype | N
             key = "language_model.model." + key[len("language_model.") :]
         return key
 
-    with safe_open(weights_path, framework="pt", device="cpu") as f:
-        keys = set(f.keys())
-        for name, p in model.named_parameters():
-            if p.dtype not in (torch.float8_e4m3fn, torch.float8_e5m2):
-                continue
-            ckpt_key = to_checkpoint_key(name)
-            if not ckpt_key.endswith(".weight"):
-                continue
-            scale_key = ckpt_key[: -len(".weight")] + ".weight_scale_inv"
-            if scale_key not in keys:
-                raise KeyError(f"Missing FP8 scale for {name}: {scale_key}")
+    file_keys: list[tuple[str, set[str]]] = []
+    for path in safetensor_paths:
+        with safe_open(path, framework="pt", device="cpu") as f:
+            file_keys.append((path, set(f.keys())))
+
+    dtype = target_dtype if target_dtype is not None else torch.bfloat16
+    for name, p in model.named_parameters():
+        if p.dtype not in (torch.float8_e4m3fn, torch.float8_e5m2):
+            continue
+        ckpt_key = to_checkpoint_key(name)
+        if not ckpt_key.endswith(".weight"):
+            continue
+        scale_key = ckpt_key[: -len(".weight")] + ".weight_scale_inv"
+        scale_path = None
+        for path, keys in file_keys:
+            if scale_key in keys:
+                scale_path = path
+                break
+        if scale_path is None:
+            raise KeyError(f"Missing FP8 scale for {name}: {scale_key}")
+        with safe_open(scale_path, framework="pt", device="cpu") as f:
             scale_inv = f.get_tensor(scale_key).to(device=p.device, dtype=torch.float32)
-            dtype = target_dtype if target_dtype is not None else torch.bfloat16
-            p.data = (p.to(torch.float32) * scale_inv).to(dtype)
+        p.data = (p.to(torch.float32) * scale_inv).to(dtype)
 
 
 def build_inputs(tokenizer, prompt: str):
@@ -108,7 +127,7 @@ tokenizer = load_tokenizer(MODEL_PATH)
 model = Mistral3ForConditionalGeneration.from_pretrained(
     MODEL_PATH,
     config=load_config(MODEL_PATH),
-    torch_dtype=torch.float32,  # float16, float32
+    torch_dtype=torch.float16,  # float16, float32
     device_map="auto",
     local_files_only=True
 )
