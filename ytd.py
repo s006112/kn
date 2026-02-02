@@ -281,7 +281,7 @@ class DownloadHandler(BaseHTTPRequestHandler):
         )
 
     def _download_with_yt_dlp(self, url, mode):
-        temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
+        temp_dir = tempfile.mkdtemp(prefix="ytdlp_", dir="/tmp")
         if mode == "mp3":
             base_cmd = ["yt-dlp", "-x", "--audio-format", "mp3", "-f", "ba"]
         else:
