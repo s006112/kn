@@ -74,7 +74,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from helper.utils_llm import call_llm
-from helper.helper_faiss_embedding import embed
+from helper_faiss_embedding import embed
 
 
 LLM_MODEL = "sonar-pro"   # sonar, gpt-5.1

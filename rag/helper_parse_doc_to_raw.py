@@ -14,7 +14,7 @@ This version ONLY does paragraph extraction. No chunk splitting yet.
 from pathlib import Path
 import logging
 
-from helper.helper_parsing_doc import (
+from helper_parsing_doc import (
     extract_text_from_doc,
     extract_text_from_docx,
     WORD_EXTS,

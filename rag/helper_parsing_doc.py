@@ -27,7 +27,7 @@ import tempfile
 from pathlib import Path
 
 import docx
-from helper.helper_sanitize import sanitize_text
+from helper_sanitize import sanitize_text
 
 logger = logging.getLogger(__name__)
 

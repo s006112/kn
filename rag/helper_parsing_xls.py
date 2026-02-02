@@ -26,7 +26,7 @@ from typing import List, Dict, Optional
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import pandas as pd  # pandas 會用 openpyxl / xlrd 等底層 engine 處理 xlsx/xls
-from helper.helper_sanitize import sanitize_text
+from helper_sanitize import sanitize_text
 
 logger = logging.getLogger(__name__)
 

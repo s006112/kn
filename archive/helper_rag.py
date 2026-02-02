@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Tuple
 
 # Assume these helpers are in place
 from helper.utils_llm import call_llm
-from helper.helper_faiss_embedding import embed
+from rag.helper_faiss_embedding import embed
 
 
 # ─── Config (保持原有的配置) ────────────────────────────────

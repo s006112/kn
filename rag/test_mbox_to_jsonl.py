@@ -34,7 +34,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from helper.test_parse_raw_to_jsonl import (
+from test_parse_raw_to_jsonl import (
     parse_email_bytes_to_canonical_blocks,
     parse_email_bytes_to_canonical_blocks_based,
     parse_email_bytes_to_canonical_blocks_enhanced,

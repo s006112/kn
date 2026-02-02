@@ -30,7 +30,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from helper.helper_block_to_chunks import build_chunks_jsonl
+from helper_block_to_chunks import build_chunks_jsonl
 from helper.helper_parse_raw_to_jsonl import (
     parse_pdf_bytes_to_canonical_blocks,
     parse_email_bytes_to_canonical_blocks,
