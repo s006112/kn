@@ -50,7 +50,7 @@ def _iter_batches(chunks_path, batch_size):
 
 def build_index(chunks_path, out_dir, name):
     dim = embed(["test"]).shape[1]
-    index = faiss.IndexFlatIP(dim)
+    index = faiss.IndexFlatIP(dim)  # # Using IP on L2-normalized vectors == cosine similarity
 
     sqlite_path = os.path.join(out_dir, f"{name}_metadata.sqlite")
     conn = init_sqlite(sqlite_path)
