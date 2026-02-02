@@ -45,7 +45,7 @@ OUTPUT_JSONL = ROOT_DIR / "data" / "mbox" / "jsonl" / f"{BLOCK_SUFFIX}"
 CHUNKS_JSONL = ROOT_DIR / "data" / "mbox" / "jsonl" / f"{BLOCK_SUFFIX.replace('blocks', 'chunks')}"
 
 ATTACHMENT_PARSERS = {
-    #".pdf":  parse_pdf_bytes_to_canonical_blocks,
+    ".pdf":  parse_pdf_bytes_to_canonical_blocks,
     #**{ext: parse_doc_bytes_to_canonical_blocks for ext in (".doc", ".docx")},
     #**{ext: parse_xls_bytes_to_canonical_blocks for ext in (".xls", ".xlsx")},
 }

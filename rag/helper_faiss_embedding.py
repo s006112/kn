@@ -35,9 +35,9 @@ class BGEEmbedding:
                 return_tensors="pt",
             ).to(self.model.device)
             out = self.model(**tokens)
-            #emb = out.last_hidden_state[:, 0]  # CLS pooling
-            hidden = out.last_hidden_state  # (batch_size, seq_len, hidden_size)
-            emb = out.last_hidden_state.mean(dim=1) # Mean pooling
+            #hidden = out.last_hidden_state  # (batch_size, seq_len, hidden_size)
+            emb = out.last_hidden_state[:, 0]  # CLS pooling
+            #emb = out.last_hidden_state.mean(dim=1) # Mean pooling
             emb = torch.nn.functional.normalize(emb, p=2, dim=1)
             return emb.cpu().numpy()
 
