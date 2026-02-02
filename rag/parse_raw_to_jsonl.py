@@ -33,6 +33,20 @@ from parse_email_to_raw import parse_email_to_raw_blocks
 from parse_doc_to_raw import get_doc_paragraph_blocks
 from parse_xls import extract_excel_text
 
+
+def count_text_metrics(text: str) -> tuple[int, int]:
+    """
+    Single source of truth for text length metrics.
+
+    Returns:
+        (char_count, word_count)
+    """
+    t = (text or "").strip()
+    if not t:
+        return 0, 0
+    return len(t), len(t.split())
+
+
 def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None):
     """
     Purpose:
@@ -62,10 +76,12 @@ def raw_blocks_to_canonical_blocks(raw_blocks, part, file_type, attachment=None)
             continue
 
         seq += 1
+        char, word = count_text_metrics(text)
+        
         yield {
             "page": raw.get("page"),
-            "char": len(text),
-            "word": len(text.split()),
+            "char": char,
+            "word": word,
 
             "part": raw.get("part", part),
             "file_type": file_type,

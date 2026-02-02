@@ -29,6 +29,8 @@ import json
 import re
 from glob import glob
 from pathlib import Path
+from parse_raw_to_jsonl import count_text_metrics
+
 
 # =========================
 # config
@@ -87,24 +89,6 @@ def _safe_int(v):
     except Exception:
         return None
 
-
-def _count_words(text: str) -> int:
-    """
-    Purpose:
-    Count whitespace-delimited tokens in a text string.
-
-    Inputs:
-    - text: Input text.
-
-    Outputs:
-    - Word count as an int.
-    """
-    t = (text or "").strip()
-    if not t:
-        return 0
-    return len(t.split())
-
-
 def _is_low_information(text: str) -> bool:
     """
     Purpose:
@@ -156,9 +140,11 @@ def _split_long_text(text: str, *, max_words: int, word_count_hint: int | None =
     if not t:
         return []
     if word_count_hint is not None:
-        if word_count_hint <= max_words:
-            return [t]
-    elif _count_words(t) <= max_words:
+        wc = word_count_hint
+    else:
+        _, wc = count_text_metrics(t)
+
+    if wc <= max_words:
         return [t]
 
     def pack_units(units: list[str]) -> list[str]:
@@ -169,7 +155,7 @@ def _split_long_text(text: str, *, max_words: int, word_count_hint: int | None =
             u = u.strip()
             if not u:
                 continue
-            w = _count_words(u)
+            _, w = count_text_metrics(u)
             if w > max_words:
                 if cur:
                     out.append(" ".join(cur).strip())
@@ -221,6 +207,16 @@ def _dump_chunks_jsonl(chunks, out_path: Path):
             obj = {**meta, "text": text}
             f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
+def _make_chunk(text: str, base_meta: dict, idx: int, total: int):
+    char, word = count_text_metrics(text)
+
+    meta2 = base_meta.copy()
+    meta2["char"] = char
+    meta2["word"] = word
+    meta2["chunk_index"] = idx
+    meta2["chunk_total"] = total
+
+    return text, meta2
 
 def build_chunks_jsonl(json_dir: Path, block_suffix: str, out_path: Path):
     """
@@ -255,7 +251,7 @@ def build_chunks_jsonl(json_dir: Path, block_suffix: str, out_path: Path):
                 if not text:
                     continue
 
-                word = _count_words(text)
+                _, word = count_text_metrics(text)
 
                 if word <= HARD_MIN_WORDS:
                     stats["drop_hard"] += 1
@@ -265,17 +261,20 @@ def build_chunks_jsonl(json_dir: Path, block_suffix: str, out_path: Path):
                     stats["drop_soft"] += 1
                     continue
 
-                meta = obj
+                meta = dict(obj)
 
                 if word > MAX_SPLIT_WORDS:
                     subs = _split_long_text(text, max_words=MAX_SPLIT_WORDS, word_count_hint=word)
                     stats["split_blocks"] += 1
-                    for sub in subs:
-                        chunks.append((sub, meta))
-                        stats["split_added"] += 1
+
+                    total = len(subs)
+                    for i, sub in enumerate(subs, 1):
+                        chunks.append(_make_chunk(sub, meta, i, total))
+
+                    stats["split_added"] += total
                     continue
 
-                chunks.append((text, meta))
+                chunks.append(_make_chunk(text, meta, 1, 1))
 
     _dump_chunks_jsonl(chunks, out_path)
 

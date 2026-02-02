@@ -26,7 +26,7 @@ import sys
 from email import policy
 from email.parser import BytesParser
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = Path(__file__).resolve().parent.parent  # ← 关键
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
@@ -38,16 +38,16 @@ from parse_raw_to_jsonl import (
     parse_xls_bytes_to_canonical_blocks,
 )
 
-BLOCK_SUFFIX = "email_blocks.jsonl"
-RAW_MBOX_DIR = Path("data/mbox/raw")
-OUTPUT_JSONL = Path("data/mbox/jsonl/email_blocks.jsonl")
-CHUNKS_JSONL = Path("data/mbox/jsonl/mbox_chunks.jsonl")
 
+BLOCK_SUFFIX = "email_blocks.jsonl"
+RAW_MBOX_DIR = ROOT_DIR / "data" / "mbox" / "raw"
+OUTPUT_JSONL = ROOT_DIR / "data" / "mbox" / "jsonl" / f"{BLOCK_SUFFIX}"
+CHUNKS_JSONL = ROOT_DIR / "data" / "mbox" / "jsonl" / f"{BLOCK_SUFFIX.replace('blocks', 'chunks')}"
 
 ATTACHMENT_PARSERS = {
-    ".pdf":  parse_pdf_bytes_to_canonical_blocks,
-    **{ext: parse_doc_bytes_to_canonical_blocks for ext in (".doc", ".docx")},
-    **{ext: parse_xls_bytes_to_canonical_blocks for ext in (".xls", ".xlsx")},
+    #".pdf":  parse_pdf_bytes_to_canonical_blocks,
+    #**{ext: parse_doc_bytes_to_canonical_blocks for ext in (".doc", ".docx")},
+    #**{ext: parse_xls_bytes_to_canonical_blocks for ext in (".xls", ".xlsx")},
 }
 
 def normalize_date(raw_date: str) -> str:
