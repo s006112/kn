@@ -1,6 +1,10 @@
 """
 helper_save_email_raw_text.py
 
+Use by:
+- rag/helper_parse_email_to_raw_based.py
+- rag/helper_parse_email_to_raw_enhanced.py
+
 Responsibility:
 Persist raw email "text part" content to disk for debugging/inspection.
 

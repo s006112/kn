@@ -31,7 +31,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from helper_block_to_chunks import build_chunks_jsonl
-from helper.helper_parse_raw_to_jsonl import (
+from helper_parse_raw_to_jsonl import (
     parse_pdf_bytes_to_canonical_blocks,
     parse_email_bytes_to_canonical_blocks,
     parse_doc_bytes_to_canonical_blocks,
@@ -46,8 +46,8 @@ CHUNKS_JSONL = Path("data/mbox/jsonl/mbox_chunks.jsonl")
 
 ATTACHMENT_PARSERS = {
     ".pdf":  parse_pdf_bytes_to_canonical_blocks,
-    #**{ext: parse_doc_bytes_to_canonical_blocks for ext in (".doc", ".docx")},
-    #**{ext: parse_xls_bytes_to_canonical_blocks for ext in (".xls", ".xlsx")},
+    **{ext: parse_doc_bytes_to_canonical_blocks for ext in (".doc", ".docx")},
+    **{ext: parse_xls_bytes_to_canonical_blocks for ext in (".xls", ".xlsx")},
 }
 
 def normalize_date(raw_date: str) -> str:

@@ -1,4 +1,29 @@
 
+"""
+helper_block_to_chunks.py
+
+Responsibility:
+Read canonical-block JSONL files, filter low-value blocks, split oversized blocks, and write a chunked JSONL suitable for
+downstream indexing.
+
+Used by:
+* rag/mbox_to_jsonl.py
+
+Pipelines:
+- jsonl_glob -> jsonl_read -> text_extract -> word_count -> short_drop -> low_info_drop -> long_split -> chunk_write
+
+Invariants:
+- Output is JSONL with one object per line.
+- Each output line preserves all input object keys, with `text` set to the kept/split chunk value.
+- Blocks with `text` missing/blank are skipped.
+- Output file is overwritten on each run.
+
+Out of scope:
+- Parsing raw emails or attachments into canonical blocks.
+- Embedding, vector indexing, or similarity search.
+- Deduplication or thread reconstruction.
+"""
+
 import os
 import json
 import re
@@ -10,9 +35,9 @@ from pathlib import Path
 # =========================
 
 SAFE_BATCH = 16
-HARD_MIN_WORDS = 10          # Rule 1: word <= 2 -> drop
-SOFT_SHORT_WORDS = 10        # Rule 2: word < 8 and low-information -> drop
-MAX_SPLIT_WORDS = 800       # Rule 3: word > MAX_SPLIT_WORDS -> split (never drop long)
+HARD_MIN_WORDS = 10          # Drops extremely short blocks that are unlikely to be retrievable context.
+SOFT_SHORT_WORDS = 10        # Drops short blocks when they match low-information heuristics.
+MAX_SPLIT_WORDS = 800        # Splits long blocks to cap chunk size while keeping content.
 
 _EN_STOPWORDS = {
     "a","an","the","and","or","but",
@@ -47,6 +72,16 @@ _LOW_INFO_REGEXES = [
 
 
 def _safe_int(v):
+    """
+    Purpose:
+    Convert an arbitrary value to an int if possible.
+
+    Inputs:
+    - v: Any value.
+
+    Outputs:
+    - int value on success, otherwise None.
+    """
     try:
         return int(v)
     except Exception:
@@ -54,6 +89,16 @@ def _safe_int(v):
 
 
 def _count_words(text: str) -> int:
+    """
+    Purpose:
+    Count whitespace-delimited tokens in a text string.
+
+    Inputs:
+    - text: Input text.
+
+    Outputs:
+    - Word count as an int.
+    """
     t = (text or "").strip()
     if not t:
         return 0
@@ -61,6 +106,17 @@ def _count_words(text: str) -> int:
 
 
 def _is_low_information(text: str) -> bool:
+    """
+    Purpose:
+    Heuristically detect blocks that are likely acknowledgements, greetings, signatures, stopword-only, or non-language
+    noise.
+
+    Inputs:
+    - text: Input text.
+
+    Outputs:
+    - True if the text is considered low-information, otherwise False.
+    """
     t = (text or "").strip()
     if not t:
         return True
@@ -83,6 +139,19 @@ def _is_low_information(text: str) -> bool:
 
 
 def _split_long_text(text: str, *, max_words: int, word_count_hint: int | None = None) -> list[str]:
+    """
+    Purpose:
+    Split a long text into subtexts that each stay under a max word budget, preferring paragraph boundaries, then sentence
+    boundaries, then fixed-size word windows.
+
+    Inputs:
+    - text: Input text.
+    - max_words: Maximum word count per returned subtext.
+    - word_count_hint: Optional precomputed word count for `text`.
+
+    Outputs:
+    - List of non-empty subtexts, each with word count <= max_words (except when recursive splitting is required).
+    """
     t = (text or "").strip()
     if not t:
         return []
@@ -135,6 +204,17 @@ def _split_long_text(text: str, *, max_words: int, word_count_hint: int | None =
 # ==========================================
 
 def _dump_chunks_jsonl(chunks, out_path: Path):
+    """
+    Purpose:
+    Write (text, metadata) chunk pairs to a JSONL file, ensuring `text` is the final key written into each object.
+
+    Inputs:
+    - chunks: Iterable of (text, meta_dict) tuples.
+    - out_path: Output file path.
+
+    Outputs:
+    - None. Overwrites `out_path`.
+    """
     with open(out_path, "w", encoding="utf-8") as f:
         for text, meta in chunks:
             #obj = {"text": text, **meta}
@@ -143,6 +223,18 @@ def _dump_chunks_jsonl(chunks, out_path: Path):
 
 
 def build_chunks_jsonl(json_dir: Path, block_suffix: str, out_path: Path):
+    """
+    Purpose:
+    Load canonical-block JSONL files from a directory and produce a filtered/split chunk JSONL.
+
+    Inputs:
+    - json_dir: Directory containing JSONL block files.
+    - block_suffix: Suffix used to match block files (glob: `*{block_suffix}`).
+    - out_path: Output JSONL file path.
+
+    Outputs:
+    - None. Writes JSONL to `out_path` and prints drop/split statistics.
+    """
     pattern = os.path.join(json_dir, f"*{block_suffix}")
     files = glob(pattern)
 
@@ -191,4 +283,3 @@ def build_chunks_jsonl(json_dir: Path, block_suffix: str, out_path: Path):
         f"CLEAN STATS: {stats}\n"
         f"CHUNKS WRITTEN → {out_path}"
     )
-

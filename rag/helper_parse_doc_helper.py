@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
+helper_parse_doc_helper.py
 Responsibility:
 Extract and sanitize text from Word documents (DOCX natively; legacy DOC via external tools).
 
 Used by:
-* rag/chunk_att.py
+* rag/helper_parse_doc_to_raw.py
 
 Pipelines:
 - read_docx -> sanitize_text

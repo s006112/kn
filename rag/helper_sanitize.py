@@ -6,14 +6,13 @@ Provide shared text sanitization helpers for the RAG pipeline, including both fl
 chunking/LLM input and layout-aware cleanup for UL/IEC-style standard-document TXT processing.
 
 Used by:
-* rag/chunk_doc.py
-* rag/chunk_json.py
-* rag/chunk_pdf.py
-* rag/chunk_xls.py
-* rag/std_02_sanitize_txt.py
-* helper/helper_parse_email_to_raw.py
-* helper/helper_parsing_doc.py
-* helper/helper_parsing_xls.py
+* rag/helper_parse_doc_helper.py
+* rag/helper_parse_email_to_raw.py
+* rag/helper_parse_email_to_raw_based.py
+* rag/helper_parse_email_to_raw_enhanced.py
+* rag/helper_parsing_xls.py
+* rag/standard_txt_to_sanitized.py
+* archive/helper_temp.py (fallback import path)
 
 Pipelines:
 - bytes or str -> decode -> normalize -> replace chars -> mask email -> regex clean -> mask email -> collapse whitespace

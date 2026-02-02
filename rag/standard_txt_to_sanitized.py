@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-std_02_sanitize_txt.py
+stardard_txt_to_sanitized.py
 
 Responsibility:
 Sanitize raw standard TXT files by removing known PDF overlay/header/footer lines and inserting page-break

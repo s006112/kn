@@ -4,8 +4,8 @@ Convert parsed "raw blocks" from multiple document sources into a canonical bloc
 stream suitable for downstream JSONL serialization.
 
 Used by:
-* rag/mbox_to_jsonl.py
-* rag/standard_to_jsonl.py
+- rag/mbox_to_jsonl.py
+- rag/standard_to_jsonl.py
 
 Pipelines:
 - email_bytes -> raw_blocks -> canonical_blocks

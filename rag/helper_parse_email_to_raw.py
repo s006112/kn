@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
 helper_parse_email_to_raw.py
+
+Used by: 
+- rag/helper_parse_raw_to_jsonl.py
+
 Responsibility:
 Convert Email -> RawBlock list using quote-depth based splitting.
 This is robust, format-agnostic, and does not depend on guessing headers.

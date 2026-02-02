@@ -12,7 +12,7 @@ if str(ROOT) not in sys.path:
 
 import gradio as gr
 from dotenv import load_dotenv
-from helper.helper_rag_pipeline import get_rag_engine
+from rag.helper_rag_pipeline import get_rag_engine
     
 # ─── Environment setup ──────────────────────────────────────────────────────
 load_dotenv()  # load API keys if present

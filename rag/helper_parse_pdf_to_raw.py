@@ -12,6 +12,7 @@ Used by:
 * rag/chunk_att.py
 * rag/standard_pdf_to_txt.py
 * tool/tool_pdf_parser.py
+* rag/helper_parse_raw_to_jsonl.py
 
 """
 
