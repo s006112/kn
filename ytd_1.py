@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """
 Minimal standalone web UI for downloading audio via yt-dlp.
+
+Notes (2026 / YouTube):
+- Many YouTube URLs can be "extracted" (webpage/m3u8/format selected) but still fail at download time with
+  `403: Forbidden`, especially when YouTube forces SABR streaming. In practice:
+  - format selector decides "what to download"
+  - cookies decide "whether you have permission"
+  - ffmpeg downloader is needed to handle SABR/HLS/DASH fetch reliably
 """
 
 import argparse
 import html
+import sys
 import os
 import errno
 import shlex
@@ -51,12 +59,7 @@ FORM_HTML = """<!doctype html>
     <form method="post">
       <input type="hidden" name="mode" value="worst">
       <input type="text" name="url" placeholder="https://example.com/video" required>
-      <button type="submit">Fetch</button>
-    </form>
-    <form method="post">
-      <input type="hidden" name="mode" value="720p">
-      <input type="text" name="url" placeholder="https://example.com/video (720p)" required>
-      <button type="submit">720p</button>
+      <button type="submit">Basic</button>
     </form>
     <form method="post">
       <input type="hidden" name="mode" value="mp3">
@@ -64,7 +67,7 @@ FORM_HTML = """<!doctype html>
       <button type="submit">MP3</button>
     </form>
     {status}
-    <small>Top form runs <code>yt-dlp -f &quot;(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst&quot;</code>; the 720p form runs <code>yt-dlp -f &quot;(bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a])/(bestvideo[height=720]+bestaudio)/(bestvideo[ext=mp4][height&lt;=720]+bestaudio[ext=m4a])/(bestvideo[height&lt;=720]+bestaudio)/best[height&lt;=720]&quot; --merge-output-format mp4</code>; the MP3 form runs <code>yt-dlp -x --audio-format mp3 -f &quot;bestaudio/best&quot;</code>. Files are removed after each request.</small>
+    <small>Top form runs.  Files are removed after each request.</small>
   </main>
 </body>
 </html>
@@ -83,6 +86,20 @@ def _limit_filename_length(filename, limit=50):
 def _split_env_args(var_name):
     value = os.environ.get(var_name)
     return shlex.split(value) if value else []
+
+def _normalize_cookies_from_browser_spec(raw_value, default_browser):
+    if raw_value is None:
+        return None
+    value = raw_value.strip()
+    if not value:
+        return None
+
+    lowered = value.lower()
+    if lowered in {"0", "false", "off", "none", "disable", "disabled"}:
+        return None
+    if lowered in {"1", "true", "on", "enable", "enabled"}:
+        return default_browser
+    return value
 
 
 def _detect_js_runtime():
@@ -108,8 +125,12 @@ JS_RUNTIME = _detect_js_runtime()
 REMOTE_COMPONENTS = os.environ.get("YTD_REMOTE_COMPONENTS", "ejs:github").strip() or None
 EXTRACTOR_ARGS = os.environ.get("YTD_EXTRACTOR_ARGS", "youtube:player_client=default").strip() or None
 COOKIES_FILE = os.environ.get("YTD_COOKIES_FILE")
-COOKIES_FROM_BROWSER = os.environ.get("YTD_COOKIES_FROM_BROWSER")
+DOWNLOADER = os.environ.get("YTD_DOWNLOADER", "ffmpeg").strip() or None
+COOKIES_BROWSER = os.environ.get("YTD_COOKIES_BROWSER", "chromium").strip().lower() or "chromium"
+COOKIES_FROM_BROWSER = _normalize_cookies_from_browser_spec(os.environ.get("YTD_COOKIES_FROM_BROWSER"), COOKIES_BROWSER)
 EXTRA_ARGS = _split_env_args("YTD_EXTRA_ARGS")
+
+ANDROID_EXTRACTOR_ARGS = "youtube:player_client=android"
 
 
 class DownloadHandler(BaseHTTPRequestHandler):
@@ -167,58 +188,35 @@ class DownloadHandler(BaseHTTPRequestHandler):
         if not url:
             return None, None, "Please enter a URL."
         mode = params.get("mode", ["worst"])[0].strip().lower()
-        if mode not in {"worst", "720p", "mp3"}:
+        if mode not in {"worst", "mp3"}:
             mode = "worst"
         return url, mode, None
 
-    def _yt_dlp_common_args(self):
+    def _yt_dlp_common_args(self, *, extractor_args=None, include_browser_cookies=True):
         cmd = []
+        if DOWNLOADER:
+            cmd += ["--downloader", DOWNLOADER]
         if JS_RUNTIME:
             cmd += ["--js-runtimes", JS_RUNTIME]
         if REMOTE_COMPONENTS:
             cmd += ["--remote-components", REMOTE_COMPONENTS]
-        if EXTRACTOR_ARGS:
-            cmd += ["--extractor-args", EXTRACTOR_ARGS]
+        extractor_value = EXTRACTOR_ARGS if extractor_args is None else extractor_args
+        if extractor_value:
+            cmd += ["--extractor-args", extractor_value]
         if COOKIES_FILE:
             cmd += ["--cookies", COOKIES_FILE]
-        if COOKIES_FROM_BROWSER:
+        if include_browser_cookies and COOKIES_FROM_BROWSER:
             cmd += ["--cookies-from-browser", COOKIES_FROM_BROWSER]
         if EXTRA_ARGS:
             cmd += EXTRA_ARGS
         return cmd
 
-    def _download_with_yt_dlp(self, url, mode):
-        temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
-        if mode == "mp3":
-            cmd = ["yt-dlp", "-x", "--audio-format", "mp3", "-f", "bestaudio/best"]
-        else:
-            is_720p = mode == "720p"
-            # Keep the Fetch action intentionally small by forcing the worst
-            # available muxed video+audio combination. The 720p action attempts an
-            # exact 720p grab first before falling back to any format at or below
-            # 720p so that users get the intended resolution when available.
-            format_selector = (
-                "(bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a])/"
-                "(bestvideo[height=720]+bestaudio)/"
-                "(bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a])/"
-                "(bestvideo[height<=720]+bestaudio)/"
-                "best[height<=720]"
-                if is_720p
-                else "(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst"
-            )
-            cmd = ["yt-dlp", "-f", format_selector]
-            if is_720p:
-                cmd += ["--merge-output-format", "mp4"]
-
-        cmd += ["-o", "%(title).50s.%(ext)s"]
-        cmd += self._yt_dlp_common_args()
-        cmd.append(url)
+    def _run_yt_dlp(self, cmd, cwd):
         self.log_message("Starting yt-dlp process: %s", " ".join(cmd))
-
         try:
             proc = subprocess.Popen(
                 cmd,
-                cwd=temp_dir,
+                cwd=cwd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -235,7 +233,76 @@ class DownloadHandler(BaseHTTPRequestHandler):
             if line:
                 self.log_message("[yt-dlp] %s", line)
         proc.stdout.close()
-        return_code = proc.wait()
+        return output_lines, proc.wait()
+
+    def _is_youtube_url(self, url):
+        lowered = url.lower()
+        return "youtube.com" in lowered or "youtu.be" in lowered
+
+    def _looks_like_cookies_from_browser_failure(self, output_lines):
+        combined = "\n".join(output_lines[-80:]).lower()
+        return any(
+            needle in combined
+            for needle in (
+                "cookies-from-browser",
+                "extract cookies",
+                "extracting cookies",
+                "failed to decrypt",
+                "could not find browser",
+                "unsupported browser",
+                "could not locate",
+                "could not read cookies",
+                "cookies database",
+                "cookie database",
+                "permission denied",
+                "keyring",
+                "secret service",
+                "keychain",
+                "profile",
+                "no supported browsers",
+            )
+        )
+
+    def _looks_like_youtube_sabr_403(self, output_lines):
+        combined = "\n".join(output_lines[-120:]).lower()
+        return any(
+            needle in combined
+            for needle in (
+                "403",
+                "forbidden",
+                "sabr",
+                "forcing sabr",
+                "some web client https formats have been skipped",
+            )
+        )
+
+    def _download_with_yt_dlp(self, url, mode):
+        temp_dir = tempfile.mkdtemp(prefix="ytdlp_", dir="/tmp")
+        format_selector = "bv*+ba/best"
+        base_cmd = [sys.executable, "-m", "yt_dlp", "-f", format_selector]
+        if mode == "mp3":
+            base_cmd += ["-x", "--audio-format", "mp3"]
+
+        base_cmd += ["-o", "%(title).50s.%(ext)s"]
+
+        def build_cmd(*, extractor_args=None, include_browser_cookies=True):
+            cmd = list(base_cmd)
+            cmd += self._yt_dlp_common_args(extractor_args=extractor_args, include_browser_cookies=include_browser_cookies)
+            cmd.append(url)
+            return cmd
+
+        output_lines, return_code = self._run_yt_dlp(build_cmd(), temp_dir)
+
+        if return_code != 0 and self._is_youtube_url(url):
+            already_android = bool(EXTRACTOR_ARGS and "player_client=android" in EXTRACTOR_ARGS)
+            cookie_failure = bool(COOKIES_FROM_BROWSER) and self._looks_like_cookies_from_browser_failure(output_lines)
+            sabr_403 = self._looks_like_youtube_sabr_403(output_lines)
+            if not already_android and (cookie_failure or sabr_403):
+                self.log_message("Retrying yt-dlp with android player client (fallback for SABR/403).")
+                output_lines, return_code = self._run_yt_dlp(
+                    build_cmd(extractor_args=ANDROID_EXTRACTOR_ARGS, include_browser_cookies=not cookie_failure),
+                    temp_dir,
+                )
 
         if return_code != 0:
             snippet = "\n".join(line for line in output_lines[-10:] if line.strip()) or "Unknown yt-dlp error."
@@ -329,8 +396,8 @@ def main():
                 "启动失败：端口已被占用（Address already in use）。\n"
                 f"- 当前尝试绑定：{args.host}:{args.port}\n"
                 "- 解决办法：\n"
-                "  1) 换一个端口：`python3 whisper/tool_ytd.py --port 8766`\n"
-                "  2) 或让系统自动选空闲端口：`python3 whisper/tool_ytd.py --port 0`\n"
+                "  1) 换一个端口：`python3 tool/tool_ytd.py --port 8766`\n"
+                "  2) 或让系统自动选空闲端口：`python3 tool/tool_ytd.py --port 0`\n"
                 "  3) 或查出是谁占用了端口并结束它：`ss -ltnp | rg ':8765'`（把 8765 换成你的端口）\n"
                 "- 也可能是你之前启动的同一个脚本还在后台运行。"
             )

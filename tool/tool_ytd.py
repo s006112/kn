@@ -51,7 +51,7 @@ FORM_HTML = """<!doctype html>
     <form method="post">
       <input type="hidden" name="mode" value="worst">
       <input type="text" name="url" placeholder="https://example.com/video" required>
-      <button type="submit">Basic</button>
+      <button type="submit">Fetch</button>
     </form>
     <form method="post">
       <input type="hidden" name="mode" value="720p">
@@ -64,7 +64,7 @@ FORM_HTML = """<!doctype html>
       <button type="submit">MP3</button>
     </form>
     {status}
-    <small>Top form runs.  Files are removed after each request.</small>
+    <small>Top form runs <code>yt-dlp -f &quot;(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst&quot;</code>; the 720p form runs <code>yt-dlp -f &quot;(bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a])/(bestvideo[height=720]+bestaudio)/(bestvideo[ext=mp4][height&lt;=720]+bestaudio[ext=m4a])/(bestvideo[height&lt;=720]+bestaudio)/best[height&lt;=720]&quot; --merge-output-format mp4</code>; the MP3 form runs <code>yt-dlp -x --audio-format mp3 -f &quot;bestaudio/best&quot;</code>. Files are removed after each request.</small>
   </main>
 </body>
 </html>
@@ -329,8 +329,8 @@ def main():
                 "启动失败：端口已被占用（Address already in use）。\n"
                 f"- 当前尝试绑定：{args.host}:{args.port}\n"
                 "- 解决办法：\n"
-                "  1) 换一个端口：`python3 tool/tool_ytd.py --port 8766`\n"
-                "  2) 或让系统自动选空闲端口：`python3 tool/tool_ytd.py --port 0`\n"
+                "  1) 换一个端口：`python3 whisper/tool_ytd.py --port 8766`\n"
+                "  2) 或让系统自动选空闲端口：`python3 whisper/tool_ytd.py --port 0`\n"
                 "  3) 或查出是谁占用了端口并结束它：`ss -ltnp | rg ':8765'`（把 8765 换成你的端口）\n"
                 "- 也可能是你之前启动的同一个脚本还在后台运行。"
             )
