@@ -10,7 +10,7 @@ sudo apt-get update --no-download # 生成依赖树，告诉 apt “全部以离
 
 sudo apt-get install -y --no-download --fix-missing python3-pip # install from cached .deb
 sudo apt-get install -y --no-download --fix-missing libreoffice-writer ghostscript tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra # per
-sudo apt-get install -y --no-download --fix-missing ffmpeg # whisper
+sudo apt-get install ffmpeg-y --no-download --fix-missing ffmpeg # whisper
 sudo apt-get install -y --no-download --fix-missing xxxxxxxx
 
 
