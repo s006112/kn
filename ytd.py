@@ -61,11 +61,6 @@ FORM_HTML = """<!doctype html>
       <button type="submit">Basic</button>
     </form>
     <form method="post">
-      <input type="hidden" name="mode" value="720p">
-      <input type="text" name="url" placeholder="https://example.com/video (720p)" required>
-      <button type="submit">720p</button>
-    </form>
-    <form method="post">
       <input type="hidden" name="mode" value="mp3">
       <input type="text" name="url" placeholder="https://youtube.com/watch?v=... (MP3)" required>
       <button type="submit">MP3</button>
@@ -192,7 +187,7 @@ class DownloadHandler(BaseHTTPRequestHandler):
         if not url:
             return None, None, "Please enter a URL."
         mode = params.get("mode", ["worst"])[0].strip().lower()
-        if mode not in {"worst", "720p", "mp3"}:
+        if mode not in {"worst", "mp3"}:
             mode = "worst"
         return url, mode, None
 
@@ -285,12 +280,7 @@ class DownloadHandler(BaseHTTPRequestHandler):
         if mode == "mp3":
             base_cmd = ["yt-dlp", "-x", "--audio-format", "mp3", "-f", "ba"]
         else:
-            is_720p = mode == "720p"
-            format_selector = (
-                "bv*[height=720]+ba/b[height=720]/bv*[height<=720]+ba/best[height<=720]"
-                if is_720p
-                else "bv*+ba/best"
-            )
+            format_selector = "bv*+ba/best"
             base_cmd = ["yt-dlp", "-f", format_selector]
 
         base_cmd += ["-o", "%(title).50s.%(ext)s"]
