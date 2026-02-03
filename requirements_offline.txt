@@ -97,8 +97,8 @@ pip3 install --no-index --find-links=/wheels \
 # ----------------------------------------------------------------------------
 # Media utilities (system-level override)
 # ----------------------------------------------------------------------------
-pip3 install --no-deps -U yt-dlp --break-system-packages
-# Latest yt-dlp, installed without dependency resolution to avoid system conflicts
+pip3 install --no-deps -U yt-dlp 
+# Latest yt-dlp, installed without dependency resolution to avoid system conflicts --break-system-packages
 
 
 # ============================================================================
