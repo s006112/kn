@@ -169,42 +169,132 @@ def call_openai_t2i(
     return images
 
 
-def call_grok_t2i(
+def call_grok_i2i(
     client: openai.OpenAI,
     model: str,
     prompt: str,
     size: str,
     n: int,
+    init_image: bytes,
 ) -> List[bytes]:
-    """Use xAI Images API (grok-2-image) via OpenAI SDK-compatible endpoint."""
-    del size  # xAI API does not support size/quality/style.
-    if len(prompt) >1000:
-        # xAI prompt length limit (server rejects longer prompts).
-        prompt = prompt[:1000]
-    resp = client.images.generate(model=model, prompt=prompt, n=min(10, max(1, n)))
+    """Image-to-image for xAI (SDK first, JSON HTTP fallback)."""
+    del size  # xAI image edit endpoint does not use OpenAI-style size.
 
-    data = getattr(resp, "data", None) or []
-    if not data:
-        raise RuntimeError("Grok image API returned no data.")
+    api_key = getattr(client, "api_key", None)
+    if not api_key:
+        raise RuntimeError("Grok client is missing api_key.")
 
-    def _extract_bytes(item: Any) -> Optional[bytes]:
+    def _detect_mime(data: bytes) -> str:
+        if data.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if data.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if data.startswith((b"GIF87a", b"GIF89a")):
+            return "image/gif"
+        if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            return "image/webp"
+        return "application/octet-stream"
+
+    def _extract_image_bytes(item: Any) -> Optional[bytes]:
+        if item is None:
+            return None
+        if isinstance(item, (bytes, bytearray, memoryview)):
+            return bytes(item)
+
         b64 = getattr(item, "b64_json", None)
+        if b64 is None and isinstance(item, dict):
+            b64 = item.get("b64_json")
         if b64:
             try:
                 return base64.b64decode(b64)
             except Exception as exc:  # pragma: no cover - defensive
-                raise RuntimeError("Grok image payload is not valid base64.") from exc
+                raise RuntimeError("Grok image payload b64_json is not valid base64.") from exc
 
-        url = getattr(item, "url", None)
-        if not url:
-            return None
-        response = requests.get(url, timeout=120)
-        response.raise_for_status()
-        return response.content
+        image_blob = getattr(item, "image", None)
+        if image_blob is None and isinstance(item, dict):
+            image_blob = item.get("image")
+        if isinstance(image_blob, (bytes, bytearray, memoryview)):
+            return bytes(image_blob)
+        if isinstance(image_blob, str):
+            try:
+                return base64.b64decode(image_blob)
+            except Exception:
+                pass
 
-    images = [img for item in data if (img := _extract_bytes(item))]
+        image_url = getattr(item, "url", None)
+        if image_url is None and isinstance(item, dict):
+            image_url = item.get("url")
+        if image_url:
+            r = requests.get(image_url, timeout=120)
+            r.raise_for_status()
+            return r.content
+        return None
+
+    count = max(1, n)
+    mime = _detect_mime(init_image)
+    image_b64 = base64.b64encode(init_image).decode("utf-8")
+    image_data_uri = f"data:{mime};base64,{image_b64}"
+
+    sdk_error: Optional[str] = None
+    try:
+        import xai_sdk  # type: ignore
+
+        try:
+            sdk_client = xai_sdk.Client(api_key=api_key)
+        except TypeError:
+            sdk_client = xai_sdk.Client()
+
+        sdk_images: List[bytes] = []
+        for _ in range(count):
+            response = sdk_client.image.sample(
+                prompt=prompt,
+                model=model,
+                image_url=image_data_uri,
+            )
+            if img := _extract_image_bytes(response):
+                sdk_images.append(img)
+
+        if sdk_images:
+            return sdk_images
+        sdk_error = "xAI SDK image.sample returned no decodable image."
+    except ImportError as exc:
+        sdk_error = f"xAI SDK unavailable ({exc})."
+    except Exception as exc:  # pragma: no cover - runtime/API dependent
+        sdk_error = f"xAI SDK image.sample failed: {exc}"
+
+    base_url = str(getattr(client, "base_url", "https://api.x.ai/v1")).rstrip("/")
+    url = f"{base_url}/images/edits"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    body: Dict[str, Any] = {
+        "model": model,
+        "prompt": prompt,
+        "n": count,
+        "image": {
+            "url": image_data_uri,
+            "type": "image_url",
+        },
+    }
+
+    resp = requests.post(url, headers=headers, json=body, timeout=120)
+    if resp.status_code != 200:
+        detail = f" (sdk fallback note: {sdk_error})" if sdk_error else ""
+        raise RuntimeError(
+            f"Grok image edit error {resp.status_code}: {resp.text[:200]}{detail}"
+        )
+
+    payload = resp.json()
+    data = payload.get("data") or []
+    if not data:
+        detail = f" (sdk fallback note: {sdk_error})" if sdk_error else ""
+        raise RuntimeError(f"Grok image edit API returned no data.{detail}")
+
+    images = [img for item in data if (img := _extract_image_bytes(item))]
     if not images:
-        raise RuntimeError("Grok image API did not return any decodable image.")
+        detail = f" (sdk fallback note: {sdk_error})" if sdk_error else ""
+        raise RuntimeError(f"Grok image edit API returned no decodable image.{detail}")
     return images
 
 
@@ -370,7 +460,7 @@ _IMAGE_BACKENDS: Dict[str, Dict[str, Any]] = {
     "grok-image": {
         "match": lambda m: m.lower().startswith("grok"),
         "client_getter": get_grok_client,
-        "call_fn": call_grok_t2i,
+        "call_fn": call_grok_i2i,
     },
     "gemini": {
         "match": lambda m: m.lower().startswith("gemini") and "image" in m.lower(),
@@ -410,6 +500,19 @@ def generate_image(
 
     if backend_name == "stability":
         return backend_cfg["call_fn"](
+            client,
+            model_name,
+            prompt,
+            size,
+            n,
+            init_image=image_bytes,
+        )
+
+    if backend_name == "grok-image":
+        if image_bytes is None:
+            raise RuntimeError("Grok image editing requires an input image.")
+        print(f"DEBUG: Grok image edit, model={model_name}, bytes={len(image_bytes)}")
+        return call_grok_i2i(
             client,
             model_name,
             prompt,

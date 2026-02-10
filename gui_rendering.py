@@ -43,7 +43,8 @@ MODEL_CATALOG = {
     "gpt-image-1.5": "GPT-1.5, $$",    # $32, $0.133 per image
     "gpt-image-1": "GPT-1, $$$",   # $40, $0.167 per image
     "gpt-image-1-mini": "GPT-1-Mini, $",   # $8.00, $0.036 per images
-    "grok-2-image-1212": "Grok-2, $",   # $0.07 per images
+    "grok-imagine-image-pro": "Grok-image, $",   # $0.07 per images
+    #"grok-2-image-1212": "Grok-2, $",   # $0.07 per images
     "stability-structure": "SD-Structure, $$$",
     "stability-sketch": "SD-Sketch, $$",
     "stability-core": "SD-Core, $$",
@@ -206,7 +207,7 @@ def get_demo() -> "gr.Blocks":
             model_picker = gr.CheckboxGroup(
                 label="Choose a rendering model",
                 choices=[(MODEL_CATALOG.get(model, model), model) for model in MODEL_OPTIONS],
-                value=[MODEL_OPTIONS[1], MODEL_OPTIONS[4]],
+                value=[MODEL_OPTIONS[1], MODEL_OPTIONS[4], MODEL_OPTIONS[5]],
             )
         prompt_editor = gr.Textbox(
             label="Additional prompt (optional)",
