@@ -148,7 +148,8 @@ def main():
                     save_dir.mkdir(exist_ok=True)
 
                     safe_email_id = re.sub(r"[<>:\"/\\|?*]", "_", email_id)
-                    save_path = save_dir / f"{safe_email_id}__{fn}"
+                    safe_fn = re.sub(r"[<>:\"/\\|?*]", "_", fn)
+                    save_path = save_dir / f"{safe_email_id}__{safe_fn}"
                     if not save_path.exists():
                         save_path.write_bytes(data)
 
