@@ -1,7 +1,7 @@
 from huggingface_hub import list_repo_files, hf_hub_download
 
-repo = "openai/gpt-oss-20b"  # Lightricks/LTX-2"
-local_dir = "/workspaces/kn/data/openai/gpt-oss-20b"
+repo = "Qwen/Qwen3-14B"  # Lightricks/LTX-2"
+local_dir = "/workspaces/kn/data/Qwen3-14B"
 
 files = list_repo_files(repo)
 
@@ -12,6 +12,7 @@ for f in files:
         filename=f,
         local_dir=local_dir,
         force_download=False,
+        
         resume_download=True,
     )
 
