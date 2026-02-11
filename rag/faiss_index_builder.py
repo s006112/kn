@@ -6,7 +6,7 @@ import faiss
 
 from helper_faiss_embedding import embed
 
-SAFE_BATCH = 128
+SAFE_BATCH = 16
 
 
 def init_sqlite(path):

@@ -54,9 +54,28 @@ class _FakeDoc:
     def __init__(self, pages: list[_FakePage]) -> None:
         self._pages = pages
         self.page_count = len(pages)
+        self.needs_pass = False
 
     def __iter__(self):
         return iter(self._pages)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class _FakeLockedDoc:
+    def __init__(self) -> None:
+        self.needs_pass = True
+        self.page_count = 1
+
+    def authenticate(self, password: str):
+        return 0
+
+    def __iter__(self):
+        raise ValueError("document closed or encrypted")
 
     def __enter__(self):
         return self
@@ -198,3 +217,9 @@ def test_get_pdf_page_blocks_includes_form_and_annot_blocks(monkeypatch) -> None
             {"source": "annot", "text": "Approved by QA"},
         ]
     }
+
+
+def test_get_pdf_page_blocks_skips_encrypted_pdfs(monkeypatch) -> None:
+    monkeypatch.setattr(pdf_raw.fitz, "open", lambda *args, **kwargs: _FakeLockedDoc())
+    blocks = pdf_raw.get_pdf_page_blocks(b"%PDF-1.4", filename="locked.pdf")
+    assert blocks == {}

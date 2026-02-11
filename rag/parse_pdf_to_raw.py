@@ -52,10 +52,37 @@ if not logger.handlers:  # 防止多次 import 重复加 handler
     fh.setFormatter(fmt)
     logger.addHandler(fh)
 
+fitz.TOOLS.mupdf_display_errors(False)
 
 # ----------------------------------------------------------------------
 # Helpers of PDF text extraction with OCR fallback
 # ----------------------------------------------------------------------
+
+def _unlock_doc_if_needed(doc, filename: str) -> bool:
+    """
+    Best-effort unlock for encrypted PDFs.
+
+    Returns:
+        True if the document is readable without a password (or was unlocked with
+        an empty password). False when the document remains locked.
+    """
+    needs_pass = bool(getattr(doc, "needs_pass", False))
+    if not needs_pass:
+        return True
+
+    authenticate = getattr(doc, "authenticate", None)
+    if callable(authenticate):
+        try:
+            authenticate("")
+        except Exception:
+            pass
+
+    if bool(getattr(doc, "needs_pass", False)):
+        logger.warning("[PDF_ENCRYPTED] file=%s (skipping)", filename)
+        return False
+
+    return True
+
 
 def _ocr_page_with_tesseract(page, dpi: int = 300) -> str:
     zoom = dpi / 72
@@ -228,7 +255,11 @@ def _extract_text_with_ocr_fallback(
 
 
 
-def _raw_extraction(pdf_bytes: bytes) -> tuple[dict[int, str], set[int], dict[int, str], dict[int, str]]:
+def _raw_extraction(
+    pdf_bytes: bytes,
+    *,
+    filename: str = "<bytes>",
+) -> tuple[dict[int, str], set[int], dict[int, str], dict[int, str]]:
     """
     PDF
     ├─ Page 1 → raw OK → 不 OCR
@@ -237,6 +268,8 @@ def _raw_extraction(pdf_bytes: bytes) -> tuple[dict[int, str], set[int], dict[in
     ├─ Page 4 → raw OK → 不 OCR
     Perform initial raw text extraction pass."""
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        if not _unlock_doc_if_needed(doc, filename=filename):
+            return {}, set(), {}, {}
         pages, suspect_pages, form_pages, annot_pages = {}, set(), {}, {}
         for idx, page in enumerate(doc, start=1):
             text = page.get_text()  #
@@ -268,10 +301,15 @@ def _get_total_pages(pdf_bytes: bytes) -> int:
 
 def _extract_pdf_pages_and_sources( data: bytes, filename: str ) -> tuple[int, dict[int, str], dict[int, str], dict[int, str], dict[int, str]]:
     total_pages = _get_total_pages(data)
-    pages, suspect_pages, form_pages, annot_pages = _raw_extraction(data)
+    pages, suspect_pages, form_pages, annot_pages = _raw_extraction(data, filename=filename)
     page_sources = {p: "raw" for p in pages}
 
+    if total_pages == 0 and not pages and not form_pages and not annot_pages:
+        return 0, {}, {}, {}, {}
+
     with fitz.open(stream=data, filetype="pdf") as doc:
+        if not _unlock_doc_if_needed(doc, filename=filename):
+            return 0, {}, {}, {}, {}
         pages, page_sources = _extract_text_with_ocr_fallback(pages, page_sources, suspect_pages, doc)
 
     return total_pages, pages, page_sources, form_pages, annot_pages
