@@ -49,6 +49,8 @@ SCORE_THRESHOLD = 0.4
 ROOT = Path(__file__).resolve().parents[1]
 SYSTEM_PROMPT_PATH = ROOT / "prompt/prompt_rag_system.txt"
 faiss_dir = ROOT / "data/faiss"
+ENABLE_QUERY_REWRITE = False   # True = current behavior, False = single-query
+REWRITE_MAX_VARIANTS = 3
 
 def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
     """
@@ -431,12 +433,13 @@ class RagEngine:
             return "", ""
         
 
-        # --- Query rewriting (drop-in) ---
-        variants = rewrite_query_variants(question, max_variants=3)
+        # --- Query rewriting (toggleable) ---
+        if ENABLE_QUERY_REWRITE:
+            variants = rewrite_query_variants(question, max_variants=REWRITE_MAX_VARIANTS)
+        else:
+            variants = [question]
 
         results = []
-        per_k = max(20, CANDIDATE_K // len(variants))
-
         for qv in variants:
             q_vec = embed([qv])[0]
             idx, scores = knn_search_switch(
@@ -449,7 +452,12 @@ class RagEngine:
             )
             results.append((idx, scores))
 
-        cand_idx, cand_scores = merge_candidates_maxscore(results)
+        # Merge candidates across variants (or single query)
+        cand_idx, cand_scores = (
+            merge_candidates_maxscore(results)
+            if len(results) > 1
+            else results[0]
+        )
         # --- end rewrite ---
 
         filt_idx, filt_scores = apply_score_threshold(cand_idx, cand_scores, SCORE_THRESHOLD)
