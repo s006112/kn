@@ -1,67 +1,29 @@
 #!/usr/bin/env python3
 """
 helper_rag_pipeline.py
-Responsibility:
-Implements a self-contained RAG engine (`RagEngine`) for the local `"standard"` and `"mbox"` indexes: loads chunk text/metadata from SQLite, reconstructs an in-memory embedding matrix from a FAISS index, embeds queries, performs brute-force top-k similarity search, and calls an LLM with retrieved context.
+Responsibility
+This module loads RAG artifacts for a selected mode, executes similarity retrieval over stored embeddings, builds retrieval context, and returns LLM answers with a similarity report table.
 
 Used by:
-* ali_llm.py
+* rag/ali_llm.py
 * gui_web_rag.py
 
 Pipelines:
-- load_chunks -> load_vectors -> normalize_vectors -> load_system_prompt -> embed_query -> knn_search -> build_prompt -> call_llm
+- resolve_paths -> load_chunks -> load_vectors -> normalize_vectors
+- embed_query -> knn_search_switch -> score_threshold -> topk
+- context_build -> prompt_assembly -> llm_call
 
 Invariants:
-- Embedding matrix `E` is L2-normalized once after loading.
-- Query embeddings returned by `helper.helper_embedding.embed` are L2-normalized.
-- `answer_question` returns `("", "")` for empty/whitespace-only questions.
-- Raises `ValueError` when the number of loaded texts does not match the FAISS vector count.
+- The metadata row count must equal the reconstructed embedding row count.
+- The in-memory embedding matrix (used by brute backend) is L2-normalized before retrieval.
+- Empty or whitespace-only questions return `("", "")`.
+- Retrieval output order is descending by similarity score before top-k truncation.
 
 Out of scope:
-- Building the FAISS index and populating the SQLite metadata store.
-- Chunking/sanitization of source documents.
-- Any retrieval semantics beyond brute-force top-k.
-
-Planned semantic extensions (Email RAG compatibility roadmap):
-
-Step 1 (DONE):
-- Brute-force KNN retrieval on embedding matrix.
-  - Acts as the baseline retrieval engine.
-
-Step 4:
-- Add score threshold filtering.
-  - Discard low-confidence hits based on similarity score.
-  - Fallback behavior: keep the best hit when all scores fall below threshold.
-
-Step 5:
-- Add email-level expansion policy.
-  - After selecting top emails, expand each email into multiple chunks:
-    - Order by seq / page
-    - Limit by CHUNKS_PER_EMAIL
-    - Stop when token budget is exceeded.
-
-Step 6:
-- Add token budget control.
-  - Approximate token usage from chunk length.
-  - Guarantee LLM prompt stays under MAX_TOKENS.
-
-Step 7:
-- Restore Email UI semantics.
-  - subject / date display
-  - per-email similarity ranking table
-  - expanded chunk count per email
-
-Design principle:
-This engine intentionally separates:
-- Core retrieval infrastructure (vectors, DB, embeddings)
-from
-- Domain-specific semantic policies (Email grouping, MMR, thresholds, expansion).
-
-This allows:
-- One unified RAG engine
-- Multiple semantic policies layered on top
-- Safe, incremental migration from legacy Email RAG to standard architecture
-without rebuilding storage or embeddings.
+- Building FAISS indexes or writing chunk metadata databases.
+- Defining embedding model internals.
+- Implementing reranking or retrieval semantics beyond score-threshold filtering and top-k selection.
+- Implementing tokenizer-specific policy outside the provided token budget gate.
 
 """
 from __future__ import annotations
@@ -77,8 +39,8 @@ from helper.utils_llm import call_llm
 from rag.helper_faiss_embedding import embed
 
 
-LLM_MODEL = "sonar-pro"   # sonar, gpt-5.1
-SEARCH_BACKEND = "faiss"   # "faiss" | "brute"
+LLM_MODEL = "sonar-pro"
+SEARCH_BACKEND = "faiss"
 TOP_K = 10
 CANDIDATE_K = 80
 SCORE_THRESHOLD = 0.4
@@ -89,21 +51,13 @@ faiss_dir = ROOT / "data/faiss"
 def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
     """
     Purpose:
-    Return `(sqlite_path, index_path)` for the given RAG mode.
+    Return FAISS artifact paths for a RAG mode.
 
     Inputs:
-    - mode: Either `"standard"` or `"mbox"`.
+    - mode: Retrieval mode name.
 
     Outputs:
-    - `(sqlite_path, index_path)` matching:
-      - `data/faiss/{mode}_metadata.sqlite`
-      - `data/faiss/{mode}_faiss.index`
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - Raises `ValueError` when `mode` is not one of `"standard"` or `"mbox"`.
+    - A tuple `(sqlite_path, index_path)` under `data/faiss`.
     """
     if mode not in {"standard", "mbox"}:
         raise ValueError(f"Unknown RAG mode: {mode!r} (expected 'standard' or 'mbox')")
@@ -117,19 +71,13 @@ def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
 def get_rag_engine(mode: str = "standard"):
     """
     Purpose:
-    Return a newly constructed `RagEngine` configured for `mode`.
+    Create a configured `RagEngine`.
 
     Inputs:
-    - mode: Either `"standard"` or `"mbox"`.
+    - mode: Retrieval mode name.
 
     Outputs:
-    - A `RagEngine` instance.
-
-    Side effects:
-    - Loads SQLite chunks, FAISS vectors, and the system prompt during initialization.
-
-    Failure modes:
-    - Propagates exceptions from `RagEngine` initialization (missing files, DB errors, etc.).
+    - A new `RagEngine` instance.
     """
     return RagEngine(mode=mode)
 
@@ -137,20 +85,13 @@ def get_rag_engine(mode: str = "standard"):
 def _load_all_chunks(db_path: Path) -> Tuple[List[str], List[Dict[str, Any]]]: 
     """
     Purpose:
-    Load chunk text and parsed metadata JSON from a SQLite database.
+    Load chunk text and metadata rows from SQLite.
 
     Inputs:
-    - db_path: Path to the SQLite file containing a `chunks` table.
+    - db_path: Path to a SQLite file containing a `chunks` table.
 
     Outputs:
-    - `(texts, metas)` where `texts` is a list of `chunk_text` and `metas` is a list of metadata dicts aligned by row order.
-
-    Side effects:
-    - Opens and closes a SQLite connection.
-
-    Failure modes:
-    - Propagates `sqlite3` errors for missing tables or unreadable databases.
-    - Propagates JSON parsing errors for invalid `metadata_json` strings.
+    - A tuple `(texts, metas)` aligned by `vector_id` order.
     """
 
     conn = sqlite3.connect(db_path)
@@ -171,20 +112,16 @@ def _load_all_chunks(db_path: Path) -> Tuple[List[str], List[Dict[str, Any]]]:
 def _load_embedding_matrix(index_path: Path) -> np.ndarray: 
     """
     Purpose:
-    Load a FAISS index from disk and reconstruct all stored vectors as a matrix.
+    Load a FAISS index and reconstruct its vectors.
 
     Inputs:
     - index_path: Path to a FAISS index file.
 
     Outputs:
-    - NumPy array of shape `(ntotal, dim)` and dtype `float32`.
-
-    Side effects:
-    - Reads from the filesystem and loads a FAISS index.
+    - A `float32` array with shape `(ntotal, dim)`.
 
     Failure modes:
-    - Raises `FileNotFoundError` when the index path does not exist.
-    - Raises `ValueError` when the loaded FAISS index does not support vector reconstruction.
+    - Returns an empty (0, dim) matrix when the index contains no vectors.
     """
 
     if not index_path.exists():
@@ -202,22 +139,15 @@ def _load_embedding_matrix(index_path: Path) -> np.ndarray:
 def brute_force_knn(E: np.ndarray, q: np.ndarray, k: int): 
     """
     Purpose:
-    Compute top-k neighbors by brute-force dot product between an embedding matrix and a query vector.
+    Compute dot-product similarity rankings.
 
     Inputs:
-    - E: Embedding matrix shaped `(n, d)`.
-    - q: Query vector shaped `(d,)`.
-    - k: Number of neighbors to return.
+    - E: Embedding matrix with shape `(n, d)`.
+    - q: Query vector with shape `(d,)`.
+    - k: Number of rows to return.
 
     Outputs:
-    - `(idx, scores)` where `idx` is a 1D array of selected row indices and `scores` are the corresponding dot products.
-      The number of returned neighbors is `min(k, E.shape[0])`.
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - Propagates NumPy shape errors when `E` and `q` are incompatible.
+    - A tuple `(idx, scores)` for descending similarity rows.
     """
 
     scores = E @ q
@@ -233,6 +163,27 @@ def knn_search_switch(
     q: np.ndarray,
     k: int,
 ):
+    """
+    Purpose:
+    Run retrieval with the selected backend and deduplicate results.
+
+    Notes:
+    - FAISS backend may over-fetch and iteratively expand search to satisfy k after deduplication.
+    - Deduplication is heuristic, based on (score, word_count) pairs.
+    - Deduplication is heuristic and not guaranteed stable across floating-point perturbations.
+
+
+    Inputs:
+    - backend: Search backend name.
+    - E: Normalized embedding matrix for brute-force search.
+    - index: FAISS index for faiss search mode.
+    - metas: Metadata list aligned to vector rows.
+    - q: Query embedding vector.
+    - k: Requested number of results.
+
+    Outputs:
+    - A tuple `(idx, scores)` with up to `k` deduplicated rows.
+    """
     def dedup(idx, scores, limit):
         seen, out_i, out_s = set(), [], []
         for i, s in zip(idx, scores):
@@ -256,7 +207,6 @@ def knn_search_switch(
         D, I = index.search(q[None, :], fetch_k)
         return I[0], D[0]
 
-    # ---------- main ----------
     total = int(index.ntotal) if backend == "faiss" else E.shape[0]
     if total <= 0:
         return np.empty(0, int), np.empty(0, float)
@@ -285,6 +235,19 @@ def _build_similarity_table(
     *,
     page_key: str,
 ):
+    """
+    Purpose:
+    Build a Markdown table for retrieval scores and selected metadata fields.
+
+    Inputs:
+    - top_idx: Iterable of selected metadata indices.
+    - top_scores: Iterable of similarity scores aligned to `top_idx`.
+    - metas: Metadata list aligned to vector rows.
+    - page_key: Metadata key used for the page-like column.
+
+    Outputs:
+    - A Markdown table string including a total word-count footer.
+    """
     table = [
         "| score | doc | date | file_type | page | word |",
         "|---:|---|---|---|---:|---:|",
@@ -306,6 +269,18 @@ def _build_similarity_table(
 
 
 def apply_score_threshold(idx, scores, threshold):
+    """
+    Purpose:
+    - Guarantees at least one result when input is non-empty, even if all scores are below threshold.
+
+    Inputs:
+    - idx: Candidate indices.
+    - scores: Candidate similarity scores.
+    - threshold: Minimum score to keep.
+
+    Outputs:
+    - A tuple `(idx, scores)` after threshold filtering.
+    """
     idx_arr = np.asarray(idx, dtype=int)
     scores_arr = np.asarray(scores, dtype=float)
     if idx_arr.size == 0:
@@ -317,7 +292,19 @@ def apply_score_threshold(idx, scores, threshold):
 
 
 def apply_top_k(idx, scores, k):
-    # assumes idx/scores already sorted desc by score
+    """
+    Purpose:
+    Truncate ranked rows to top-k.
+
+    Inputs:
+    - idx: Ranked indices in descending score order.
+    - scores: Ranked scores aligned to `idx`.
+    - k: Maximum number of rows to keep.
+
+    Outputs:
+    - A tuple `(idx, scores)` limited to `k` rows.
+    """
+    # This slice preserves the current ranking contract for downstream formatting.
     idx_arr = np.asarray(idx, dtype=int)
     scores_arr = np.asarray(scores, dtype=float)
     limit = max(int(k), 0)
@@ -326,9 +313,17 @@ def apply_top_k(idx, scores, k):
 
 def build_context(chunks, metas, tokenizer, max_tokens):
     """
-    metas is intentionally passed for future semantic policies
-    (e.g. email grouping, ordering, metadata-aware truncation).
-    Do NOT remove even if unused.
+    Purpose:
+    Build a context string from retrieved chunks with optional token-budget truncation.
+
+    Inputs:
+    - chunks: Ordered chunk strings selected for context.
+    - metas: Metadata aligned to `chunks`.
+    - tokenizer: Tokenizer object with `encode`, or `None`.
+    - max_tokens: Token budget, or `None`.
+
+    Outputs:
+    - A single context string joined by blank lines.
     """
     assert len(chunks) == len(metas)
 
@@ -356,31 +351,26 @@ def build_context(chunks, metas, tokenizer, max_tokens):
 
 class RagEngine:
     """
-    Responsibility:
-    Encapsulates RAG initialization (loading chunks/index/model) and query-time retrieval + LLM answering.
+    Purpose:
+    Provide a loaded retrieval engine and query-answer interface.
+
+    Inputs:
+    - None.
+
+    Outputs:
+    - A class exposing `answer_question`.
     """
 
     def __init__(self, *, mode: str = "mbox"):
         """
         Purpose:
-        Load chunks from SQLite, load vectors from FAISS, normalize vectors, and load the system prompt.
+        Load retrieval artifacts and runtime state.
 
         Inputs:
-        - mode: Either `"standard"` or `"mbox"`.
+        - mode: Retrieval mode name.
 
         Outputs:
         - None.
-
-        Side effects:
-        - Loads FAISS index vectors into memory.
-        - Initializes an embedding wrapper; the underlying embedding model is loaded lazily on first embedding call.
-        - Reads a prompt file from disk.
-        - Prints an initialization message.
-
-        Failure modes:
-        - Raises on DB/index read failures.
-        - Raises `ValueError` when the loaded chunk count does not match vector count.
-        - Propagates filesystem errors when reading the system prompt fails.
         """
         db_path, index_path = get_faiss_artifact_paths(mode)
 
@@ -388,16 +378,16 @@ class RagEngine:
 
         self.texts, self.metas = _load_all_chunks(db_path)
 
-        # keep brute compatibility
+        # The in-memory matrix is retained to keep brute-force backend behavior available.
         self.E = _load_embedding_matrix(index_path)
 
-        # faiss search path
+        # The FAISS index is loaded separately because FAISS search does not use reconstructed matrix state.
         self.index = faiss.read_index(str(index_path))
 
         if len(self.texts) != self.E.shape[0]:
             raise ValueError("Mismatch between metadata rows and embedding matrix size")
 
-        # normalize only brute matrix (runtime safe)
+        # Zero norms are clamped to preserve finite values during normalization.
         norms = np.linalg.norm(self.E, axis=1, keepdims=True)
         norms[norms == 0] = 1.0
         self.E = self.E / norms
@@ -408,20 +398,14 @@ class RagEngine:
     def answer_question(self, question: str) -> tuple[str, str]:
         """
         Purpose:
-        Answer a question by retrieving top-k chunks and calling the configured LLM with a context+question prompt.
+        Retrieve supporting chunks and generate an LLM answer.
 
         Inputs:
-        - question: User question string.
+        - question: User question text.
 
         Outputs:
-        - `(answer_text, table_str)` where `table_str` is a Markdown similarity table for debugging/logging.
-
-        Side effects:
-        - Runs embedding model inference and calls `call_llm`.
-
-        Failure modes:
-        - Returns `("", "")` when `question` is empty after stripping.
-        - Propagates exceptions from embedding, retrieval, and LLM calls.
+        - A tuple `(answer_text, table_str)`, where `table_str` includes both selected Top-K
+        and non-selected CANDIDATE_K rows for inspection.
         """
         q = question.strip()
         if not q:
