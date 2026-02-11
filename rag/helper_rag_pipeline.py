@@ -305,6 +305,55 @@ def _build_similarity_table(
     return "\n".join(table)
 
 
+def apply_score_threshold(idx, scores, threshold):
+    idx_arr = np.asarray(idx, dtype=int)
+    scores_arr = np.asarray(scores, dtype=float)
+    if idx_arr.size == 0:
+        return idx_arr, scores_arr
+    keep_mask = scores_arr >= threshold
+    if not np.any(keep_mask):
+        keep_mask[np.argmax(scores_arr)] = True
+    return idx_arr[keep_mask], scores_arr[keep_mask]
+
+
+def apply_top_k(idx, scores, k):
+    # assumes idx/scores already sorted desc by score
+    idx_arr = np.asarray(idx, dtype=int)
+    scores_arr = np.asarray(scores, dtype=float)
+    limit = max(int(k), 0)
+    return idx_arr[:limit], scores_arr[:limit]
+
+
+def build_context(chunks, metas, tokenizer, max_tokens):
+    """
+    metas is intentionally passed for future semantic policies
+    (e.g. email grouping, ordering, metadata-aware truncation).
+    Do NOT remove even if unused.
+    """
+    assert len(chunks) == len(metas)
+
+    if tokenizer is None or max_tokens is None:
+        return "\n\n".join(chunks)
+
+    budget = int(max_tokens)
+    if budget <= 0:
+        return ""
+
+    kept = []
+    used = 0
+    for chunk in chunks:
+        chunk_tokens = len(tokenizer.encode(chunk))
+        if not kept and chunk_tokens > budget:
+            kept.append(chunk)
+            break
+        if used + chunk_tokens > budget:
+            break
+        kept.append(chunk)
+        used += chunk_tokens
+
+    return "\n\n".join(kept)
+
+
 class RagEngine:
     """
     Responsibility:
@@ -388,20 +437,11 @@ class RagEngine:
             k=CANDIDATE_K,
         )
 
-        # brute_force_knn score 由高到低排序
-        top_idx = np.asarray(cand_idx[:TOP_K], dtype=int)
-        top_scores = np.asarray(cand_scores[:TOP_K], dtype=float)
-
-        keep_mask = top_scores >= SCORE_THRESHOLD
-        if not np.any(keep_mask):
-            # 保底：至少保留最相似的一个
-            keep_mask[np.argmax(top_scores)] = True
-        top_idx = np.asarray(top_idx)[keep_mask]
-        top_scores = top_scores[keep_mask]
-
-        # 直接使用原始文本作為 snippet，前綴已在 `rag/std_03_txt_to_chunks.py` 中注入
+        filt_idx, filt_scores = apply_score_threshold(cand_idx, cand_scores, SCORE_THRESHOLD)
+        top_idx, top_scores = apply_top_k(filt_idx, filt_scores, TOP_K)
         snippets = [self.texts[i] for i in top_idx]
-        context = "\n\n".join(snippets)
+        selected_metas = [self.metas[i] for i in top_idx]
+        context = build_context(snippets, selected_metas, tokenizer=None, max_tokens=None)
 
         prompt = f"{context}\n\nQuestion: {q}"
         table_str = _build_similarity_table(
