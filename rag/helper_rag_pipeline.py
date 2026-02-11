@@ -229,6 +229,7 @@ def knn_search_switch(
     backend: str,
     E: np.ndarray,
     index,
+    metas: List[Dict[str, Any]],
     q: np.ndarray,
     k: int,
 ):
@@ -242,12 +243,28 @@ def knn_search_switch(
     Returns:
         idx, scores   (same shape/semantics as brute_force_knn)
     """
+    def _dedup_by_score_and_word(idx_arr, score_arr):
+        seen = set()
+        kept_idx = []
+        kept_scores = []
+        for i, s in zip(idx_arr, score_arr):
+            meta = metas[int(i)] or {}
+            word_count = int(meta.get("word", 0) or 0)
+            key = (float(s), word_count)
+            if key in seen:
+                continue
+            seen.add(key)
+            kept_idx.append(int(i))
+            kept_scores.append(float(s))
+        return np.asarray(kept_idx, dtype=int), np.asarray(kept_scores, dtype=float)
+
     if backend == "brute":
-        return brute_force_knn(E, q, k)
+        idx, scores = brute_force_knn(E, q, k)
+        return _dedup_by_score_and_word(idx, scores)
 
     if backend == "faiss":
         D, I = index.search(q[None, :], k)
-        return I[0], D[0]
+        return _dedup_by_score_and_word(I[0], D[0])
 
     raise ValueError(f"Unknown backend: {backend}")
 
@@ -357,6 +374,7 @@ class RagEngine:
             backend=SEARCH_BACKEND,
             E=self.E,
             index=self.index,
+            metas=self.metas,
             q=q_vec,
             k=CANDIDATE_K,
         )
