@@ -243,7 +243,7 @@ def knn_search_switch(
     Returns:
         idx, scores   (same shape/semantics as brute_force_knn)
     """
-    def _dedup_by_score_and_word(idx_arr, score_arr):
+    def _dedup_by_score_and_word(idx_arr, score_arr, limit: int):
         seen = set()
         kept_idx = []
         kept_scores = []
@@ -256,15 +256,32 @@ def knn_search_switch(
             seen.add(key)
             kept_idx.append(int(i))
             kept_scores.append(float(s))
+            if len(kept_idx) >= limit:
+                break
         return np.asarray(kept_idx, dtype=int), np.asarray(kept_scores, dtype=float)
 
     if backend == "brute":
-        idx, scores = brute_force_knn(E, q, k)
-        return _dedup_by_score_and_word(idx, scores)
+        scores = E @ q
+        idx = np.argsort(scores)[::-1]
+        return _dedup_by_score_and_word(idx, scores[idx], k)
 
     if backend == "faiss":
-        D, I = index.search(q[None, :], k)
-        return _dedup_by_score_and_word(I[0], D[0])
+        total = int(index.ntotal)
+        if total <= 0:
+            return np.asarray([], dtype=int), np.asarray([], dtype=float)
+
+        fetch_k = min(max(k, 1), total)
+        best_idx = np.asarray([], dtype=int)
+        best_scores = np.asarray([], dtype=float)
+
+        while True:
+            D, I = index.search(q[None, :], fetch_k)
+            best_idx, best_scores = _dedup_by_score_and_word(I[0], D[0], k)
+            if len(best_idx) >= k or fetch_k >= total:
+                break
+            fetch_k = min(total, fetch_k * 2)
+
+        return best_idx, best_scores
 
     raise ValueError(f"Unknown backend: {backend}")
 
