@@ -1,4 +1,4 @@
-# index_builder.py
+# faiss_index_builder.py
 import os
 import json
 import sqlite3
@@ -50,6 +50,19 @@ def _iter_batches(chunks_path, batch_size):
     if batch:
         yield batch
 
+def build_embedding_text(text: str, meta: dict) -> str:
+    parts = []
+
+    # weak anchor: subject only first
+    title = meta.get("subject") 
+    if title:
+        parts.append(f"[TITLE] {title}")
+
+    # main content
+    parts.append(text)
+
+    return "\n".join(parts)
+
 
 def build_index(chunks_path, out_dir, name):
     os.makedirs(out_dir, exist_ok=True)
@@ -67,10 +80,10 @@ def build_index(chunks_path, out_dir, name):
     vid = 0
 
     for batch in _iter_batches(chunks_path, SAFE_BATCH):
-        texts = [t for t, _ in batch]
+        raw_texts = [t for (t, _) in batch]
+        embed_texts = [build_embedding_text(t, m) for (t, m) in batch]
         metas = [m for _, m in batch]
-
-        embs = embed(texts)
+        embs = embed(embed_texts)
         index.add(embs)
 
         _progress_bar(vid + len(batch), total)
@@ -78,7 +91,7 @@ def build_index(chunks_path, out_dir, name):
         for j, meta in enumerate(metas):
             cur.execute(
                 "INSERT INTO chunks VALUES (?, ?, ?)",
-                (vid, texts[j], json.dumps(meta, ensure_ascii=False))
+                (vid, raw_texts[j], json.dumps(meta, ensure_ascii=False))
             )
             vid += 1
 
