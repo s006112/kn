@@ -294,7 +294,7 @@ def _build_similarity_table(
     page_key: str,
 ):
     table = [
-        "| score | doc | date | doc_type | page | word |",
+        "| score | doc | date | file_type | page | word |",
         "|---:|---|---|---|---:|---:|",
     ]
     total_words = 0
@@ -302,12 +302,12 @@ def _build_similarity_table(
         meta = metas[i] or {}
         doc = meta.get("subject") or meta.get("doc_id")
         doc_date = meta.get("date")
-        doc_type = meta.get("doc_type")
+        file_type = meta.get("file_type")
         page = meta.get(page_key)
         word_count = meta.get("word", 0) or 0
         total_words += int(word_count)
         table.append(
-            f"| {float(s):.4f} | {doc} | {doc_date} | {doc_type} | {page} | {word_count} |"
+            f"| {float(s):.4f} | {doc} | {doc_date} | {file_type} | {page} | {word_count} |"
         )
     table.append(f"Total word count: {total_words}")
     return "\n".join(table)
