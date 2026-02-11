@@ -39,10 +39,10 @@ from helper.utils_llm import call_llm
 from rag.helper_faiss_embedding import embed
 
 
-LLM_MODEL = "sonar-pro"
-SEARCH_BACKEND = "faiss"
+LLM_MODEL = "sonar-pro"   # sonar, sonar-pro, gpt-5.1, gpt-5-mini,
+SEARCH_BACKEND = "faiss"   # "faiss" | "brute"
 TOP_K = 10
-CANDIDATE_K = 80
+CANDIDATE_K = 200
 SCORE_THRESHOLD = 0.4
 ROOT = Path(__file__).resolve().parents[1]
 SYSTEM_PROMPT_PATH = ROOT / "prompt/prompt_rag_system.txt"
@@ -154,6 +154,35 @@ def brute_force_knn(E: np.ndarray, q: np.ndarray, k: int):
     idx = np.argsort(scores)[-k:][::-1]
     return idx, scores[idx]
 
+
+def dedup_by_score_and_word(
+    idx,
+    scores,
+    metas,
+    limit,
+):
+    """
+    Heuristic deduplication based on (score, word_count).
+
+    Notes:
+    - Query-dependent
+    - Not stable across floating-point perturbations
+    - Does NOT express content identity
+    """
+    seen, out_i, out_s = set(), [], []
+    for i, s in zip(idx, scores):
+        meta = metas[int(i)] or {}
+        key = (float(s), int(meta.get("word", 0) or 0))
+        if key in seen:
+            continue
+        seen.add(key)
+        out_i.append(int(i))
+        out_s.append(float(s))
+        if len(out_i) >= limit:
+            break
+    return np.asarray(out_i), np.asarray(out_s)
+
+
 def knn_search_switch(
     *,
     backend: str,
@@ -165,39 +194,27 @@ def knn_search_switch(
 ):
     """
     Purpose:
-    Run retrieval with the selected backend and deduplicate results.
+    Run similarity retrieval using the selected backend and apply a
+    heuristic deduplication step to produce up to `k` candidates.
 
     Notes:
-    - FAISS backend may over-fetch and iteratively expand search to satisfy k after deduplication.
-    - Deduplication is heuristic, based on (score, word_count) pairs.
-    - Deduplication is heuristic and not guaranteed stable across floating-point perturbations.
-
+    - Deduplication is heuristic and query-dependent.
+    - The current deduplication strategy is based on `(score, word_count)`
+      and does NOT represent content or thread identity.
+    - FAISS backend may over-fetch and iteratively expand the search
+      to satisfy `k` results after deduplication.
 
     Inputs:
-    - backend: Search backend name.
-    - E: Normalized embedding matrix for brute-force search.
-    - index: FAISS index for faiss search mode.
-    - metas: Metadata list aligned to vector rows.
+    - backend: Search backend name ("faiss" or "brute").
+    - E: Normalized embedding matrix (brute backend only).
+    - index: FAISS index (faiss backend only).
+    - metas: Metadata aligned to vector rows.
     - q: Query embedding vector.
     - k: Requested number of results.
 
     Outputs:
-    - A tuple `(idx, scores)` with up to `k` deduplicated rows.
+    - `(idx, scores)` with at most `k` rows, ordered by descending score.
     """
-    def dedup(idx, scores, limit):
-        seen, out_i, out_s = set(), [], []
-        for i, s in zip(idx, scores):
-            meta = metas[int(i)] or {}
-            key = (float(s), int(meta.get("word", 0) or 0))
-            if key in seen:
-                continue
-            seen.add(key)
-            out_i.append(int(i))
-            out_s.append(float(s))
-            if len(out_i) >= limit:
-                break
-        return np.asarray(out_i), np.asarray(out_s)
-
     def brute():
         scores = E @ q
         order = np.argsort(scores)[::-1]
@@ -215,12 +232,12 @@ def knn_search_switch(
 
     if backend == "brute":
         idx, scores = brute()
-        return dedup(idx, scores, k)
+        return dedup_by_score_and_word(idx, scores, metas, k)
 
     if backend == "faiss":
         while True:
             idx, scores = faiss_search(fetch_k)
-            idx, scores = dedup(idx, scores, k)
+            idx, scores = dedup_by_score_and_word(idx, scores, metas, k)
             if len(idx) >= k or fetch_k >= total:
                 return idx, scores
             fetch_k = min(total, fetch_k * 2)
