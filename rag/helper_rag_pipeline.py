@@ -37,6 +37,8 @@ from typing import Any, Dict, List, Tuple
 
 from helper.utils_llm import call_llm
 from rag.helper_faiss_embedding import embed
+from rag.helper_query_rewriting import rewrite_query_variants, merge_candidates_maxscore
+
 
 
 LLM_MODEL = "sonar-pro"   # sonar, sonar-pro, gpt-5.1, gpt-5-mini,
@@ -427,16 +429,28 @@ class RagEngine:
         q = question.strip()
         if not q:
             return "", ""
+        
 
-        q_vec = embed([q])[0]
-        cand_idx, cand_scores = knn_search_switch(
-            backend=SEARCH_BACKEND,
-            E=self.E,
-            index=self.index,
-            metas=self.metas,
-            q=q_vec,
-            k=CANDIDATE_K,
-        )
+        # --- Query rewriting (drop-in) ---
+        variants = rewrite_query_variants(question, max_variants=3)
+
+        results = []
+        per_k = max(20, CANDIDATE_K // len(variants))
+
+        for qv in variants:
+            q_vec = embed([qv])[0]
+            idx, scores = knn_search_switch(
+                backend=SEARCH_BACKEND,
+                E=self.E,
+                index=self.index,
+                metas=self.metas,
+                q=q_vec,
+                k=CANDIDATE_K,
+            )
+            results.append((idx, scores))
+
+        cand_idx, cand_scores = merge_candidates_maxscore(results)
+        # --- end rewrite ---
 
         filt_idx, filt_scores = apply_score_threshold(cand_idx, cand_scores, SCORE_THRESHOLD)
         top_idx, top_scores = apply_top_k(filt_idx, filt_scores, TOP_K)
