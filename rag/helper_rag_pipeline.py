@@ -233,55 +233,47 @@ def knn_search_switch(
     q: np.ndarray,
     k: int,
 ):
-    """
-    Minimal switch helper.
-
-    backend:
-        "brute"  -> numpy brute force
-        "faiss"  -> IndexFlat.search()
-
-    Returns:
-        idx, scores   (same shape/semantics as brute_force_knn)
-    """
-    def _dedup_by_score_and_word(idx_arr, score_arr, limit: int):
-        seen = set()
-        kept_idx = []
-        kept_scores = []
-        for i, s in zip(idx_arr, score_arr):
+    def dedup(idx, scores, limit):
+        seen, out_i, out_s = set(), [], []
+        for i, s in zip(idx, scores):
             meta = metas[int(i)] or {}
-            word_count = int(meta.get("word", 0) or 0)
-            key = (float(s), word_count)
+            key = (float(s), int(meta.get("word", 0) or 0))
             if key in seen:
                 continue
             seen.add(key)
-            kept_idx.append(int(i))
-            kept_scores.append(float(s))
-            if len(kept_idx) >= limit:
+            out_i.append(int(i))
+            out_s.append(float(s))
+            if len(out_i) >= limit:
                 break
-        return np.asarray(kept_idx, dtype=int), np.asarray(kept_scores, dtype=float)
+        return np.asarray(out_i), np.asarray(out_s)
+
+    def brute():
+        scores = E @ q
+        order = np.argsort(scores)[::-1]
+        return order, scores[order]
+
+    def faiss_search(fetch_k):
+        D, I = index.search(q[None, :], fetch_k)
+        return I[0], D[0]
+
+    # ---------- main ----------
+    total = int(index.ntotal) if backend == "faiss" else E.shape[0]
+    if total <= 0:
+        return np.empty(0, int), np.empty(0, float)
+
+    fetch_k = min(max(k, 1), total)
 
     if backend == "brute":
-        scores = E @ q
-        idx = np.argsort(scores)[::-1]
-        return _dedup_by_score_and_word(idx, scores[idx], k)
+        idx, scores = brute()
+        return dedup(idx, scores, k)
 
     if backend == "faiss":
-        total = int(index.ntotal)
-        if total <= 0:
-            return np.asarray([], dtype=int), np.asarray([], dtype=float)
-
-        fetch_k = min(max(k, 1), total)
-        best_idx = np.asarray([], dtype=int)
-        best_scores = np.asarray([], dtype=float)
-
         while True:
-            D, I = index.search(q[None, :], fetch_k)
-            best_idx, best_scores = _dedup_by_score_and_word(I[0], D[0], k)
-            if len(best_idx) >= k or fetch_k >= total:
-                break
+            idx, scores = faiss_search(fetch_k)
+            idx, scores = dedup(idx, scores, k)
+            if len(idx) >= k or fetch_k >= total:
+                return idx, scores
             fetch_k = min(total, fetch_k * 2)
-
-        return best_idx, best_scores
 
     raise ValueError(f"Unknown backend: {backend}")
 
