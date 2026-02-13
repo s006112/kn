@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LLE</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='LLE.png') }}">
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Helvetica Neue", Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status-box {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            border: 1px solid;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .options-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .option-item {
+            background-color: #e9ecef;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        .form-container {
+            background-color: #f8f9fa;
+            padding: 25px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 2px solid #007bff;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .form-column {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .form-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .form-row label {
+            min-width: 200px;
+            font-weight: bold;
+            color: #333;
+        }
+        .form-row input {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            width: 150px;
+        }
+        .form-row input:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 5px rgba(0,123,255,0.3);
+        }
+        .submit-btn {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .submit-btn:hover {
+            background-color: #0056b3;
+        }
+        .validation-error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success-message {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+    <h1>LLE Solution Development Tool <span style="font-size: 0.5em; font-weight: normal;">by Ampco KN - Phase 10</span></h1>
+
+    <!-- Phase 2: Parameter Input Form -->
+    <div class="form-container">
+        <h2 style="margin-top: 0; color: #007bff;">LED Count Calculation Parameters</h2>
+        <p>Enter the target specifications for your LED luminaire design:</p>
+
+        {% if form_submitted and validation_errors %}
+            <div class="validation-error">
+                <strong>Please correct the following errors:</strong>
+                <ul style="margin: 5px 0;">
+                    {% for error in validation_errors %}
+                        <li>{{ error }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+
+        {% if success_message %}
+            <div class="success-message">
+                {{ success_message }}
+            </div>
+        {% endif %}
+
+        <form method="POST" action="">
+            <div class="form-grid">
+                <!-- Left Column: LED Specifications -->
+                <div class="form-column">
+                    <div class="form-row">
+                        <label for="target_cct">Target CCT (Color Temperature):</label>
+                        <select id="target_cct"
+                                name="target_cct"
+                                required
+                                style="padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; width: 150px;">
+                            <option value="">Select CCT...</option>
+                            {% for cct in cct_options %}
+                                <option value="{{ cct }}"
+                                        {% if target_cct == cct %}selected{% endif %}>
+                                    {{ cct }}K
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <span style="color: #666;">Kelvin (K)</span>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="target_cri">Target CRI (Color Rendering Index):</label>
+                        <select id="target_cri"
+                                name="target_cri"
+                                required
+                                style="padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; width: 150px;">
+                            <option value="">Select CRI...</option>
+                            {% for cri in cri_options %}
+                                <option value="{{ cri }}"
+                                        {% if target_cri == cri %}selected{% endif %}>
+                                    {{ cri }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <span style="color: #666;">CRI value</span>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="target_lumen">Target Luminaire Lumen Output:</label>
+                        <input type="number"
+                               id="target_lumen"
+                               name="target_lumen"
+                               value="{{ target_lumen }}"
+                               placeholder="e.g., 5000, 10000, 15000 luminaire lumens"
+                               step="1"
+                               min="0"
+                               required>
+                        <span style="color: #666;">lumens (lm)</span>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="optical_transmission">Luminaire Optical Transmission Rate:</label>
+                        <input type="number"
+                               id="optical_transmission"
+                               name="optical_transmission"
+                               value="{{ optical_transmission }}"
+                               placeholder="Default: 80% (typical lens/reflector efficiency)"
+                               step="1"
+                               min="1"
+                               max="100"
+                               required>
+                        <span style="color: #666;">percent (%)</span>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="power_efficiency">Power Supply Efficiency:</label>
+                        <input type="number"
+                               id="power_efficiency"
+                               name="power_efficiency"
+                               value="{{ power_efficiency }}"
+                               placeholder="Default: 85% (typical driver efficiency)"
+                               step="0.1"
+                               min="1"
+                               max="100"
+                               required>
+                        <span style="color: #666;">percent (%)</span>
+                    </div>
+                </div>
+
+                <!-- Right Column: Performance & Operating Conditions -->
+                <div class="form-column">
+                    <div class="form-row">
+                        <label for="target_efficacy">Target Luminaire Efficacy:</label>
+                        <input type="number"
+                               id="target_efficacy"
+                               name="target_efficacy"
+                               value="{{ target_efficacy }}"
+                               placeholder="e.g., 100, 150, 200 luminaire lm/W"
+                               step="0.1"
+                               min="1"
+                               required>
+                        <span style="color: #666;">lumens per watt (lm/W)</span>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="junction_temp">Junction Temperature (Tj):</label>
+                        <input type="number"
+                               id="junction_temp"
+                               name="junction_temp"
+                               value="{{ junction_temp }}"
+                               placeholder="Default: 65°C (typical operating temperature)"
+                               step="1"
+                               min="-40"
+                               max="200"
+                               required>
+                        <span style="color: #666;">degrees Celsius (°C)</span>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="v_chain_max">Maximum LED Chain Voltage:</label>
+                        <input type="number"
+                               id="v_chain_max"
+                               name="v_chain_max"
+                               value="{{ v_chain_max }}"
+                               placeholder="Default: 50V (maximum voltage per LED string)"
+                               step="1"
+                               min="1"
+                               max="1000"
+                               required>
+                        <span style="color: #666;">volts (V)</span>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="smt_cost_rmb">SMT Cost in RMB:</label>
+                        <input type="number"
+                               id="smt_cost_rmb"
+                               name="smt_cost_rmb"
+                               value="{{ smt_cost_rmb }}"
+                               placeholder="Default: 0.01 RMB (SMT assembly cost per LED)"
+                               step="0.001"
+                               min="0"
+                               required>
+                        <span style="color: #666;">RMB per LED</span>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="usd_rate">USD Exchange Rate:</label>
+                        <input type="number"
+                               id="usd_rate"
+                               name="usd_rate"
+                               value="{{ usd_rate }}"
+                               placeholder="Default: 7.00 (RMB per 1 USD)"
+                               step="0.01"
+                               min="0.01"
+                               required>
+                        <span style="color: #666;">RMB per USD</span>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" name="calculate_params" class="submit-btn">
+                Store Parameters & Prepare Calculations
+            </button>
+        </form>
+    </div>
+
+    <!-- Step 4.2: Display LED Candidate Count -->
+    {% if query_executed %}
+        <div class="section">
+            <h3>LED Candidate Search Results</h3>
+            {% if candidate_count > 0 %}
+
+                <table style="margin-top: 20px;">
+                    <thead>
+                        <tr>
+                            <th>Model</th>
+                            <th>CCT (K)</th>
+                            <th>CRI</th>
+                            <th>Fixture (lm)</th>
+                            <th>Input Power (W)</th>
+                            <th>LED Count</th>
+                            <th>Lm/LED</th>
+                            <th>If (mA)</th>
+                            <th>LED + SMT (USD)</th>
+                            <th>LED Quote Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for candidate_data in sorted_candidates_display %}
+                            {% set candidate_index = candidate_data['index'] %}
+                            {% set candidate = candidate_data['candidate'] %}
+                            <tr>
+                                <td>{{ candidate['Model'] if candidate.get('Model') is not none else 'N/A' }}</td>
+                                <td>{{ number_format(candidate['CCT'], 0) if candidate.get('CCT') is not none else 'N/A' }}</td>
+                                <td>{{ number_format(candidate['CRI'], 0) if candidate.get('CRI') is not none else 'N/A' }}</td>
+                                <td>{{ number_format(candidate_data['fixture_lm'], 0) if candidate_data['fixture_lm'] > 0 else 'N/A' }}</td>
+                                <td>{{ number_format(candidate_data['input_power'], 1) if candidate_data['input_power'] > 0 else 'N/A' }}</td>
+                                <td>{{ number_format(candidate_data['total_led_count'], 0) if candidate_data['total_led_count'] is not none else 'N/A' }}</td>
+                                <td>{{ number_format(candidate['lumen_at_target_Tj_target_if'], 1) if candidate.get('lumen_at_target_Tj_target_if', 0) > 0 else 'N/A' }}</td>
+                                <td>{{ number_format(candidate['target_if'], 1) if candidate.get('target_if') is not none else 'N/A' }}</td>
+                                <td>{{ number_format(candidate_data['total_cost_usd'], 2) if candidate_data['led_cost_usd'] > 0 or candidate_data['smt_cost_usd'] > 0 else 'N/A' }}</td>
+                                <td>{{ candidate['Quote'] if candidate.get('Quote') else 'N/A' }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                <!-- Phase 9: LED Series-Parallel Configuration Solutions -->
+                <div class="success-message" style="margin-top: 20px;">
+                    Found {{ candidate_count }} LED model(s) matching CCT: {{ number_format(session_values['target_cct'], 0) }}K and CRI: {{ number_format(session_values['target_cri'], 0) }}
+                </div>
+
+                <!-- Phase 9: LED Series-Parallel Configuration Solutions -->
+                <div style="margin-top: 30px;">
+                    <h3 style="color: #007bff; margin-bottom: 15px;">LED Series-Parallel Configuration Solutions</h3>
+                    <p style="margin-bottom: 15px; color: #666;">
+                        Feasible LED configurations considering maximum chain voltage of {{ number_format(session_values['v_chain_max'] if session_values['v_chain_max'] is not none else 50, 0) }}V.
+                        Models are ordered by lowest cost (first configuration), configurations within each model are sorted by series count descending, then by fewest additional LEDs.
+                        Each model shows up to 10 configurations with highest voltage utilization first.
+                    </p>
+
+                    {% if led_config_solutions %}
+                        {% for candidate_data in candidate_costs_display %}
+                            {% set candidate_index = candidate_data['index'] %}
+                            {% set candidate = candidate_data['candidate'] %}
+                            {% if led_config_solutions[candidate_index] %}
+                                <div style="margin-bottom: 25px;">
+                                    <h4 style="color: #333; margin-bottom: 10px;">
+                                        Model: {{ candidate['Model'] }}
+                                        (Required: {{ number_format(candidate['led_count'], 0) }} LEDs, Vf: {{ number_format(led_config_solutions[candidate_index][0]['V_chain'], 1) }}V)
+                                    </h4>
+
+                                    <table style="font-size: 14px; margin-bottom: 15px;">
+                                        <thead>
+                                            <tr>
+                                                <th>Configuration</th>
+                                                <th>Parallel (P)</th>
+                                                <th>Series (S)</th>
+                                                <th>Added LEDs</th>
+                                                <th>Voltage (V)</th>
+                                                <th>Current (mA)</th>
+                                                <th>Power (W)</th>
+                                                <th>LED + SMT (USD)</th>
+                                                <th>LED + SMT (RMB)</th>
+                                                <th>Total LED Count</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for solution_data in candidate_data['solutions_display'] %}
+                                                {% set solution = solution_data['solution'] %}
+                                                <tr {% if solution['led_add'] == 0 %}style="background-color: #d4edda;"{% endif %}>
+                                                    <td>{{ solution['P'] }}P{{ solution['S'] }}S</td>
+                                                    <td>{{ number_format(solution['P'], 0) }}</td>
+                                                    <td>{{ number_format(solution['S'], 0) }}</td>
+                                                    <td {% if solution['led_add'] == 0 %}style="font-weight: bold; color: #155724;"{% endif %}>
+                                                        {{ number_format(solution['led_add'], 0) }}
+                                                    </td>
+                                                    <td>{{ number_format(solution['V_chain'], 1) }}</td>
+                                                    <td>{{ number_format(solution_data['total_current'], 1) if solution_data['total_current'] > 0 else 'N/A' }}</td>
+                                                    <td>{{ number_format(solution_data['power_watts'], 1) if solution_data['power_watts'] > 0 else 'N/A' }}</td>
+                                                    <td>{{ number_format(solution_data['total_cost_usd'], 2) if solution_data['led_cost_usd'] > 0 or solution_data['smt_cost_usd'] > 0 else 'N/A' }}</td>
+                                                    <td>{{ number_format(solution_data['total_cost_rmb'], 2) if solution_data['led_cost_rmb'] > 0 or solution_data['smt_cost_rmb_total'] > 0 else 'N/A' }}</td>
+                                                    <td>{{ number_format(solution['total_leds'], 0) }}</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {% else %}
+                                <div style="margin-bottom: 15px; padding: 10px; background-color: #f8d7da; border-radius: 5px; color: #721c24;">
+                                    <strong>Model: {{ candidate['Model'] }}</strong><br>
+                                    No feasible configurations found within {{ number_format(session_values['v_chain_max'], 0) }}V constraint.
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        <div style="padding: 15px; background-color: #f8d7da; border-radius: 5px; color: #721c24;">
+                            No configuration solutions available. Please ensure LED count calculations are completed.
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Temperature Derating Information -->
+                <div style="margin: 15px 0; padding: 10px; background-color: #f8f9fa; border-radius: 5px; border-left: 4px solid #007bff;">
+                    <strong>Temperature Derating Information:</strong><br>
+                    The Lumen Factor and Vf Factor values shown below are calculated using 6th-order polynomial equations
+                    based on the junction temperature of {{ number_format(session_values['junction_temp'], 1) }}°C.
+                    These factors represent the performance adjustment from nominal test conditions.
+                </div>
+
+                <!-- Newton-Raphson Optimization Information -->
+                <div style="margin: 15px 0; padding: 10px; background-color: #fff3cd; border-radius: 5px; border-left: 4px solid #ffc107;">
+                    <strong>Newton-Raphson Current Optimization:</strong><br>
+                    The Target Current values are calculated using Newton-Raphson iteration to find the optimal operating current
+                    that balances your target LED efficacy ({{ number_format(target_led_efficacy, 1) }} lm/W) and
+                    LED lumen output ({{ number_format(target_led_lumen, 0) }} lm) requirements derived from luminaire specifications.
+                </div>
+
+            {% else %}
+                <div class="validation-error">
+                    No LED models found matching CCT: {{ number_format(session_values['target_cct'], 0) }}K and CRI: {{ number_format(session_values['target_cri'], 0) }}
+                    <br>Please try different CCT or CRI values.
+                </div>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <div class="status-box {{ 'success' if connection_status == 'Success' else 'error' }}">
+        <strong>Database Connection Status:</strong> {{ connection_status }}
+        {% if error_message %}
+            <br><strong>Error:</strong> {{ error_message }}
+        {% endif %}
+    </div>
+
+    {% if connection_status == "Success" %}
+        <!-- Sample data section removed for cleaner interface -->
+    {% else %}
+
+        <div class="section">
+            <h3>Database Connection Failed</h3>
+            <p>Unable to proceed with LED_CoE table analysis due to database connection issues.</p>
+            <p>However, you can still use the parameter input form above to store calculation parameters.</p>
+            <p>Please check:</p>
+            <ul>
+                <li>Database server is running</li>
+                <li>LED_CoE table exists in the baltechind_grow database</li>
+                <li>Connection credentials are correct</li>
+            </ul>
+        </div>
+
+    {% endif %}
+
+</div>
+</body>
+</html>
