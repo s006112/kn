@@ -170,6 +170,20 @@ def _compare_cost_items(a, b):
     return -1 if a['cost'] < b['cost'] else 1
 
 
+def _candidate_cost_item(candidate_index, candidate, led_config_solutions, smt_cost_rmb, usd_rate):
+    first_solution = led_config_solutions[candidate_index][0]
+    total_leds = _num(first_solution.get('total_leds', 0), 0)
+    unit_usd = _num(candidate.get('USD', 0), 0)
+    led_cost_usd = total_leds * unit_usd if unit_usd > 0 else 0
+    smt_cost_usd = total_leds * _num(smt_cost_rmb, 0) / max(_num(usd_rate, 1), 1e-9)
+    total_cost_usd = led_cost_usd + smt_cost_usd
+    return {
+        'index': candidate_index,
+        'cost': total_cost_usd,
+        'candidate': candidate,
+    }
+
+
 def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen, junction_temp, v_chain_max):
     led_candidates = []
     led_config_solutions = {}
@@ -344,49 +358,24 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
 
 
 def build_sorted_candidates_for_search(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate):
-    sorted_candidates = []
+    if not led_config_solutions:
+        return [{'index': i, 'candidate': c} for i, c in enumerate(led_candidates)]
 
-    if led_config_solutions:
-        candidate_costs_for_search = []
-        for candidate_index, candidate in enumerate(led_candidates):
-            if candidate_index in led_config_solutions and led_config_solutions[candidate_index]:
-                first_solution = led_config_solutions[candidate_index][0]
-                led_cost_usd = first_solution['total_leds'] * _num(candidate.get('USD', 0), 0) if _num(candidate.get('USD', 0), 0) > 0 else 0
-                smt_cost_usd = first_solution['total_leds'] * _num(smt_cost_rmb, 0) / _num(usd_rate, 1)
-                total_cost_usd = led_cost_usd + smt_cost_usd
-                candidate_costs_for_search.append({
-                    'index': candidate_index,
-                    'cost': total_cost_usd,
-                    'candidate': candidate,
-                })
+    items = []
+    for i, c in enumerate(led_candidates):
+        if i in led_config_solutions and led_config_solutions[i]:
+            items.append(_candidate_cost_item(i, c, led_config_solutions, smt_cost_rmb, usd_rate))
 
-        sorted_candidates = sorted(candidate_costs_for_search, key=cmp_to_key(_compare_cost_items))
-    else:
-        for candidate_index, candidate in enumerate(led_candidates):
-            sorted_candidates.append({
-                'index': candidate_index,
-                'candidate': candidate,
-            })
-
-    return sorted_candidates
+    return sorted(items, key=cmp_to_key(_compare_cost_items))
 
 
 def build_candidate_costs_for_config(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate):
-    candidate_costs = []
+    if not led_config_solutions:
+        return []
 
-    if led_config_solutions:
-        for candidate_index, candidate in enumerate(led_candidates):
-            if candidate_index in led_config_solutions and led_config_solutions[candidate_index]:
-                first_solution = led_config_solutions[candidate_index][0]
-                led_cost_usd = first_solution['total_leds'] * _num(candidate.get('USD', 0), 0) if _num(candidate.get('USD', 0), 0) > 0 else 0
-                smt_cost_usd = first_solution['total_leds'] * _num(smt_cost_rmb, 0) / _num(usd_rate, 1)
-                total_cost_usd = led_cost_usd + smt_cost_usd
-                candidate_costs.append({
-                    'index': candidate_index,
-                    'cost': total_cost_usd,
-                    'candidate': candidate,
-                })
+    items = []
+    for i, c in enumerate(led_candidates):
+        if i in led_config_solutions and led_config_solutions[i]:
+            items.append(_candidate_cost_item(i, c, led_config_solutions, smt_cost_rmb, usd_rate))
 
-        candidate_costs = sorted(candidate_costs, key=cmp_to_key(_compare_cost_items))
-
-    return candidate_costs
+    return sorted(items, key=cmp_to_key(_compare_cost_items))
