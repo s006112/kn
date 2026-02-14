@@ -146,7 +146,7 @@
 
 <body>
 <div class="container">
-    <h1>LLE Solution Development Tool <span style="font-size: 0.5em; font-weight: normal;">by Ampco KN - Phase 10</span></h1>
+    <h1>LLE Solution Development Tool <span style="font-size: 0.5em; font-weight: normal;">by Ampco KN - Phase A</span></h1>
 
     <!-- Phase 2: Parameter Input Form -->
     <div class="form-container">
@@ -328,7 +328,7 @@
     </div>
 
     <!-- Step 4.2: Display LED Candidate Count -->
-    {% if query_executed %}
+    {% if form_submitted and validation_errors|length == 0 %}
         <div class="section">
             <h3>LED Candidate Search Results</h3>
             {% if candidate_count > 0 %}
@@ -370,14 +370,14 @@
 
                 <!-- Phase 9: LED Series-Parallel Configuration Solutions -->
                 <div class="success-message" style="margin-top: 20px;">
-                    Found {{ candidate_count }} LED model(s) matching CCT: {{ number_format(session_values['target_cct'], 0) }}K and CRI: {{ number_format(session_values['target_cri'], 0) }}
+                    Found {{ candidate_count }} LED model(s) matching CCT: {{ number_format(target_cct, 0) }}K and CRI: {{ number_format(target_cri, 0) }}
                 </div>
 
                 <!-- Phase 9: LED Series-Parallel Configuration Solutions -->
                 <div style="margin-top: 30px;">
                     <h3 style="color: #007bff; margin-bottom: 15px;">LED Series-Parallel Configuration Solutions</h3>
                     <p style="margin-bottom: 15px; color: #666;">
-                        Feasible LED configurations considering maximum chain voltage of {{ number_format(session_values['v_chain_max'] if session_values['v_chain_max'] is not none else 50, 0) }}V.
+                        Feasible LED configurations considering maximum chain voltage of {{ number_format(v_chain_max if v_chain_max is not none else 50, 0) }}V.
                         Models are ordered by lowest cost (first configuration), configurations within each model are sorted by series count descending, then by fewest additional LEDs.
                         Each model shows up to 10 configurations with highest voltage utilization first.
                     </p>
@@ -432,7 +432,7 @@
                             {% else %}
                                 <div style="margin-bottom: 15px; padding: 10px; background-color: #f8d7da; border-radius: 5px; color: #721c24;">
                                     <strong>Model: {{ candidate['Model'] }}</strong><br>
-                                    No feasible configurations found within {{ number_format(session_values['v_chain_max'], 0) }}V constraint.
+                                    No feasible configurations found within {{ number_format(v_chain_max, 0) }}V constraint.
                                 </div>
                             {% endif %}
                         {% endfor %}
@@ -447,7 +447,7 @@
                 <div style="margin: 15px 0; padding: 10px; background-color: #f8f9fa; border-radius: 5px; border-left: 4px solid #007bff;">
                     <strong>Temperature Derating Information:</strong><br>
                     The Lumen Factor and Vf Factor values shown below are calculated using 6th-order polynomial equations
-                    based on the junction temperature of {{ number_format(session_values['junction_temp'], 1) }}°C.
+                    based on the junction temperature of {{ number_format(junction_temp, 1) }}°C.
                     These factors represent the performance adjustment from nominal test conditions.
                 </div>
 
@@ -461,7 +461,7 @@
 
             {% else %}
                 <div class="validation-error">
-                    No LED models found matching CCT: {{ number_format(session_values['target_cct'], 0) }}K and CRI: {{ number_format(session_values['target_cri'], 0) }}
+                    No LED models found matching CCT: {{ number_format(target_cct, 0) }}K and CRI: {{ number_format(target_cri, 0) }}
                     <br>Please try different CCT or CRI values.
                 </div>
             {% endif %}

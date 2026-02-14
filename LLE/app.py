@@ -1,10 +1,13 @@
 from decimal import Decimal, ROUND_HALF_UP
+import traceback
 
 from flask import Flask, render_template, request, session
 
-from algorithm import build_candidate_costs_for_config
-from algorithm import build_sorted_candidates_for_search
-from algorithm import process_led_candidates
+from algorithm import (
+    process_led_candidates,
+    build_sorted_candidates_for_search,
+    build_candidate_costs_for_config,
+)
 import db
 
 app = Flask(__name__)
@@ -12,9 +15,7 @@ app.secret_key = "lle_phase_10_secret_key"
 
 
 def php_empty(value):
-    if value is None:
-        return True
-    if value is False:
+    if value is None or value is False:
         return True
     if value == 0 or value == 0.0:
         return True
@@ -31,10 +32,10 @@ def php_is_numeric(value):
             return False
         if isinstance(value, (int, float, Decimal)):
             return True
-        value_str = str(value).strip()
-        if value_str == "":
+        s = str(value).strip()
+        if s == "":
             return False
-        float(value_str)
+        float(s.replace(",", "."))
         return True
     except Exception:
         return False
@@ -42,7 +43,7 @@ def php_is_numeric(value):
 
 def to_float(value, default=0.0):
     try:
-        return float(value)
+        return float(str(value).replace(",", "."))
     except Exception:
         return float(default)
 
@@ -51,10 +52,8 @@ def number_format(value, decimals=0):
     try:
         dec = Decimal(str(value))
         if int(decimals) <= 0:
-            quant = Decimal("1")
-            rounded = dec.quantize(quant, rounding=ROUND_HALF_UP)
+            rounded = dec.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
             return f"{int(rounded):,}"
-
         quant = Decimal("1." + ("0" * int(decimals)))
         rounded = dec.quantize(quant, rounding=ROUND_HALF_UP)
         return f"{rounded:,.{int(decimals)}f}"
@@ -71,78 +70,65 @@ app.jinja_env.globals["number_format"] = number_format
 
 @app.route("/", methods=["GET", "POST"])
 def main():
-    form_submitted = False
+    form_submitted = request.method == "POST" and "calculate_params" in request.form
     validation_errors = []
     success_message = ""
 
-    if request.method == "POST" and "calculate_params" in request.form:
-        form_submitted = True
+    # ---------- store params into session ----------
+    if form_submitted:
+        def require_numeric(field, *, positive=False, min_val=None, max_val=None, label=None):
+            v = request.values.get(field, "")
+            if not php_is_numeric(v):
+                validation_errors.append(f"{label or field} invalid")
+                return None
+            x = to_float(v)
+            if positive and x <= 0:
+                validation_errors.append(f"{label or field} must be > 0")
+                return None
+            if min_val is not None and x < min_val:
+                validation_errors.append(f"{label or field} must be >= {min_val}")
+                return None
+            if max_val is not None and x > max_val:
+                validation_errors.append(f"{label or field} must be <= {max_val}")
+                return None
+            return x
 
-        if "target_cct" in request.values and request.values.get("target_cct") != "" and php_is_numeric(request.values.get("target_cct")):
-            session["target_cct"] = float(request.values.get("target_cct"))
-        else:
-            validation_errors.append("Please select a Target CCT from the dropdown")
+        target_cct = require_numeric("target_cct", positive=True, label="Target CCT")
+        target_cri = require_numeric("target_cri", positive=True, label="Target CRI")
+        target_lumen = require_numeric("target_lumen", positive=True, label="Target Luminaire Lumen Output")
+        target_efficacy = require_numeric("target_efficacy", positive=True, label="Target Luminaire Efficacy (lm/W)")
+        optical_transmission = require_numeric("optical_transmission", min_val=1, max_val=100, label="Optical Transmission (%)")
+        power_efficiency = require_numeric("power_efficiency", min_val=1, max_val=100, label="Power Supply Efficiency (%)")
+        junction_temp = require_numeric("junction_temp", label="Junction Temperature (°C)")
+        v_chain_max = require_numeric("v_chain_max", positive=True, label="Maximum LED Chain Voltage (V)")
+        smt_cost_rmb = require_numeric("smt_cost_rmb", min_val=0, label="SMT Cost (RMB)")
+        usd_rate = require_numeric("usd_rate", positive=True, label="USD Exchange Rate")
 
-        if "target_lumen" in request.values and php_is_numeric(request.values.get("target_lumen")) and to_float(request.values.get("target_lumen")) > 0:
-            session["target_lumen"] = float(request.values.get("target_lumen"))
-        else:
-            validation_errors.append("Target Luminaire Lumen Output must be a positive number")
-
-        if "target_efficacy" in request.values:
-            value = str(request.values.get("target_efficacy")).replace(",", ".")
-            if php_is_numeric(value) and float(value) > 0:
-                session["target_efficacy"] = float(value)
-            else:
-                validation_errors.append("Target Luminaire Efficacy must be a positive number (lm/W)")
-
-        if "optical_transmission" in request.values and php_is_numeric(request.values.get("optical_transmission")) and 1 <= to_float(request.values.get("optical_transmission")) <= 100:
-            session["optical_transmission"] = float(request.values.get("optical_transmission"))
-        else:
-            validation_errors.append("Luminaire Optical Transmission Rate must be between 1-100 percent")
-
-        if "power_efficiency" in request.values and php_is_numeric(request.values.get("power_efficiency")) and 1 <= to_float(request.values.get("power_efficiency")) <= 100:
-            session["power_efficiency"] = float(request.values.get("power_efficiency"))
-        else:
-            validation_errors.append("Power Supply Efficiency must be between 1-100 percent")
-
-        if "junction_temp" in request.values and php_is_numeric(request.values.get("junction_temp")):
-            session["junction_temp"] = float(request.values.get("junction_temp"))
-        else:
-            validation_errors.append("Junction Temperature must be a valid number (°C)")
-
-        if "v_chain_max" in request.values and php_is_numeric(request.values.get("v_chain_max")) and to_float(request.values.get("v_chain_max")) > 0:
-            session["v_chain_max"] = float(request.values.get("v_chain_max"))
-        else:
-            validation_errors.append("Maximum LED Chain Voltage must be a positive number (V)")
-
-        if "smt_cost_rmb" in request.values and php_is_numeric(request.values.get("smt_cost_rmb")) and to_float(request.values.get("smt_cost_rmb")) >= 0:
-            session["smt_cost_rmb"] = float(request.values.get("smt_cost_rmb"))
-        else:
-            validation_errors.append("SMT Cost in RMB must be a positive number or zero")
-
-        if "usd_rate" in request.values and php_is_numeric(request.values.get("usd_rate")) and to_float(request.values.get("usd_rate")) > 0:
-            session["usd_rate"] = float(request.values.get("usd_rate"))
-        else:
-            validation_errors.append("USD Exchange Rate must be a positive number greater than 0")
-
-        if "target_cri" in request.values and request.values.get("target_cri") != "" and php_is_numeric(request.values.get("target_cri")):
-            session["target_cri"] = float(request.values.get("target_cri"))
-        else:
-            validation_errors.append("Please select a Target CRI from the dropdown")
+        if target_cct is not None: session["target_cct"] = target_cct
+        if target_cri is not None: session["target_cri"] = target_cri
+        if target_lumen is not None: session["target_lumen"] = target_lumen
+        if target_efficacy is not None: session["target_efficacy"] = target_efficacy
+        if optical_transmission is not None: session["optical_transmission"] = optical_transmission
+        if power_efficiency is not None: session["power_efficiency"] = power_efficiency
+        if junction_temp is not None: session["junction_temp"] = junction_temp
+        if v_chain_max is not None: session["v_chain_max"] = v_chain_max
+        if smt_cost_rmb is not None: session["smt_cost_rmb"] = smt_cost_rmb
+        if usd_rate is not None: session["usd_rate"] = usd_rate
 
         if len(validation_errors) == 0:
             success_message = "Parameters successfully stored! Ready for LED count calculations."
 
+    # ---------- defaults for template ----------
     target_cct = session.get("target_cct", 4000)
+    target_cri = session.get("target_cri", 80)
     target_lumen = session.get("target_lumen", 5000)
     target_efficacy = session.get("target_efficacy", 125)
+    optical_transmission = session.get("optical_transmission", 80)
+    power_efficiency = session.get("power_efficiency", 85)
     junction_temp = session.get("junction_temp", 65)
     v_chain_max = session.get("v_chain_max", 50)
     smt_cost_rmb = session.get("smt_cost_rmb", 0.01)
     usd_rate = session.get("usd_rate", 7.00)
-    optical_transmission = session.get("optical_transmission", 80)
-    power_efficiency = session.get("power_efficiency", 85)
-    target_cri = session.get("target_cri", 80)
 
     table_info = []
     connection_status = "Failed"
@@ -150,117 +136,98 @@ def main():
     cct_options = []
     cri_options = []
 
+    # ---------- DB status + dropdown options ----------
     try:
-        session_db = db.get_connection()
-    except Exception as e:
-        return f"Connection failed: {e}"
-
-    try:
-        rows = db.fetch_distinct_cct_cri()
-        for row in rows:
-            cct_options.append(row[0])
-            cri_options.append(row[1])
+        pairs = db.fetch_distinct_cct_cri()
+        cct_options = sorted({p[0] for p in pairs if p and p[0] is not None})
+        cri_options = sorted({p[1] for p in pairs if p and p[1] is not None})
         connection_status = "Success"
     except Exception as e:
-        error_message = str(e)
         connection_status = "Failed"
+        error_message = str(e)
+        traceback.print_exc()
 
+    # ---------- derive targets ----------
+    target_led_lumen = 0
+    target_led_efficacy = 0
+    if not php_empty(optical_transmission) and not php_empty(power_efficiency) and not php_empty(target_lumen) and not php_empty(target_efficacy):
+        optical_factor = to_float(optical_transmission, 0) / 100.0
+        power_factor = to_float(power_efficiency, 0) / 100.0
+        if optical_factor > 0:
+            target_led_lumen = to_float(target_lumen, 0) / optical_factor
+        combined = optical_factor * power_factor
+        if combined > 0:
+            target_led_efficacy = to_float(target_efficacy, 0) / combined
 
+    # ---------- query + algorithm ----------
     led_candidates = []
     led_config_solutions = {}
     candidate_count = 0
     query_executed = False
 
-    target_led_lumen = 0
-    target_led_efficacy = 0
-
-    if form_submitted and len(validation_errors) == 0 and not php_empty(session.get("target_lumen")) and not php_empty(session.get("target_efficacy")) and not php_empty(session.get("optical_transmission")) and not php_empty(session.get("power_efficiency")):
-        optical_factor = session.get("optical_transmission") / 100.0
-        target_led_lumen = session.get("target_lumen") / optical_factor
-
-        power_factor = session.get("power_efficiency") / 100.0
-        combined_efficiency = optical_factor * power_factor
-        target_led_efficacy = session.get("target_efficacy") / combined_efficiency
-
-    if form_submitted and len(validation_errors) == 0 and not php_empty(session.get("target_cct")) and not php_empty(session.get("target_cri")):
-        query_db = None
+    if form_submitted and len(validation_errors) == 0 and (not php_empty(target_cct)) and (not php_empty(target_cri)):
         try:
-            query_db = db.get_connection()
-            candidate_result = db.fetch_candidates_by_cct_cri(
-                session.get("target_cct"),
-                session.get("target_cri")
-            )
-
-
+            candidate_rows = db.fetch_candidates_by_cct_cri(target_cct, target_cri)
             led_candidates, led_config_solutions = process_led_candidates(
-                candidate_rows=candidate_result,
+                candidate_rows=candidate_rows,
                 target_led_efficacy=target_led_efficacy,
                 target_led_lumen=target_led_lumen,
-                junction_temp=session.get("junction_temp"),
-                v_chain_max=session.get("v_chain_max"),
+                junction_temp=junction_temp,
+                v_chain_max=v_chain_max,
             )
             candidate_count = len(led_candidates)
             query_executed = True
-        except Exception:
-            candidate_count = 0
-        finally:
-            if query_db is not None:
-                query_db.close()
+        except Exception as e:
+            # 关键：别 silent fail，否则你只会看到 500
+            error_message = f"Algorithm/Query error: {e}"
+            traceback.print_exc()
 
-    session_db.close()
-
+    # ---------- build displays (the template expects these keys!) ----------
     sorted_candidates = []
     candidate_costs = []
-
     if query_executed:
         sorted_candidates = build_sorted_candidates_for_search(
-            led_candidates,
-            led_config_solutions,
-            smt_cost_rmb,
-            usd_rate,
+            led_candidates, led_config_solutions, smt_cost_rmb, usd_rate
         )
-
         candidate_costs = build_candidate_costs_for_config(
-            led_candidates,
-            led_config_solutions,
-            smt_cost_rmb,
-            usd_rate,
+            led_candidates, led_config_solutions, smt_cost_rmb, usd_rate
         )
 
     sorted_candidates_display = []
-    for candidate_data in sorted_candidates:
-        candidate_index = candidate_data["index"]
-        candidate = candidate_data["candidate"]
+    for item in sorted_candidates:
+        idx = item["index"]
+        cand = item["candidate"]
         first_solution = None
-
-        if candidate_index in led_config_solutions and len(led_config_solutions[candidate_index]) > 0:
-            first_solution = led_config_solutions[candidate_index][0]
+        if idx in led_config_solutions and led_config_solutions[idx]:
+            first_solution = led_config_solutions[idx][0]
 
         fixture_lm = 0
         if first_solution is not None:
-            lm_per_led = to_float(candidate.get("lumen_at_target_Tj_target_if", 0), 0)
-            led_count_val = first_solution["total_leds"]
-            optical_rate = session.get("optical_transmission", 0) / 100.0
-            if lm_per_led > 0 and led_count_val > 0 and optical_rate > 0:
-                fixture_lm = lm_per_led * led_count_val * optical_rate
+            lm_per_led = to_float(cand.get("lumen_at_target_Tj_target_if", 0), 0)
+            led_cnt = to_float(first_solution.get("total_leds", 0), 0)
+            optical_rate = to_float(optical_transmission, 0) / 100.0
+            if lm_per_led > 0 and led_cnt > 0 and optical_rate > 0:
+                fixture_lm = lm_per_led * led_cnt * optical_rate
 
         input_power = 0
         if fixture_lm > 0 and to_float(target_efficacy, 0) > 0:
             input_power = fixture_lm / to_float(target_efficacy, 0)
 
-        total_led_count = first_solution["total_leds"] if first_solution is not None else None
-
-        total_cost_usd = None
         led_cost_usd = 0
         smt_cost_usd = 0
+        total_cost_usd = None
+        total_led_count = first_solution["total_leds"] if first_solution is not None else None
         if first_solution is not None:
-            led_cost_usd = first_solution["total_leds"] * to_float(candidate.get("USD", 0), 0) if to_float(candidate.get("USD", 0), 0) > 0 else 0
-            smt_cost_usd = first_solution["total_leds"] * to_float(smt_cost_rmb, 0) / to_float(usd_rate, 1)
+            unit_usd = to_float(cand.get("USD", 0), 0)
+            total_leds = to_float(first_solution.get("total_leds", 0), 0)
+            if unit_usd > 0:
+                led_cost_usd = total_leds * unit_usd
+            smt_cost_usd = total_leds * to_float(smt_cost_rmb, 0) / max(to_float(usd_rate, 1), 1e-9)
             total_cost_usd = led_cost_usd + smt_cost_usd
 
         sorted_candidates_display.append({
-            "index": candidate_index,
-            "candidate": candidate,
+            "index": idx,
+            "candidate": cand,
             "fixture_lm": fixture_lm,
             "input_power": input_power,
             "total_led_count": total_led_count,
@@ -270,27 +237,34 @@ def main():
         })
 
     candidate_costs_display = []
-    for candidate_data in candidate_costs:
-        candidate_index = candidate_data["index"]
-        candidate = candidate_data["candidate"]
+    for item in candidate_costs:
+        idx = item["index"]
+        cand = item["candidate"]
         solutions_display = []
 
-        for solution in led_config_solutions.get(candidate_index, [])[:10]:
-            total_current = to_float(candidate.get("target_if", 0), 0) * solution["P"] if to_float(candidate.get("target_if", 0), 0) > 0 else 0
-            voltage = to_float(solution.get("V_chain", 0), 0)
-            current_ma = to_float(candidate.get("target_if", 0), 0) * solution["P"] if to_float(candidate.get("target_if", 0), 0) > 0 else 0
-            power_watts = (voltage * current_ma / 1000) if (voltage > 0 and current_ma > 0) else 0
+        for sol in led_config_solutions.get(idx, [])[:10]:
+            total_current = 0
+            if to_float(cand.get("target_if", 0), 0) > 0:
+                total_current = to_float(cand.get("target_if", 0), 0) * to_float(sol.get("P", 0), 0)
 
-            led_cost_usd = solution["total_leds"] * to_float(candidate.get("USD", 0), 0) if to_float(candidate.get("USD", 0), 0) > 0 else 0
-            smt_cost_usd = solution["total_leds"] * to_float(smt_cost_rmb, 0) / to_float(usd_rate, 1)
+            voltage = to_float(sol.get("V_chain", 0), 0)
+            current_ma = total_current
+            power_watts = (voltage * current_ma / 1000.0) if (voltage > 0 and current_ma > 0) else 0
+
+            total_leds = to_float(sol.get("total_leds", 0), 0)
+            unit_usd = to_float(cand.get("USD", 0), 0)
+            unit_rmb = to_float(cand.get("RMB", 0), 0)
+
+            led_cost_usd = total_leds * unit_usd if unit_usd > 0 else 0
+            smt_cost_usd = total_leds * to_float(smt_cost_rmb, 0) / max(to_float(usd_rate, 1), 1e-9)
             total_cost_usd = led_cost_usd + smt_cost_usd
 
-            led_cost_rmb = solution["total_leds"] * to_float(candidate.get("RMB", 0), 0) if to_float(candidate.get("RMB", 0), 0) > 0 else 0
-            smt_cost_rmb_total = solution["total_leds"] * to_float(smt_cost_rmb, 0)
+            led_cost_rmb = total_leds * unit_rmb if unit_rmb > 0 else 0
+            smt_cost_rmb_total = total_leds * to_float(smt_cost_rmb, 0)
             total_cost_rmb = led_cost_rmb + smt_cost_rmb_total
 
             solutions_display.append({
-                "solution": solution,
+                "solution": sol,
                 "total_current": total_current,
                 "power_watts": power_watts,
                 "total_cost_usd": total_cost_usd,
@@ -302,17 +276,17 @@ def main():
             })
 
         candidate_costs_display.append({
-            "index": candidate_index,
-            "candidate": candidate,
+            "index": idx,
+            "candidate": cand,
             "solutions_display": solutions_display,
         })
 
     session_values = {
-        "target_cct": session.get("target_cct"),
-        "target_cri": session.get("target_cri"),
-        "junction_temp": session.get("junction_temp"),
-        "v_chain_max": session.get("v_chain_max"),
-        "optical_transmission": session.get("optical_transmission"),
+        "target_cct": target_cct,
+        "target_cri": target_cri,
+        "junction_temp": junction_temp,
+        "v_chain_max": v_chain_max,
+        "optical_transmission": optical_transmission,
     }
 
     return render_template(
