@@ -217,24 +217,47 @@ def extract_curve_pixels(plot_bgr: np.ndarray, monotonic: str, preprocess_cfg: D
     """
     mask, dbg = preprocess_plot_to_mask(plot_bgr, preprocess_cfg)
     H, W = mask.shape[:2]
+    # Border frame lines dominate per-column picks; clear thin edges for tracing.
+    trace_mask = mask.copy()
+    trace_mask[:2, :] = 0
+    trace_mask[-2:, :] = 0
+    trace_mask[:, :2] = 0
+    trace_mask[:, -2:] = 0
+    dist = cv2.distanceTransform((trace_mask > 0).astype(np.uint8), cv2.DIST_L2, 3)
+    if np.max(dist) > 0:
+        dbg["dist"] = cv2.normalize(dist, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
 
     xs = []
     ys = []
+    prev_y = None
 
     # For each column, find all y where mask is on
     for x in range(W):
-        col = mask[:, x]
+        col = trace_mask[:, x]
         yy = np.flatnonzero(col > 0)
         if yy.size == 0:
             continue
 
-        # robust selection: median
-        y = float(np.median(yy))
+        if prev_y is None:
+            if monotonic == "increasing":
+                y = float(np.max(yy))
+            elif monotonic == "decreasing":
+                y = float(np.min(yy))
+            else:
+                y = float(np.median(yy))
+        else:
+            cand = yy.astype(np.float32)
+            # continuity prior + thickness preference to avoid dashed grid picks
+            cost = np.abs(cand - float(prev_y)) - 2.5 * dist[yy, x]
+            if monotonic == "increasing":
+                cost = cost + np.maximum(cand - float(prev_y), 0.0) * 0.15
+            elif monotonic == "decreasing":
+                cost = cost + np.maximum(float(prev_y) - cand, 0.0) * 0.15
+            y = float(cand[int(np.argmin(cost))])
 
-        # optional: if monotonic and you want bias
-        # (kept minimal; median generally works best under noise)
         xs.append(float(x))
         ys.append(y)
+        prev_y = y
 
     if len(xs) < 20:
         pts = np.zeros((0, 2), dtype=np.float32)
@@ -407,26 +430,20 @@ def fit_polynomial_curve(xy: np.ndarray, degree_default: int, degree_min: int) -
     best = None
     for d in range(deg0, deg_min - 1, -1):
         try:
-            p = np.poly1d(np.polyfit(x, y, d))
+            desc = np.polyfit(x, y, d).astype(np.float64)
         except Exception:
             continue
 
-        y_hat = p(x)
+        y_hat = np.polyval(desc, x)
         m = _metrics(y, y_hat)
 
-        # build fixed length c0..c6 (power basis, ascending)
-        # np.poly1d stores descending powers: [a_d ... a0]
-        desc = p.c.astype(np.float64).tolist()
-        # convert to ascending with padding to degree 6
+        # fixed c0..c6, power-basis ascending: c0 + c1*x + ... + c6*x^6
         asc = [0.0] * 7
-        # desc corresponds to powers d..0
-        for i, coef in enumerate(desc):
-            power = d - i
-            if 0 <= power <= 6:
-                asc[power] = float(coef)
+        for power in range(d + 1):
+            asc[power] = float(desc[d - power])
 
         status = "pass" if (m["r2"] >= TH_R2 and m["max_rel_err"] <= TH_MAX_REL and m["endpoint_err"] <= TH_END_ERR) else "warn"
-        cand = {"degree_used": d, "coeff_power": asc, "metrics": m, "status": status, "poly_desc": desc}
+        cand = {"degree_used": d, "coeff_power": asc, "metrics": m, "status": status}
         best = cand if best is None else best
 
         if status == "pass":
@@ -524,19 +541,21 @@ def overlay_fit_unit_curve_on_plot(plot_bgr: np.ndarray,
         y_px = (y_max - yu) / (y_max - y_min) * max(H - 1, 1)
         return x_px, y_px
 
-    xs = np.linspace(x_min, x_max, 400)
+    # fit x-domain is swapped when swap_xy=True
+    fit_x_min, fit_x_max = (y_min, y_max) if swap_xy else (x_min, x_max)
+    xs = np.linspace(fit_x_min, fit_x_max, 400)
     pts = []
-    for xu in xs:
-        yu = poly(float(xu))
+    for x_fit in xs:
+        y_fit = poly(float(x_fit))
         # If swap_xy, our model is y(x) where x is actually y-axis in original plot; still draw in plot space:
         # swap_xy means unit axes were swapped before fit, so to draw back, swap back here.
         if swap_xy:
             # In fit space: x_fit = y_plot_unit, y_fit = x_plot_unit
-            x_plot_unit = yu
-            y_plot_unit = xu
+            x_plot_unit = y_fit
+            y_plot_unit = x_fit
         else:
-            x_plot_unit = xu
-            y_plot_unit = yu
+            x_plot_unit = x_fit
+            y_plot_unit = y_fit
 
         x_px, y_px = unit_to_px(x_plot_unit, y_plot_unit)
         if 0 <= x_px < W and 0 <= y_px < H:
@@ -604,6 +623,14 @@ def run_one_chart(pdf_path: str,
     page_image = render_pdf_page(pdf_path, page_index, dpi=dpi)
 
     regions = crop_chart_regions(page_image, chart_cfg)
+    page_h, page_w = regions["page_shape"]
+    px0, py0, px1, py1 = regions["plot_bbox"]
+    plot_area = float(max(px1 - px0, 0) * max(py1 - py0, 0))
+    page_area = float(max(page_w * page_h, 1))
+    plot_area_ratio = plot_area / page_area
+    if plot_area_ratio > 0.8:
+        print(f"WARNING: {chart_id} plot_bbox occupies {plot_area_ratio:.1%} of page; bbox likely wrong")
+
     page_overlay = draw_bboxes_overlay(page_image, regions["roi_bbox"], regions["plot_bbox"])
     cv2.imwrite(f"{prefix}_{chart_id}_page_overlay.png", page_overlay)
     cv2.imwrite(f"{prefix}_{chart_id}_plot.png", regions["plot"])
@@ -675,10 +702,7 @@ def main():
     tpl_path = args.template
     tpl = load_template(tpl_path)
     sha1 = compute_sha1(pdf_path)
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    out_dir = os.path.join(repo_root, "data", "curve")
-    os.makedirs(out_dir, exist_ok=True)
-    out_prefix = os.path.join(out_dir, os.path.basename(args.prefix))
+    out_prefix = os.path.basename(args.prefix) or "mvp1"
 
     charts = [c.strip().upper() for c in args.charts.split(",") if c.strip()]
     fit_results = {}

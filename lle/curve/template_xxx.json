@@ -1,12 +1,29 @@
 {
   "part_no": "STW8A2PD-H0",
   "pdf_pages": {
+    "FIV": 6,
     "FIL": 6
   },
   "charts": {
+    "FIV": {
+      "roi_bbox_px": [662, 699, 1995, 1641],
+      "plot_bbox_px": [662, 699, 1995, 1641],
+      "axis": {
+        "x_min": 2.5,
+        "x_max": 3.1,
+        "x_unit": "V",
+        "y_min": 0,
+        "y_max": 300,
+        "y_unit": "mA"
+      },
+      "swap_xy": false,
+      "monotonic": "increasing",
+      "degree_default": 6,
+      "degree_min": 4
+    },
     "FIL": {
-      "roi_bbox_px": [0, 0, 2000, 2000],
-      "plot_bbox_px": [0, 0, 2000, 2000],
+      "roi_bbox_px": [630, 2246, 1989, 3210],
+      "plot_bbox_px": [630, 2246, 1989, 3210],
       "axis": {
         "x_min": 0,
         "x_max": 300,
