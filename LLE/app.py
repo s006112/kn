@@ -1,3 +1,23 @@
+"""
+Own file name app.py
+
+Responsibility
+Flask entry module for the LLE web workflow that validates user inputs, derives LED-side targets, queries candidate LEDs, runs configuration search, computes display cost metrics, and renders the main template with status and result tables.
+
+Pipelines:
+- request -> validate -> derive -> query -> search -> aggregate -> render
+
+Invariants
+- Request handling always returns `main.html` with a complete template context.
+- Invalid POST input does not execute candidate search and is surfaced through `validation_errors`.
+- Cost calculations are derived from the candidate rows and computed solutions without mutating algorithm or database modules.
+
+Out of scope
+- Persisting user-defined configurations.
+- Implementing LED search algorithms or database storage logic.
+- Frontend template structure and presentation behavior.
+"""
+
 from decimal import Decimal, ROUND_HALF_UP
 import traceback
 
@@ -15,6 +35,15 @@ app.secret_key = "lle_phase_autosubmit_secret_key"
 
 
 def to_float(value, default=0.0) -> float:
+    """
+    Purpose:
+    Convert a value to float with comma-to-dot normalization and fallback default.
+    Inputs:
+    - value: Any value that may represent a numeric value.
+    - default: Fallback numeric value used when conversion fails.
+    Outputs:
+    - float: Parsed float value or fallback default as float.
+    """
     try:
         return float(str(value).replace(",", "."))
     except Exception:
@@ -22,6 +51,15 @@ def to_float(value, default=0.0) -> float:
 
 
 def number_format(value, decimals=0) -> str:
+    """
+    Purpose:
+    Format numeric values using HALF_UP rounding with grouped thousands for UI display.
+    Inputs:
+    - value: Numeric-like value to format.
+    - decimals: Number of decimal places to render.
+    Outputs:
+    - str: Formatted number string, or original string representation on failure.
+    """
     try:
         dec = Decimal(str(value))
         if int(decimals) <= 0:
@@ -51,6 +89,20 @@ def _require_float(
     label: str | None = None,
     errors: list[str],
 ):
+    """
+    Purpose:
+    Validate and parse a required numeric form field and append validation errors when constraints fail.
+    Inputs:
+    - data: Mapping of form field names to submitted values.
+    - field: Target form field name.
+    - positive: Whether value must be greater than zero.
+    - min_val: Optional inclusive lower bound.
+    - max_val: Optional inclusive upper bound.
+    - label: Optional display label used in error messages.
+    - errors: Mutable error list to append validation failures.
+    Outputs:
+    - float | None: Parsed float when valid, otherwise `None`.
+    """
     raw = data.get(field, "")
     if raw is None or str(raw).strip() == "":
         errors.append(f"{label or field} invalid")
@@ -73,18 +125,47 @@ def _require_float(
 
 
 def _cost_usd(*, total_leds: float, unit_usd: float, smt_cost_rmb: float, usd_rate: float):
+    """
+    Purpose:
+    Compute LED cost, SMT cost, and total cost in USD.
+    Inputs:
+    - total_leds: Total LED quantity in the configuration.
+    - unit_usd: Per-LED unit price in USD.
+    - smt_cost_rmb: SMT cost per LED in RMB.
+    - usd_rate: RMB to USD exchange divisor.
+    Outputs:
+    - tuple[float, float, float]: LED cost USD, SMT cost USD, total USD.
+    """
     led_cost_usd = total_leds * unit_usd if (total_leds > 0 and unit_usd > 0) else 0.0
     smt_cost_usd = total_leds * smt_cost_rmb / max(usd_rate, 1e-9) if total_leds > 0 else 0.0
     return led_cost_usd, smt_cost_usd, (led_cost_usd + smt_cost_usd)
 
 
 def _cost_rmb(*, total_leds: float, unit_rmb: float, smt_cost_rmb: float):
+    """
+    Purpose:
+    Compute LED cost, SMT cost, and total cost in RMB.
+    Inputs:
+    - total_leds: Total LED quantity in the configuration.
+    - unit_rmb: Per-LED unit price in RMB.
+    - smt_cost_rmb: SMT cost per LED in RMB.
+    Outputs:
+    - tuple[float, float, float]: LED cost RMB, SMT cost RMB, total RMB.
+    """
     led_cost_rmb = total_leds * unit_rmb if (total_leds > 0 and unit_rmb > 0) else 0.0
     smt_cost_rmb_total = total_leds * smt_cost_rmb if total_leds > 0 else 0.0
     return led_cost_rmb, smt_cost_rmb_total, (led_cost_rmb + smt_cost_rmb_total)
 
 
 def _extract_lm_test_overrides(data: dict) -> dict[int, float]:
+    """
+    Purpose:
+    Extract per-row `lm_test` overrides from form fields prefixed with `lm_test_`.
+    Inputs:
+    - data: Mapping of submitted form field names to values.
+    Outputs:
+    - dict[int, float]: Row ID to overridden lm_test value for valid entries.
+    """
     overrides: dict[int, float] = {}
     for key, raw_value in data.items():
         if not str(key).startswith("lm_test_"):
@@ -106,7 +187,15 @@ def _extract_lm_test_overrides(data: dict) -> dict[int, float]:
 
 @app.route("/", methods=["GET", "POST"])
 def main():
-    # -------------------- DB options (always) --------------------
+    """
+    Purpose:
+    Handle GET and POST requests for the main page, including validation, candidate search, cost aggregation, and template rendering.
+    Inputs:
+    - None: Uses Flask request context (`request.method`, `request.form`).
+    Outputs:
+    - Response: Rendered `main.html` with form state, status, and result tables.
+    """
+    # Keep DB option loading outside POST logic so selectors always render.
     connection_status = "Failed"
     error_message = ""
     cct_options: list[float] = []
@@ -114,7 +203,7 @@ def main():
 
     try:
         pairs = db.fetch_distinct_cct_cri()
-        # pairs can be list[Row] or list[tuple]; support both
+        # Database adapters may return tuple-like rows or mapping-like rows.
         cct_values = []
         cri_values = []
         for p in pairs:
@@ -122,7 +211,7 @@ def main():
                 cct_values.append(p[0])
                 cri_values.append(p[1])
             except Exception:
-                # sqlite3.Row with keys
+                # Fallback preserves compatibility with key-addressable rows.
                 cct_values.append(p.get("CCT"))
                 cri_values.append(p.get("CRI"))
         cct_options = sorted({v for v in cct_values if v is not None})
@@ -133,7 +222,7 @@ def main():
         error_message = str(e)
         traceback.print_exc()
 
-    # -------------------- Defaults (GET baseline) --------------------
+    # Baseline values also seed POST echo-back when validation fails.
     defaults = {
         "target_cct": 4000.0,
         "target_cri": 80.0,
@@ -147,7 +236,7 @@ def main():
         "usd_rate": 7.00,
     }
 
-    # -------------------- Read + validate --------------------
+    # Validation errors gate algorithm execution to avoid partial computations.
     validation_errors: list[str] = []
     params = dict(defaults)
     lm_test_overrides: dict[int, float] = {}
@@ -156,7 +245,7 @@ def main():
         data = request.form.to_dict(flat=True)
         lm_test_overrides = _extract_lm_test_overrides(data)
 
-        # required fields: match the template names
+        # Field names must stay aligned with template input names.
         target_cct = _require_float(data, "target_cct", positive=True, label="Target CCT", errors=validation_errors)
         target_cri = _require_float(data, "target_cri", positive=True, label="Target CRI", errors=validation_errors)
         target_lumen = _require_float(
@@ -178,7 +267,7 @@ def main():
         smt_cost_rmb = _require_float(data, "smt_cost_rmb", min_val=0, label="SMT Cost (RMB)", errors=validation_errors)
         usd_rate = _require_float(data, "usd_rate", positive=True, label="USD Exchange Rate", errors=validation_errors)
 
-        # if validated -> overwrite defaults
+        # Apply parsed POST values only when every required field passes checks.
         if not validation_errors:
             params.update(
                 {
@@ -195,12 +284,12 @@ def main():
                 }
             )
         else:
-            # keep "best-effort" echo back: use provided values when parseable
+            # Preserve user input echo-back where parseable to support correction loops.
             for k in defaults:
                 if k in data:
                     params[k] = to_float(data[k], defaults[k])
 
-    # -------------------- Derive targets --------------------
+    # Derived targets convert luminaire-level requirements to LED-level constraints.
     optical_rate = params["optical_transmission"] / 100.0
     power_rate = params["power_efficiency"] / 100.0
     combined = optical_rate * power_rate
@@ -208,7 +297,7 @@ def main():
     target_led_lumen = (params["target_lumen"] / optical_rate) if optical_rate > 0 else 0.0
     target_led_efficacy = (params["target_efficacy"] / combined) if combined > 0 else 0.0
 
-    # -------------------- Query + algorithm (POST only, valid only) --------------------
+    # Query and search run only for validated POST requests.
     led_candidates = []
     led_config_solutions = {}
     candidate_count = 0
@@ -253,7 +342,7 @@ def main():
                     led_candidates, led_config_solutions, smt_cost_rmb_f, usd_rate_f
                 )
 
-                # summary table
+                # Summary rows display first-solution economics and fixture-level metrics.
                 for item in sorted_candidates:
                     idx = item["index"]
                     cand = item["candidate"]
@@ -282,7 +371,7 @@ def main():
                         }
                     )
 
-                # configuration table
+                # Configuration rows preserve multiple topology solutions per candidate.
                 for item in candidate_costs:
                     idx = item["index"]
                     cand = item["candidate"]
@@ -331,7 +420,7 @@ def main():
                     )
 
         except Exception as e:
-            # keep both: message for UI + traceback for debugging
+            # Keep concise UI error text while retaining traceback in server logs.
             error_message = f"Algorithm/Query error: {e}"
             traceback.print_exc()
 

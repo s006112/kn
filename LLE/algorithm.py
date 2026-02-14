@@ -1,8 +1,40 @@
+"""
+Own file name algorithm.py
+
+1. Responsibility
+Compute LED electrical and optical derived values, generate feasible series-parallel configurations under voltage constraints, and produce cost-ordered candidate views for downstream rendering.
+
+2. Used by
+* LLE/app.py
+
+3. Pipelines
+- rows -> derive -> solve -> filter -> rank -> return
+
+4. Invariants
+- Numeric helper functions always return numeric fallbacks instead of propagating parsing errors.
+- Candidate processing always returns a tuple of candidate rows and configuration map.
+- Configuration ranking uses deterministic comparator ordering.
+
+5. Out of scope
+- Database access and query construction.
+- HTTP request handling and template rendering.
+- Currency display formatting for UI output.
+"""
+
 import math
 from functools import cmp_to_key
 
 
 def _num(value, default=0.0):
+    """
+    Purpose:
+    Convert a value to float with a fallback default.
+    Inputs:
+    - value: Source value to parse as float.
+    - default: Fallback value used on parse failure or `None`.
+    Outputs:
+    - float: Parsed numeric value or fallback.
+    """
     try:
         if value is None:
             return float(default)
@@ -12,10 +44,28 @@ def _num(value, default=0.0):
 
 
 def _isset(row, key):
+    """
+    Purpose:
+    Check whether a mapping contains a non-`None` value for a key.
+    Inputs:
+    - row: Mapping-like row object.
+    - key: Key to verify.
+    Outputs:
+    - bool: `True` when key exists and value is not `None`, otherwise `False`.
+    """
     return key in row and row[key] is not None
 
 
 def calculateFIV(if_value, row):
+    """
+    Purpose:
+    Evaluate the FIV polynomial at the specified current value.
+    Inputs:
+    - if_value: Forward current value used as polynomial input.
+    - row: Candidate row containing `FIV_0` through `FIV_6` coefficients.
+    Outputs:
+    - float: Evaluated FIV value, with fallback defaults on errors.
+    """
     try:
         fiv = 0
         fiv += row['FIV_0'] if _isset(row, 'FIV_0') else 0
@@ -31,6 +81,15 @@ def calculateFIV(if_value, row):
 
 
 def calculateFIVDerivative(if_value, row):
+    """
+    Purpose:
+    Evaluate the derivative of the FIV polynomial at the specified current value.
+    Inputs:
+    - if_value: Forward current value used as polynomial input.
+    - row: Candidate row containing `FIV_1` through `FIV_6` coefficients.
+    Outputs:
+    - float: Evaluated derivative value, with fallback defaults on errors.
+    """
     try:
         fiv_derivative = 0
         fiv_derivative += row['FIV_1'] if _isset(row, 'FIV_1') else 0
@@ -45,6 +104,15 @@ def calculateFIVDerivative(if_value, row):
 
 
 def calculateFIL(if_value, row):
+    """
+    Purpose:
+    Evaluate the FIL polynomial at the specified current value.
+    Inputs:
+    - if_value: Forward current value used as polynomial input.
+    - row: Candidate row containing `FIL_0` through `FIL_6` coefficients.
+    Outputs:
+    - float: Evaluated FIL value, returning nonzero fallback behavior on errors.
+    """
     try:
         fil = 0
         fil += row['FIL_0'] if _isset(row, 'FIL_0') else 0
@@ -63,6 +131,15 @@ def calculateFIL(if_value, row):
 
 
 def calculateFILDerivative(if_value, row):
+    """
+    Purpose:
+    Evaluate the derivative of the FIL polynomial at the specified current value.
+    Inputs:
+    - if_value: Forward current value used as polynomial input.
+    - row: Candidate row containing `FIL_1` through `FIL_6` coefficients.
+    Outputs:
+    - float: Evaluated derivative value, with fallback defaults on errors.
+    """
     try:
         fil_derivative = 0
         fil_derivative += row['FIL_1'] if _isset(row, 'FIL_1') else 0
@@ -77,6 +154,17 @@ def calculateFILDerivative(if_value, row):
 
 
 def calculateObjectiveFunction(if_value, k_eta, k_phi, row):
+    """
+    Purpose:
+    Compute the scalar objective value used by the current solver.
+    Inputs:
+    - if_value: Current operating point candidate.
+    - k_eta: Voltage-related scale factor.
+    - k_phi: Lumen-related scale factor.
+    - row: Candidate row with FIV and FIL coefficients.
+    Outputs:
+    - float: Objective value for the provided operating point.
+    """
     try:
         fiv = calculateFIV(if_value, row)
         fil = calculateFIL(if_value, row)
@@ -87,6 +175,17 @@ def calculateObjectiveFunction(if_value, k_eta, k_phi, row):
 
 
 def calculateObjectiveFunctionDerivative(if_value, k_eta, k_phi, row):
+    """
+    Purpose:
+    Compute the derivative of the scalar objective for Newton updates.
+    Inputs:
+    - if_value: Current operating point candidate.
+    - k_eta: Voltage-related scale factor.
+    - k_phi: Lumen-related scale factor.
+    - row: Candidate row with FIV and FIL coefficients.
+    Outputs:
+    - float: Objective derivative with near-zero guard fallback.
+    """
     try:
         fiv = calculateFIV(if_value, row)
         fiv_derivative = calculateFIVDerivative(if_value, row)
@@ -100,6 +199,16 @@ def calculateObjectiveFunctionDerivative(if_value, k_eta, k_phi, row):
 
 
 def calculateVf(target_if, target_tj, row):
+    """
+    Purpose:
+    Compute forward voltage at target current and junction temperature.
+    Inputs:
+    - target_if: Target forward current.
+    - target_tj: Target junction temperature.
+    - row: Candidate row with FIV and FTV coefficients.
+    Outputs:
+    - float: Computed forward voltage with fallback defaults on errors.
+    """
     try:
         vf_at_25C = calculateFIV(target_if, row)
         vf_factor = 0
@@ -117,6 +226,16 @@ def calculateVf(target_if, target_tj, row):
 
 
 def calculateVfWithDebug(target_if, target_tj, row):
+    """
+    Purpose:
+    Compute forward voltage with intermediate fields for diagnostics.
+    Inputs:
+    - target_if: Target forward current.
+    - target_tj: Target junction temperature.
+    - row: Candidate row with FIV and FTV coefficients.
+    Outputs:
+    - dict: Forward voltage and intermediate values used by configuration generation.
+    """
     try:
         vf_at_25C = calculateFIV(target_if, row)
         vf_factor = 0
@@ -147,6 +266,15 @@ def calculateVfWithDebug(target_if, target_tj, row):
 
 
 def _compare_solutions(a, b):
+    """
+    Purpose:
+    Compare two configuration solutions for deterministic ordering.
+    Inputs:
+    - a: First solution item containing `S`, `led_add`, and `V_chain`.
+    - b: Second solution item containing `S`, `led_add`, and `V_chain`.
+    Outputs:
+    - int: Comparator result suitable for `cmp_to_key`.
+    """
     if a['S'] != b['S']:
         if a['S'] > b['S']:
             return -1
@@ -165,12 +293,33 @@ def _compare_solutions(a, b):
 
 
 def _compare_cost_items(a, b):
+    """
+    Purpose:
+    Compare two candidate cost items by ascending cost.
+    Inputs:
+    - a: First cost item containing `cost`.
+    - b: Second cost item containing `cost`.
+    Outputs:
+    - int: Comparator result suitable for `cmp_to_key`.
+    """
     if a['cost'] == b['cost']:
         return 0
     return -1 if a['cost'] < b['cost'] else 1
 
 
 def _candidate_cost_item(candidate_index, candidate, led_config_solutions, smt_cost_rmb, usd_rate):
+    """
+    Purpose:
+    Build a normalized cost item from the first configuration solution of a candidate.
+    Inputs:
+    - candidate_index: Index of candidate in the processed list.
+    - candidate: Candidate row with unit pricing fields.
+    - led_config_solutions: Mapping from candidate index to configuration solutions.
+    - smt_cost_rmb: SMT unit cost in RMB.
+    - usd_rate: RMB-to-USD divisor.
+    Outputs:
+    - dict: Cost item containing index, total cost, and candidate payload.
+    """
     first_solution = led_config_solutions[candidate_index][0]
     total_leds = _num(first_solution.get('total_leds', 0), 0)
     unit_usd = _num(candidate.get('USD', 0), 0)
@@ -185,6 +334,18 @@ def _candidate_cost_item(candidate_index, candidate, led_config_solutions, smt_c
 
 
 def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen, junction_temp, v_chain_max):
+    """
+    Purpose:
+    Derive per-candidate operating metrics and generate feasible series-parallel LED configurations.
+    Inputs:
+    - candidate_rows: Iterable of candidate rows with polynomial coefficients and limits.
+    - target_led_efficacy: Required LED-side efficacy target.
+    - target_led_lumen: Required LED-side lumen target.
+    - junction_temp: Junction temperature used for factor evaluation.
+    - v_chain_max: Maximum allowed chain voltage.
+    Outputs:
+    - tuple[list[dict], dict[int, list[dict]]]: Processed candidates and configuration solutions by index.
+    """
     led_candidates = []
     led_config_solutions = {}
 
@@ -360,6 +521,17 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
 
 
 def build_sorted_candidates_for_search(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate):
+    """
+    Purpose:
+    Build candidate summary items sorted by total cost for search display.
+    Inputs:
+    - led_candidates: Processed candidate rows.
+    - led_config_solutions: Mapping from candidate index to configuration solutions.
+    - smt_cost_rmb: SMT unit cost in RMB.
+    - usd_rate: RMB-to-USD divisor.
+    Outputs:
+    - list[dict]: Candidate summary items sorted by ascending cost.
+    """
     if not led_config_solutions:
         return [{'index': i, 'candidate': c} for i, c in enumerate(led_candidates)]
 
@@ -372,6 +544,17 @@ def build_sorted_candidates_for_search(led_candidates, led_config_solutions, smt
 
 
 def build_candidate_costs_for_config(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate):
+    """
+    Purpose:
+    Build configuration cost items sorted by total cost.
+    Inputs:
+    - led_candidates: Processed candidate rows.
+    - led_config_solutions: Mapping from candidate index to configuration solutions.
+    - smt_cost_rmb: SMT unit cost in RMB.
+    - usd_rate: RMB-to-USD divisor.
+    Outputs:
+    - list[dict]: Cost items sorted by ascending total cost.
+    """
     if not led_config_solutions:
         return []
 
