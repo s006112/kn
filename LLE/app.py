@@ -5,12 +5,7 @@ from flask import Flask, render_template, request, session
 from algorithm import build_candidate_costs_for_config
 from algorithm import build_sorted_candidates_for_search
 from algorithm import process_led_candidates
-from db import connect_db
-from db import query_cct_options
-from db import query_cri_options
-from db import query_describe_led_coe
-from db import query_led_candidates
-
+import db
 
 app = Flask(__name__)
 app.secret_key = "lle_phase_10_secret_key"
@@ -138,16 +133,16 @@ def main():
         if len(validation_errors) == 0:
             success_message = "Parameters successfully stored! Ready for LED count calculations."
 
-    target_cct = session.get("target_cct", "")
-    target_lumen = session.get("target_lumen", "")
-    target_efficacy = session.get("target_efficacy", "")
+    target_cct = session.get("target_cct", 4000)
+    target_lumen = session.get("target_lumen", 5000)
+    target_efficacy = session.get("target_efficacy", 125)
     junction_temp = session.get("junction_temp", 65)
     v_chain_max = session.get("v_chain_max", 50)
     smt_cost_rmb = session.get("smt_cost_rmb", 0.01)
     usd_rate = session.get("usd_rate", 7.00)
     optical_transmission = session.get("optical_transmission", 80)
     power_efficiency = session.get("power_efficiency", 85)
-    target_cri = session.get("target_cri", "")
+    target_cri = session.get("target_cri", 80)
 
     table_info = []
     connection_status = "Failed"
@@ -156,32 +151,20 @@ def main():
     cri_options = []
 
     try:
-        session_db = connect_db()
+        session_db = db.get_connection()
     except Exception as e:
         return f"Connection failed: {e}"
 
     try:
-        structure_result = query_describe_led_coe(session_db)
-
-        if structure_result is not None:
-            for row in structure_result:
-                table_info.append(row)
-            connection_status = "Success"
-        else:
-            error_message = "Error reading table structure: "
-
-        if connection_status == "Success":
-            cct_result = query_cct_options(session_db)
-            if cct_result:
-                for row in cct_result:
-                    cct_options.append(row["CCT"])
-
-            cri_result = query_cri_options(session_db)
-            if cri_result:
-                for row in cri_result:
-                    cri_options.append(row["CRI"])
+        rows = db.fetch_distinct_cct_cri()
+        for row in rows:
+            cct_options.append(row[0])
+            cri_options.append(row[1])
+        connection_status = "Success"
     except Exception as e:
-        error_message = "Exception: " + str(e)
+        error_message = str(e)
+        connection_status = "Failed"
+
 
     led_candidates = []
     led_config_solutions = {}
@@ -202,8 +185,12 @@ def main():
     if form_submitted and len(validation_errors) == 0 and not php_empty(session.get("target_cct")) and not php_empty(session.get("target_cri")):
         query_db = None
         try:
-            query_db = connect_db()
-            candidate_result = query_led_candidates(query_db, session.get("target_cct"), session.get("target_cri"))
+            query_db = db.get_connection()
+            candidate_result = db.fetch_candidates_by_cct_cri(
+                session.get("target_cct"),
+                session.get("target_cri")
+            )
+
 
             led_candidates, led_config_solutions = process_led_candidates(
                 candidate_rows=candidate_result,
