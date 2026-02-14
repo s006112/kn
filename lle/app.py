@@ -2,7 +2,7 @@
 Own file name app.py
 
 Responsibility
-Flask entry module for the LLE web workflow that validates user inputs, derives LED-side targets, queries candidate LEDs, runs configuration search, computes display cost metrics, and renders the main template with status and result tables.
+Flask entry module for the LED light engine (LLE) web workflow that validates user inputs, derives LED-side targets, queries candidate LEDs, runs configuration search, computes display cost metrics, and renders the main template with status and result tables.
 
 Pipelines:
 - request -> validate -> derive -> query -> search -> aggregate -> render

@@ -5,7 +5,7 @@ Own file name algorithm.py
 Compute LED electrical and optical derived values, generate feasible series-parallel configurations under voltage constraints, and produce cost-ordered candidate views for downstream rendering.
 
 2. Used by
-* LLE/app.py
+* lle/app.py
 
 3. Pipelines
 - rows -> derive -> solve -> filter -> rank -> return
