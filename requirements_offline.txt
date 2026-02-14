@@ -114,6 +114,8 @@ pip3 install --no-index --find-links=/wheels \
 
 
 
+pip3 install --no-index --find-links=/wheels \
+mysql-connector-python          # MySQL connector for database interactions, added to offline requirements
 
 
 
