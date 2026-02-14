@@ -668,13 +668,17 @@ def main():
     ap.add_argument("--template", default="template_xxx.json")
     ap.add_argument("--dpi", type=int, default=350)
     ap.add_argument("--charts", default=",".join(CHART_IDS_DEFAULT), help="comma list: FIL,FIV,FTL,FTV")
-    ap.add_argument("--prefix", default="mvp1", help="output filename prefix (no subfolders)")
+    ap.add_argument("--prefix", default="mvp1", help="output filename prefix")
     args = ap.parse_args()
 
     pdf_path = args.pdf
     tpl_path = args.template
     tpl = load_template(tpl_path)
     sha1 = compute_sha1(pdf_path)
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    out_dir = os.path.join(repo_root, "data", "curve")
+    os.makedirs(out_dir, exist_ok=True)
+    out_prefix = os.path.join(out_dir, os.path.basename(args.prefix))
 
     charts = [c.strip().upper() for c in args.charts.split(",") if c.strip()]
     fit_results = {}
@@ -683,14 +687,15 @@ def main():
     for cid in charts:
         if cid not in tpl["charts"] or cid not in tpl["pdf_pages"]:
             raise ValueError(f"chart_id {cid} not found in template")
-        fit, m = run_one_chart(pdf_path, tpl, cid, args.dpi, args.prefix)
+        fit, m = run_one_chart(pdf_path, tpl, cid, args.dpi, out_prefix)
         fit_results[cid] = fit
         meta[cid] = m
 
     bundle = assemble_coeff_bundle(tpl["part_no"], sha1, fit_results)
     bundle["meta"]["chart_meta"] = meta
 
-    with open(f"{args.prefix}_coeff_bundle.json", "w", encoding="utf-8") as f:
+    bundle_path = f"{out_prefix}_coeff_bundle.json"
+    with open(bundle_path, "w", encoding="utf-8") as f:
         json.dump(bundle, f, ensure_ascii=False, indent=2)
 
     print("DONE")
@@ -699,7 +704,7 @@ def main():
     for cid in charts:
         fr = fit_results[cid]
         print(f"{cid}: status={fr.get('status')} degree={fr.get('degree_used')} metrics={fr.get('metrics')}")
-    print(f"bundle: {args.prefix}_coeff_bundle.json")
+    print(f"bundle: {bundle_path}")
 
 
 if __name__ == "__main__":
