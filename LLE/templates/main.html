@@ -76,7 +76,7 @@
                         <input type="number"
                                id="target_lumen"
                                name="target_lumen"
-                               value="{{ target_lumen }}"
+                               value="{{ target_lumen|int if target_lumen == (target_lumen|int) else target_lumen }}"
                                placeholder="e.g., 5000, 10000, 15000 luminaire lumens"
                                step="1"
                                min="0"
@@ -89,7 +89,7 @@
                         <input type="number"
                                id="optical_transmission"
                                name="optical_transmission"
-                               value="{{ optical_transmission }}"
+                               value="{{ optical_transmission|int if optical_transmission == (optical_transmission|int) else optical_transmission }}"
                                placeholder="Default: 80% (typical lens/reflector efficiency)"
                                step="1"
                                min="1"
@@ -103,7 +103,7 @@
                         <input type="number"
                                id="power_efficiency"
                                name="power_efficiency"
-                               value="{{ power_efficiency }}"
+                               value="{{ power_efficiency|int if power_efficiency == (power_efficiency|int) else power_efficiency }}"
                                placeholder="Default: 85% (typical driver efficiency)"
                                step="0.1"
                                min="1"
@@ -120,7 +120,7 @@
                         <input type="number"
                                id="target_efficacy"
                                name="target_efficacy"
-                               value="{{ target_efficacy }}"
+                               value="{{ target_efficacy|int if target_efficacy == (target_efficacy|int) else target_efficacy }}"
                                placeholder="e.g., 100, 150, 200 luminaire lm/W"
                                step="0.1"
                                min="1"
@@ -133,7 +133,7 @@
                         <input type="number"
                                id="junction_temp"
                                name="junction_temp"
-                               value="{{ junction_temp }}"
+                               value="{{ junction_temp|int if junction_temp == (junction_temp|int) else junction_temp }}"
                                placeholder="Default: 65°C (typical operating temperature)"
                                step="1"
                                min="-40"
@@ -147,7 +147,7 @@
                         <input type="number"
                                id="v_chain_max"
                                name="v_chain_max"
-                               value="{{ v_chain_max }}"
+                               value="{{ v_chain_max|int if v_chain_max == (v_chain_max|int) else v_chain_max }}"
                                placeholder="Default: 50V (maximum voltage per LED string)"
                                step="1"
                                min="1"
@@ -161,7 +161,7 @@
                         <input type="number"
                                id="smt_cost_rmb"
                                name="smt_cost_rmb"
-                               value="{{ smt_cost_rmb }}"
+                               value="{{ smt_cost_rmb|int if smt_cost_rmb == (smt_cost_rmb|int) else smt_cost_rmb }}"
                                placeholder="Default: 0.01 RMB (SMT assembly cost per LED)"
                                step="0.001"
                                min="0"
@@ -174,7 +174,7 @@
                         <input type="number"
                                id="usd_rate"
                                name="usd_rate"
-                               value="{{ usd_rate }}"
+                               value="{{ usd_rate|int if usd_rate == (usd_rate|int) else usd_rate }}"
                                placeholder="Default: 7.00 (RMB per 1 USD)"
                                step="0.01"
                                min="0.01"
@@ -244,7 +244,7 @@
                                             <input type="number"
                                                    class="lm-test-input"
                                                    name="lm_test_{{ candidate['ID'] }}"
-                                                   value="{{ candidate['lm_test'] if candidate.get('lm_test') is not none else 0 }}"
+                                                   value="{{ (candidate['lm_test']|int if candidate['lm_test'] == (candidate['lm_test']|int) else candidate['lm_test']) if candidate.get('lm_test') is not none else 0 }}"
                                                    step="0.1"
                                                    min="0">
                                         {% else %}
@@ -304,7 +304,7 @@
                                             {% for solution_data in candidate_data['solutions_display'] %}
                                                 {% set solution = solution_data['solution'] %}
                                                 <tr {% if solution['led_add'] == 0 %}class="zero-led-add-row"{% endif %}>
-                                                    <td>{{ solution['P'] }}P{{ solution['S'] }}S</td>
+                                                    <td>{{ number_format(solution['P'], 0) }}P{{ number_format(solution['S'], 0) }}S</td>
                                                     <td>{{ number_format(solution['P'], 0) }}</td>
                                                     <td>{{ number_format(solution['S'], 0) }}</td>
                                                     <td {% if solution['led_add'] == 0 %}class="zero-led-add-cell"{% endif %}>

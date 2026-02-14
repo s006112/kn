@@ -224,14 +224,14 @@ def main():
 
     # Baseline values also seed POST echo-back when validation fails.
     defaults = {
-        "target_cct": 4000.0,
-        "target_cri": 80.0,
-        "target_lumen": 5000.0,
-        "target_efficacy": 125.0,
-        "optical_transmission": 80.0,
-        "power_efficiency": 85.0,
-        "junction_temp": 65.0,
-        "v_chain_max": 50.0,
+        "target_cct": 4000,
+        "target_cri": 80,
+        "target_lumen": 5000,
+        "target_efficacy": 125,
+        "optical_transmission": 80,
+        "power_efficiency": 85,
+        "junction_temp": 65,
+        "v_chain_max": 50,
         "smt_cost_rmb": 0.01,
         "usd_rate": 7.00,
     }
