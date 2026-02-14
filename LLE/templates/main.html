@@ -153,7 +153,7 @@
         <h2 style="margin-top: 0; color: #007bff;">LED Count Calculation Parameters</h2>
         <p>Enter the target specifications for your LED luminaire design:</p>
 
-        {% if form_submitted and validation_errors %}
+        {% if request.method == 'POST' and validation_errors %}
             <div class="validation-error">
                 <strong>Please correct the following errors:</strong>
                 <ul style="margin: 5px 0;">
@@ -170,7 +170,7 @@
             </div>
         {% endif %}
 
-        <form method="POST" action="">
+        <form id="params-form" method="POST" action="">
             <div class="form-grid">
                 <!-- Left Column: LED Specifications -->
                 <div class="form-column">
@@ -320,17 +320,20 @@
                     </div>
                 </div>
             </div>
-
-            <button type="submit" name="calculate_params" class="submit-btn">
-                Store Parameters & Prepare Calculations
-            </button>
-        </form>
+            <!-- Auto-submit enabled: no manual submit button -->
+</form>
     </div>
 
     <!-- Step 4.2: Display LED Candidate Count -->
-    {% if form_submitted and validation_errors|length == 0 %}
+    {% if request.method == 'POST' and validation_errors|length == 0 %}
         <div class="section">
             <h3>LED Candidate Search Results</h3>
+            {% if request.method == 'POST' and validation_errors|length == 0 and candidate_count == 0 %}
+                <div class="status-box error" style="margin-top: 15px;">
+                    No matching LED models found for the current CCT/CRI selection.
+                </div>
+            {% endif %}
+        
             {% if candidate_count > 0 %}
 
                 <table style="margin-top: 20px;">
@@ -494,5 +497,39 @@
     {% endif %}
 
 </div>
+
+<script>
+(function () {
+    const form = document.getElementById("params-form");
+    if (!form) return;
+
+    const controls = form.querySelectorAll("input, select");
+    let t = null;
+    let submitting = false;
+
+    function scheduleSubmit(delayMs) {
+        if (submitting) return;
+        if (t) clearTimeout(t);
+        t = setTimeout(() => {
+            // only submit when browser-level validity passes (required/min/max etc.)
+            if (!form.checkValidity()) return;
+            submitting = true;
+            form.submit();
+        }, delayMs);
+    }
+
+    controls.forEach((el) => {
+        // For selects: change is enough
+        if (el.tagName.toLowerCase() === "select") {
+            el.addEventListener("change", () => scheduleSubmit(0));
+            return;
+        }
+        // For numbers: debounce on input to avoid submit on every keystroke
+        el.addEventListener("input", () => scheduleSubmit(450));
+        el.addEventListener("change", () => scheduleSubmit(0));
+    });
+})();
+</script>
+
 </body>
 </html>
