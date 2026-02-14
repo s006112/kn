@@ -192,6 +192,8 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         row = dict(row)
 
         tj = _num(junction_temp, 65)
+        lm_test_value = _num(row.get('lm_test', 0), 0.0)
+        row['lm_test'] = lm_test_value
 
         lumen_factor = 0
         try:
@@ -232,8 +234,8 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
 
         k_phi = 0
         try:
-            if _isset(row, 'lm_test') and _num(row['lm_test'], 0) > 0:
-                k_phi = _num(row['lm_test'], 0) * lumen_factor
+            if lm_test_value > 0:
+                k_phi = lm_test_value * lumen_factor
         except Exception:
             k_phi = 0
 
@@ -276,9 +278,9 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         led_count = 0
 
         try:
-            if _isset(row, 'lm_test') and _num(row['lm_test'], 0) > 0:
+            if lm_test_value > 0:
                 fil_at_target_if = calculateFIL(target_if, row)
-                lumen_at_25C_target_if = _num(row['lm_test'], 0) * fil_at_target_if
+                lumen_at_25C_target_if = lm_test_value * fil_at_target_if
 
             if lumen_at_25C_target_if > 0:
                 ftl_at_target_tj = lumen_factor

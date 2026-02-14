@@ -199,40 +199,66 @@
         
             {% if candidate_count > 0 %}
 
-                <table class="top-gap-md">
-                    <thead>
-                        <tr>
-                            <th>Model</th>
-                            <th>CCT (K)</th>
-                            <th>CRI</th>
-                            <th>Fixture (lm)</th>
-                            <th>Input Power (W)</th>
-                            <th>LED Count</th>
-                            <th>Lm/LED</th>
-                            <th>If (mA)</th>
-                            <th>LED + SMT (USD)</th>
-                            <th>LED Quote Time</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for candidate_data in sorted_candidates_display %}
-                            {% set candidate_index = candidate_data['index'] %}
-                            {% set candidate = candidate_data['candidate'] %}
+                <form id="lm-test-form" method="POST" action="">
+                    <input type="hidden" name="target_cct" value="{{ target_cct }}">
+                    <input type="hidden" name="target_cri" value="{{ target_cri }}">
+                    <input type="hidden" name="target_lumen" value="{{ target_lumen }}">
+                    <input type="hidden" name="target_efficacy" value="{{ target_efficacy }}">
+                    <input type="hidden" name="optical_transmission" value="{{ optical_transmission }}">
+                    <input type="hidden" name="power_efficiency" value="{{ power_efficiency }}">
+                    <input type="hidden" name="junction_temp" value="{{ junction_temp }}">
+                    <input type="hidden" name="v_chain_max" value="{{ v_chain_max }}">
+                    <input type="hidden" name="smt_cost_rmb" value="{{ smt_cost_rmb }}">
+                    <input type="hidden" name="usd_rate" value="{{ usd_rate }}">
+
+                    <table class="top-gap-md">
+                        <thead>
                             <tr>
-                                <td>{{ candidate['Model'] if candidate.get('Model') is not none else 'N/A' }}</td>
-                                <td>{{ number_format(candidate['CCT'], 0) if candidate.get('CCT') is not none else 'N/A' }}</td>
-                                <td>{{ number_format(candidate['CRI'], 0) if candidate.get('CRI') is not none else 'N/A' }}</td>
-                                <td>{{ number_format(candidate_data['fixture_lm'], 0) if candidate_data['fixture_lm'] > 0 else 'N/A' }}</td>
-                                <td>{{ number_format(candidate_data['input_power'], 1) if candidate_data['input_power'] > 0 else 'N/A' }}</td>
-                                <td>{{ number_format(candidate_data['total_led_count'], 0) if candidate_data['total_led_count'] is not none else 'N/A' }}</td>
-                                <td>{{ number_format(candidate['lumen_at_target_Tj_target_if'], 1) if candidate.get('lumen_at_target_Tj_target_if', 0) > 0 else 'N/A' }}</td>
-                                <td>{{ number_format(candidate['target_if'], 1) if candidate.get('target_if') is not none else 'N/A' }}</td>
-                                <td>{{ number_format(candidate_data['total_cost_usd'], 2) if candidate_data['led_cost_usd'] > 0 or candidate_data['smt_cost_usd'] > 0 else 'N/A' }}</td>
-                                <td>{{ candidate['Quote'] if candidate.get('Quote') else 'N/A' }}</td>
+                                <th>Model</th>
+                                <th>CCT (K)</th>
+                                <th>CRI</th>
+                                <th>Fixture (lm)</th>
+                                <th>Input Power (W)</th>
+                                <th>LED Count</th>
+                                <th>Lm/LED</th>
+                                <th>Lm@test</th>
+                                <th>If (mA)</th>
+                                <th>LED + SMT (USD)</th>
+                                <th>LED Quote Time</th>
                             </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {% for candidate_data in sorted_candidates_display %}
+                                {% set candidate_index = candidate_data['index'] %}
+                                {% set candidate = candidate_data['candidate'] %}
+                                <tr>
+                                    <td>{{ candidate['Model'] if candidate.get('Model') is not none else 'N/A' }}</td>
+                                    <td>{{ number_format(candidate['CCT'], 0) if candidate.get('CCT') is not none else 'N/A' }}</td>
+                                    <td>{{ number_format(candidate['CRI'], 0) if candidate.get('CRI') is not none else 'N/A' }}</td>
+                                    <td>{{ number_format(candidate_data['fixture_lm'], 0) if candidate_data['fixture_lm'] > 0 else 'N/A' }}</td>
+                                    <td>{{ number_format(candidate_data['input_power'], 1) if candidate_data['input_power'] > 0 else 'N/A' }}</td>
+                                    <td>{{ number_format(candidate_data['total_led_count'], 0) if candidate_data['total_led_count'] is not none else 'N/A' }}</td>
+                                    <td>{{ number_format(candidate['lumen_at_target_Tj_target_if'], 1) if candidate.get('lumen_at_target_Tj_target_if', 0) > 0 else 'N/A' }}</td>
+                                    <td>
+                                        {% if candidate.get('ID') is not none %}
+                                            <input type="number"
+                                                   class="lm-test-input"
+                                                   name="lm_test_{{ candidate['ID'] }}"
+                                                   value="{{ candidate['lm_test'] if candidate.get('lm_test') is not none else 0 }}"
+                                                   step="0.1"
+                                                   min="0">
+                                        {% else %}
+                                            {{ number_format(candidate['lm_test'], 1) if candidate.get('lm_test') is not none else 'N/A' }}
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ number_format(candidate['target_if'], 1) if candidate.get('target_if') is not none else 'N/A' }}</td>
+                                    <td>{{ number_format(candidate_data['total_cost_usd'], 2) if candidate_data['led_cost_usd'] > 0 or candidate_data['smt_cost_usd'] > 0 else 'N/A' }}</td>
+                                    <td>{{ candidate['Quote'] if candidate.get('Quote') else 'N/A' }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </form>
 
                 <!-- Phase 9: LED Series-Parallel Configuration Solutions -->
                 <div class="success-message top-gap-md">
@@ -388,6 +414,30 @@
             return;
         }
         // For numbers: debounce on input to avoid submit on every keystroke
+        el.addEventListener("input", () => scheduleSubmit(450));
+        el.addEventListener("change", () => scheduleSubmit(0));
+    });
+})();
+
+(function () {
+    const form = document.getElementById("lm-test-form");
+    if (!form) return;
+
+    const controls = form.querySelectorAll(".lm-test-input");
+    let t = null;
+    let submitting = false;
+
+    function scheduleSubmit(delayMs) {
+        if (submitting) return;
+        if (t) clearTimeout(t);
+        t = setTimeout(() => {
+            if (!form.checkValidity()) return;
+            submitting = true;
+            form.submit();
+        }, delayMs);
+    }
+
+    controls.forEach((el) => {
         el.addEventListener("input", () => scheduleSubmit(450));
         el.addEventListener("change", () => scheduleSubmit(0));
     });

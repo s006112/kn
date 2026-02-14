@@ -84,6 +84,26 @@ def _cost_rmb(*, total_leds: float, unit_rmb: float, smt_cost_rmb: float):
     return led_cost_rmb, smt_cost_rmb_total, (led_cost_rmb + smt_cost_rmb_total)
 
 
+def _extract_lm_test_overrides(data: dict) -> dict[int, float]:
+    overrides: dict[int, float] = {}
+    for key, raw_value in data.items():
+        if not str(key).startswith("lm_test_"):
+            continue
+        row_id_raw = str(key)[len("lm_test_") :].strip()
+        if not row_id_raw:
+            continue
+        try:
+            row_id = int(row_id_raw)
+        except Exception:
+            continue
+
+        val = to_float(raw_value, default=float("nan"))
+        if val != val:  # NaN
+            continue
+        overrides[row_id] = float(val)
+    return overrides
+
+
 @app.route("/", methods=["GET", "POST"])
 def main():
     # -------------------- DB options (always) --------------------
@@ -130,9 +150,11 @@ def main():
     # -------------------- Read + validate --------------------
     validation_errors: list[str] = []
     params = dict(defaults)
+    lm_test_overrides: dict[int, float] = {}
 
     if request.method == "POST":
         data = request.form.to_dict(flat=True)
+        lm_test_overrides = _extract_lm_test_overrides(data)
 
         # required fields: match the template names
         target_cct = _require_float(data, "target_cct", positive=True, label="Target CCT", errors=validation_errors)
@@ -197,6 +219,19 @@ def main():
     if request.method == "POST" and (not validation_errors) and params["target_cct"] > 0 and params["target_cri"] > 0:
         try:
             candidate_rows = db.fetch_candidates_by_cct_cri(params["target_cct"], params["target_cri"])
+            for row in candidate_rows:
+                lm_test_value = to_float(row.get("lm_test", 0), 0)
+                row["lm_test"] = lm_test_value
+
+                row_id = row.get("ID")
+                try:
+                    row_id_int = int(row_id) if row_id is not None else None
+                except Exception:
+                    row_id_int = None
+
+                if row_id_int is not None and row_id_int in lm_test_overrides:
+                    row["lm_test"] = lm_test_overrides[row_id_int]
+
             led_candidates, led_config_solutions = process_led_candidates(
                 candidate_rows=candidate_rows,
                 target_led_efficacy=target_led_efficacy,
