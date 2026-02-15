@@ -23,6 +23,7 @@ Out of scope:
 import cv2
 import numpy as np
 from pathlib import Path
+from typing import Optional
 
 # Configuration constants for filesystem and crop bounds.
 
@@ -32,6 +33,39 @@ RAW_DIR  = RAW_DIR.resolve()
 
 # Fixed bounding box used to crop the chart plot area.
 PLOT_BBOX = [73, 50, 591, 417]
+
+def _write_canny_intermediates(gray, edges, low_thresh, high_thresh, out_dir: Path, stem: str):
+    """
+    Purpose:
+    Write intermediate PNGs to visualize what Canny is reacting to.
+    Notes:
+    - OpenCV's Canny applies non-maximum suppression + hysteresis internally.
+    - The "weak/strong" images here are a proxy based on Sobel gradient magnitude
+      compared against (low_thresh, high_thresh); they won't match Canny 1:1 but
+      are useful to see which pixels are likely to trigger thresholds.
+    """
+    out_dir.mkdir(exist_ok=True)
+
+    gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
+    grad_mag = cv2.magnitude(gx, gy)
+
+    grad_mag_vis = cv2.normalize(grad_mag, None, 0, 255, cv2.NORM_MINMAX)
+    grad_mag_vis = grad_mag_vis.astype(np.uint8)
+
+    strong = (grad_mag >= float(high_thresh)).astype(np.uint8) * 255
+    weak = ((grad_mag >= float(low_thresh)) & (grad_mag < float(high_thresh))).astype(np.uint8) * 255
+
+    overlay = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    overlay[weak > 0] = (0, 255, 255)     # yellow (weak proxy)
+    overlay[strong > 0] = (0, 0, 255)     # red (strong proxy)
+    overlay[edges > 0] = (255, 255, 255)  # white (final edges)
+
+    cv2.imwrite(str(out_dir / f"{stem}_canny_edges.png"), edges)
+    cv2.imwrite(str(out_dir / f"{stem}_canny_grad_mag.png"), grad_mag_vis)
+    cv2.imwrite(str(out_dir / f"{stem}_canny_strong_proxy.png"), strong)
+    cv2.imwrite(str(out_dir / f"{stem}_canny_weak_proxy.png"), weak)
+    cv2.imwrite(str(out_dir / f"{stem}_canny_overlay.png"), overlay)
 
 def crop_plot(img, bbox):
     """
@@ -46,7 +80,7 @@ def crop_plot(img, bbox):
     x0, y0, x1, y1 = bbox
     return img[y0:y1, x0:x1]
 
-def remove_grid_and_axes(gray):
+def remove_grid_and_axes(gray, canny_low=50, canny_high=150, debug_dir: Optional[Path] = None):
     """
     Purpose:
     Suppress grid and axis lines by detecting long horizontal and vertical edges and inpainting them.
@@ -55,12 +89,16 @@ def remove_grid_and_axes(gray):
     Outputs:
     - Grayscale image with detected line structures inpainted.
     """
-    edges = cv2.Canny(gray, 50, 150)
-    edges = cv2.morphologyEx(
-        edges,
-        cv2.MORPH_CLOSE,
-        cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    )
+    edges = cv2.Canny(gray, canny_low, canny_high)
+    if debug_dir is not None:
+        _write_canny_intermediates(
+            gray=gray,
+            edges=edges,
+            low_thresh=canny_low,
+            high_thresh=canny_high,
+            out_dir=debug_dir,
+            stem="grid",
+        )
 
     h_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25,1))
     v_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1,25))
@@ -69,6 +107,8 @@ def remove_grid_and_axes(gray):
     v_lines = cv2.morphologyEx(edges, cv2.MORPH_OPEN, v_kernel)
 
     grid_mask = cv2.bitwise_or(h_lines, v_lines)
+    if debug_dir is not None:
+        cv2.imwrite(str(debug_dir / "grid_line_mask.png"), grid_mask)
 
     cleaned = cv2.inpaint(gray, grid_mask, 3, cv2.INPAINT_TELEA)
     return cleaned
@@ -87,7 +127,7 @@ def extract_curve_mask(gray_clean):
         255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV,
-        31,
+        41,
         2
     )
 
@@ -127,7 +167,7 @@ def process_image(img_path: Path):
 
     cv2.imwrite(str(out_dir / "plot_crop.png"), plot)
 
-    cleaned = remove_grid_and_axes(gray)
+    cleaned = remove_grid_and_axes(gray, debug_dir=out_dir)
     cv2.imwrite(str(out_dir / "grid_removed.png"), cleaned)
 
     mask = extract_curve_mask(cleaned)
