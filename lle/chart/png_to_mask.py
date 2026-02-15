@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 import cv2
 import numpy as np
-import sys
 from pathlib import Path
 
 # ==========================
-# CONFIG (FIL SAMPLE)
+# CONFIG (cross-platform)
 # ==========================
-PLOT_BBOX = [73, 50, 591, 417]  # [x0,y0,x1,y1]
+
+BASE_DIR = Path(__file__).resolve().parent
+RAW_DIR  = BASE_DIR / "../../data/chart/raw"
+RAW_DIR  = RAW_DIR.resolve()
+
+# 当前 sample bbox（FIL）
+PLOT_BBOX = [73, 50, 591, 417]
 
 # ==========================
 # CORE
@@ -59,24 +64,16 @@ def extract_curve_mask(gray_clean):
 # PIPELINE
 # ==========================
 
-def main():
-    if len(sys.argv) != 2:
-        print("Usage: python png_to_mask.py <image_path>")
-        sys.exit(1)
-
-    img_path = Path(sys.argv[1]).resolve()
-
-    if not img_path.exists():
-        raise FileNotFoundError(f"Image not found: {img_path}")
-
+def process_image(img_path: Path):
     img = cv2.imread(str(img_path))
     if img is None:
-        raise RuntimeError("OpenCV failed to load image")
+        print(f"[SKIP] Cannot load: {img_path.name}")
+        return
 
     plot = crop_plot(img, PLOT_BBOX)
     gray = cv2.cvtColor(plot, cv2.COLOR_BGR2GRAY)
 
-    out_dir = img_path.parent / "debug_mask"
+    out_dir = img_path.parent / f"{img_path.stem}_debug_mask"
     out_dir.mkdir(exist_ok=True)
 
     cv2.imwrite(str(out_dir / "plot_crop.png"), plot)
@@ -87,8 +84,21 @@ def main():
     mask = extract_curve_mask(cleaned)
     cv2.imwrite(str(out_dir / "mask_curve.png"), mask)
 
-    print("Done.")
-    print("Output directory:", out_dir)
+    print(f"[OK] {img_path.name}")
+
+def main():
+    png_files = sorted(RAW_DIR.glob("*.png"))
+
+    if not png_files:
+        print("No PNG files found.")
+        return
+
+    print(f"Found {len(png_files)} PNG files.")
+
+    for img_path in png_files:
+        process_image(img_path)
+
+    print("All done.")
 
 if __name__ == "__main__":
     main()
