@@ -115,16 +115,18 @@ def process_image(img_path: Path):
     plot = crop_plot(img, bbox)
     grey = cv2.cvtColor(plot, cv2.COLOR_BGR2GRAY)
 
-    out_dir = img_path.parent / f"{img_path.stem}_debug_mask"
-    out_dir.mkdir(exist_ok=True)
+    out_dir = img_path.parent / "debug"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stem = img_path.stem
 
-    cv2.imwrite(str(out_dir / "plot_crop.png"), plot)
+    cv2.imwrite(str(out_dir / f"{stem}_dplot_crop.png"), plot)
+    cv2.imwrite(str(out_dir / f"{stem}_plot_crop.png"), plot)
 
     cleaned = remove_grid_and_axes(grey)
-    cv2.imwrite(str(out_dir / "grid_removed.png"), cleaned)
+    cv2.imwrite(str(out_dir / f"{stem}_grid_removed.png"), cleaned)
 
     mask = extract_curve_mask(cleaned)
-    cv2.imwrite(str(out_dir / "mask_curve.png"), mask)
+    cv2.imwrite(str(out_dir / f"{stem}_mask_curve.png"), mask)
 
     print(f"[OK] {img_path.name}")
 
