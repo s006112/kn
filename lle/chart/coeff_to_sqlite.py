@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-# step 5: fit_to_coeffs.py -> coeff_to_sqlite.py
+# step 5: coeff_to_sqlite.py
 
 import sqlite3
 import json
 import argparse
-import shutil
 from pathlib import Path
 from path_config import load_chart_runtime
 
 
 def reverse_coeff(coeff_power):
+    # JSON: [a_d ... a_0]  →  sqlite: 0..d
     return list(reversed(coeff_power))
 
 
@@ -27,40 +27,71 @@ def main():
     TARGET_DB = BASE_DIR.parent / "led_parameters.sqlite3"
     BUNDLE = RAW_DIR / "CoeffBundle.json"
 
+    if not args.apply:
+        print("[DRY-RUN] Would build comparison DB:", TARGET_DB)
+        return
+
+    if not SOURCE_DB.exists():
+        raise RuntimeError("Source DB not found")
+
     if not BUNDLE.exists():
         raise RuntimeError("CoeffBundle.json not found")
 
     bundle = json.load(open(BUNDLE))
 
-    if not SOURCE_DB.exists():
-        raise RuntimeError("Source DB not found")
+    # --- open source ---
+    src = sqlite3.connect(SOURCE_DB)
+    src.row_factory = sqlite3.Row
+    src_cur = src.cursor()
 
-    if args.apply:
-        print("[BUILD] Copying source DB to new DB...")
-        shutil.copyfile(SOURCE_DB, TARGET_DB)
-        db_path = TARGET_DB
-    else:
-        print("[DRY-RUN] Would build new DB:", TARGET_DB)
-        db_path = SOURCE_DB  # dummy for structure check
-
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-
-    rows = cur.execute(
+    rows = src_cur.execute(
         "SELECT * FROM LED_CoE WHERE Model=?",
         (args.model,)
     ).fetchall()
 
     if not rows:
-        print(f"[ERROR] No rows found for model {args.model}")
-        return
+        raise RuntimeError(f"Model {args.model} not found in source DB")
 
     print(f"[INFO] Found {len(rows)} rows for model {args.model}")
 
+    # --- recreate target DB ---
+    if TARGET_DB.exists():
+        TARGET_DB.unlink()
+
+    tgt = sqlite3.connect(TARGET_DB)
+    tgt.row_factory = sqlite3.Row
+    tgt_cur = tgt.cursor()
+
+    # copy table schema
+    schema_row = src_cur.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='LED_CoE'"
+    ).fetchone()
+
+    if not schema_row:
+        raise RuntimeError("LED_CoE table not found in source DB")
+
+    tgt_cur.execute(schema_row[0])
+
+    # --- insert _old and _new ---
     for row in rows:
-        row_id = row["ID"]
-        update_fields = {}
+        row_dict = dict(row)
+
+        # ===== OLD =====
+        old_row = row_dict.copy()
+        old_row["Model"] = f"{args.model}_old"
+        old_row.pop("ID", None)  # remove primary key
+
+        columns_old = ", ".join(old_row.keys())
+        placeholders_old = ", ".join(["?"] * len(old_row))
+
+        tgt_cur.execute(
+            f"INSERT INTO LED_CoE ({columns_old}) VALUES ({placeholders_old})",
+            list(old_row.values())
+        )
+
+        # ===== NEW =====
+        new_row = row_dict.copy()
+        new_row["Model"] = f"{args.model}_new"
 
         for prefix in ["FIV", "FIL", "FTL", "FTV"]:
             if prefix not in bundle:
@@ -69,27 +100,29 @@ def main():
             coeff_sqlite = reverse_coeff(bundle[prefix]["coeff_power"])
 
             for k in range(7):
-                update_fields[f"{prefix}_{k}"] = 0.0
+                new_row[f"{prefix}_{k}"] = 0.0
 
             for k, val in enumerate(coeff_sqlite):
-                update_fields[f"{prefix}_{k}"] = float(val)
+                new_row[f"{prefix}_{k}"] = float(val)
 
-        set_clause = ", ".join([f"{k}=?" for k in update_fields])
-        sql = f"UPDATE LED_CoE SET {set_clause} WHERE ID=?"
+        new_row.pop("ID", None)  # remove primary key
 
-        values = list(update_fields.values())
-        values.append(row_id)
+        columns_new = ", ".join(new_row.keys())
+        placeholders_new = ", ".join(["?"] * len(new_row))
 
-        if args.apply:
-            cur.execute(sql, values)
-        else:
-            print(f"[DRY-RUN] Would update row ID={row_id}")
+        tgt_cur.execute(
+            f"INSERT INTO LED_CoE ({columns_new}) VALUES ({placeholders_new})",
+            list(new_row.values())
+        )
 
-    if args.apply:
-        conn.commit()
-        print("[OK] New database built:", TARGET_DB)
+    tgt.commit()
+    src.close()
+    tgt.close()
 
-    conn.close()
+    print("[OK] Built:", TARGET_DB)
+    print("Contains:")
+    print("  -", args.model + "_old")
+    print("  -", args.model + "_new")
 
 
 if __name__ == "__main__":
