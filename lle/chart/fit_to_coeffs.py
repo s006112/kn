@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# fit_to_coeffs.py
+# step 4 fit_to_coeffs.py
 
 import json
 from pathlib import Path

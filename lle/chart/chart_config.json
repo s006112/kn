@@ -24,11 +24,21 @@
     },
     "FTL": {
       "filename": "STW8A2PD-H0_FTL.png",
-      "plot_bbox": [92, 22, 596, 451]
+      "plot_bbox": [92, 22, 596, 451],
+      "x_min": 25,
+      "x_max": 125,
+      "y_min": 0.0,
+      "y_max": 1.0,
+      "swap_xy": false
     },
     "FTV": {
       "filename": "STW8A2PD-H0_FTV.png",
-      "plot_bbox": [98, 25, 600, 424]
+      "plot_bbox": [98, 25, 600, 424],
+      "x_min": 25,
+      "x_max": 125,
+      "y_min": 0.0,
+      "y_max": 1.0,
+      "swap_xy": false
     }
   }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# trace_to_fit.py
+# step3 trace_to_fit.py
 
 import json
 import numpy as np

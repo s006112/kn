@@ -1,4 +1,5 @@
-#!/usr/bin/env python3 mask_to_trace.py
+#!/usr/bin/env python3 
+# step 2 mask_to_trace.py
 import json
 import numpy as np
 import cv2

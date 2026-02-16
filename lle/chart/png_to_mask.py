@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# step 1 png_to_mask.py
 import json
 import cv2
 import numpy as np
