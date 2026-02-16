@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 import cv2
 import numpy as np
 from pathlib import Path
@@ -10,32 +11,10 @@ from typing import Optional
 
 BASE_DIR = Path(__file__).resolve().parent
 RAW_DIR  = (BASE_DIR / "../../data/chart/raw").resolve()
+CONFIG_PATH = BASE_DIR / "chart_config.json"
 
-# ==========================
-# CHART CONFIG
-# ==========================
-
-CHART_CONFIG = {
-    "FIL": {
-        "filename": "9f4c7cf6-d991-4242-a6b4-debd4ff71ed3.png",
-        "plot_bbox": [73, 50, 591, 417],
-    },
-
-    "FIV": {
-        "filename": "Weixin Image_20260214170155_250_28.png",
-        "plot_bbox": [77, 45, 587, 405],
-    },
-
-    "FTL": {
-        "filename": "de5168c6-bda9-4b02-95b7-9ce2f56a5953.png",
-        "plot_bbox": [92, 22, 596, 451],
-    },
-
-    "FTV": {
-        "filename": "ff492ccc-fbd7-481a-b2f8-81ff972998f5.png",
-        "plot_bbox": [98, 25, 600, 424],
-    }
-}
+with open(CONFIG_PATH, "r") as f:
+    CHART_CONFIG = json.load(f)["charts"]
 
 
 # Build reverse index

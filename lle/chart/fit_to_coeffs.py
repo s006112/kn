@@ -5,23 +5,7 @@ import json
 from pathlib import Path
 from typing import Dict, Any
 
-# ==========================
-# CHART CONFIG
-# ==========================
-CHART_CONFIG: Dict[str, Dict[str, Any]] = {
-    "FIL": {
-        "filename": "9f4c7cf6-d991-4242-a6b4-debd4ff71ed3.png",
-        "x_min": 0.0, "x_max": 300.0,
-        "y_min": 0.0, "y_max": 3.5,
-        "swap_xy": False,
-    },
-    "FIV": {
-        "filename": "Weixin Image_20260214170155_250_28.png",
-        "x_min": 2.5, "x_max": 3.1,
-        "y_min": 0.0, "y_max": 300.0,
-        "swap_xy": True,
-    },
-}
+FIT_KEYS = {"x_min", "x_max", "y_min", "y_max", "swap_xy"}
 
 # ==========================
 # CORE
@@ -32,10 +16,20 @@ def main():
     BASE_DIR = Path(__file__).resolve().parent
     DEBUG_DIR = (BASE_DIR / "../../data/chart/raw/debug").resolve()
     COEFF_DIR = (BASE_DIR / "../../data/chart/raw/").resolve()
+    CONFIG_PATH = BASE_DIR / "chart_config.json"
+
+    with open(CONFIG_PATH, "r") as f:
+        chart_config: Dict[str, Dict[str, Any]] = json.load(f)["charts"]
+
+    fit_ready_config = {
+        key: val
+        for key, val in chart_config.items()
+        if FIT_KEYS.issubset(val)
+    }
 
     bundle: Dict[str, Any] = {}
 
-    for chart_id, cfg in CHART_CONFIG.items():
+    for chart_id, cfg in fit_ready_config.items():
 
         stem = Path(cfg["filename"]).stem
         fit_path = DEBUG_DIR / f"{stem}_fit_result.json"

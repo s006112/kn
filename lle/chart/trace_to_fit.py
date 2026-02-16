@@ -6,28 +6,7 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, Any
 
-# ==========================
-# CHART CONFIG
-# ==========================
-CHART_CONFIG: Dict[str, Dict[str, Any]] = {
-    "FIL": {
-        "filename": "9f4c7cf6-d991-4242-a6b4-debd4ff71ed3.png",
-        "plot_bbox": [73, 50, 591, 417],
-        "x_min": 0.0, "x_max": 300.0,
-        "y_min": 0.0, "y_max": 3.5,
-        "swap_xy": False,
-    },
-    "FIV": {
-        "filename": "Weixin Image_20260214170155_250_28.png",
-        "plot_bbox": [77, 45, 587, 405],
-        "x_min": 2.5, "x_max": 3.1,
-        "y_min": 0.0, "y_max": 300.0,
-        "swap_xy": True,
-    },
-}
-
-MAX_DEGREE = 6
-MIN_DEGREE = 4
+FIT_KEYS = {"x_min", "x_max", "y_min", "y_max", "swap_xy"}
 
 # ==========================
 # CORE
@@ -37,6 +16,22 @@ def main():
 
     BASE_DIR = Path(__file__).resolve().parent
     DEBUG_DIR = (BASE_DIR / "../../data/chart/raw/debug").resolve()
+    CONFIG_PATH = BASE_DIR / "chart_config.json"
+
+    with open(CONFIG_PATH, "r") as f:
+        config = json.load(f)
+
+    chart_config: Dict[str, Dict[str, Any]] = config["charts"]
+    fit_config = config["fit"]
+
+    max_degree = int(fit_config["max_degree"])
+    min_degree = int(fit_config["min_degree"])
+
+    fit_ready_config = {
+        key: val
+        for key, val in chart_config.items()
+        if FIT_KEYS.issubset(val)
+    }
 
     json_files = sorted(DEBUG_DIR.glob("*_curve_points_px.json"))
     if not json_files:
@@ -50,7 +45,7 @@ def main():
         cfg = None
         chart_id = None
 
-        for key, val in CHART_CONFIG.items():
+        for key, val in fit_ready_config.items():
             if val["filename"].startswith(stem) or stem.startswith(val["filename"].split(".")[0]):
                 cfg = val
                 chart_id = key
@@ -70,7 +65,7 @@ def main():
         xp = xp[valid]
         yp = yp[valid]
 
-        if xp.size < MIN_DEGREE + 1:
+        if xp.size < min_degree + 1:
             print(f"[FAIL] {stem} not enough valid points")
             continue
 
@@ -89,7 +84,7 @@ def main():
 
         candidates = []
 
-        for deg in range(MAX_DEGREE, MIN_DEGREE - 1, -1):
+        for deg in range(max_degree, min_degree - 1, -1):
 
             try:
                 coeff = np.polyfit(x_unit, y_unit, deg)
