@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# step 5: coeff_to_sqlite.py
+# step 5: coeff_to_sqlite.py, python3 coeff_to_sqlite.py --model STW8A2PD-T3-W --apply
 
 import sqlite3
 import json
@@ -49,15 +49,17 @@ def main():
         (args.model,)
     ).fetchall()
 
-    if not rows:
-        raise RuntimeError(f"Model {args.model} not found in source DB")
+    has_matched_rows = bool(rows)
+    if has_matched_rows:
+        print(f"[INFO] Found {len(rows)} rows for model {args.model}")
+    else:
+        print(f"[WARN] Model {args.model} not found in source DB; using simple insert mode")
+        template_row = src_cur.execute("SELECT * FROM LED_CoE LIMIT 1").fetchone()
+        if not template_row:
+            raise RuntimeError("No rows found in source DB for simple insert fallback")
+        rows = [template_row]
 
-    print(f"[INFO] Found {len(rows)} rows for model {args.model}")
-
-    # --- recreate target DB ---
-    if TARGET_DB.exists():
-        TARGET_DB.unlink()
-
+    # --- open target DB (keep existing records) ---
     tgt = sqlite3.connect(TARGET_DB)
     tgt.row_factory = sqlite3.Row
     tgt_cur = tgt.cursor()
@@ -70,28 +72,33 @@ def main():
     if not schema_row:
         raise RuntimeError("LED_CoE table not found in source DB")
 
-    tgt_cur.execute(schema_row[0])
+    target_has_table = tgt_cur.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='LED_CoE'"
+    ).fetchone()
+    if not target_has_table:
+        tgt_cur.execute(schema_row[0])
 
-    # --- insert _old and _new ---
+    # --- insert rows ---
     for row in rows:
         row_dict = dict(row)
 
-        # ===== OLD =====
-        old_row = row_dict.copy()
-        old_row["Model"] = f"{args.model}_old"
-        old_row.pop("ID", None)  # remove primary key
+        if has_matched_rows:
+            # ===== OLD =====
+            old_row = row_dict.copy()
+            old_row["Model"] = f"{args.model}_old"
+            old_row.pop("ID", None)  # remove primary key
 
-        columns_old = ", ".join(old_row.keys())
-        placeholders_old = ", ".join(["?"] * len(old_row))
+            columns_old = ", ".join(old_row.keys())
+            placeholders_old = ", ".join(["?"] * len(old_row))
 
-        tgt_cur.execute(
-            f"INSERT INTO LED_CoE ({columns_old}) VALUES ({placeholders_old})",
-            list(old_row.values())
-        )
+            tgt_cur.execute(
+                f"INSERT INTO LED_CoE ({columns_old}) VALUES ({placeholders_old})",
+                list(old_row.values())
+            )
 
         # ===== NEW =====
         new_row = row_dict.copy()
-        new_row["Model"] = f"{args.model}_new"
+        new_row["Model"] = f"{args.model}_new" if has_matched_rows else args.model
 
         for prefix in ["FIV", "FIL", "FTL", "FTV"]:
             if prefix not in bundle:
@@ -121,8 +128,11 @@ def main():
 
     print("[OK] Built:", TARGET_DB)
     print("Contains:")
-    print("  -", args.model + "_old")
-    print("  -", args.model + "_new")
+    if has_matched_rows:
+        print("  -", args.model + "_old")
+        print("  -", args.model + "_new")
+    else:
+        print("  -", args.model)
 
 
 if __name__ == "__main__":
