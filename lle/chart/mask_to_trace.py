@@ -1,68 +1,64 @@
-# mask_to_trace.py
-
-#!/usr/bin/env python3
+#!/usr/bin/env python3 mask_to_trace.py
 import json
 import numpy as np
 import cv2
 from pathlib import Path
-from typing import Dict, Any
 
 # ==========================
 # PATH CONFIG
 # ==========================
 BASE_DIR = Path(__file__).resolve().parent
 RAW_DIR  = (BASE_DIR / "../../data/chart/raw").resolve()
-
 DEBUG_DIR = RAW_DIR / "debug"
 
 # ==========================
-# TRACE CORE
+# TRACE CORE (RAW ONLY)
 # ==========================
 
 def trace_curve_points(mask: np.ndarray):
-    H, W = mask.shape[:2]
-    fg = (mask > 0)
+    """
+    Extract raw median y for each x column.
+    Missing columns remain NaN.
+    """
 
-    ys_med = np.full(W, np.nan, dtype=np.float32)
-    count_per_x = np.zeros(W, dtype=np.int32)
+    H, W = mask.shape[:2]
+    fg = mask > 0
+
+    ys_raw = np.full(W, np.nan, dtype=np.float32)
 
     for x in range(W):
         ys = np.where(fg[:, x])[0]
-        count_per_x[x] = ys.size
         if ys.size:
-            ys_med[x] = float(np.median(ys))
+            ys_raw[x] = float(np.median(ys))
 
-    valid = np.isfinite(ys_med)
-    valid_idx = np.where(valid)[0]
+    valid = np.isfinite(ys_raw)
 
     info = {
         "width": int(W),
         "height": int(H),
         "x_coverage": float(valid.mean()),
-        "largest_gap_px": int(np.diff(valid_idx).max()) if valid_idx.size > 1 else 0,
+        "valid_points": int(valid.sum()),
     }
 
-    if valid_idx.size < 20:
-        info["status"] = "too_few_points"
-        return np.array([]), np.array([]), info
-
-    xs = np.arange(W, dtype=np.float32)
-    ys_fill = ys_med.copy()
-    ys_fill[~valid] = np.interp(xs[~valid], xs[valid], ys_med[valid])
-
-    info["status"] = "ok"
-    return xs, ys_fill, info
+    return np.arange(W, dtype=np.float32), ys_raw, info
 
 
 def draw_trace_overlay(plot_img, xp, yp):
+    """
+    Draw only valid segments.
+    """
     out = plot_img.copy()
-    if xp.size == 0:
+
+    valid = np.isfinite(yp)
+    idx = np.where(valid)[0]
+
+    if idx.size < 2:
         return out
 
-    pts = np.stack([xp, yp], axis=1).round().astype(np.int32)
+    pts = np.stack([xp[idx], yp[idx]], axis=1).round().astype(np.int32)
 
     for i in range(1, pts.shape[0]):
-        cv2.line(out, tuple(pts[i-1]), tuple(pts[i]), (0,0,255), 1)
+        cv2.line(out, tuple(pts[i-1]), tuple(pts[i]), (0, 0, 255), 1)
 
     return out
 
@@ -82,16 +78,16 @@ def process_mask(mask_path: Path):
     mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
     plot = cv2.imread(str(plot_path))
 
-    xp, yp, info = trace_curve_points(mask)
+    xp, yp_raw, info = trace_curve_points(mask)
 
-    overlay = draw_trace_overlay(plot, xp, yp)
+    overlay = draw_trace_overlay(plot, xp, yp_raw)
     cv2.imwrite(str(DEBUG_DIR / f"{stem}_trace_overlay.png"), overlay)
 
     out_json = {
         "stem": stem,
         "trace_info": info,
         "xp": xp.tolist(),
-        "yp": yp.tolist(),
+        "yp_raw": yp_raw.tolist(),   # ← 只输出 raw
     }
 
     with open(DEBUG_DIR / f"{stem}_curve_points_px.json", "w") as f:
@@ -120,4 +116,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
