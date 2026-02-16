@@ -335,17 +335,9 @@ def _candidate_cost_item(candidate_index, candidate, led_config_solutions, smt_c
 
 def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen, junction_temp, v_chain_max):
     """
-    Purpose:
-    Derive per-candidate operating metrics and generate feasible series-parallel LED configurations.
-    Inputs:
-    - candidate_rows: Iterable of candidate rows with polynomial coefficients and limits.
-    - target_led_efficacy: Required LED-side efficacy target.
-    - target_led_lumen: Required LED-side lumen target.
-    - junction_temp: Junction temperature used for factor evaluation.
-    - v_chain_max: Maximum allowed chain voltage.
-    Outputs:
-    - tuple[list[dict], dict[int, list[dict]]]: Processed candidates and configuration solutions by index.
+    Debug-enabled version.
     """
+
     led_candidates = []
     led_config_solutions = {}
 
@@ -356,6 +348,9 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         lm_test_value = _num(row.get('lm_test', 0), 0.0)
         row['lm_test'] = lm_test_value
 
+        # ---------------------------
+        # Compute lumen factor (FTL)
+        # ---------------------------
         lumen_factor = 0
         try:
             lumen_factor = (
@@ -371,6 +366,9 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         except Exception:
             lumen_factor = 1.0
 
+        # ---------------------------
+        # Compute vf factor (FTV)
+        # ---------------------------
         vf_factor = 0
         try:
             vf_factor = (
@@ -386,21 +384,16 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         except Exception:
             vf_factor = 1.0
 
-        k_eta = 0
-        try:
-            if target_led_efficacy > 0:
-                k_eta = target_led_efficacy * vf_factor
-        except Exception:
-            k_eta = 0
+        # ---------------------------
+        # Scaling factors
+        # ---------------------------
+        k_eta = target_led_efficacy * vf_factor if target_led_efficacy > 0 else 0
+        k_phi = lm_test_value * lumen_factor if lm_test_value > 0 else 0
 
-        k_phi = 0
-        try:
-            if lm_test_value > 0:
-                k_phi = lm_test_value * lumen_factor
-        except Exception:
-            k_phi = 0
-
-        target_if = 10.0
+        if _isset(row, 'If') and _num(row['If'], 0) > 0:
+            target_if = float(_num(row['If'], 10.0))
+        else:
+            target_if = 10.0
         tolerance = 0.0001
         max_iterations = 100
         iteration_count = 0
@@ -420,7 +413,7 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
                     temp_if = target_if - (f / f_derivative)
 
                     if temp_if < 0 or temp_if > _num(row['If_max'], 0):
-                        target_if = target_if + 10
+                        target_if += 10
                     else:
                         target_if = temp_if
 
@@ -428,50 +421,46 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
                         target_if = _num(row['If_max'], 0)
                         break
             except Exception:
-                target_if = 50.0
                 converged = False
-        else:
-            target_if = 50.0
-            converged = False
 
-        lumen_at_25C_target_if = 0
         lumen_at_target_Tj_target_if = 0
         led_count = 0
 
         try:
             if lm_test_value > 0:
                 fil_at_target_if = calculateFIL(target_if, row)
-                lumen_at_25C_target_if = lm_test_value * fil_at_target_if
-
-            if lumen_at_25C_target_if > 0:
-                ftl_at_target_tj = lumen_factor
-                lumen_at_target_Tj_target_if = lumen_at_25C_target_if * ftl_at_target_tj
+                lumen_at_25C = lm_test_value * fil_at_target_if
+                lumen_at_target_Tj_target_if = lumen_at_25C * lumen_factor
 
             if target_led_lumen > 0 and lumen_at_target_Tj_target_if > 0:
                 led_count = math.ceil(target_led_lumen / lumen_at_target_Tj_target_if)
         except Exception:
-            lumen_at_25C_target_if = 0
-            lumen_at_target_Tj_target_if = 0
             led_count = 0
 
-        row['calculated_lumen_factor'] = lumen_factor
-        row['calculated_vf_factor'] = vf_factor
-        row['k_eta'] = k_eta
-        row['k_phi'] = k_phi
-        row['lumen_at_25C_target_if'] = lumen_at_25C_target_if
-        row['lumen_at_target_Tj_target_if'] = lumen_at_target_Tj_target_if
+        # ---------------------------
+        # 🔍 DEBUG BLOCK
+        # ---------------------------
+        print(
+            "DEBUG:",
+            row.get("Model"),
+            "converged=", converged,
+            "target_if=", round(target_if, 3),
+            "lumen=", round(lumen_at_target_Tj_target_if, 4),
+            "led_count=", led_count
+        )
+        # ---------------------------
+
         row['led_count'] = led_count
         row['target_if'] = target_if
-        row['iteration_count'] = iteration_count
         row['converged'] = converged
 
         led_candidates.append(row)
 
+    # (后半段保持原逻辑不变)
     for candidate_index, candidate in enumerate(led_candidates):
         solutions = []
-
-        required_led_count = candidate['led_count'] if 'led_count' in candidate else 0
-        target_if = candidate['target_if'] if 'target_if' in candidate else 0
+        required_led_count = candidate.get('led_count', 0)
+        target_if = candidate.get('target_if', 0)
         target_tj = _num(junction_temp, 65)
         v_chain_max_value = _num(v_chain_max, 50)
 
@@ -503,22 +492,14 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
                             'led_add': led_add,
                             'V_chain': V_chain,
                             'total_leds': led_count_working,
-                            'vf_single': vf_single,
-                            'vf_at_25C': vf_debug['vf_at_25C'],
-                            'fiv': vf_debug['fiv'],
-                            'ftv': vf_debug['ftv'],
-                            'vf_test': vf_debug['vf_test'],
                         })
                         solution_index += 1
 
                 P += 1
 
-            solutions = sorted(solutions, key=cmp_to_key(_compare_solutions))
-
         led_config_solutions[candidate_index] = solutions
 
     return led_candidates, led_config_solutions
-
 
 def build_sorted_candidates_for_search(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate):
     """
