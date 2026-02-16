@@ -56,6 +56,49 @@ def _isset(row, key):
     return key in row and row[key] is not None
 
 
+def _poly6_value(x_value, row, prefix):
+    """
+    Purpose:
+    Evaluate a 6th-order polynomial from row coefficients with the given prefix.
+    Inputs:
+    - x_value: Polynomial input value.
+    - row: Candidate row containing `<prefix>_0` through `<prefix>_6`.
+    - prefix: Coefficient prefix, e.g. `FIV`, `FIL`, `FTV`, `FTL`.
+    Outputs:
+    - float: Raw polynomial value.
+    """
+    value = 0
+    value += row[f'{prefix}_0'] if _isset(row, f'{prefix}_0') else 0
+    value += (row[f'{prefix}_1'] if _isset(row, f'{prefix}_1') else 0) * x_value
+    value += (row[f'{prefix}_2'] if _isset(row, f'{prefix}_2') else 0) * pow(x_value, 2)
+    value += (row[f'{prefix}_3'] if _isset(row, f'{prefix}_3') else 0) * pow(x_value, 3)
+    value += (row[f'{prefix}_4'] if _isset(row, f'{prefix}_4') else 0) * pow(x_value, 4)
+    value += (row[f'{prefix}_5'] if _isset(row, f'{prefix}_5') else 0) * pow(x_value, 5)
+    value += (row[f'{prefix}_6'] if _isset(row, f'{prefix}_6') else 0) * pow(x_value, 6)
+    return value
+
+
+def _poly6_derivative(x_value, row, prefix):
+    """
+    Purpose:
+    Evaluate derivative of a 6th-order polynomial from row coefficients with the given prefix.
+    Inputs:
+    - x_value: Polynomial input value.
+    - row: Candidate row containing `<prefix>_1` through `<prefix>_6`.
+    - prefix: Coefficient prefix, e.g. `FIV`, `FIL`.
+    Outputs:
+    - float: Raw derivative value.
+    """
+    derivative = 0
+    derivative += row[f'{prefix}_1'] if _isset(row, f'{prefix}_1') else 0
+    derivative += (row[f'{prefix}_2'] if _isset(row, f'{prefix}_2') else 0) * 2 * x_value
+    derivative += (row[f'{prefix}_3'] if _isset(row, f'{prefix}_3') else 0) * 3 * pow(x_value, 2)
+    derivative += (row[f'{prefix}_4'] if _isset(row, f'{prefix}_4') else 0) * 4 * pow(x_value, 3)
+    derivative += (row[f'{prefix}_5'] if _isset(row, f'{prefix}_5') else 0) * 5 * pow(x_value, 4)
+    derivative += (row[f'{prefix}_6'] if _isset(row, f'{prefix}_6') else 0) * 6 * pow(x_value, 5)
+    return derivative
+
+
 def calculateFIV(if_value, row):
     """
     Purpose:
@@ -67,14 +110,7 @@ def calculateFIV(if_value, row):
     - float: Evaluated FIV value, with fallback defaults on errors.
     """
     try:
-        fiv = 0
-        fiv += row['FIV_0'] if _isset(row, 'FIV_0') else 0
-        fiv += (row['FIV_1'] if _isset(row, 'FIV_1') else 0) * if_value
-        fiv += (row['FIV_2'] if _isset(row, 'FIV_2') else 0) * pow(if_value, 2)
-        fiv += (row['FIV_3'] if _isset(row, 'FIV_3') else 0) * pow(if_value, 3)
-        fiv += (row['FIV_4'] if _isset(row, 'FIV_4') else 0) * pow(if_value, 4)
-        fiv += (row['FIV_5'] if _isset(row, 'FIV_5') else 0) * pow(if_value, 5)
-        fiv += (row['FIV_6'] if _isset(row, 'FIV_6') else 0) * pow(if_value, 6)
+        fiv = _poly6_value(if_value, row, 'FIV')
         return _num(fiv, 1.0)
     except Exception:
         return 1.0
@@ -91,13 +127,7 @@ def calculateFIVDerivative(if_value, row):
     - float: Evaluated derivative value, with fallback defaults on errors.
     """
     try:
-        fiv_derivative = 0
-        fiv_derivative += row['FIV_1'] if _isset(row, 'FIV_1') else 0
-        fiv_derivative += (row['FIV_2'] if _isset(row, 'FIV_2') else 0) * 2 * if_value
-        fiv_derivative += (row['FIV_3'] if _isset(row, 'FIV_3') else 0) * 3 * pow(if_value, 2)
-        fiv_derivative += (row['FIV_4'] if _isset(row, 'FIV_4') else 0) * 4 * pow(if_value, 3)
-        fiv_derivative += (row['FIV_5'] if _isset(row, 'FIV_5') else 0) * 5 * pow(if_value, 4)
-        fiv_derivative += (row['FIV_6'] if _isset(row, 'FIV_6') else 0) * 6 * pow(if_value, 5)
+        fiv_derivative = _poly6_derivative(if_value, row, 'FIV')
         return _num(fiv_derivative, 0.0)
     except Exception:
         return 0.0
@@ -114,14 +144,7 @@ def calculateFIL(if_value, row):
     - float: Evaluated FIL value, returning nonzero fallback behavior on errors.
     """
     try:
-        fil = 0
-        fil += row['FIL_0'] if _isset(row, 'FIL_0') else 0
-        fil += (row['FIL_1'] if _isset(row, 'FIL_1') else 0) * if_value
-        fil += (row['FIL_2'] if _isset(row, 'FIL_2') else 0) * pow(if_value, 2)
-        fil += (row['FIL_3'] if _isset(row, 'FIL_3') else 0) * pow(if_value, 3)
-        fil += (row['FIL_4'] if _isset(row, 'FIL_4') else 0) * pow(if_value, 4)
-        fil += (row['FIL_5'] if _isset(row, 'FIL_5') else 0) * pow(if_value, 5)
-        fil += (row['FIL_6'] if _isset(row, 'FIL_6') else 0) * pow(if_value, 6)
+        fil = _poly6_value(if_value, row, 'FIL')
         fil = _num(fil, 0.0)
         if fil == 0:
             return 1.0
@@ -141,13 +164,7 @@ def calculateFILDerivative(if_value, row):
     - float: Evaluated derivative value, with fallback defaults on errors.
     """
     try:
-        fil_derivative = 0
-        fil_derivative += row['FIL_1'] if _isset(row, 'FIL_1') else 0
-        fil_derivative += (row['FIL_2'] if _isset(row, 'FIL_2') else 0) * 2 * if_value
-        fil_derivative += (row['FIL_3'] if _isset(row, 'FIL_3') else 0) * 3 * pow(if_value, 2)
-        fil_derivative += (row['FIL_4'] if _isset(row, 'FIL_4') else 0) * 4 * pow(if_value, 3)
-        fil_derivative += (row['FIL_5'] if _isset(row, 'FIL_5') else 0) * 5 * pow(if_value, 4)
-        fil_derivative += (row['FIL_6'] if _isset(row, 'FIL_6') else 0) * 6 * pow(if_value, 5)
+        fil_derivative = _poly6_derivative(if_value, row, 'FIL')
         return _num(fil_derivative, 0.0)
     except Exception:
         return 0.0
@@ -198,33 +215,6 @@ def calculateObjectiveFunctionDerivative(if_value, k_eta, k_phi, row):
         return 1e-10
 
 
-def calculateVf(target_if, target_tj, row):
-    """
-    Purpose:
-    Compute forward voltage at target current and junction temperature.
-    Inputs:
-    - target_if: Target forward current.
-    - target_tj: Target junction temperature.
-    - row: Candidate row with FIV and FTV coefficients.
-    Outputs:
-    - float: Computed forward voltage with fallback defaults on errors.
-    """
-    try:
-        vf_at_25C = calculateFIV(target_if, row)
-        vf_factor = 0
-        vf_factor += row['FTV_0'] if _isset(row, 'FTV_0') else 0
-        vf_factor += (row['FTV_1'] if _isset(row, 'FTV_1') else 0) * target_tj
-        vf_factor += (row['FTV_2'] if _isset(row, 'FTV_2') else 0) * pow(target_tj, 2)
-        vf_factor += (row['FTV_3'] if _isset(row, 'FTV_3') else 0) * pow(target_tj, 3)
-        vf_factor += (row['FTV_4'] if _isset(row, 'FTV_4') else 0) * pow(target_tj, 4)
-        vf_factor += (row['FTV_5'] if _isset(row, 'FTV_5') else 0) * pow(target_tj, 5)
-        vf_factor += (row['FTV_6'] if _isset(row, 'FTV_6') else 0) * pow(target_tj, 6)
-        vf_final = vf_at_25C * _num(vf_factor, 0.0)
-        return _num(vf_final, 3.0)
-    except Exception:
-        return 3.0
-
-
 def calculateVfWithDebug(target_if, target_tj, row):
     """
     Purpose:
@@ -238,14 +228,7 @@ def calculateVfWithDebug(target_if, target_tj, row):
     """
     try:
         vf_at_25C = calculateFIV(target_if, row)
-        vf_factor = 0
-        vf_factor += row['FTV_0'] if _isset(row, 'FTV_0') else 0
-        vf_factor += (row['FTV_1'] if _isset(row, 'FTV_1') else 0) * target_tj
-        vf_factor += (row['FTV_2'] if _isset(row, 'FTV_2') else 0) * pow(target_tj, 2)
-        vf_factor += (row['FTV_3'] if _isset(row, 'FTV_3') else 0) * pow(target_tj, 3)
-        vf_factor += (row['FTV_4'] if _isset(row, 'FTV_4') else 0) * pow(target_tj, 4)
-        vf_factor += (row['FTV_5'] if _isset(row, 'FTV_5') else 0) * pow(target_tj, 5)
-        vf_factor += (row['FTV_6'] if _isset(row, 'FTV_6') else 0) * pow(target_tj, 6)
+        vf_factor = _poly6_value(target_tj, row, 'FTV')
         vf_factor = _num(vf_factor, 0.0)
         vf_final = vf_at_25C * vf_factor
         return {
@@ -263,33 +246,6 @@ def calculateVfWithDebug(target_if, target_tj, row):
             'ftv': 1.0,
             'vf_test': 'N/A'
         }
-
-
-def _compare_solutions(a, b):
-    """
-    Purpose:
-    Compare two configuration solutions for deterministic ordering.
-    Inputs:
-    - a: First solution item containing `S`, `led_add`, and `V_chain`.
-    - b: Second solution item containing `S`, `led_add`, and `V_chain`.
-    Outputs:
-    - int: Comparator result suitable for `cmp_to_key`.
-    """
-    if a['S'] != b['S']:
-        if a['S'] > b['S']:
-            return -1
-        if a['S'] < b['S']:
-            return 1
-    if a['led_add'] != b['led_add']:
-        if a['led_add'] > b['led_add']:
-            return 1
-        if a['led_add'] < b['led_add']:
-            return -1
-    if b['V_chain'] > a['V_chain']:
-        return 1
-    if b['V_chain'] < a['V_chain']:
-        return -1
-    return 0
 
 
 def _compare_cost_items(a, b):
@@ -333,6 +289,25 @@ def _candidate_cost_item(candidate_index, candidate, led_config_solutions, smt_c
     }
 
 
+def _sorted_candidate_cost_items(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate):
+    """
+    Purpose:
+    Build sorted candidate cost items from available configuration solutions.
+    Inputs:
+    - led_candidates: Processed candidate rows.
+    - led_config_solutions: Mapping from candidate index to configuration solutions.
+    - smt_cost_rmb: SMT unit cost in RMB.
+    - usd_rate: RMB-to-USD divisor.
+    Outputs:
+    - list[dict]: Cost items sorted by ascending total cost.
+    """
+    items = []
+    for i, c in enumerate(led_candidates):
+        if i in led_config_solutions and led_config_solutions[i]:
+            items.append(_candidate_cost_item(i, c, led_config_solutions, smt_cost_rmb, usd_rate))
+    return sorted(items, key=cmp_to_key(_compare_cost_items))
+
+
 def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen, junction_temp, v_chain_max):
     """
     Debug-enabled version.
@@ -353,15 +328,7 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         # ---------------------------
         lumen_factor = 0
         try:
-            lumen_factor = (
-                (row['FTL_0'] if _isset(row, 'FTL_0') else 0) +
-                (row['FTL_1'] if _isset(row, 'FTL_1') else 0) * tj +
-                (row['FTL_2'] if _isset(row, 'FTL_2') else 0) * pow(tj, 2) +
-                (row['FTL_3'] if _isset(row, 'FTL_3') else 0) * pow(tj, 3) +
-                (row['FTL_4'] if _isset(row, 'FTL_4') else 0) * pow(tj, 4) +
-                (row['FTL_5'] if _isset(row, 'FTL_5') else 0) * pow(tj, 5) +
-                (row['FTL_6'] if _isset(row, 'FTL_6') else 0) * pow(tj, 6)
-            )
+            lumen_factor = _poly6_value(tj, row, 'FTL')
             lumen_factor = _num(lumen_factor, 0.0)
         except Exception:
             lumen_factor = 1.0
@@ -371,15 +338,7 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         # ---------------------------
         vf_factor = 0
         try:
-            vf_factor = (
-                (row['FTV_0'] if _isset(row, 'FTV_0') else 0) +
-                (row['FTV_1'] if _isset(row, 'FTV_1') else 0) * tj +
-                (row['FTV_2'] if _isset(row, 'FTV_2') else 0) * pow(tj, 2) +
-                (row['FTV_3'] if _isset(row, 'FTV_3') else 0) * pow(tj, 3) +
-                (row['FTV_4'] if _isset(row, 'FTV_4') else 0) * pow(tj, 4) +
-                (row['FTV_5'] if _isset(row, 'FTV_5') else 0) * pow(tj, 5) +
-                (row['FTV_6'] if _isset(row, 'FTV_6') else 0) * pow(tj, 6)
-            )
+            vf_factor = _poly6_value(tj, row, 'FTV')
             vf_factor = _num(vf_factor, 0.0)
         except Exception:
             vf_factor = 1.0
@@ -533,13 +492,7 @@ def build_sorted_candidates_for_search(led_candidates, led_config_solutions, smt
     """
     if not led_config_solutions:
         return [{'index': i, 'candidate': c} for i, c in enumerate(led_candidates)]
-
-    items = []
-    for i, c in enumerate(led_candidates):
-        if i in led_config_solutions and led_config_solutions[i]:
-            items.append(_candidate_cost_item(i, c, led_config_solutions, smt_cost_rmb, usd_rate))
-
-    return sorted(items, key=cmp_to_key(_compare_cost_items))
+    return _sorted_candidate_cost_items(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate)
 
 
 def build_candidate_costs_for_config(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate):
@@ -556,10 +509,4 @@ def build_candidate_costs_for_config(led_candidates, led_config_solutions, smt_c
     """
     if not led_config_solutions:
         return []
-
-    items = []
-    for i, c in enumerate(led_candidates):
-        if i in led_config_solutions and led_config_solutions[i]:
-            items.append(_candidate_cost_item(i, c, led_config_solutions, smt_cost_rmb, usd_rate))
-
-    return sorted(items, key=cmp_to_key(_compare_cost_items))
+    return _sorted_candidate_cost_items(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate)
