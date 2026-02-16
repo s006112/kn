@@ -1,21 +1,22 @@
 """
 Own file name algorithm.py
 
-1. Responsibility
+Responsibility
 Compute LED electrical and optical derived values, generate feasible series-parallel configurations under voltage constraints, and produce cost-ordered candidate views for downstream rendering.
 
-2. Used by
+Used by:
 * lle/app.py
+* lle/compare_coeff.py
 
-3. Pipelines
-- rows -> derive -> solve -> filter -> rank -> return
+Pipelines:
+- rows -> derive -> solve -> evaluate -> configure -> rank -> return
 
-4. Invariants
+Invariants
 - Numeric helper functions always return numeric fallbacks instead of propagating parsing errors.
 - Candidate processing always returns a tuple of candidate rows and configuration map.
 - Configuration ranking uses deterministic comparator ordering.
 
-5. Out of scope
+Out of scope
 - Database access and query construction.
 - HTTP request handling and template rendering.
 - Currency display formatting for UI output.
@@ -310,7 +311,16 @@ def _sorted_candidate_cost_items(led_candidates, led_config_solutions, smt_cost_
 
 def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen, junction_temp, v_chain_max):
     """
-    Debug-enabled version.
+    Purpose:
+    Derive candidate operating points, compute per-candidate optical and electrical fields, and generate feasible series-parallel configurations.
+    Inputs:
+    - candidate_rows: Source candidate rows from database query results.
+    - target_led_efficacy: Target efficacy used for objective scaling.
+    - target_led_lumen: Target lumen used to derive required LED count.
+    - junction_temp: Junction temperature used for FTL and FTV factor evaluation.
+    - v_chain_max: Maximum allowed chain voltage constraint for configuration generation.
+    Outputs:
+    - tuple[list[dict], dict[int, list[dict]]]: Processed candidate rows and per-candidate configuration solutions.
     """
 
     led_candidates = []
@@ -323,9 +333,6 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         lm_test_value = _num(row.get('lm_test', 0), 0.0)
         row['lm_test'] = lm_test_value
 
-        # ---------------------------
-        # Compute lumen factor (FTL)
-        # ---------------------------
         lumen_factor = 0
         try:
             lumen_factor = _poly6_value(tj, row, 'FTL')
@@ -333,9 +340,6 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         except Exception:
             lumen_factor = 1.0
 
-        # ---------------------------
-        # Compute vf factor (FTV)
-        # ---------------------------
         vf_factor = 0
         try:
             vf_factor = _poly6_value(tj, row, 'FTV')
@@ -343,9 +347,6 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         except Exception:
             vf_factor = 1.0
 
-        # ---------------------------
-        # Scaling factors
-        # ---------------------------
         k_eta = target_led_efficacy * vf_factor if target_led_efficacy > 0 else 0
         k_phi = lm_test_value * lumen_factor if lm_test_value > 0 else 0
 
@@ -371,6 +372,7 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
 
                     temp_if = target_if - (f / f_derivative)
 
+                    # Fall back to bounded stepping when Newton update exits the feasible current range.
                     if temp_if < 0 or temp_if > _num(row['If_max'], 0):
                         target_if += 10
                     else:
@@ -396,9 +398,7 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         except Exception:
             led_count = 0
 
-        # ---------------------------
-        # 🔍 DEBUG BLOCK
-        # ---------------------------
+        # Preserve runtime visibility of solver behavior for each model row.
         print(
             "DEBUG:",
             row.get("Model"),
@@ -407,14 +407,13 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
             "lumen=", round(lumen_at_target_Tj_target_if, 4),
             "led_count=", led_count
         )
-        # ---------------------------
 
         row['led_count'] = led_count
         row['target_if'] = target_if
         row['converged'] = converged
 
-        # ---- MINIMAL FIX: write back computed electrical fields ----
         row['lumen_at_target_Tj_target_if'] = float(lumen_at_target_Tj_target_if)
+        # `lumen_at_25C` is conditionally defined when `lm_test_value > 0` in the guarded block above.
         row['lumen_at_25C'] = float(lumen_at_25C) if 'lumen_at_25C' in locals() else 0.0
         row['lumen_factor'] = float(lumen_factor)
         row['vf_factor'] = float(vf_factor)
@@ -428,12 +427,10 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         row['power_at_target_if'] = float(
             row['vf_at_target_if'] * target_if / 1000.0
         ) if row['vf_at_target_if'] > 0 else 0.0
-        # -------------------------------------------------------------
 
 
         led_candidates.append(row)
 
-    # (后半段保持原逻辑不变)
     for candidate_index, candidate in enumerate(led_candidates):
         solutions = []
         required_led_count = candidate.get('led_count', 0)
