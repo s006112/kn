@@ -454,6 +454,24 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         row['target_if'] = target_if
         row['converged'] = converged
 
+        # ---- MINIMAL FIX: write back computed electrical fields ----
+        row['lumen_at_target_Tj_target_if'] = float(lumen_at_target_Tj_target_if)
+        row['lumen_at_25C'] = float(lumen_at_25C) if 'lumen_at_25C' in locals() else 0.0
+        row['lumen_factor'] = float(lumen_factor)
+        row['vf_factor'] = float(vf_factor)
+
+        try:
+            vf_debug = calculateVfWithDebug(target_if, tj, row)
+            row['vf_at_target_if'] = float(vf_debug['vf_final'])
+        except Exception:
+            row['vf_at_target_if'] = 0.0
+
+        row['power_at_target_if'] = float(
+            row['vf_at_target_if'] * target_if / 1000.0
+        ) if row['vf_at_target_if'] > 0 else 0.0
+        # -------------------------------------------------------------
+
+
         led_candidates.append(row)
 
     # (后半段保持原逻辑不变)
