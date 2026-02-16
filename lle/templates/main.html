@@ -79,7 +79,7 @@
                                value="{{ target_lumen|int if target_lumen == (target_lumen|int) else target_lumen }}"
                                placeholder="e.g., 5000, 10000, 15000 luminaire lumens"
                                step="1"
-                               min="0"
+                               min="500"
                                required>
                         <span class="muted-text">lumens (lm)</span>
                     </div>
@@ -92,7 +92,7 @@
                                value="{{ optical_transmission|int if optical_transmission == (optical_transmission|int) else optical_transmission }}"
                                placeholder="Default: 80% (typical lens/reflector efficiency)"
                                step="1"
-                               min="1"
+                               min="60"
                                max="100"
                                required>
                         <span class="muted-text">percent (%)</span>
@@ -106,7 +106,7 @@
                                value="{{ power_efficiency|int if power_efficiency == (power_efficiency|int) else power_efficiency }}"
                                placeholder="Default: 85% (typical driver efficiency)"
                                step="1"
-                               min="1"
+                               min="50"
                                max="100"
                                required>
                         <span class="muted-text">percent (%)</span>
@@ -123,7 +123,7 @@
                                value="{{ target_efficacy|int if target_efficacy == (target_efficacy|int) else target_efficacy }}"
                                placeholder="e.g., 100, 150, 200 luminaire lm/W"
                                step="1"
-                               min="1"
+                               min="50"
                                required>
                         <span class="muted-text">lumens per watt (lm/W)</span>
                     </div>
@@ -136,8 +136,8 @@
                                value="{{ junction_temp|int if junction_temp == (junction_temp|int) else junction_temp }}"
                                placeholder="Default: 65°C (typical operating temperature)"
                                step="1"
-                               min="-40"
-                               max="200"
+                               min="0"
+                               max="105"
                                required>
                         <span class="muted-text">degrees Celsius (°C)</span>
                     </div>
@@ -150,8 +150,8 @@
                                value="{{ v_chain_max|int if v_chain_max == (v_chain_max|int) else v_chain_max }}"
                                placeholder="Default: 50V (maximum voltage per LED string)"
                                step="1"
-                               min="1"
-                               max="1000"
+                               min="3"
+                               max="200"
                                required>
                         <span class="muted-text">volts (V)</span>
                     </div>
@@ -164,7 +164,7 @@
                                value="{{ smt_cost_rmb|int if smt_cost_rmb == (smt_cost_rmb|int) else smt_cost_rmb }}"
                                placeholder="Default: 0.01 RMB (SMT assembly cost per LED)"
                                step="0.001"
-                               min="0"
+                               min="0.002"
                                required>
                         <span class="muted-text">RMB per LED</span>
                     </div>
