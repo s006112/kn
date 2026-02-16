@@ -4,13 +4,14 @@ import json
 import numpy as np
 import cv2
 from pathlib import Path
+from path_config import load_chart_runtime
 
 # ==========================
 # PATH CONFIG
 # ==========================
 BASE_DIR = Path(__file__).resolve().parent
-RAW_DIR  = (BASE_DIR / "../../data/chart/raw").resolve()
-DEBUG_DIR = RAW_DIR / "debug"
+CONFIG_PATH = BASE_DIR / "chart_config.json"
+RAW_DIR, DEBUG_DIR, _ = load_chart_runtime(BASE_DIR, CONFIG_PATH)
 
 # ==========================
 # TRACE CORE (RAW ONLY)

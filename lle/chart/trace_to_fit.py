@@ -5,6 +5,7 @@ import json
 import numpy as np
 from pathlib import Path
 from typing import Dict, Any
+from path_config import load_chart_runtime
 
 FIT_KEYS = {"x_min", "x_max", "y_min", "y_max", "swap_xy"}
 
@@ -15,11 +16,8 @@ FIT_KEYS = {"x_min", "x_max", "y_min", "y_max", "swap_xy"}
 def main():
 
     BASE_DIR = Path(__file__).resolve().parent
-    DEBUG_DIR = (BASE_DIR / "../../data/chart/raw/debug").resolve()
     CONFIG_PATH = BASE_DIR / "chart_config.json"
-
-    with open(CONFIG_PATH, "r") as f:
-        config = json.load(f)
+    _, DEBUG_DIR, config = load_chart_runtime(BASE_DIR, CONFIG_PATH)
 
     chart_config: Dict[str, Dict[str, Any]] = config["charts"]
     fit_config = config["fit"]

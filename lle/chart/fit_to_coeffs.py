@@ -4,6 +4,7 @@
 import json
 from pathlib import Path
 from typing import Dict, Any
+from path_config import load_chart_runtime
 
 FIT_KEYS = {"x_min", "x_max", "y_min", "y_max", "swap_xy"}
 
@@ -14,12 +15,9 @@ FIT_KEYS = {"x_min", "x_max", "y_min", "y_max", "swap_xy"}
 def main():
 
     BASE_DIR = Path(__file__).resolve().parent
-    DEBUG_DIR = (BASE_DIR / "../../data/chart/raw/debug").resolve()
-    COEFF_DIR = (BASE_DIR / "../../data/chart/raw/").resolve()
     CONFIG_PATH = BASE_DIR / "chart_config.json"
-
-    with open(CONFIG_PATH, "r") as f:
-        chart_config: Dict[str, Dict[str, Any]] = json.load(f)["charts"]
+    RAW_DIR, DEBUG_DIR, config = load_chart_runtime(BASE_DIR, CONFIG_PATH)
+    chart_config: Dict[str, Dict[str, Any]] = config["charts"]
 
     fit_ready_config = {
         key: val
@@ -60,7 +58,7 @@ def main():
         print("No coefficients bundled.")
         return
 
-    out_path = COEFF_DIR / "CoeffBundle.json"
+    out_path = RAW_DIR / "CoeffBundle.json"
 
     with open(out_path, "w") as f:
         json.dump(bundle, f, indent=2)

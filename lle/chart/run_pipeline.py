@@ -6,17 +6,54 @@ Order:
 2) mask_to_trace.py
 3) trace_to_fit.py
 4) fit_to_coeffs.py
+
+Discipline:
+- Always clear debug directory before running.
+- Abort immediately on any step failure.
 """
 
 from __future__ import annotations
 
 import subprocess
 import sys
+import shutil
 from pathlib import Path
+
+
+def clear_debug_dir(base_dir: Path) -> None:
+    """
+    Remove debug directory completely to avoid stale intermediate state.
+    """
+    raw_dir = (base_dir / "../../data/chart/raw").resolve()
+    debug_dir = raw_dir / "debug"
+
+    if debug_dir.exists():
+        print(f"[CLEAN] Removing debug directory: {debug_dir}")
+        shutil.rmtree(debug_dir)
+
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    print(f"[INIT] Fresh debug directory created.")
+
+
+def run_step(base_dir: Path, step: str) -> int:
+    step_path = base_dir / step
+    print(f"[RUN] {step}")
+    result = subprocess.run(
+        [sys.executable, str(step_path)],
+        cwd=str(base_dir)
+    )
+    if result.returncode != 0:
+        print(f"[FAIL] {step} exit={result.returncode}")
+    return result.returncode
 
 
 def main() -> int:
     base_dir = Path(__file__).resolve().parent
+
+    # 1️⃣ 清空 debug
+    clear_debug_dir(base_dir)
+
+    # 2️⃣ 顺序执行
     steps = [
         "png_to_mask.py",
         "mask_to_trace.py",
@@ -25,12 +62,9 @@ def main() -> int:
     ]
 
     for step in steps:
-        step_path = base_dir / step
-        print(f"[RUN] {step}")
-        result = subprocess.run([sys.executable, str(step_path)], cwd=str(base_dir))
-        if result.returncode != 0:
-            print(f"[FAIL] {step} exit={result.returncode}")
-            return result.returncode
+        rc = run_step(base_dir, step)
+        if rc != 0:
+            return rc
 
     print("[OK] Pipeline complete.")
     return 0

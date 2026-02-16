@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 # step 1 png_to_mask.py
-import json
 import cv2
 import numpy as np
 from pathlib import Path
 from typing import Optional
+from path_config import load_chart_runtime
 
 # ==========================
 # PATH CONFIG
 # ==========================
 
 BASE_DIR = Path(__file__).resolve().parent
-RAW_DIR  = (BASE_DIR / "../../data/chart/raw").resolve()
 CONFIG_PATH = BASE_DIR / "chart_config.json"
+RAW_DIR, DEBUG_DIR, runtime_config = load_chart_runtime(BASE_DIR, CONFIG_PATH)
 
-with open(CONFIG_PATH, "r") as f:
-    CHART_CONFIG = json.load(f)["charts"]
+CHART_CONFIG = runtime_config["charts"]
 
 
 # Build reverse index
@@ -95,18 +94,17 @@ def process_image(img_path: Path):
     plot = crop_plot(img, bbox)
     grey = cv2.cvtColor(plot, cv2.COLOR_BGR2GRAY)
 
-    out_dir = img_path.parent / "debug"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
     stem = img_path.stem
 
-    cv2.imwrite(str(out_dir / f"{stem}_dplot_crop.png"), plot)
-    cv2.imwrite(str(out_dir / f"{stem}_plot_crop.png"), plot)
+    cv2.imwrite(str(DEBUG_DIR / f"{stem}_dplot_crop.png"), plot)
+    cv2.imwrite(str(DEBUG_DIR / f"{stem}_plot_crop.png"), plot)
 
     cleaned = remove_grid_and_axes(grey)
-    cv2.imwrite(str(out_dir / f"{stem}_grid_removed.png"), cleaned)
+    cv2.imwrite(str(DEBUG_DIR / f"{stem}_grid_removed.png"), cleaned)
 
     mask = extract_curve_mask(cleaned)
-    cv2.imwrite(str(out_dir / f"{stem}_mask_curve.png"), mask)
+    cv2.imwrite(str(DEBUG_DIR / f"{stem}_mask_curve.png"), mask)
 
     print(f"[OK] {img_path.name}")
 
