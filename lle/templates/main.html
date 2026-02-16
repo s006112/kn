@@ -105,7 +105,7 @@
                                name="power_efficiency"
                                value="{{ power_efficiency|int if power_efficiency == (power_efficiency|int) else power_efficiency }}"
                                placeholder="Default: 85% (typical driver efficiency)"
-                               step="0.1"
+                               step="1"
                                min="1"
                                max="100"
                                required>
@@ -122,7 +122,7 @@
                                name="target_efficacy"
                                value="{{ target_efficacy|int if target_efficacy == (target_efficacy|int) else target_efficacy }}"
                                placeholder="e.g., 100, 150, 200 luminaire lm/W"
-                               step="0.1"
+                               step="1"
                                min="1"
                                required>
                         <span class="muted-text">lumens per watt (lm/W)</span>
@@ -176,8 +176,8 @@
                                name="usd_rate"
                                value="{{ usd_rate|int if usd_rate == (usd_rate|int) else usd_rate }}"
                                placeholder="Default: 7.00 (RMB per 1 USD)"
-                               step="0.01"
-                               min="0.01"
+                               step="0.1"
+                               min="0.1"
                                required>
                         <span class="muted-text">RMB per USD</span>
                     </div>
