@@ -44,10 +44,12 @@ def main():
         bundle[chart_id] = {
             "degree": fit_data["degree_used"],
             "coeff_power": fit_data["coeff_power"],
-            "x_domain_min": cfg["x_min"],
-            "x_domain_max": cfg["x_max"],
-            "y_domain_min": cfg["y_min"],
-            "y_domain_max": cfg["y_max"],
+            "domain": {
+                "x_min": cfg["x_min"],
+                "x_max": cfg["x_max"],
+                "y_min": cfg["y_min"],
+                "y_max": cfg["y_max"],
+            },
             "swap_xy": cfg["swap_xy"],
             "status": "ok"
         }
