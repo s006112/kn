@@ -79,6 +79,11 @@ def main():
         # 若需要交换
         if cfg["swap_xy"]:
             x_unit, y_unit = y_unit, x_unit
+            x_min, x_max = cfg["y_min"], cfg["y_max"]
+            y_min, y_max = cfg["x_min"], cfg["x_max"]
+        else:
+            x_min, x_max = cfg["x_min"], cfg["x_max"]
+            y_min, y_max = cfg["y_min"], cfg["y_max"]
 
         # 3️⃣ 自动降阶拟合
 
@@ -133,6 +138,12 @@ def main():
         result = {
             "degree_used": best["degree"],
             "coeff_power": best["coeff"].tolist(),
+            "domain": {
+                "x_min": x_min,
+                "x_max": x_max,
+                "y_min": y_min,
+                "y_max": y_max
+            },
             "metrics": {
                 "r2": float(best["r2"]),
                 "rmse": float(best["rmse"]),
