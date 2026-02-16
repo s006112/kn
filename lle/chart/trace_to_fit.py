@@ -86,7 +86,8 @@ def main():
             x_unit, y_unit = y_unit, x_unit
 
         # 3️⃣ 自动降阶拟合
-        best = None
+
+        candidates = []
 
         for deg in range(MAX_DEGREE, MIN_DEGREE - 1, -1):
 
@@ -102,36 +103,67 @@ def main():
                 r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
 
                 endpoint_err = abs(y_pred[0] - y_unit[0]) + \
-                               abs(y_pred[-1] - y_unit[-1])
+                            abs(y_pred[-1] - y_unit[-1])
 
-                best = {
-                    "degree_used": deg,
-                    "coeff_power": coeff.tolist(),
-                    "metrics": {
-                        "r2": float(r2),
-                        "rmse": float(rmse),
-                        "endpoint_err": float(endpoint_err),
-                        "valid_points": int(x_unit.size)
-                    },
-                    "status": "ok"
-                }
-
-                break
+                candidates.append({
+                    "degree": deg,
+                    "coeff": coeff,
+                    "rmse": rmse,
+                    "r2": r2,
+                    "endpoint_err": endpoint_err
+                })
 
             except Exception:
                 continue
 
-        if best is None:
+        if not candidates:
             print(f"[FAIL] {stem} fit failed")
             continue
 
+        # ==========================
+        # 选择策略（最小复杂度版本）
+        # 1. 先按 rmse 排序
+        # 2. 若 rmse 差异 <5%，选更低阶
+        # ==========================
+
+        candidates.sort(key=lambda x: x["rmse"])
+
+        best = candidates[0]
+
+        for c in candidates[1:]:
+            if abs(c["rmse"] - best["rmse"]) / best["rmse"] < 0.05:
+                if c["degree"] < best["degree"]:
+                    best = c
+
+        result = {
+            "degree_used": best["degree"],
+            "coeff_power": best["coeff"].tolist(),
+            "metrics": {
+                "r2": float(best["r2"]),
+                "rmse": float(best["rmse"]),
+                "endpoint_err": float(best["endpoint_err"]),
+                "valid_points": int(x_unit.size)
+            },
+            "candidates_eval": [
+                {
+                    "degree": c["degree"],
+                    "rmse": float(c["rmse"]),
+                    "r2": float(c["r2"]),
+                    "endpoint_err": float(c["endpoint_err"])
+                }
+                for c in candidates
+            ],
+            "status": "ok"
+        }
+
         out_path = jf.with_name(stem + "_fit_result.json")
         with open(out_path, "w") as f:
-            json.dump(best, f, indent=2)
+            json.dump(result, f, indent=2)
 
-        print(f"[OK] {stem} deg={best['degree_used']} "
-              f"R2={best['metrics']['r2']:.4f} "
-              f"RMSE={best['metrics']['rmse']:.6f}")
+        print(f"[OK] {stem} deg={result['degree_used']} "
+            f"R2={result['metrics']['r2']:.4f} "
+            f"RMSE={result['metrics']['rmse']:.6f}")
+
 
     print("Step-3 done.")
 
