@@ -7,10 +7,10 @@
     "FIL": {
       "filename": "STW8A2PD-T1-W_FIL.png",
       "plot_bbox": [
-        160,
-        110,
-        1098,
-        588
+        167,
+        111,
+        1095,
+        582
       ],
       "x_min": 0.0,
       "x_max": 160.0,
@@ -21,10 +21,10 @@
     "FIV": {
       "filename": "STW8A2PD-T1-W_FVI.png",
       "plot_bbox": [
-        150,
-        113,
-        1089,
-        566
+        158,
+        112,
+        1088,
+        554
       ],
       "x_min": 2.55,
       "x_max": 3.35,
@@ -35,10 +35,10 @@
     "FTL": {
       "filename": "STW8A2PD-T1-W_FTL.png",
       "plot_bbox": [
-        149,
-        0,
+        154,
+        82,
         1138,
-        708
+        600
       ],
       "x_min": 25,
       "x_max": 85,
@@ -49,10 +49,10 @@
     "FTV": {
       "filename": "STW8A2PD-T1-W_FTV.png",
       "plot_bbox": [
-        143,
+        147,
         78,
-        1101,
-        601
+        940,
+        597
       ],
       "x_min": 25,
       "x_max": 85,

@@ -58,12 +58,12 @@ def main():
         print("No coefficients bundled.")
         return
 
-    out_path = RAW_DIR / "CoeffBundle.json"
+    out_path = RAW_DIR / f"{stem}.json"
 
     with open(out_path, "w") as f:
         json.dump(bundle, f, indent=2)
 
-    print("CoeffBundle.json written.")
+    print(f"{out_path.name} written.")
 
 
 if __name__ == "__main__":
