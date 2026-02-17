@@ -40,48 +40,64 @@ SUFFIX_ALIAS = {"FVI": "FIV"}
 CHART_IDS = {"FIL", "FIV", "FTL", "FTV"}
 
 def detect_plot_bbox(img_path: Path):
-    """
-    第一性原理：利用水平/垂直投影密度鎖定最外層的坐標軸。
-    """
     img = cv2.imread(str(img_path))
     if img is None: return None
     
     h, w = img.shape[:2]
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     
-    # 1. 二值化：讓線條成為白色 (255)
-    # 使用大窗口的自適應二值化，確保粗細軸線都能被捕捉
+    # 1. 強化軸線：利用形態學與更強的二值化來區分深色軸線與淺色網格
+    # 使用較小的自適應窗口，並增加常數項 C 來過濾掉淺灰色網格
     binary = cv2.adaptiveThreshold(
         gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY_INV, 31, 15
+        cv2.THRESH_BINARY_INV, 31, 5 # 增加 C 值 (從 15 改到 20) 可過濾淺色網格
     )
 
-    # 2. 形態學清理：只保留長度超過 15% 的線段，徹底移除文字
+    # 2. 形態學清理 (維持原樣，這部分對移除文字很有用)
     h_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (w // 7, 1))
     v_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, h // 7))
     h_lines = cv2.morphologyEx(binary, cv2.MORPH_OPEN, h_kernel)
     v_lines = cv2.morphologyEx(binary, cv2.MORPH_OPEN, v_kernel)
     
-    # 3. 投影分析 (Projection Profiling)
-    # 計算每一行/每一列的像素總和
-    row_sums = np.sum(h_lines, axis=1) # 水平線的垂直投影
-    col_sums = np.sum(v_lines, axis=0) # 垂直線的水平投影
+    # 3. 投影分析
+    row_sums = np.sum(h_lines, axis=1)
+    col_sums = np.sum(v_lines, axis=0)
 
-    # 4. 尋找最外層的波峰 (閾值設為最大值的 30%)
-    # 這能確保我們抓到的是軸線，而不是隨機噪點
-    rows_with_lines = np.where(row_sums > (np.max(row_sums) * 0.3))[0]
-    cols_with_lines = np.where(col_sums > (np.max(col_sums) * 0.3))[0]
+    def find_axis_center(sums, threshold_ratio=0.3):
+        """
+        尋找投影中最外層波峰的中心點
+        """
+        peaks = np.where(sums > (np.max(sums) * threshold_ratio))[0]
+        if peaks.size < 2:
+            return None, None
+        
+        # 尋找第一個和最後一個「連續塊」
+        # 例如：peaks = [50, 51, 52, 500, 501] -> 軸線寬度大約 3 像素
+        def get_cluster_center(indices, reverse=False):
+            if reverse:
+                indices = indices[::-1]
+            
+            cluster = [indices[0]]
+            for i in range(1, len(indices)):
+                # 如果像素連續(間距<3)，視為同一條軸線
+                if abs(indices[i] - indices[i-1]) <= 3:
+                    cluster.append(indices[i])
+                else:
+                    break
+            return sum(cluster) / len(cluster)
 
-    if rows_with_lines.size < 2 or cols_with_lines.size < 2:
+        first_center = get_cluster_center(peaks, reverse=False)
+        last_center = get_cluster_center(peaks, reverse=True)
+        return first_center, last_center
+
+    y0, y1 = find_axis_center(row_sums)
+    x0, x1 = find_axis_center(col_sums)
+
+    if y0 is None or x0 is None:
         return None
 
-    # 取得最外層邊界
-    y0, y1 = int(rows_with_lines[0]), int(rows_with_lines[-1])
-    x0, x1 = int(cols_with_lines[0]), int(cols_with_lines[-1])
-
-    # 稍微向外擴展 1-2 像素以確保不切到線條邊緣
-    return [max(0, x0-1), max(0, y0-1), min(w, x1+1), min(h, y1+1)]
-
+    # 直接回傳浮點數或四捨五入，這將會是軸線的正中心
+    return [round(x0), round(y0), round(x1), round(y1)]
 
 def infer_chart_id(filename: str) -> str:
     suffix = Path(filename).stem.split("_")[-1].upper()
