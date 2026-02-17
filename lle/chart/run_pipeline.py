@@ -7,7 +7,7 @@ Order:
 2) mask_to_trace.py
 3) trace_to_fit.py
 4) fit_to_coeffs.py
-5) coeff_to_sqlite.py (external, can be run separately for multiple models)
+5) coeffs_to_sqlite.py (external, can be run separately for multiple models)
 6) coeffs_to_filing.py (external, can be run separately after step 5)
 
 Discipline:
