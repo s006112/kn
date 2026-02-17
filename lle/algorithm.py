@@ -67,15 +67,31 @@ def process_led_candidates(
         if target_led_lumen > 0 and lumen_at_target > 0:
             led_count = math.ceil(target_led_lumen / lumen_at_target)
 
+        # --- voltage (move BEFORE debug print) ---
+        vf_at_target = 0.0
+        try:
+            vf_debug = calculateVfWithDebug(target_if, tj, row)
+            vf_at_target = float(vf_debug["vf_final"])
+        except Exception:
+            vf_at_target = 0.0
+
+        power = vf_at_target * target_if / 1000.0 if vf_at_target > 0 else 0.0
+
         # --- DEBUG visibility ---
         print(
             "DEBUG:",
             row.get("Model"),
             "converged=", converged,
-            "target_if=", round(target_if, 3),
-            "lumen=", round(lumen_at_target, 4),
+            "target_if=", round(target_if, 2),
+            "lumen=", round(lumen_at_target, 2),
             "led_count=", led_count,
+            "lumen_factor=", round(lumen_factor, 3),
+            "vf_factor=", round(vf_factor, 3),
+            "vf_at_target=", round(vf_at_target, 3) if vf_at_target > 0 else 0.0,
+            "k_eta=", round(k_eta, 3),
+            "k_phi=", round(k_phi, 3),
         )
+
 
         # --- voltage ---
         try:

@@ -87,16 +87,16 @@ def solve_target_if_newton(
         "SOLVER_DIAG:",
         row.get("Model"),
         "bracket=", bracket,
-        "f@1mA=", (round(f_lo, 6) if f_lo is not None else "NA"),
-        "f@if_max=", (round(f_hi, 6) if f_hi is not None else "NA"),
+        "f@1mA=", (round(f_lo, 2) if f_lo is not None else "NA"),
+        "f@if_max=", (round(f_hi, 2) if f_hi is not None else "NA"),
         "if_max_valid=", if_max_valid,
         "converged=", converged,
         "iter=", iteration_count,
-        "final_f=", round(final_f, 6),
-        "min_abs_f=", round(min_abs_f, 6),
+        "final_f=", round(final_f, 2),
+        "min_abs_f=", round(min_abs_f, 2),
         "hit_bounds=", hit_bounds_count,
         "hit_if_max=", hit_if_max,
-        "target_if=", round(target_if, 6),
+        "target_if=", round(target_if, 2),
     )
 
     return target_if, converged
