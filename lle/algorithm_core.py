@@ -102,10 +102,14 @@ def calculateObjectiveFunctionDerivative(if_value, k_eta, k_phi, row):
 
 def calculateVfWithDebug(target_if, target_tj, row):
     try:
+        # Vf at 25C (already numeric-safe via calculateFIV)
         vf_at_25C = calculateFIV(target_if, row)
-        vf_factor = _poly6_value(target_tj, row, "FTV")
-        vf_factor = _num(vf_factor, 0.0)
+
+        # Temperature factor (default MUST be 1.0 for logical consistency)
+        vf_factor = _num(_poly6_value(target_tj, row, "FTV"), 1.0)
+
         vf_final = vf_at_25C * vf_factor
+
         return {
             "vf_final": _num(vf_final, 3.0),
             "vf_at_25C": _num(vf_at_25C, 3.0),
@@ -113,7 +117,9 @@ def calculateVfWithDebug(target_if, target_tj, row):
             "ftv": _num(vf_factor, 1.0),
             "vf_test": "N/A",
         }
+
     except Exception:
+        # Preserve original fallback semantics
         return {
             "vf_final": 3.0,
             "vf_at_25C": 3.0,
