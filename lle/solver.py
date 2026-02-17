@@ -64,7 +64,7 @@ def solve_target_if_newton(
 
             # original fallback
             if temp_if < 0 or temp_if > if_max:
-                target_if += 1 
+                target_if += 5 
                 hit_bounds_count += 1
             else:
                 target_if = temp_if
