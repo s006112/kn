@@ -44,7 +44,7 @@ def generate_config_solutions(required_led_count, vf_single, v_chain_max):
             led_count_working += 1
             led_add += 1
 
-        S = led_count_working / P
+        S = led_count_working // P
 
         if S >= 2:
             V_chain = S * vf_single

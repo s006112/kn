@@ -23,82 +23,16 @@ Out of scope
 """
 
 import math
-from functools import cmp_to_key
 from solver import solve_target_if_newton
 from topology import generate_config_solutions
+from pricing import sorted_candidate_cost_items
 from algorithm_core import (
     _num,
     _isset,
     _poly6_value,
-    _poly6_derivative,
-    calculateFIV,
-    calculateFIVDerivative,
     calculateFIL,
-    calculateFILDerivative,
-    calculateObjectiveFunction,
-    calculateObjectiveFunctionDerivative,
     calculateVfWithDebug,
 )
-
-def _compare_cost_items(a, b):
-    """
-    Purpose:
-    Compare two candidate cost items by ascending cost.
-    Inputs:
-    - a: First cost item containing `cost`.
-    - b: Second cost item containing `cost`.
-    Outputs:
-    - int: Comparator result suitable for `cmp_to_key`.
-    """
-    if a['cost'] == b['cost']:
-        return 0
-    return -1 if a['cost'] < b['cost'] else 1
-
-
-def _candidate_cost_item(candidate_index, candidate, led_config_solutions, smt_cost_rmb, usd_rate):
-    """
-    Purpose:
-    Build a normalized cost item from the first configuration solution of a candidate.
-    Inputs:
-    - candidate_index: Index of candidate in the processed list.
-    - candidate: Candidate row with unit pricing fields.
-    - led_config_solutions: Mapping from candidate index to configuration solutions.
-    - smt_cost_rmb: SMT unit cost in RMB.
-    - usd_rate: RMB-to-USD divisor.
-    Outputs:
-    - dict: Cost item containing index, total cost, and candidate payload.
-    """
-    first_solution = led_config_solutions[candidate_index][0]
-    total_leds = _num(first_solution.get('total_leds', 0), 0)
-    unit_usd = _num(candidate.get('USD', 0), 0)
-    led_cost_usd = total_leds * unit_usd if unit_usd > 0 else 0
-    smt_cost_usd = total_leds * _num(smt_cost_rmb, 0) / max(_num(usd_rate, 1), 1e-9)
-    total_cost_usd = led_cost_usd + smt_cost_usd
-    return {
-        'index': candidate_index,
-        'cost': total_cost_usd,
-        'candidate': candidate,
-    }
-
-
-def _sorted_candidate_cost_items(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate):
-    """
-    Purpose:
-    Build sorted candidate cost items from available configuration solutions.
-    Inputs:
-    - led_candidates: Processed candidate rows.
-    - led_config_solutions: Mapping from candidate index to configuration solutions.
-    - smt_cost_rmb: SMT unit cost in RMB.
-    - usd_rate: RMB-to-USD divisor.
-    Outputs:
-    - list[dict]: Cost items sorted by ascending total cost.
-    """
-    items = []
-    for i, c in enumerate(led_candidates):
-        if i in led_config_solutions and led_config_solutions[i]:
-            items.append(_candidate_cost_item(i, c, led_config_solutions, smt_cost_rmb, usd_rate))
-    return sorted(items, key=cmp_to_key(_compare_cost_items))
-
 
 def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen, junction_temp, v_chain_max):
     """
@@ -235,7 +169,7 @@ def build_sorted_candidates_for_search(led_candidates, led_config_solutions, smt
     """
     if not led_config_solutions:
         return [{'index': i, 'candidate': c} for i, c in enumerate(led_candidates)]
-    return _sorted_candidate_cost_items(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate)
+    return sorted_candidate_cost_items(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate)
 
 
 def build_candidate_costs_for_config(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate):
@@ -252,4 +186,4 @@ def build_candidate_costs_for_config(led_candidates, led_config_solutions, smt_c
     """
     if not led_config_solutions:
         return []
-    return _sorted_candidate_cost_items(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate)
+    return sorted_candidate_cost_items(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate)
