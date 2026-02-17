@@ -3,6 +3,7 @@
 import cv2
 import numpy as np
 import json
+import shutil
 from pathlib import Path
 
 # ==========================
@@ -16,19 +17,20 @@ DEBUG_DIR = RAW_DIR / "debug"
 FIT_DEFAULT = {"max_degree": 6, "min_degree": 4}
 CHART_DEFAULTS = {
     "lm_test": {
-        "2700": 35,
-        "3000": 37,
-        "3500": 39,
-        "4000": 41,
-        "5000": 43,
-        "6500": 45,
+        "2700": 60.5,
+        "3000": 62.5,
+        "3500": 63.5,
+        "4000": 66,
+        "5000": 67,
+        "5700": 66.5,
+        "6500": 66
     },
     "CRI": 80,
-    "If_max": 300,
+    "If_max": 180,
     "If": 150,
-    "USD": 0.003,
-    "RMB": 0.01,
-    "Quote_date": "2025-12-04",
+    "USD": 0.0036,
+    "RMB": 0.0278,
+    "Quote_date": "2025-04-17",
     "Vf": 0.0,
     "Tj": 0.0,
     "FIL": {"domain": {"x_min": 0.0, "x_max": 160.0, "y_min": 0.0, "y_max": 1.2}, "swap_xy": False},
@@ -132,6 +134,7 @@ def main():
             img = cv2.imread(str(img_path))
             cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 2)
             cv2.imwrite(str(DEBUG_DIR / f"{Path(filename).stem}_bbox{Path(filename).suffix}"), img)
+            shutil.copy2(img_path, DEBUG_DIR / filename)
         else:
             bbox = [0, 0, 0, 0]
             print(f"[WARN] {filename} -> BBox not found")
