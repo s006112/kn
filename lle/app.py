@@ -318,11 +318,9 @@ def main():
                 sorted_candidates = build_sorted_candidates_for_search(
                     led_candidates, led_config_solutions, smt_cost_rmb_f, usd_rate_f
                 )
-                # Single source of truth for both candidate and configuration sections.
-                candidate_costs = sorted_candidates
                 candidate_count = len(sorted_candidates)
 
-                # Summary rows display first-solution economics and fixture-level metrics.
+                # Summary rows and configuration rows are built in a single pass.
                 for item in sorted_candidates:
                     idx = item["index"]
                     cand = item["candidate"]
@@ -350,10 +348,6 @@ def main():
                         }
                     )
 
-                # Configuration rows preserve multiple topology solutions per candidate.
-                for item in candidate_costs:
-                    idx = item["index"]
-                    cand = item["candidate"]
                     solutions_display = []
 
                     for sol in (led_config_solutions.get(idx) or [])[:10]:
