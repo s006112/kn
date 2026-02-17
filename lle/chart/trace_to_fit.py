@@ -3,6 +3,7 @@
 
 import json
 import numpy as np
+import cv2
 from pathlib import Path
 from typing import Dict, Any
 from path_config import load_chart_runtime
@@ -160,6 +161,30 @@ def main():
             ],
             "status": "ok"
         }
+
+        overlay_path = DEBUG_DIR / f"{stem}_trace_overlay.png"
+        overlay = cv2.imread(str(overlay_path))
+        if overlay is not None:
+            coeff = np.array(result["coeff_power"], dtype=np.float64)
+            if cfg["swap_xy"]:
+                y_unit_fit = x_unit
+                x_unit_fit = np.polyval(coeff, x_unit)
+            else:
+                x_unit_fit = x_unit
+                y_unit_fit = np.polyval(coeff, x_unit)
+
+            if (cfg["x_max"] - cfg["x_min"]) != 0 and (cfg["y_max"] - cfg["y_min"]) != 0:
+                x_px_fit = ((x_unit_fit - cfg["x_min"]) / (cfg["x_max"] - cfg["x_min"])) * (W - 1.0)
+                y_px_fit = ((cfg["y_max"] - y_unit_fit) / (cfg["y_max"] - cfg["y_min"])) * (H - 1.0)
+
+                valid_fit = np.isfinite(x_px_fit) & np.isfinite(y_px_fit)
+                if np.any(valid_fit):
+                    x_px_fit = np.clip(np.rint(x_px_fit[valid_fit]).astype(np.int32), 0, W - 1)
+                    y_px_fit = np.clip(np.rint(y_px_fit[valid_fit]).astype(np.int32), 0, H - 1)
+                    for i in range(0, x_px_fit.size, 4):
+                        cv2.circle(overlay, (int(x_px_fit[i]), int(y_px_fit[i])), 1, (255, 0, 0), -1)
+
+                    cv2.imwrite(str(overlay_path), overlay)
 
         out_path = jf.with_name(stem + "_fit_result.json")
         with open(out_path, "w") as f:
