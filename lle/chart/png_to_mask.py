@@ -26,7 +26,7 @@ def extract_curve_robust(plot_img):
     # 1. 自適應二值化
     binary = cv2.adaptiveThreshold(
         gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY_INV, 25, 10
+        cv2.THRESH_BINARY_INV, 25, 20
     )
 
     # 2. 動態長線過濾 (移除網格)
