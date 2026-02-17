@@ -25,229 +25,19 @@ Out of scope
 import math
 from functools import cmp_to_key
 
-
-def _num(value, default=0.0):
-    """
-    Purpose:
-    Convert a value to float with a fallback default.
-    Inputs:
-    - value: Source value to parse as float.
-    - default: Fallback value used on parse failure or `None`.
-    Outputs:
-    - float: Parsed numeric value or fallback.
-    """
-    try:
-        if value is None:
-            return float(default)
-        return float(value)
-    except Exception:
-        return float(default)
-
-
-def _isset(row, key):
-    """
-    Purpose:
-    Check whether a mapping contains a non-`None` value for a key.
-    Inputs:
-    - row: Mapping-like row object.
-    - key: Key to verify.
-    Outputs:
-    - bool: `True` when key exists and value is not `None`, otherwise `False`.
-    """
-    return key in row and row[key] is not None
-
-
-def _poly6_value(x_value, row, prefix):
-    """
-    Purpose:
-    Evaluate a 6th-order polynomial from row coefficients with the given prefix.
-    Inputs:
-    - x_value: Polynomial input value.
-    - row: Candidate row containing `<prefix>_0` through `<prefix>_6`.
-    - prefix: Coefficient prefix, e.g. `FIV`, `FIL`, `FTV`, `FTL`.
-    Outputs:
-    - float: Raw polynomial value.
-    """
-    value = 0
-    value += row[f'{prefix}_0'] if _isset(row, f'{prefix}_0') else 0
-    value += (row[f'{prefix}_1'] if _isset(row, f'{prefix}_1') else 0) * x_value
-    value += (row[f'{prefix}_2'] if _isset(row, f'{prefix}_2') else 0) * pow(x_value, 2)
-    value += (row[f'{prefix}_3'] if _isset(row, f'{prefix}_3') else 0) * pow(x_value, 3)
-    value += (row[f'{prefix}_4'] if _isset(row, f'{prefix}_4') else 0) * pow(x_value, 4)
-    value += (row[f'{prefix}_5'] if _isset(row, f'{prefix}_5') else 0) * pow(x_value, 5)
-    value += (row[f'{prefix}_6'] if _isset(row, f'{prefix}_6') else 0) * pow(x_value, 6)
-    return value
-
-
-def _poly6_derivative(x_value, row, prefix):
-    """
-    Purpose:
-    Evaluate derivative of a 6th-order polynomial from row coefficients with the given prefix.
-    Inputs:
-    - x_value: Polynomial input value.
-    - row: Candidate row containing `<prefix>_1` through `<prefix>_6`.
-    - prefix: Coefficient prefix, e.g. `FIV`, `FIL`.
-    Outputs:
-    - float: Raw derivative value.
-    """
-    derivative = 0
-    derivative += row[f'{prefix}_1'] if _isset(row, f'{prefix}_1') else 0
-    derivative += (row[f'{prefix}_2'] if _isset(row, f'{prefix}_2') else 0) * 2 * x_value
-    derivative += (row[f'{prefix}_3'] if _isset(row, f'{prefix}_3') else 0) * 3 * pow(x_value, 2)
-    derivative += (row[f'{prefix}_4'] if _isset(row, f'{prefix}_4') else 0) * 4 * pow(x_value, 3)
-    derivative += (row[f'{prefix}_5'] if _isset(row, f'{prefix}_5') else 0) * 5 * pow(x_value, 4)
-    derivative += (row[f'{prefix}_6'] if _isset(row, f'{prefix}_6') else 0) * 6 * pow(x_value, 5)
-    return derivative
-
-
-def calculateFIV(if_value, row):
-    """
-    Purpose:
-    Evaluate the FIV polynomial at the specified current value.
-    Inputs:
-    - if_value: Forward current value used as polynomial input.
-    - row: Candidate row containing `FIV_0` through `FIV_6` coefficients.
-    Outputs:
-    - float: Evaluated FIV value, with fallback defaults on errors.
-    """
-    try:
-        fiv = _poly6_value(if_value, row, 'FIV')
-        return _num(fiv, 1.0)
-    except Exception:
-        return 1.0
-
-
-def calculateFIVDerivative(if_value, row):
-    """
-    Purpose:
-    Evaluate the derivative of the FIV polynomial at the specified current value.
-    Inputs:
-    - if_value: Forward current value used as polynomial input.
-    - row: Candidate row containing `FIV_1` through `FIV_6` coefficients.
-    Outputs:
-    - float: Evaluated derivative value, with fallback defaults on errors.
-    """
-    try:
-        fiv_derivative = _poly6_derivative(if_value, row, 'FIV')
-        return _num(fiv_derivative, 0.0)
-    except Exception:
-        return 0.0
-
-
-def calculateFIL(if_value, row):
-    """
-    Purpose:
-    Evaluate the FIL polynomial at the specified current value.
-    Inputs:
-    - if_value: Forward current value used as polynomial input.
-    - row: Candidate row containing `FIL_0` through `FIL_6` coefficients.
-    Outputs:
-    - float: Evaluated FIL value, returning nonzero fallback behavior on errors.
-    """
-    try:
-        fil = _poly6_value(if_value, row, 'FIL')
-        fil = _num(fil, 0.0)
-        if fil == 0:
-            return 1.0
-        return fil
-    except Exception:
-        return 1.0
-
-
-def calculateFILDerivative(if_value, row):
-    """
-    Purpose:
-    Evaluate the derivative of the FIL polynomial at the specified current value.
-    Inputs:
-    - if_value: Forward current value used as polynomial input.
-    - row: Candidate row containing `FIL_1` through `FIL_6` coefficients.
-    Outputs:
-    - float: Evaluated derivative value, with fallback defaults on errors.
-    """
-    try:
-        fil_derivative = _poly6_derivative(if_value, row, 'FIL')
-        return _num(fil_derivative, 0.0)
-    except Exception:
-        return 0.0
-
-
-def calculateObjectiveFunction(if_value, k_eta, k_phi, row):
-    """
-    Purpose:
-    Compute the scalar objective value used by the current solver.
-    Inputs:
-    - if_value: Current operating point candidate.
-    - k_eta: Voltage-related scale factor.
-    - k_phi: Lumen-related scale factor.
-    - row: Candidate row with FIV and FIL coefficients.
-    Outputs:
-    - float: Objective value for the provided operating point.
-    """
-    try:
-        fiv = calculateFIV(if_value, row)
-        fil = calculateFIL(if_value, row)
-        f = k_eta * (if_value / 1000.0) * fiv - k_phi * fil
-        return _num(f, 0.0)
-    except Exception:
-        return 0.0
-
-
-def calculateObjectiveFunctionDerivative(if_value, k_eta, k_phi, row):
-    """
-    Purpose:
-    Compute the derivative of the scalar objective for Newton updates.
-    Inputs:
-    - if_value: Current operating point candidate.
-    - k_eta: Voltage-related scale factor.
-    - k_phi: Lumen-related scale factor.
-    - row: Candidate row with FIV and FIL coefficients.
-    Outputs:
-    - float: Objective derivative with near-zero guard fallback.
-    """
-    try:
-        fiv = calculateFIV(if_value, row)
-        fiv_derivative = calculateFIVDerivative(if_value, row)
-        fil_derivative = calculateFILDerivative(if_value, row)
-        f_derivative = k_eta * (fiv / 1000.0 + (if_value / 1000.0) * fiv_derivative) - k_phi * fil_derivative
-        if abs(f_derivative) < 1e-10:
-            return 1e-10
-        return _num(f_derivative, 1e-10)
-    except Exception:
-        return 1e-10
-
-
-def calculateVfWithDebug(target_if, target_tj, row):
-    """
-    Purpose:
-    Compute forward voltage with intermediate fields for diagnostics.
-    Inputs:
-    - target_if: Target forward current.
-    - target_tj: Target junction temperature.
-    - row: Candidate row with FIV and FTV coefficients.
-    Outputs:
-    - dict: Forward voltage and intermediate values used by configuration generation.
-    """
-    try:
-        vf_at_25C = calculateFIV(target_if, row)
-        vf_factor = _poly6_value(target_tj, row, 'FTV')
-        vf_factor = _num(vf_factor, 0.0)
-        vf_final = vf_at_25C * vf_factor
-        return {
-            'vf_final': _num(vf_final, 3.0),
-            'vf_at_25C': _num(vf_at_25C, 3.0),
-            'fiv': _num(vf_at_25C, 3.0),
-            'ftv': _num(vf_factor, 1.0),
-            'vf_test': 'N/A'
-        }
-    except Exception:
-        return {
-            'vf_final': 3.0,
-            'vf_at_25C': 3.0,
-            'fiv': 3.0,
-            'ftv': 1.0,
-            'vf_test': 'N/A'
-        }
-
+from algorithm_core import (
+    _num,
+    _isset,
+    _poly6_value,
+    _poly6_derivative,
+    calculateFIV,
+    calculateFIVDerivative,
+    calculateFIL,
+    calculateFILDerivative,
+    calculateObjectiveFunction,
+    calculateObjectiveFunctionDerivative,
+    calculateVfWithDebug,
+)
 
 def _compare_cost_items(a, b):
     """
@@ -332,6 +122,7 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         tj = _num(junction_temp, 65)
         lm_test_value = _num(row.get('lm_test', 0), 0.0)
         row['lm_test'] = lm_test_value
+        lumen_at_25C = 0.0  # FIX: avoid cross-row locals() leakage
 
         lumen_factor = 0
         try:
@@ -414,7 +205,7 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
 
         row['lumen_at_target_Tj_target_if'] = float(lumen_at_target_Tj_target_if)
         # `lumen_at_25C` is conditionally defined when `lm_test_value > 0` in the guarded block above.
-        row['lumen_at_25C'] = float(lumen_at_25C) if 'lumen_at_25C' in locals() else 0.0
+        row['lumen_at_25C'] = float(lumen_at_25C)
         row['lumen_factor'] = float(lumen_factor)
         row['vf_factor'] = float(vf_factor)
 
