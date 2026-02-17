@@ -14,7 +14,7 @@ def solve_target_if_newton(
     )
 
     tolerance = 0.0001
-    max_iterations = 100
+    max_iterations = 200
     target_if = float(initial_if)
     iteration_count = 0
     converged = False
@@ -64,7 +64,7 @@ def solve_target_if_newton(
 
             # original fallback
             if temp_if < 0 or temp_if > if_max:
-                target_if += 5 
+                target_if += 1 
                 hit_bounds_count += 1
             else:
                 target_if = temp_if

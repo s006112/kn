@@ -22,7 +22,7 @@ def process_led_candidates(
 
     tj = _num(junction_temp, 65)
 
-    for row in candidate_rows:
+    for idx, row in enumerate(candidate_rows):
         row = dict(row)
 
         lm_test = _num(row.get("lm_test"), 0.0)
@@ -51,7 +51,7 @@ def process_led_candidates(
             row=row,
             k_eta=k_eta,
             k_phi=k_phi,
-            initial_if=initial_if
+            initial_if=initial_if,
         )
 
         # --- lumen computation ---
@@ -103,16 +103,16 @@ def process_led_candidates(
 
         led_candidates.append(row)
 
-    # --- topology stage ---
-    for idx, candidate in enumerate(led_candidates):
+        # --- topology stage moved into same loop ---
         solutions = generate_config_solutions(
-            required_led_count=candidate.get("led_count", 0),
-            vf_single=candidate.get("vf_at_target_if", 0),
+            required_led_count=led_count,
+            vf_single=vf_at_target,
             v_chain_max=v_chain_max,
         )
         led_config_solutions[idx] = solutions
 
     return led_candidates, led_config_solutions
+
 
 def build_sorted_candidates_for_search(
     led_candidates,
@@ -126,12 +126,14 @@ def build_sorted_candidates_for_search(
         smt_cost_rmb,
         usd_rate,
     )
+
     # 保持原行为：Search 只显示 converged 的
     return [
         item
         for item in items
         if bool(item.get("candidate", {}).get("converged"))
     ]
+
 
 def build_candidate_costs_for_config(
     led_candidates,
