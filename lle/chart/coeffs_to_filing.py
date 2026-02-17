@@ -46,6 +46,10 @@ def main() -> None:
         shutil.move(str(p), str(target_dir / p.name))
         moved += 1
 
+    config_path = raw_dir / "chart_config.json"
+    if config_path.exists():
+        shutil.move(str(config_path), str(target_dir / f"{model_name}.json"))
+
     print(f"[OK] folder={model_name} moved={moved}")
 
 
