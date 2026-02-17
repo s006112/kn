@@ -26,7 +26,6 @@ from flask import Flask, render_template, request
 from algorithm import (
     process_led_candidates,
     build_sorted_candidates_for_search,
-    build_candidate_costs_for_config,
 )
 import db
 
@@ -343,9 +342,7 @@ def main():
                 junction_temp=params["junction_temp"],
                 v_chain_max=params["v_chain_max"],
             )
-            candidate_count = len(led_candidates)
-
-            if candidate_count > 0:
+            if led_candidates:
                 smt_cost_rmb_f = params["smt_cost_rmb"]
                 usd_rate_f = params["usd_rate"]
                 target_efficacy_f = params["target_efficacy"]
@@ -353,9 +350,9 @@ def main():
                 sorted_candidates = build_sorted_candidates_for_search(
                     led_candidates, led_config_solutions, smt_cost_rmb_f, usd_rate_f
                 )
-                candidate_costs = build_candidate_costs_for_config(
-                    led_candidates, led_config_solutions, smt_cost_rmb_f, usd_rate_f
-                )
+                # Single source of truth for both candidate and configuration sections.
+                candidate_costs = sorted_candidates
+                candidate_count = len(sorted_candidates)
 
                 # Summary rows display first-solution economics and fixture-level metrics.
                 for item in sorted_candidates:
