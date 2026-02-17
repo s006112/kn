@@ -92,3 +92,101 @@ def sorted_candidate_cost_items(led_candidates, led_config_solutions, smt_cost_r
             )
 
     return sorted(items, key=lambda x: x["cost"])
+
+
+def build_presented_results(
+    *,
+    sorted_candidates,
+    led_config_solutions,
+    optical_rate,
+    target_efficacy,
+    smt_cost_rmb,
+    usd_rate,
+):
+    sorted_candidates_display = []
+    candidate_costs_display = []
+
+    for item in sorted_candidates:
+        idx = item["index"]
+        cand = item["candidate"]
+        total_leds = float(item.get("total_leds", 0) or 0.0)
+
+        lm_per_led = float(cand.get("lumen_at_target_Tj_target_if", 0) or 0.0)
+        fixture_lm = (
+            lm_per_led * total_leds * optical_rate
+            if (lm_per_led > 0 and total_leds > 0 and optical_rate > 0)
+            else 0.0
+        )
+        input_power = (
+            fixture_lm / target_efficacy
+            if (fixture_lm > 0 and target_efficacy > 0)
+            else 0.0
+        )
+
+        led_cost_usd = float(item.get("led_cost_usd", 0) or 0.0)
+        smt_cost_usd = float(item.get("smt_cost_usd", 0) or 0.0)
+        total_cost_usd = float(item.get("total_cost_usd", 0) or 0.0)
+
+        sorted_candidates_display.append(
+            {
+                "index": idx,
+                "candidate": cand,
+                "fixture_lm": fixture_lm,
+                "input_power": input_power,
+                "total_led_count": int(total_leds) if total_leds > 0 else None,
+                "total_cost_usd": total_cost_usd
+                if (led_cost_usd > 0 or smt_cost_usd > 0)
+                else None,
+                "led_cost_usd": led_cost_usd,
+                "smt_cost_usd": smt_cost_usd,
+            }
+        )
+
+        solutions_display = []
+        for sol in (led_config_solutions.get(idx) or [])[:10]:
+            total_leds_sol = float(sol.get("total_leds", 0) or 0.0)
+
+            target_if_ma = float(cand.get("target_if", 0) or 0.0)
+            total_current = (
+                target_if_ma * float(sol.get("P", 0) or 0.0)
+                if target_if_ma > 0
+                else 0.0
+            )
+
+            voltage = float(sol.get("V_chain", 0) or 0.0)
+            power_watts = (
+                voltage * total_current / 1000.0
+                if (voltage > 0 and total_current > 0)
+                else 0.0
+            )
+
+            costs = solution_cost_breakdown(
+                total_leds=total_leds_sol,
+                unit_usd=float(cand.get("USD", 0) or 0.0),
+                unit_rmb=float(cand.get("RMB", 0) or 0.0),
+                smt_cost_rmb=smt_cost_rmb,
+                usd_rate=usd_rate,
+            )
+
+            solutions_display.append(
+                {
+                    "solution": sol,
+                    "total_current": total_current,
+                    "power_watts": power_watts,
+                    **costs,
+                }
+            )
+
+        candidate_costs_display.append(
+            {
+                "index": idx,
+                "candidate": cand,
+                "solutions_display": solutions_display,
+            }
+        )
+
+    return {
+        "sorted_candidates_display": sorted_candidates_display,
+        "candidate_costs_display": candidate_costs_display,
+        "candidate_count": len(sorted_candidates),
+    }
