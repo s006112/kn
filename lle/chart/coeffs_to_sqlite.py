@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 5: coeffs_to_sqlite.py append chart coefficients from chart_config.json into LED_CoE."""
+"""Step 5: coeffs_to_sqlite.py write chart coefficients into LED_CoE."""
 
 from __future__ import annotations
 
@@ -128,14 +128,39 @@ def main() -> None:
         )
 
     insert_cols = [c for c in table_cols if c in rows[0]]
-    placeholders = ",".join(["?"] * len(insert_cols))
-    sql = f"INSERT INTO LED_CoE ({','.join(insert_cols)}) VALUES ({placeholders})"
+    insert_placeholders = ",".join(["?"] * len(insert_cols))
+    insert_sql = f"INSERT INTO LED_CoE ({','.join(insert_cols)}) VALUES ({insert_placeholders})"
 
-    cur.executemany(sql, [[row[c] for c in insert_cols] for row in rows])
+    update_cols = [c for c in insert_cols if c not in ("Model", "CCT", "CRI")]
+    set_clause = ",".join([f"{c}=?" for c in update_cols])
+    update_sql = (
+        f"UPDATE LED_CoE SET {set_clause} "
+        "WHERE Model=? AND CCT=? AND CRI=?"
+    )
+
+    inserted = 0
+    updated = 0
+    for row in rows:
+        existing = cur.execute(
+            "SELECT ID FROM LED_CoE WHERE Model=? AND CCT=? AND CRI=? LIMIT 1",
+            (row["Model"], row["CCT"], row["CRI"]),
+        ).fetchone()
+        if existing:
+            cur.execute(
+                update_sql,
+                [row[c] for c in update_cols] + [row["Model"], row["CCT"], row["CRI"]],
+            )
+            updated += 1
+        else:
+            cur.execute(insert_sql, [row[c] for c in insert_cols])
+            inserted += 1
+
     conn.commit()
     conn.close()
 
-    print(f"[OK] Appended {len(rows)} rows for model={model} into {TARGET_DB}")
+    print(
+        f"[OK] model={model} inserted={inserted} updated={updated} target={TARGET_DB}"
+    )
 
 
 if __name__ == "__main__":
