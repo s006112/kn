@@ -307,6 +307,21 @@ def main():
 
     if request.method == "POST" and (not validation_errors) and params["target_cct"] > 0 and params["target_cri"] > 0:
         try:
+            print(
+                "LED_COUNT_PARAMS:",
+                "target_cct=", params["target_cct"],
+                "target_cri=", params["target_cri"],
+                "target_lumen=", params["target_lumen"],
+                "optical_transmission=", params["optical_transmission"],
+                "power_efficiency=", params["power_efficiency"],
+                "target_efficacy=", params["target_efficacy"],
+                "junction_temp=", params["junction_temp"],
+                "v_chain_max=", params["v_chain_max"],
+                "smt_cost_rmb=", params["smt_cost_rmb"],
+                "usd_rate=", params["usd_rate"],
+                "target_led_lumen=", target_led_lumen,
+                "target_led_efficacy=", target_led_efficacy,
+            )
             candidate_rows = db.fetch_candidates_by_cct_cri(params["target_cct"], params["target_cri"])
             for row in candidate_rows:
                 lm_test_value = to_float(row.get("lm_test", 0), 0)
