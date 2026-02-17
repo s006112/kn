@@ -1,86 +1,50 @@
-"""
-Own file name algorithm.py
-
-Responsibility
-Compute LED electrical and optical derived values, generate feasible series-parallel configurations under voltage constraints, and produce cost-ordered candidate views for downstream rendering.
-
-Used by:
-* lle/app.py
-* lle/compare_coeff.py
-
-Pipelines:
-- rows -> derive -> solve -> evaluate -> configure -> rank -> return
-
-Invariants
-- Numeric helper functions always return numeric fallbacks instead of propagating parsing errors.
-- Candidate processing always returns a tuple of candidate rows and configuration map.
-- Configuration ranking uses deterministic comparator ordering.
-
-Out of scope
-- Database access and query construction.
-- HTTP request handling and template rendering.
-- Currency display formatting for UI output.
-"""
-
 import math
 from solver import solve_target_if_newton
 from topology import generate_config_solutions
 from pricing import sorted_candidate_cost_items
 from algorithm_core import (
     _num,
-    _isset,
     _poly6_value,
     calculateFIL,
     calculateVfWithDebug,
 )
 
-def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen, junction_temp, v_chain_max):
-    """
-    Purpose:
-    Derive candidate operating points, compute per-candidate optical and electrical fields, and generate feasible series-parallel configurations.
-    Inputs:
-    - candidate_rows: Source candidate rows from database query results.
-    - target_led_efficacy: Target efficacy used for objective scaling.
-    - target_led_lumen: Target lumen used to derive required LED count.
-    - junction_temp: Junction temperature used for FTL and FTV factor evaluation.
-    - v_chain_max: Maximum allowed chain voltage constraint for configuration generation.
-    Outputs:
-    - tuple[list[dict], dict[int, list[dict]]]: Processed candidate rows and per-candidate configuration solutions.
-    """
 
+def process_led_candidates(
+    candidate_rows,
+    target_led_efficacy,
+    target_led_lumen,
+    junction_temp,
+    v_chain_max,
+):
     led_candidates = []
     led_config_solutions = {}
+
+    tj = _num(junction_temp, 65)
 
     for row in candidate_rows:
         row = dict(row)
 
-        tj = _num(junction_temp, 65)
-        lm_test_value = _num(row.get('lm_test', 0), 0.0)
-        row['lm_test'] = lm_test_value
-        lumen_at_25C = 0.0  # FIX: avoid cross-row locals() leakage
+        lm_test = _num(row.get("lm_test"), 0.0)
+        row["lm_test"] = lm_test
 
-        lumen_factor = 0
+        # --- temperature factors ---
         try:
-            lumen_factor = _poly6_value(tj, row, 'FTL')
-            lumen_factor = _num(lumen_factor, 0.0)
+            lumen_factor = _num(_poly6_value(tj, row, "FTL"), 1.0)
         except Exception:
             lumen_factor = 1.0
 
-        vf_factor = 0
         try:
-            vf_factor = _poly6_value(tj, row, 'FTV')
-            vf_factor = _num(vf_factor, 0.0)
+            vf_factor = _num(_poly6_value(tj, row, "FTV"), 1.0)
         except Exception:
             vf_factor = 1.0
 
-        k_eta = target_led_efficacy * vf_factor if target_led_efficacy > 0 else 0
-        k_phi = lm_test_value * lumen_factor if lm_test_value > 0 else 0
+        # --- objective coefficients ---
+        k_eta = target_led_efficacy * vf_factor if target_led_efficacy > 0 else 0.0
+        k_phi = lm_test * lumen_factor if lm_test > 0 else 0.0
 
-        if _isset(row, 'If') and _num(row['If'], 0) > 0:
-            target_if = float(_num(row['If'], 10.0))
-        else:
-            target_if = 10.0
-
+        # --- initial current ---
+        target_if = float(_num(row.get("If"), 10.0))
         initial_if = target_if
 
         target_if, converged, iteration_count = solve_target_if_newton(
@@ -92,98 +56,96 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
             max_iterations=100,
         )
 
-        lumen_at_target_Tj_target_if = 0
+        # --- lumen computation ---
+        lumen_at_25C = 0.0
+        lumen_at_target = 0.0
         led_count = 0
 
-        try:
-            if lm_test_value > 0:
-                fil_at_target_if = calculateFIL(target_if, row)
-                lumen_at_25C = lm_test_value * fil_at_target_if
-                lumen_at_target_Tj_target_if = lumen_at_25C * lumen_factor
+        if lm_test > 0:
+            fil = calculateFIL(target_if, row)
+            lumen_at_25C = lm_test * fil
+            lumen_at_target = lumen_at_25C * lumen_factor
 
-            if target_led_lumen > 0 and lumen_at_target_Tj_target_if > 0:
-                led_count = math.ceil(target_led_lumen / lumen_at_target_Tj_target_if)
-        except Exception:
-            led_count = 0
+        if target_led_lumen > 0 and lumen_at_target > 0:
+            led_count = math.ceil(target_led_lumen / lumen_at_target)
 
-        # Preserve runtime visibility of solver behavior for each model row.
+        # --- DEBUG visibility ---
         print(
             "DEBUG:",
             row.get("Model"),
             "converged=", converged,
             "target_if=", round(target_if, 3),
-            "lumen=", round(lumen_at_target_Tj_target_if, 4),
-            "led_count=", led_count
+            "lumen=", round(lumen_at_target, 4),
+            "led_count=", led_count,
         )
 
-        row['led_count'] = led_count
-        row['target_if'] = target_if
-        row['converged'] = converged
-
-        row['lumen_at_target_Tj_target_if'] = float(lumen_at_target_Tj_target_if)
-        # `lumen_at_25C` is conditionally defined when `lm_test_value > 0` in the guarded block above.
-        row['lumen_at_25C'] = float(lumen_at_25C)
-        row['lumen_factor'] = float(lumen_factor)
-        row['vf_factor'] = float(vf_factor)
-
+        # --- voltage ---
         try:
             vf_debug = calculateVfWithDebug(target_if, tj, row)
-            row['vf_at_target_if'] = float(vf_debug['vf_final'])
+            vf_at_target = float(vf_debug["vf_final"])
         except Exception:
-            row['vf_at_target_if'] = 0.0
+            vf_at_target = 0.0
 
-        row['power_at_target_if'] = float(
-            row['vf_at_target_if'] * target_if / 1000.0
-        ) if row['vf_at_target_if'] > 0 else 0.0
+        power = vf_at_target * target_if / 1000.0 if vf_at_target > 0 else 0.0
 
+        # --- write back ---
+        row.update(
+            {
+                "led_count": led_count,
+                "target_if": target_if,
+                "converged": converged,
+                "lumen_at_target_Tj_target_if": float(lumen_at_target),
+                "lumen_at_25C": float(lumen_at_25C),
+                "lumen_factor": float(lumen_factor),
+                "vf_factor": float(vf_factor),
+                "vf_at_target_if": float(vf_at_target),
+                "power_at_target_if": float(power),
+            }
+        )
 
         led_candidates.append(row)
 
-    for candidate_index, candidate in enumerate(led_candidates):
-
-        required_led_count = candidate.get('led_count', 0)
-        vf_single = candidate.get('vf_at_target_if', 0)
-
+    # --- topology stage ---
+    for idx, candidate in enumerate(led_candidates):
         solutions = generate_config_solutions(
-            required_led_count=required_led_count,
-            vf_single=vf_single,
+            required_led_count=candidate.get("led_count", 0),
+            vf_single=candidate.get("vf_at_target_if", 0),
             v_chain_max=v_chain_max,
         )
-
-
-        led_config_solutions[candidate_index] = solutions
+        led_config_solutions[idx] = solutions
 
     return led_candidates, led_config_solutions
 
-def build_sorted_candidates_for_search(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate):
-    """
-    Purpose:
-    Build candidate summary items sorted by total cost for search display.
-    Inputs:
-    - led_candidates: Processed candidate rows.
-    - led_config_solutions: Mapping from candidate index to configuration solutions.
-    - smt_cost_rmb: SMT unit cost in RMB.
-    - usd_rate: RMB-to-USD divisor.
-    Outputs:
-    - list[dict]: Candidate summary items sorted by ascending cost.
-    """
+
+def build_sorted_candidates_for_search(
+    led_candidates,
+    led_config_solutions,
+    smt_cost_rmb,
+    usd_rate,
+):
     if not led_config_solutions:
-        return [{'index': i, 'candidate': c} for i, c in enumerate(led_candidates)]
-    return sorted_candidate_cost_items(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate)
+        return [{"index": i, "candidate": c} for i, c in enumerate(led_candidates)]
+
+    return sorted_candidate_cost_items(
+        led_candidates,
+        led_config_solutions,
+        smt_cost_rmb,
+        usd_rate,
+    )
 
 
-def build_candidate_costs_for_config(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate):
-    """
-    Purpose:
-    Build configuration cost items sorted by total cost.
-    Inputs:
-    - led_candidates: Processed candidate rows.
-    - led_config_solutions: Mapping from candidate index to configuration solutions.
-    - smt_cost_rmb: SMT unit cost in RMB.
-    - usd_rate: RMB-to-USD divisor.
-    Outputs:
-    - list[dict]: Cost items sorted by ascending total cost.
-    """
+def build_candidate_costs_for_config(
+    led_candidates,
+    led_config_solutions,
+    smt_cost_rmb,
+    usd_rate,
+):
     if not led_config_solutions:
         return []
-    return sorted_candidate_cost_items(led_candidates, led_config_solutions, smt_cost_rmb, usd_rate)
+
+    return sorted_candidate_cost_items(
+        led_candidates,
+        led_config_solutions,
+        smt_cost_rmb,
+        usd_rate,
+    )
