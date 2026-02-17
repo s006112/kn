@@ -9,8 +9,8 @@ from pathlib import Path
 # PATH CONFIG
 # ==========================
 BASE_DIR = Path(__file__).resolve().parent
-CONFIG_PATH = BASE_DIR / "chart_config.json"
 RAW_DIR = (BASE_DIR / "../../data/chart/raw").resolve()
+CONFIG_PATH = RAW_DIR / "chart_config.json"
 DEBUG_DIR = RAW_DIR / "debug"
 
 FIT_DEFAULT = {"max_degree": 6, "min_degree": 4}
