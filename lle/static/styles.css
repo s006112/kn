@@ -62,6 +62,15 @@ th {
     color: #333;
 }
 
+.candidate-search-title {
+    text-align: center;
+}
+
+.candidate-results-table th,
+.candidate-results-table td {
+    text-align: center;
+}
+
 .form-container {
     background-color: #f8f9fa;
     padding: 25px;
@@ -190,6 +199,11 @@ th {
 .compact-results-table {
     font-size: 14px;
     margin-bottom: 15px;
+}
+
+.compact-results-table th,
+.compact-results-table td {
+    text-align: center;
 }
 
 .zero-led-add-row {

@@ -190,7 +190,7 @@
     <!-- Step 4.2: Display LED Candidate Count -->
     {% if request.method == 'POST' and validation_errors|length == 0 %}
         <div class="section">
-            <h3>LED Candidate Search Results</h3>
+            <h3 class="candidate-search-title">LED Candidate Search Results</h3>
             {% if request.method == 'POST' and validation_errors|length == 0 and candidate_count == 0 %}
                 <div class="status-box error top-gap-sm">
                     No matching LED models found for the current CCT/CRI selection.
@@ -211,7 +211,7 @@
                     <input type="hidden" name="smt_cost_rmb" value="{{ smt_cost_rmb }}">
                     <input type="hidden" name="usd_rate" value="{{ usd_rate }}">
 
-                    <table class="top-gap-md">
+                    <table class="top-gap-md candidate-results-table">
                         <thead>
                             <tr>
                                 <th>Model</th>
@@ -219,7 +219,7 @@
                                 <th>CRI</th>
                                 <th>lumen</th>
                                 <th>Pin(W)</th>
-                                <th>LED</th>
+                                <th>LEDs</th>
                                 <th>Lm/LED</th>
                                 <th>Lm@test</th>
                                 <th>If (mA)</th>
@@ -289,8 +289,8 @@
                                                 <th>Pin (W)</th>
                                                 <th>USD</th>
                                                 <th>RMB</th>
-                                                <th>Added LEDs</th>
-                                                <th>Total LED</th>
+                                                <th>Added</th>
+                                                <th>LEDs</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -301,7 +301,7 @@
                                                     <td>{{ number_format(solution['P'], 0) }}</td>
                                                     <td>{{ number_format(solution['S'], 0) }}</td>
                                                     <td>{{ number_format(solution['V_chain'], 1) }}</td>
-                                                    <td>{{ number_format(solution_data['total_current'], 1) if solution_data['total_current'] > 0 else 'N/A' }}</td>
+                                                    <td>{{ number_format(solution_data['total_current'], 0) if solution_data['total_current'] > 0 else 'N/A' }}</td>
                                                     <td>{{ number_format(solution_data['power_watts'], 1) if solution_data['power_watts'] > 0 else 'N/A' }}</td>
                                                     <td>{{ number_format(solution_data['total_cost_usd'], 3) if solution_data['led_cost_usd'] > 0 or solution_data['smt_cost_usd'] > 0 else 'N/A' }}</td>
                                                     <td>{{ number_format(solution_data['total_cost_rmb'], 2) if solution_data['led_cost_rmb'] > 0 or solution_data['smt_cost_rmb_total'] > 0 else 'N/A' }}</td>
