@@ -27,7 +27,7 @@ from algorithm import (
     process_led_candidates,
     build_sorted_candidates_for_search,
 )
-from pricing import _cost_usd, _cost_rmb
+from pricing import solution_cost_breakdown
 import db
 
 app = Flask(__name__)
@@ -35,15 +35,6 @@ app.secret_key = "lle_phase_autosubmit_secret_key"
 
 
 def to_float(value, default=0.0) -> float:
-    """
-    Purpose:
-    Convert a value to float with comma-to-dot normalization and fallback default.
-    Inputs:
-    - value: Any value that may represent a numeric value.
-    - default: Fallback numeric value used when conversion fails.
-    Outputs:
-    - float: Parsed float value or fallback default as float.
-    """
     try:
         return float(str(value).replace(",", "."))
     except Exception:
@@ -51,15 +42,6 @@ def to_float(value, default=0.0) -> float:
 
 
 def number_format(value, decimals=0) -> str:
-    """
-    Purpose:
-    Format numeric values using HALF_UP rounding with grouped thousands for UI display.
-    Inputs:
-    - value: Numeric-like value to format.
-    - decimals: Number of decimal places to render.
-    Outputs:
-    - str: Formatted number string, or original string representation on failure.
-    """
     try:
         dec = Decimal(str(value))
         if int(decimals) <= 0:
@@ -89,20 +71,6 @@ def _require_float(
     label: str | None = None,
     errors: list[str],
 ):
-    """
-    Purpose:
-    Validate and parse a required numeric form field and append validation errors when constraints fail.
-    Inputs:
-    - data: Mapping of form field names to submitted values.
-    - field: Target form field name.
-    - positive: Whether value must be greater than zero.
-    - min_val: Optional inclusive lower bound.
-    - max_val: Optional inclusive upper bound.
-    - label: Optional display label used in error messages.
-    - errors: Mutable error list to append validation failures.
-    Outputs:
-    - float | None: Parsed float when valid, otherwise `None`.
-    """
     raw = data.get(field, "")
     if raw is None or str(raw).strip() == "":
         errors.append(f"{label or field} invalid")
@@ -125,14 +93,6 @@ def _require_float(
 
 
 def _extract_lm_test_overrides(data: dict) -> dict[int, float]:
-    """
-    Purpose:
-    Extract per-row `lm_test` overrides from form fields prefixed with `lm_test_`.
-    Inputs:
-    - data: Mapping of submitted form field names to values.
-    Outputs:
-    - dict[int, float]: Row ID to overridden lm_test value for valid entries.
-    """
     overrides: dict[int, float] = {}
     for key, raw_value in data.items():
         if not str(key).startswith("lm_test_"):
@@ -154,15 +114,6 @@ def _extract_lm_test_overrides(data: dict) -> dict[int, float]:
 
 @app.route("/", methods=["GET", "POST"])
 def main():
-    """
-    Purpose:
-    Handle GET and POST requests for the main page, including validation, candidate search, cost aggregation, and template rendering.
-    Inputs:
-    - None: Uses Flask request context (`request.method`, `request.form`).
-    Outputs:
-    - Response: Rendered `main.html` with form state, status, and result tables.
-    """
-    # Keep DB option loading outside POST logic so selectors always render.
     connection_status = "Failed"
     error_message = ""
     cct_options: list[float] = []
@@ -170,7 +121,6 @@ def main():
 
     try:
         pairs = db.fetch_distinct_cct_cri()
-        # Database adapters may return tuple-like rows or mapping-like rows.
         cct_values = []
         cri_values = []
         for p in pairs:
@@ -178,7 +128,6 @@ def main():
                 cct_values.append(p[0])
                 cri_values.append(p[1])
             except Exception:
-                # Fallback preserves compatibility with key-addressable rows.
                 cct_values.append(p.get("CCT"))
                 cri_values.append(p.get("CRI"))
         cct_options = sorted({v for v in cct_values if v is not None})
@@ -189,7 +138,6 @@ def main():
         error_message = str(e)
         traceback.print_exc()
 
-    # Baseline values also seed POST echo-back when validation fails.
     defaults = {
         "target_cct": 4000,
         "target_cri": 80,
@@ -203,7 +151,6 @@ def main():
         "usd_rate": 7.00,
     }
 
-    # Validation errors gate algorithm execution to avoid partial computations.
     validation_errors: list[str] = []
     params = dict(defaults)
     lm_test_overrides: dict[int, float] = {}
@@ -212,7 +159,6 @@ def main():
         data = request.form.to_dict(flat=True)
         lm_test_overrides = _extract_lm_test_overrides(data)
 
-        # Field names must stay aligned with template input names.
         target_cct = _require_float(data, "target_cct", positive=True, label="Target CCT", errors=validation_errors)
         target_cri = _require_float(data, "target_cri", positive=True, label="Target CRI", errors=validation_errors)
         target_lumen = _require_float(
@@ -234,7 +180,6 @@ def main():
         smt_cost_rmb = _require_float(data, "smt_cost_rmb", min_val=0, label="SMT Cost (RMB)", errors=validation_errors)
         usd_rate = _require_float(data, "usd_rate", positive=True, label="USD Exchange Rate", errors=validation_errors)
 
-        # Apply parsed POST values only when every required field passes checks.
         if not validation_errors:
             params.update(
                 {
@@ -251,12 +196,10 @@ def main():
                 }
             )
         else:
-            # Preserve user input echo-back where parseable to support correction loops.
             for k in defaults:
                 if k in data:
                     params[k] = to_float(data[k], defaults[k])
 
-    # Derived targets convert luminaire-level requirements to LED-level constraints.
     optical_rate = params["optical_transmission"] / 100.0
     power_rate = params["power_efficiency"] / 100.0
     combined = optical_rate * power_rate
@@ -264,7 +207,6 @@ def main():
     target_led_lumen = (params["target_lumen"] / optical_rate) if optical_rate > 0 else 0.0
     target_led_efficacy = (params["target_efficacy"] / combined) if combined > 0 else 0.0
 
-    # Query and search run only for validated POST requests.
     led_candidates = []
     led_config_solutions = {}
     candidate_count = 0
@@ -291,8 +233,7 @@ def main():
             )
             candidate_rows = db.fetch_candidates_by_cct_cri(params["target_cct"], params["target_cri"])
             for row in candidate_rows:
-                lm_test_value = to_float(row.get("lm_test", 0), 0)
-                row["lm_test"] = lm_test_value
+                row["lm_test"] = to_float(row.get("lm_test", 0), 0)
 
                 row_id = row.get("ID")
                 try:
@@ -320,11 +261,9 @@ def main():
                 )
                 candidate_count = len(sorted_candidates)
 
-                # Summary rows and configuration rows are built in a single pass.
                 for item in sorted_candidates:
                     idx = item["index"]
                     cand = item["candidate"]
-                    first_solution = (led_config_solutions.get(idx) or [None])[0]
                     total_leds = float(item.get("total_leds", 0) or 0.0)
 
                     lm_per_led = float(cand.get("lumen_at_target_Tj_target_if", 0) or 0.0)
@@ -341,7 +280,7 @@ def main():
                             "candidate": cand,
                             "fixture_lm": fixture_lm,
                             "input_power": input_power,
-                            "total_led_count": int(total_leds) if first_solution else None,
+                            "total_led_count": int(total_leds) if total_leds > 0 else None,
                             "total_cost_usd": total_cost_usd if (led_cost_usd > 0 or smt_cost_usd > 0) else None,
                             "led_cost_usd": led_cost_usd,
                             "smt_cost_usd": smt_cost_usd,
@@ -349,9 +288,8 @@ def main():
                     )
 
                     solutions_display = []
-
                     for sol in (led_config_solutions.get(idx) or [])[:10]:
-                        total_leds = float(sol.get("total_leds", 0) or 0.0)
+                        total_leds_sol = float(sol.get("total_leds", 0) or 0.0)
 
                         target_if_ma = float(cand.get("target_if", 0) or 0.0)
                         total_current = target_if_ma * float(sol.get("P", 0) or 0.0) if target_if_ma > 0 else 0.0
@@ -359,19 +297,12 @@ def main():
                         voltage = float(sol.get("V_chain", 0) or 0.0)
                         power_watts = (voltage * total_current / 1000.0) if (voltage > 0 and total_current > 0) else 0.0
 
-                        unit_usd = float(cand.get("USD", 0) or 0.0)
-                        unit_rmb = float(cand.get("RMB", 0) or 0.0)
-
-                        led_cost_usd, smt_cost_usd, total_cost_usd = _cost_usd(
-                            total_leds=total_leds,
-                            unit_usd=unit_usd,
+                        costs = solution_cost_breakdown(
+                            total_leds=total_leds_sol,
+                            unit_usd=float(cand.get("USD", 0) or 0.0),
+                            unit_rmb=float(cand.get("RMB", 0) or 0.0),
                             smt_cost_rmb=smt_cost_rmb_f,
                             usd_rate=usd_rate_f,
-                        )
-                        led_cost_rmb, smt_cost_rmb_total, total_cost_rmb = _cost_rmb(
-                            total_leds=total_leds,
-                            unit_rmb=unit_rmb,
-                            smt_cost_rmb=smt_cost_rmb_f,
                         )
 
                         solutions_display.append(
@@ -379,12 +310,7 @@ def main():
                                 "solution": sol,
                                 "total_current": total_current,
                                 "power_watts": power_watts,
-                                "total_cost_usd": total_cost_usd,
-                                "total_cost_rmb": total_cost_rmb,
-                                "led_cost_usd": led_cost_usd,
-                                "smt_cost_usd": smt_cost_usd,
-                                "led_cost_rmb": led_cost_rmb,
-                                "smt_cost_rmb_total": smt_cost_rmb_total,
+                                **costs,
                             }
                         )
 
@@ -393,15 +319,13 @@ def main():
                     )
 
         except Exception as e:
-            # Keep concise UI error text while retaining traceback in server logs.
             error_message = f"Algorithm/Query error: {e}"
             traceback.print_exc()
 
     return render_template(
         "main.html",
         validation_errors=validation_errors,
-        success_message="",  # removed "store" phase; keep key to avoid template edits if still referenced
-        # params for form echo
+        success_message="",
         target_cct=params["target_cct"],
         target_cri=params["target_cri"],
         target_lumen=params["target_lumen"],
@@ -412,12 +336,10 @@ def main():
         v_chain_max=params["v_chain_max"],
         smt_cost_rmb=params["smt_cost_rmb"],
         usd_rate=params["usd_rate"],
-        # db status
         connection_status=connection_status,
         error_message=error_message,
         cct_options=cct_options,
         cri_options=cri_options,
-        # results
         led_config_solutions=led_config_solutions,
         candidate_count=candidate_count,
         target_led_lumen=target_led_lumen,

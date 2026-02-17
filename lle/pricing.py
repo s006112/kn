@@ -16,6 +16,42 @@ def _cost_rmb(*, total_leds: float, unit_rmb: float, smt_cost_rmb: float):
     return led_cost_rmb, smt_cost_rmb_total, (led_cost_rmb + smt_cost_rmb_total)
 
 
+def solution_cost_breakdown(
+    *,
+    total_leds: float,
+    unit_usd: float,
+    unit_rmb: float,
+    smt_cost_rmb: float,
+    usd_rate: float,
+):
+    total_leds = _num(total_leds, 0)
+    unit_usd = _num(unit_usd, 0)
+    unit_rmb = _num(unit_rmb, 0)
+    smt_cost_rmb = _num(smt_cost_rmb, 0)
+    usd_rate = max(_num(usd_rate, 1), 1e-9)
+
+    led_cost_usd, smt_cost_usd, total_cost_usd = _cost_usd(
+        total_leds=total_leds,
+        unit_usd=unit_usd,
+        smt_cost_rmb=smt_cost_rmb,
+        usd_rate=usd_rate,
+    )
+    led_cost_rmb, smt_cost_rmb_total, total_cost_rmb = _cost_rmb(
+        total_leds=total_leds,
+        unit_rmb=unit_rmb,
+        smt_cost_rmb=smt_cost_rmb,
+    )
+
+    return {
+        "total_cost_usd": total_cost_usd,
+        "total_cost_rmb": total_cost_rmb,
+        "led_cost_usd": led_cost_usd,
+        "smt_cost_usd": smt_cost_usd,
+        "led_cost_rmb": led_cost_rmb,
+        "smt_cost_rmb_total": smt_cost_rmb_total,
+    }
+
+
 def _candidate_cost_item(candidate_index, candidate, led_config_solutions, smt_cost_rmb, usd_rate):
     first_solution = led_config_solutions[candidate_index][0]
     total_leds = _num(first_solution.get("total_leds", 0), 0)
