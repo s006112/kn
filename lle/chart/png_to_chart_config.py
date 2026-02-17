@@ -4,14 +4,23 @@ import cv2
 import numpy as np
 import json
 from pathlib import Path
-from path_config import load_chart_runtime
 
 # ==========================
 # PATH CONFIG
 # ==========================
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / "chart_config.json"
-RAW_DIR, DEBUG_DIR, runtime_config = load_chart_runtime(BASE_DIR, CONFIG_PATH)
+RAW_DIR = (BASE_DIR / "../../data/chart/raw").resolve()
+DEBUG_DIR = RAW_DIR / "debug"
+
+FIT_DEFAULT = {"max_degree": 6, "min_degree": 4}
+CHART_DEFAULTS = {
+    "FIL": {"x_min": 0.0, "x_max": 160.0, "y_min": 0.0, "y_max": 1.2, "swap_xy": False},
+    "FIV": {"x_min": 2.55, "x_max": 3.35, "y_min": 0.0, "y_max": 160.0, "swap_xy": True},
+    "FTL": {"x_min": 25.0, "x_max": 85.0, "y_min": 0.85, "y_max": 1.0, "swap_xy": False},
+    "FTV": {"x_min": 25.0, "x_max": 85.0, "y_min": 0.9, "y_max": 1.0, "swap_xy": False},
+}
+SUFFIX_ALIAS = {"FVI": "FIV"}
 
 def detect_plot_bbox(img_path: Path):
     """
@@ -56,35 +65,64 @@ def detect_plot_bbox(img_path: Path):
     # 稍微向外擴展 1-2 像素以確保不切到線條邊緣
     return [max(0, x0-1), max(0, y0-1), min(w, x1+1), min(h, y1+1)]
 
+
+def infer_chart_id(filename: str) -> str:
+    suffix = Path(filename).stem.split("_")[-1].upper()
+    return SUFFIX_ALIAS.get(suffix, suffix)
+
+
 def main():
-    if not CONFIG_PATH.exists(): return
+    if not RAW_DIR.exists():
+        print(f"[WARN] RAW_DIR not found: {RAW_DIR}")
+        return
 
-    with open(CONFIG_PATH, 'r') as f:
-        config_data = json.load(f)
+    png_files = sorted(p for p in RAW_DIR.glob("*.png") if p.is_file())
+    charts = {}
+    detected_count = 0
 
-    charts = config_data.get("charts", {})
-    updated_count = 0
+    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
-    for chart_id, cfg in charts.items():
-        filename = cfg.get("filename")
-        img_path = RAW_DIR / filename
-        if not img_path.exists(): continue
+    for img_path in png_files:
+        filename = img_path.name
+        if filename.startswith("auto_bbox_"):
+            continue
+
+        base_chart_id = infer_chart_id(filename)
+        chart_id = base_chart_id
+        if chart_id in charts:
+            chart_id = img_path.stem
 
         bbox = detect_plot_bbox(img_path)
         if bbox:
-            cfg["plot_bbox"] = bbox
-            updated_count += 1
+            detected_count += 1
             print(f"[OK] {filename} -> BBox: {bbox}")
-            
-            # 保存 Debug 圖
             img = cv2.imread(str(img_path))
             cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 2)
             cv2.imwrite(str(DEBUG_DIR / f"auto_bbox_{filename}"), img)
+        else:
+            bbox = [0, 0, 0, 0]
+            print(f"[WARN] {filename} -> BBox not found")
 
-    if updated_count > 0:
-        with open(CONFIG_PATH, 'w') as f:
-            json.dump(config_data, f, indent=2)
-        print(f"\nSuccessfully updated {updated_count} charts.")
+        cfg = {
+            "filename": filename,
+            "plot_bbox": bbox,
+            **CHART_DEFAULTS.get(
+                base_chart_id,
+                {"x_min": 0.0, "x_max": 1.0, "y_min": 0.0, "y_max": 1.0, "swap_xy": False},
+            ),
+        }
+        charts[chart_id] = cfg
+
+    config_data = {
+        "fit": FIT_DEFAULT,
+        "charts": charts,
+    }
+
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(config_data, f, indent=2)
+
+    print(f"\nCreated {CONFIG_PATH.name} from scratch.")
+    print(f"Charts: {len(charts)}, detected bbox: {detected_count}")
 
 if __name__ == "__main__":
     main()
