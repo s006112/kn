@@ -252,7 +252,7 @@
                                         {% endif %}
                                     </td>
                                     <td>{{ number_format(candidate['target_if'], 1) if candidate.get('target_if') is not none else 'N/A' }}</td>
-                                    <td>{{ number_format(candidate_data['total_cost_usd'], 2) if candidate_data['led_cost_usd'] > 0 or candidate_data['smt_cost_usd'] > 0 else 'N/A' }}</td>
+                                    <td>{{ number_format(candidate_data['total_cost_usd'], 3) if candidate_data['led_cost_usd'] > 0 or candidate_data['smt_cost_usd'] > 0 else 'N/A' }}</td>
                                     <td>{{ candidate['Quote'] if candidate.get('Quote') else 'N/A' }}</td>
                                 </tr>
                             {% endfor %}
@@ -303,7 +303,7 @@
                                                     <td>{{ number_format(solution['V_chain'], 1) }}</td>
                                                     <td>{{ number_format(solution_data['total_current'], 1) if solution_data['total_current'] > 0 else 'N/A' }}</td>
                                                     <td>{{ number_format(solution_data['power_watts'], 1) if solution_data['power_watts'] > 0 else 'N/A' }}</td>
-                                                    <td>{{ number_format(solution_data['total_cost_usd'], 2) if solution_data['led_cost_usd'] > 0 or solution_data['smt_cost_usd'] > 0 else 'N/A' }}</td>
+                                                    <td>{{ number_format(solution_data['total_cost_usd'], 3) if solution_data['led_cost_usd'] > 0 or solution_data['smt_cost_usd'] > 0 else 'N/A' }}</td>
                                                     <td>{{ number_format(solution_data['total_cost_rmb'], 2) if solution_data['led_cost_rmb'] > 0 or solution_data['smt_cost_rmb_total'] > 0 else 'N/A' }}</td>
                                                     <td {% if solution['led_add'] == 0 %}class="zero-led-add-cell"{% endif %}>
                                                         {{ number_format(solution['led_add'], 0) }}
