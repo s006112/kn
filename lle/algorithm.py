@@ -24,7 +24,7 @@ Out of scope
 
 import math
 from functools import cmp_to_key
-
+from solver import solve_target_if_newton
 from topology import generate_config_solutions
 from algorithm_core import (
     _num,
@@ -146,35 +146,17 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
             target_if = float(_num(row['If'], 10.0))
         else:
             target_if = 10.0
-        tolerance = 0.0001
-        max_iterations = 100
-        iteration_count = 0
-        converged = False
 
-        if k_eta > 0 and k_phi > 0 and _isset(row, 'If_max') and _num(row['If_max'], 0) > 0:
-            try:
-                while iteration_count < max_iterations and not converged:
-                    iteration_count += 1
-                    f = calculateObjectiveFunction(target_if, k_eta, k_phi, row)
-                    f_derivative = calculateObjectiveFunctionDerivative(target_if, k_eta, k_phi, row)
+        initial_if = target_if
 
-                    if abs(f) < tolerance:
-                        converged = True
-                        break
-
-                    temp_if = target_if - (f / f_derivative)
-
-                    # Fall back to bounded stepping when Newton update exits the feasible current range.
-                    if temp_if < 0 or temp_if > _num(row['If_max'], 0):
-                        target_if += 10
-                    else:
-                        target_if = temp_if
-
-                    if target_if > _num(row['If_max'], 0):
-                        target_if = _num(row['If_max'], 0)
-                        break
-            except Exception:
-                converged = False
+        target_if, converged, iteration_count = solve_target_if_newton(
+            row=row,
+            k_eta=k_eta,
+            k_phi=k_phi,
+            initial_if=initial_if,
+            tolerance=0.0001,
+            max_iterations=100,
+        )
 
         lumen_at_target_Tj_target_if = 0
         led_count = 0
@@ -226,16 +208,14 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
     for candidate_index, candidate in enumerate(led_candidates):
 
         required_led_count = candidate.get('led_count', 0)
-        target_if = candidate.get('target_if', 0)
-        target_tj = _num(junction_temp, 65)
+        vf_single = candidate.get('vf_at_target_if', 0)
 
         solutions = generate_config_solutions(
             required_led_count=required_led_count,
-            target_if=target_if,
-            target_tj=target_tj,
-            candidate=candidate,
+            vf_single=vf_single,
             v_chain_max=v_chain_max,
         )
+
 
         led_config_solutions[candidate_index] = solutions
 

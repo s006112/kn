@@ -1,11 +1,17 @@
 # topology.py
-# Pure series-parallel configuration generator (no DB, no cost logic)
+# Pure series-parallel configuration generator (no DB, no cost logic, no physics)
 
-from algorithm_core import _num, calculateVfWithDebug
+from algorithm_core import _num
 
-def generate_config_solutions(required_led_count, target_if, target_tj, candidate, v_chain_max):
+
+def generate_config_solutions(required_led_count, vf_single, v_chain_max):
     """
     Generate feasible series-parallel LED configurations.
+
+    Inputs:
+        required_led_count: required LED quantity
+        vf_single: forward voltage per LED (already computed)
+        v_chain_max: maximum allowed chain voltage
 
     Returns:
         list of solution dict:
@@ -20,11 +26,8 @@ def generate_config_solutions(required_led_count, target_if, target_tj, candidat
 
     solutions = []
 
-    if required_led_count <= 0 or target_if <= 0:
+    if required_led_count <= 0 or vf_single <= 0:
         return solutions
-
-    vf_debug = calculateVfWithDebug(target_if, target_tj, candidate)
-    vf_single = vf_debug['vf_final']
 
     v_chain_max_value = _num(v_chain_max, 50)
 
