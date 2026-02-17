@@ -27,6 +27,7 @@ from algorithm import (
     process_led_candidates,
     build_sorted_candidates_for_search,
 )
+from pricing import _cost_usd, _cost_rmb
 import db
 
 app = Flask(__name__)
@@ -121,39 +122,6 @@ def _require_float(
         errors.append(f"{label or field} must be <= {max_val}")
         return None
     return float(x)
-
-
-def _cost_usd(*, total_leds: float, unit_usd: float, smt_cost_rmb: float, usd_rate: float):
-    """
-    Purpose:
-    Compute LED cost, SMT cost, and total cost in USD.
-    Inputs:
-    - total_leds: Total LED quantity in the configuration.
-    - unit_usd: Per-LED unit price in USD.
-    - smt_cost_rmb: SMT cost per LED in RMB.
-    - usd_rate: RMB to USD exchange divisor.
-    Outputs:
-    - tuple[float, float, float]: LED cost USD, SMT cost USD, total USD.
-    """
-    led_cost_usd = total_leds * unit_usd if (total_leds > 0 and unit_usd > 0) else 0.0
-    smt_cost_usd = total_leds * smt_cost_rmb / max(usd_rate, 1e-9) if total_leds > 0 else 0.0
-    return led_cost_usd, smt_cost_usd, (led_cost_usd + smt_cost_usd)
-
-
-def _cost_rmb(*, total_leds: float, unit_rmb: float, smt_cost_rmb: float):
-    """
-    Purpose:
-    Compute LED cost, SMT cost, and total cost in RMB.
-    Inputs:
-    - total_leds: Total LED quantity in the configuration.
-    - unit_rmb: Per-LED unit price in RMB.
-    - smt_cost_rmb: SMT cost per LED in RMB.
-    Outputs:
-    - tuple[float, float, float]: LED cost RMB, SMT cost RMB, total RMB.
-    """
-    led_cost_rmb = total_leds * unit_rmb if (total_leds > 0 and unit_rmb > 0) else 0.0
-    smt_cost_rmb_total = total_leds * smt_cost_rmb if total_leds > 0 else 0.0
-    return led_cost_rmb, smt_cost_rmb_total, (led_cost_rmb + smt_cost_rmb_total)
 
 
 def _extract_lm_test_overrides(data: dict) -> dict[int, float]:
@@ -359,16 +327,15 @@ def main():
                     idx = item["index"]
                     cand = item["candidate"]
                     first_solution = (led_config_solutions.get(idx) or [None])[0]
-                    total_leds = float(first_solution.get("total_leds", 0)) if first_solution else 0.0
+                    total_leds = float(item.get("total_leds", 0) or 0.0)
 
                     lm_per_led = float(cand.get("lumen_at_target_Tj_target_if", 0) or 0.0)
                     fixture_lm = (lm_per_led * total_leds * optical_rate) if (lm_per_led > 0 and total_leds > 0 and optical_rate > 0) else 0.0
                     input_power = (fixture_lm / target_efficacy_f) if (fixture_lm > 0 and target_efficacy_f > 0) else 0.0
 
-                    unit_usd = float(cand.get("USD", 0) or 0.0)
-                    led_cost_usd, smt_cost_usd, total_cost_usd = _cost_usd(
-                        total_leds=total_leds, unit_usd=unit_usd, smt_cost_rmb=smt_cost_rmb_f, usd_rate=usd_rate_f
-                    )
+                    led_cost_usd = float(item.get("led_cost_usd", 0) or 0.0)
+                    smt_cost_usd = float(item.get("smt_cost_usd", 0) or 0.0)
+                    total_cost_usd = float(item.get("total_cost_usd", 0) or 0.0)
 
                     sorted_candidates_display.append(
                         {
