@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Dict, Any
 from path_config import load_chart_runtime
 
-FIT_KEYS = {"x_min", "x_max", "y_min", "y_max", "swap_xy"}
+FIT_KEYS = {"x_min", "x_max", "y_min", "y_max"}
+
 
 # ==========================
 # CORE
@@ -24,11 +25,12 @@ def main():
     max_degree = int(fit_config["max_degree"])
     min_degree = int(fit_config["min_degree"])
 
-    fit_ready_config = {
-        key: val
-        for key, val in chart_config.items()
-        if FIT_KEYS.issubset(val)
-    }
+    fit_ready_config: Dict[str, Dict[str, Any]] = {}
+    for key, val in chart_config.items():
+        domain = val.get("domain")
+        if not isinstance(domain, dict) or not FIT_KEYS.issubset(domain) or "swap_xy" not in val:
+            continue
+        fit_ready_config[key] = {**val, **domain}
 
     json_files = sorted(DEBUG_DIR.glob("*_curve_points_px.json"))
     if not json_files:

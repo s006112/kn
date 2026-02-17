@@ -15,10 +15,10 @@ DEBUG_DIR = RAW_DIR / "debug"
 
 FIT_DEFAULT = {"max_degree": 6, "min_degree": 4}
 CHART_DEFAULTS = {
-    "FIL": {"x_min": 0.0, "x_max": 160.0, "y_min": 0.0, "y_max": 1.2, "swap_xy": False},
-    "FIV": {"x_min": 2.55, "x_max": 3.35, "y_min": 0.0, "y_max": 160.0, "swap_xy": True},
-    "FTL": {"x_min": 25.0, "x_max": 85.0, "y_min": 0.85, "y_max": 1.0, "swap_xy": False},
-    "FTV": {"x_min": 25.0, "x_max": 85.0, "y_min": 0.9, "y_max": 1.0, "swap_xy": False},
+    "FIL": {"domain": {"x_min": 0.0, "x_max": 160.0, "y_min": 0.0, "y_max": 1.2}, "swap_xy": False},
+    "FIV": {"domain": {"x_min": 2.55, "x_max": 3.35, "y_min": 0.0, "y_max": 160.0}, "swap_xy": True},
+    "FTL": {"domain": {"x_min": 25.0, "x_max": 85.0, "y_min": 0.85, "y_max": 1.0}, "swap_xy": False},
+    "FTV": {"domain": {"x_min": 25.0, "x_max": 85.0, "y_min": 0.9, "y_max": 1.0}, "swap_xy": False},
 }
 SUFFIX_ALIAS = {"FVI": "FIV"}
 
@@ -108,7 +108,7 @@ def main():
             "plot_bbox": bbox,
             **CHART_DEFAULTS.get(
                 base_chart_id,
-                {"x_min": 0.0, "x_max": 1.0, "y_min": 0.0, "y_max": 1.0, "swap_xy": False},
+                {"domain": {"x_min": 0.0, "x_max": 1.0, "y_min": 0.0, "y_max": 1.0}, "swap_xy": False},
             ),
         }
         charts[chart_id] = cfg
