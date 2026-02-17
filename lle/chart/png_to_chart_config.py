@@ -98,7 +98,7 @@ def main():
             print(f"[OK] {filename} -> BBox: {bbox}")
             img = cv2.imread(str(img_path))
             cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 2)
-            cv2.imwrite(str(DEBUG_DIR / f"auto_bbox_{filename}"), img)
+            cv2.imwrite(str(DEBUG_DIR / f"{filename}_bbox"), img)
         else:
             bbox = [0, 0, 0, 0]
             print(f"[WARN] {filename} -> BBox not found")
