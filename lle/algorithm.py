@@ -25,6 +25,7 @@ Out of scope
 import math
 from functools import cmp_to_key
 
+from topology import generate_config_solutions
 from algorithm_core import (
     _num,
     _isset,
@@ -223,44 +224,18 @@ def process_led_candidates(candidate_rows, target_led_efficacy, target_led_lumen
         led_candidates.append(row)
 
     for candidate_index, candidate in enumerate(led_candidates):
-        solutions = []
+
         required_led_count = candidate.get('led_count', 0)
         target_if = candidate.get('target_if', 0)
         target_tj = _num(junction_temp, 65)
-        v_chain_max_value = _num(v_chain_max, 50)
 
-        if required_led_count > 0 and target_if > 0:
-            vf_debug = calculateVfWithDebug(target_if, target_tj, candidate)
-            vf_single = vf_debug['vf_final']
-
-            P = 1
-            solution_index = 0
-            max_parallel = min(20, required_led_count)
-
-            while P <= max_parallel and solution_index < 10:
-                led_count_working = required_led_count
-                led_add = 0
-
-                while (led_count_working % P) != 0:
-                    led_count_working += 1
-                    led_add += 1
-
-                S = led_count_working / P
-
-                if S >= 2:
-                    V_chain = S * vf_single
-
-                    if V_chain <= v_chain_max_value:
-                        solutions.append({
-                            'P': P,
-                            'S': S,
-                            'led_add': led_add,
-                            'V_chain': V_chain,
-                            'total_leds': led_count_working,
-                        })
-                        solution_index += 1
-
-                P += 1
+        solutions = generate_config_solutions(
+            required_led_count=required_led_count,
+            target_if=target_if,
+            target_tj=target_tj,
+            candidate=candidate,
+            v_chain_max=v_chain_max,
+        )
 
         led_config_solutions[candidate_index] = solutions
 
