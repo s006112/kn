@@ -114,22 +114,24 @@ def process_led_candidates(
 
     return led_candidates, led_config_solutions
 
-
 def build_sorted_candidates_for_search(
     led_candidates,
     led_config_solutions,
     smt_cost_rmb,
     usd_rate,
 ):
-    items = _build_sorted_candidate_cost_items(
+    items = sorted_candidate_cost_items(
         led_candidates,
         led_config_solutions,
         smt_cost_rmb,
         usd_rate,
-        include_candidates_without_config=True,
     )
-    return [item for item in items if bool(item.get("candidate", {}).get("converged"))]
-
+    # 保持原行为：Search 只显示 converged 的
+    return [
+        item
+        for item in items
+        if bool(item.get("candidate", {}).get("converged"))
+    ]
 
 def build_candidate_costs_for_config(
     led_candidates,
@@ -137,27 +139,6 @@ def build_candidate_costs_for_config(
     smt_cost_rmb,
     usd_rate,
 ):
-    return _build_sorted_candidate_cost_items(
-        led_candidates,
-        led_config_solutions,
-        smt_cost_rmb,
-        usd_rate,
-        include_candidates_without_config=False,
-    )
-
-
-def _build_sorted_candidate_cost_items(
-    led_candidates,
-    led_config_solutions,
-    smt_cost_rmb,
-    usd_rate,
-    include_candidates_without_config,
-):
-    if not led_config_solutions:
-        if include_candidates_without_config:
-            return [{"index": i, "candidate": c} for i, c in enumerate(led_candidates)]
-        return []
-
     return sorted_candidate_cost_items(
         led_candidates,
         led_config_solutions,
