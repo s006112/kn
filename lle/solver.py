@@ -1,7 +1,7 @@
 from algorithm_core import _num, calculateObjectiveFunction, calculateObjectiveFunctionDerivative
 
 
-def solve_target_if_newton(row, k_eta, k_phi, initial_if, tolerance=0.0001, max_iterations=100):
+def solve_target_if_newton(row, k_eta, k_phi, initial_if, tolerance=0.0001, max_iterations=20):
     if_max = _num(row.get("If_max"), 0)
     if not (k_eta > 0 and k_phi > 0 and if_max > 0):
         return float(initial_if), False, 0
