@@ -4,7 +4,7 @@
 from algorithm_core import _num
 
 
-def generate_config_solutions(required_led_count, vf_single, v_chain_max, max_solutions=10):
+def generate_config_solutions(required_led_count, vf_single, v_chain_max, max_solutions=5):
     """
     Generate feasible series-parallel LED configurations
     without arbitrary parallel limit.

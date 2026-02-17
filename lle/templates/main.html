@@ -245,7 +245,7 @@
                                                    class="lm-test-input"
                                                    name="lm_test_{{ candidate['ID'] }}"
                                                    value="{{ (candidate['lm_test']|int if candidate['lm_test'] == (candidate['lm_test']|int) else candidate['lm_test']) if candidate.get('lm_test') is not none else 0 }}"
-                                                   step="0.1"
+                                                   step="0.5"
                                                    min="0">
                                         {% else %}
                                             {{ number_format(candidate['lm_test'], 1) if candidate.get('lm_test') is not none else 'N/A' }}
