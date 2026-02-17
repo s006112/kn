@@ -103,7 +103,7 @@ def process_led_candidates(
 
         led_candidates.append(row)
 
-        # --- topology stage moved into same loop ---
+        # --- topology in same loop ---
         solutions = generate_config_solutions(
             required_led_count=led_count,
             vf_single=vf_at_target,
@@ -133,17 +133,3 @@ def build_sorted_candidates_for_search(
         for item in items
         if bool(item.get("candidate", {}).get("converged"))
     ]
-
-
-def build_candidate_costs_for_config(
-    led_candidates,
-    led_config_solutions,
-    smt_cost_rmb,
-    usd_rate,
-):
-    return sorted_candidate_cost_items(
-        led_candidates,
-        led_config_solutions,
-        smt_cost_rmb,
-        usd_rate,
-    )
