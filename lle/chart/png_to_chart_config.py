@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# png_to_chart_config.py (First Principle: Projection-Based Detection)
+# step 0 png_to_chart_config.py (First Principle: Projection-Based Detection)
 import cv2
 import numpy as np
 import json
@@ -15,12 +15,29 @@ DEBUG_DIR = RAW_DIR / "debug"
 
 FIT_DEFAULT = {"max_degree": 6, "min_degree": 4}
 CHART_DEFAULTS = {
+    "lm_test": {
+        "2700K": 35,
+        "3000K": 37,
+        "3500K": 39,
+        "4000K": 41,
+        "5000K": 43,
+        "6500K": 45,
+    },
+    "CRI": 80,
+    "If_max": 300,
+    "If": 150,
+    "USD": 0.003,
+    "RMB": 0.01,
+    "Quote_date": "2025-12-04",
+    "Vf": 0.0,
+    "Tj": 0.0,
     "FIL": {"domain": {"x_min": 0.0, "x_max": 160.0, "y_min": 0.0, "y_max": 1.2}, "swap_xy": False},
     "FIV": {"domain": {"x_min": 2.55, "x_max": 3.35, "y_min": 0.0, "y_max": 160.0}, "swap_xy": True},
     "FTL": {"domain": {"x_min": 25.0, "x_max": 85.0, "y_min": 0.85, "y_max": 1.0}, "swap_xy": False},
     "FTV": {"domain": {"x_min": 25.0, "x_max": 85.0, "y_min": 0.9, "y_max": 1.0}, "swap_xy": False},
 }
 SUFFIX_ALIAS = {"FVI": "FIV"}
+CHART_IDS = {"FIL", "FIV", "FTL", "FTV"}
 
 def detect_plot_bbox(img_path: Path):
     """
@@ -113,8 +130,10 @@ def main():
         }
         charts[chart_id] = cfg
 
+    global_defaults = {k: v for k, v in CHART_DEFAULTS.items() if k not in CHART_IDS}
     config_data = {
         "fit": FIT_DEFAULT,
+        **global_defaults,
         "charts": charts,
     }
 
