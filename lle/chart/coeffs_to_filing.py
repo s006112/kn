@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Move chart debug outputs into a model-named folder."""
+"""Step 6 coeffs_to_filing Move chart debug outputs into a model-named folder."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def main() -> None:
 
     config_path = raw_dir / "chart_config.json"
     if config_path.exists():
-        shutil.move(str(config_path), str(target_dir / f"{model_name}.json"))
+        shutil.move(str(config_path), str(target_dir / f"Z-{model_name}.json"))
 
     print(f"[OK] folder={model_name} moved={moved}")
 
