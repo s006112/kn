@@ -215,16 +215,16 @@
                         <thead>
                             <tr>
                                 <th>Model</th>
-                                <th>CCT (K)</th>
+                                <th>CCT</th>
                                 <th>CRI</th>
-                                <th>Fixture (lm)</th>
-                                <th>Input Power (W)</th>
-                                <th>LED Count</th>
+                                <th>lumen</th>
+                                <th>Pin(W)</th>
+                                <th>LED</th>
                                 <th>Lm/LED</th>
                                 <th>Lm@test</th>
                                 <th>If (mA)</th>
-                                <th>LED + SMT (USD)</th>
-                                <th>LED Quote Time</th>
+                                <th>USD</th>
+                                <th>Quote</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -281,16 +281,16 @@
                                     <table class="compact-results-table">
                                         <thead>
                                             <tr>
-                                                <th>Configuration</th>
-                                                <th>Parallel (P)</th>
-                                                <th>Series (S)</th>
+                                                <th>Rank</th>
+                                                <th>P</th>
+                                                <th>S</th>
+                                                <th>V</th>
+                                                <th>mA</th>
+                                                <th>Pin (W)</th>
+                                                <th>USD</th>
+                                                <th>RMB</th>
                                                 <th>Added LEDs</th>
-                                                <th>Voltage (V)</th>
-                                                <th>Current (mA)</th>
-                                                <th>Power (W)</th>
-                                                <th>LED + SMT (USD)</th>
-                                                <th>LED + SMT (RMB)</th>
-                                                <th>Total LED Count</th>
+                                                <th>Total LED</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -300,14 +300,14 @@
                                                     <td>{{ number_format(solution['P'], 0) }}P{{ number_format(solution['S'], 0) }}S</td>
                                                     <td>{{ number_format(solution['P'], 0) }}</td>
                                                     <td>{{ number_format(solution['S'], 0) }}</td>
-                                                    <td {% if solution['led_add'] == 0 %}class="zero-led-add-cell"{% endif %}>
-                                                        {{ number_format(solution['led_add'], 0) }}
-                                                    </td>
                                                     <td>{{ number_format(solution['V_chain'], 1) }}</td>
                                                     <td>{{ number_format(solution_data['total_current'], 1) if solution_data['total_current'] > 0 else 'N/A' }}</td>
                                                     <td>{{ number_format(solution_data['power_watts'], 1) if solution_data['power_watts'] > 0 else 'N/A' }}</td>
                                                     <td>{{ number_format(solution_data['total_cost_usd'], 2) if solution_data['led_cost_usd'] > 0 or solution_data['smt_cost_usd'] > 0 else 'N/A' }}</td>
                                                     <td>{{ number_format(solution_data['total_cost_rmb'], 2) if solution_data['led_cost_rmb'] > 0 or solution_data['smt_cost_rmb_total'] > 0 else 'N/A' }}</td>
+                                                    <td {% if solution['led_add'] == 0 %}class="zero-led-add-cell"{% endif %}>
+                                                        {{ number_format(solution['led_add'], 0) }}
+                                                    </td>
                                                     <td>{{ number_format(solution['total_leds'], 0) }}</td>
                                                 </tr>
                                             {% endfor %}
