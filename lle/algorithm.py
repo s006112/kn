@@ -47,13 +47,11 @@ def process_led_candidates(
         target_if = float(_num(row.get("If"), 10.0))
         initial_if = target_if
 
-        target_if, converged, iteration_count = solve_target_if_newton(
+        target_if, converged = solve_target_if_newton(
             row=row,
             k_eta=k_eta,
             k_phi=k_phi,
-            initial_if=initial_if,
-            tolerance=0.0001,
-            max_iterations=100,
+            initial_if=initial_if
         )
 
         # --- lumen computation ---

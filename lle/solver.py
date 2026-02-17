@@ -7,14 +7,14 @@ def solve_target_if_newton(
     k_eta,
     k_phi,
     initial_if,
-    tolerance=0.0001,
-    max_iterations=100,
 ):
     from algorithm_core import (
         calculateObjectiveFunction,
         calculateObjectiveFunctionDerivative,
     )
 
+    tolerance = 0.0001
+    max_iterations = 100
     target_if = float(initial_if)
     iteration_count = 0
     converged = False
@@ -26,11 +26,11 @@ def solve_target_if_newton(
     final_f = None
 
     if not (k_eta > 0 and k_phi > 0 and row.get("If_max") is not None):
-        return target_if, converged, iteration_count
+        return target_if, converged
 
     if_max = _num(row.get("If_max"), 0)
     if if_max <= 0:
-        return target_if, converged, iteration_count
+        return target_if, converged
 
     # ---- feasibility / bracketing diagnostics (no behavior change) ----
     try:
@@ -42,6 +42,7 @@ def solve_target_if_newton(
     except Exception:
         f_hi = None
     bracket = (f_lo is not None and f_hi is not None and (f_lo * f_hi) <= 0)
+    if_max_valid = (f_hi is not None and f_hi <= tolerance)
 
     try:
         while iteration_count < max_iterations and not converged:
@@ -79,12 +80,16 @@ def solve_target_if_newton(
     except Exception:
         converged = False
 
+    if not converged and target_if >= if_max and if_max_valid:
+        converged = True
+
     print(
         "SOLVER_DIAG:",
         row.get("Model"),
         "bracket=", bracket,
         "f@1mA=", (round(f_lo, 6) if f_lo is not None else "NA"),
         "f@if_max=", (round(f_hi, 6) if f_hi is not None else "NA"),
+        "if_max_valid=", if_max_valid,
         "converged=", converged,
         "iter=", iteration_count,
         "final_f=", round(final_f, 6),
@@ -94,4 +99,4 @@ def solve_target_if_newton(
         "target_if=", round(target_if, 6),
     )
 
-    return target_if, converged, iteration_count
+    return target_if, converged
