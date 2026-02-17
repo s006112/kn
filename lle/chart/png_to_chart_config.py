@@ -104,7 +104,7 @@ def main():
             print(f"[WARN] {filename} -> BBox not found")
 
         cfg = {
-            "filename": f"auto_bbox_{filename}",
+            "filename": filename,
             "plot_bbox": bbox,
             **CHART_DEFAULTS.get(
                 base_chart_id,

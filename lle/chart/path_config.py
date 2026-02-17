@@ -25,7 +25,8 @@ def load_chart_runtime(base_dir: Path) -> Tuple[Path, Path, Dict[str, Any]]:
     Relative `debug_dir` is resolved from RAW_DIR.
     """
 
-    config_path = base_dir / "chart_config.json"
+    raw_dir = (base_dir / "../../data/chart/raw").resolve()
+    config_path = raw_dir / "chart_config.json"
     config: Dict[str, Any] = {}
     if config_path.exists():
         with open(config_path, "r") as f:
@@ -36,8 +37,6 @@ def load_chart_runtime(base_dir: Path) -> Tuple[Path, Path, Dict[str, Any]]:
     raw_cfg = paths_cfg.get("raw_dir")
     if raw_cfg:
         raw_dir = _resolve(str(raw_cfg), base_dir)
-    else:
-        raw_dir = (base_dir / "../../data/chart/raw").resolve()
 
     debug_cfg = paths_cfg.get("debug_dir")
     if debug_cfg:
