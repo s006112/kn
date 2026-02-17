@@ -267,13 +267,6 @@
 
                 <!-- Phase 9: LED Series-Parallel Configuration Solutions -->
                 <div class="top-gap-lg">
-                    <h3 class="section-heading-primary">LED Series-Parallel Configuration Solutions</h3>
-                    <p class="solutions-description">
-                        Feasible LED configurations considering maximum chain voltage of {{ number_format(v_chain_max if v_chain_max is not none else 50, 0) }}V.
-                        Models are ordered by lowest cost (first configuration), configurations within each model are sorted by series count descending, then by fewest additional LEDs.
-                        Each model shows up to 10 configurations with highest voltage utilization first.
-                    </p>
-
                     {% if led_config_solutions %}
                         {% for candidate_data in candidate_costs_display %}
                             {% set candidate_index = candidate_data['index'] %}
@@ -334,23 +327,6 @@
                         </div>
                     {% endif %}
                 </div>
-
-                <!-- Temperature Derating Information -->
-                <div class="temperature-info-box">
-                    <strong>Temperature Derating Information:</strong><br>
-                    The Lumen Factor and Vf Factor values shown below are calculated using 6th-order polynomial equations
-                    based on the junction temperature of {{ number_format(junction_temp, 1) }}°C.
-                    These factors represent the performance adjustment from nominal test conditions.
-                </div>
-
-                <!-- Newton-Raphson Optimization Information -->
-                <div class="optimization-info-box">
-                    <strong>Newton-Raphson Current Optimization:</strong><br>
-                    The Target Current values are calculated using Newton-Raphson iteration to find the optimal operating current
-                    that balances your target LED efficacy ({{ number_format(target_led_efficacy, 1) }} lm/W) and
-                    LED lumen output ({{ number_format(target_led_lumen, 0) }} lm) requirements derived from luminaire specifications.
-                </div>
-
             {% else %}
                 <div class="validation-error">
                     No LED models found matching CCT: {{ number_format(target_cct, 0) }}K and CRI: {{ number_format(target_cri, 0) }}
