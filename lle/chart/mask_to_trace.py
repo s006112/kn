@@ -10,8 +10,7 @@ from path_config import load_chart_runtime
 # PATH CONFIG
 # ==========================
 BASE_DIR = Path(__file__).resolve().parent
-CONFIG_PATH = BASE_DIR / "chart_config.json"
-RAW_DIR, DEBUG_DIR, _ = load_chart_runtime(BASE_DIR, CONFIG_PATH)
+RAW_DIR, DEBUG_DIR, _ = load_chart_runtime(BASE_DIR)
 
 # ==========================
 # TRACE CORE

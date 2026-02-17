@@ -20,8 +20,7 @@ def main():
     args = parser.parse_args()
 
     BASE_DIR = Path(__file__).resolve().parent
-    CONFIG_PATH = BASE_DIR / "chart_config.json"
-    RAW_DIR, _, _ = load_chart_runtime(BASE_DIR, CONFIG_PATH)
+    RAW_DIR, _, _ = load_chart_runtime(BASE_DIR)
 
     SOURCE_DB = BASE_DIR.parent / "led_coe_fallback.sqlite3"
     TARGET_DB = BASE_DIR.parent / "led_parameters.sqlite3"

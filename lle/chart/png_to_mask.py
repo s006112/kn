@@ -10,8 +10,7 @@ from path_config import load_chart_runtime
 # ==========================
 
 BASE_DIR = Path(__file__).resolve().parent
-CONFIG_PATH = BASE_DIR / "chart_config.json"
-RAW_DIR, DEBUG_DIR, runtime_config = load_chart_runtime(BASE_DIR, CONFIG_PATH)
+RAW_DIR, DEBUG_DIR, runtime_config = load_chart_runtime(BASE_DIR)
 
 CHART_CONFIG = runtime_config["charts"]
 FILENAME_TO_CONFIG = {cfg["filename"]: cfg for cfg in CHART_CONFIG.values()}

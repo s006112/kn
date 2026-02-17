@@ -15,8 +15,7 @@ FIT_KEYS = {"x_min", "x_max", "y_min", "y_max", "swap_xy"}
 def main():
 
     BASE_DIR = Path(__file__).resolve().parent
-    CONFIG_PATH = BASE_DIR / "chart_config.json"
-    RAW_DIR, DEBUG_DIR, config = load_chart_runtime(BASE_DIR, CONFIG_PATH)
+    RAW_DIR, DEBUG_DIR, config = load_chart_runtime(BASE_DIR)
     chart_config: Dict[str, Dict[str, Any]] = config["charts"]
 
     fit_ready_config = {
