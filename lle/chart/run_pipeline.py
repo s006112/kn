@@ -2,7 +2,7 @@
 """Run chart extraction pipeline end-to-end.
 
 Order:
-0) png_to_chart_config.py: not yet implemented, proceed manually for now
+0) png_to_chart_config.py
 1) png_to_mask.py
 2) mask_to_trace.py
 3) trace_to_fit.py
@@ -58,6 +58,7 @@ def main() -> int:
 
     # 2️⃣ 顺序执行
     steps = [
+        "png_to_chart_config.py",
         "png_to_mask.py",
         "mask_to_trace.py",
         "trace_to_fit.py",
