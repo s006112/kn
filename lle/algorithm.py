@@ -99,7 +99,7 @@ def process_led_candidates(
         target_if = float(_num(row.get("If"), 10.0))
         initial_if = target_if
 
-        target_if, converged = solve_target_if_newton(
+        target_if, converged, solver_diag = solve_target_if_newton(
             row=row,
             k_eta=k_eta,
             k_phi=k_phi,
@@ -131,18 +131,38 @@ def process_led_candidates(
 
         # --- DEBUG ---
         print(
-            "DEBUG:",
-            row.get("Model"),
+            "Model:", row.get("Model"),
+            "\n",
+            "bracket=", solver_diag.get("bracket"),
+            "f@1mA=", (
+                round(solver_diag["f_lo"], 2)
+                if solver_diag.get("f_lo") is not None
+                else "NA"
+            ),
+            "f@if_max=", (
+                round(solver_diag["f_hi"], 2)
+                if solver_diag.get("f_hi") is not None
+                else "NA"
+            ),
+            "if_max_valid=", solver_diag.get("if_max_valid"),
             "converged=", converged,
+            "iter=", solver_diag.get("iter"),
+            "final_f=", round(solver_diag.get("final_f", 0), 2),
+            "min_abs_f=", round(solver_diag.get("min_abs_f", 0), 2),
+            "hit_bounds=", solver_diag.get("hit_bounds"),
+            "hit_if_max=", solver_diag.get("hit_if_max"),
             "target_if=", round(target_if, 2),
             "lumen=", round(lumen_at_target, 2),
             "led_count=", led_count,
             "lumen_factor=", round(lumen_factor, 3),
             "vf_factor=", round(vf_factor, 3),
-            "vf_at_target=", round(vf_at_target, 3) if vf_at_target > 0 else 0.0,
+            "vf_at_target=", round(vf_at_target, 3)
+            if vf_at_target > 0
+            else 0.0,
             "k_eta=", round(k_eta, 3),
             "k_phi=", round(k_phi, 3),
         )
+
 
         row.update(
             {
