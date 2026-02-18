@@ -137,7 +137,7 @@ def main():
         "junction_temp": 65,
         "v_chain_max": 50,
         "smt_cost_rmb": 0.01,
-        "usd_rate": 7.0,
+        "usd_rate": 6.85,
     }
 
     params = dict(defaults)

@@ -4,12 +4,6 @@
 from algorithm_core import _num
 
 
-def _cost_usd(*, total_leds: float, unit_usd: float, smt_cost_rmb: float, usd_rate: float):
-    led_cost_usd = total_leds * unit_usd if (total_leds > 0 and unit_usd > 0) else 0.0
-    smt_cost_usd = total_leds * smt_cost_rmb / max(usd_rate, 1e-9) if total_leds > 0 else 0.0
-    return led_cost_usd, smt_cost_usd, (led_cost_usd + smt_cost_usd)
-
-
 def _cost_rmb(*, total_leds: float, unit_rmb: float, smt_cost_rmb: float):
     led_cost_rmb = total_leds * unit_rmb if (total_leds > 0 and unit_rmb > 0) else 0.0
     smt_cost_rmb_total = total_leds * smt_cost_rmb if total_leds > 0 else 0.0
@@ -19,28 +13,23 @@ def _cost_rmb(*, total_leds: float, unit_rmb: float, smt_cost_rmb: float):
 def solution_cost_breakdown(
     *,
     total_leds: float,
-    unit_usd: float,
     unit_rmb: float,
     smt_cost_rmb: float,
     usd_rate: float,
 ):
     total_leds = _num(total_leds, 0)
-    unit_usd = _num(unit_usd, 0)
     unit_rmb = _num(unit_rmb, 0)
     smt_cost_rmb = _num(smt_cost_rmb, 0)
     usd_rate = max(_num(usd_rate, 1), 1e-9)
 
-    led_cost_usd, smt_cost_usd, total_cost_usd = _cost_usd(
-        total_leds=total_leds,
-        unit_usd=unit_usd,
-        smt_cost_rmb=smt_cost_rmb,
-        usd_rate=usd_rate,
-    )
     led_cost_rmb, smt_cost_rmb_total, total_cost_rmb = _cost_rmb(
         total_leds=total_leds,
         unit_rmb=unit_rmb,
         smt_cost_rmb=smt_cost_rmb,
     )
+    led_cost_usd = led_cost_rmb / usd_rate if led_cost_rmb > 0 else 0.0
+    smt_cost_usd = smt_cost_rmb_total / usd_rate if smt_cost_rmb_total > 0 else 0.0
+    total_cost_usd = total_cost_rmb / usd_rate if total_cost_rmb > 0 else 0.0
 
     return {
         "total_cost_usd": total_cost_usd,
@@ -55,23 +44,19 @@ def solution_cost_breakdown(
 def _candidate_cost_item(candidate_index, candidate, led_config_solutions, smt_cost_rmb, usd_rate):
     first_solution = led_config_solutions[candidate_index][0]
     total_leds = _num(first_solution.get("total_leds", 0), 0)
-    unit_usd = _num(candidate.get("USD", 0), 0)
-
-    led_cost_usd, smt_cost_usd, total_cost_usd = _cost_usd(
+    costs = solution_cost_breakdown(
         total_leds=total_leds,
-        unit_usd=unit_usd,
+        unit_rmb=float(candidate.get("RMB", 0) or 0.0),
         smt_cost_rmb=_num(smt_cost_rmb, 0),
-        usd_rate=max(_num(usd_rate, 1), 1e-9),
+        usd_rate=usd_rate,
     )
 
     return {
         "index": candidate_index,
         "candidate": candidate,
-        "cost": total_cost_usd,
+        "cost": float(costs.get("total_cost_rmb", 0) or 0.0),
         "total_leds": total_leds,
-        "led_cost_usd": led_cost_usd,
-        "smt_cost_usd": smt_cost_usd,
-        "total_cost_usd": total_cost_usd,
+        **costs,
     }
 
 
@@ -125,7 +110,6 @@ def build_presented_results(
 
         costs = solution_cost_breakdown(
             total_leds=total_leds,
-            unit_usd=float(cand.get("USD", 0) or 0.0),
             unit_rmb=float(cand.get("RMB", 0) or 0.0),
             smt_cost_rmb=smt_cost_rmb,
             usd_rate=usd_rate,
@@ -175,7 +159,6 @@ def build_presented_results(
 
             costs = solution_cost_breakdown(
                 total_leds=total_leds_sol,
-                unit_usd=float(cand.get("USD", 0) or 0.0),
                 unit_rmb=float(cand.get("RMB", 0) or 0.0),
                 smt_cost_rmb=smt_cost_rmb,
                 usd_rate=usd_rate,
