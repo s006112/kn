@@ -1,7 +1,6 @@
-# algorithm.py  (direct drop-in, complete)
+# algorithm.py
 import math
 from solver import solve_target_if_newton
-from topology import generate_config_solutions
 from pricing import sorted_candidate_cost_items
 from algorithm_core import (
     _num,
@@ -10,6 +9,58 @@ from algorithm_core import (
     calculateVfWithDebug,
 )
 
+
+# -------------------------------------------------
+# Topology (merged from topology.py)
+# -------------------------------------------------
+
+def generate_config_solutions(required_led_count, vf_single, v_chain_max, max_solutions=5):
+    solutions = []
+
+    if required_led_count <= 0 or vf_single <= 0:
+        return solutions
+
+    v_chain_max_value = _num(v_chain_max, 50)
+    S_max = int(v_chain_max_value // vf_single)
+
+    if S_max < 2:
+        return solutions
+
+    import math
+    P_min = math.ceil(required_led_count / S_max)
+    P = P_min
+
+    while len(solutions) < max_solutions:
+
+        S = math.ceil(required_led_count / P)
+
+        if S > S_max:
+            P += 1
+            continue
+
+        total_leds = P * S
+        led_add = total_leds - required_led_count
+        V_chain = S * vf_single
+
+        solutions.append({
+            "P": P,
+            "S": S,
+            "led_add": led_add,
+            "V_chain": V_chain,
+            "total_leds": total_leds,
+        })
+
+        P += 1
+
+        if P > required_led_count:
+            break
+
+    return solutions
+
+
+# -------------------------------------------------
+# Main LED Processing
+# -------------------------------------------------
 
 def process_led_candidates(
     candidate_rows,
@@ -68,7 +119,7 @@ def process_led_candidates(
         if target_led_lumen > 0 and lumen_at_target > 0:
             led_count = math.ceil(target_led_lumen / lumen_at_target)
 
-        # --- voltage (single compute; previously duplicated) ---
+        # --- voltage ---
         vf_at_target = 0.0
         try:
             vf_debug = calculateVfWithDebug(target_if, tj, row)
@@ -78,7 +129,7 @@ def process_led_candidates(
 
         power = vf_at_target * target_if / 1000.0 if vf_at_target > 0 else 0.0
 
-        # --- DEBUG visibility ---
+        # --- DEBUG ---
         print(
             "DEBUG:",
             row.get("Model"),
@@ -93,7 +144,6 @@ def process_led_candidates(
             "k_phi=", round(k_phi, 3),
         )
 
-        # --- write back ---
         row.update(
             {
                 "led_count": led_count,
@@ -110,12 +160,12 @@ def process_led_candidates(
 
         led_candidates.append(row)
 
-        # --- topology in same loop ---
         solutions = generate_config_solutions(
             required_led_count=led_count,
             vf_single=vf_at_target,
             v_chain_max=v_chain_max,
         )
+
         led_config_solutions[idx] = solutions
 
     return led_candidates, led_config_solutions
@@ -134,7 +184,6 @@ def build_sorted_candidates_for_search(
         usd_rate,
     )
 
-    # 保持原行为：Search 只显示 converged 的
     return [
         item
         for item in items
