@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, Any
 from path_config import load_chart_runtime
 
+
 def main():
     BASE_DIR = Path(__file__).resolve().parent
     RAW_DIR, DEBUG_DIR, config = load_chart_runtime(BASE_DIR)
@@ -23,11 +24,18 @@ def main():
         with open(fit_path, "r") as f:
             fit_data = json.load(f)
 
+        # coefficients
         cfg["degree"] = fit_data["degree_used"]
         cfg["coeff_power"] = fit_data["coeff_power"]
         cfg["status"] = fit_data.get("status", "ok")
-        updated = True
 
+        # IMPORTANT: persist polynomial input/output domain AFTER swap_xy mapping
+        # Do NOT overwrite cfg["domain"] (chart axis mapping domain). Keep them separate.
+        # https://chatgpt.com/c/6996426c-7748-839e-88e5-6c1e2997aa74
+        if "domain" in fit_data and isinstance(fit_data["domain"], dict):
+            cfg["poly_domain"] = fit_data["domain"]
+
+        updated = True
         print(f"[OK] {chart_id} updated")
 
     if not updated:
@@ -35,7 +43,6 @@ def main():
         return
 
     out_path = RAW_DIR / "chart_config.json"
-
     with open(out_path, "w") as f:
         json.dump(config, f, indent=2)
 
