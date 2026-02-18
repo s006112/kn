@@ -123,9 +123,19 @@ def build_presented_results(
             else 0.0
         )
 
-        led_cost_usd = float(item.get("led_cost_usd", 0) or 0.0)
-        smt_cost_usd = float(item.get("smt_cost_usd", 0) or 0.0)
-        total_cost_usd = float(item.get("total_cost_usd", 0) or 0.0)
+        costs = solution_cost_breakdown(
+            total_leds=total_leds,
+            unit_usd=float(cand.get("USD", 0) or 0.0),
+            unit_rmb=float(cand.get("RMB", 0) or 0.0),
+            smt_cost_rmb=smt_cost_rmb,
+            usd_rate=usd_rate,
+        )
+        led_cost_usd = float(costs.get("led_cost_usd", 0) or 0.0)
+        smt_cost_usd = float(costs.get("smt_cost_usd", 0) or 0.0)
+        total_cost_usd = float(costs.get("total_cost_usd", 0) or 0.0)
+        led_cost_rmb = float(costs.get("led_cost_rmb", 0) or 0.0)
+        smt_cost_rmb_total = float(costs.get("smt_cost_rmb_total", 0) or 0.0)
+        total_cost_rmb = float(costs.get("total_cost_rmb", 0) or 0.0)
 
         sorted_candidates_display.append(
             {
@@ -136,6 +146,9 @@ def build_presented_results(
                 "total_led_count": int(total_leds) if total_leds > 0 else None,
                 "total_cost_usd": total_cost_usd
                 if (led_cost_usd > 0 or smt_cost_usd > 0)
+                else None,
+                "total_cost_rmb": total_cost_rmb
+                if (led_cost_rmb > 0 or smt_cost_rmb_total > 0)
                 else None,
                 "led_cost_usd": led_cost_usd,
                 "smt_cost_usd": smt_cost_usd,

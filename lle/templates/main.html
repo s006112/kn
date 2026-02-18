@@ -224,6 +224,7 @@
                                 <th>Lm@test</th>
                                 <th>If (mA)</th>
                                 <th>USD</th>
+                                <th>RMB</th>
                                 <th>Quote</th>
                             </tr>
                         </thead>
@@ -253,6 +254,7 @@
                                     </td>
                                     <td>{{ number_format(candidate['target_if'], 1) if candidate.get('target_if') is not none else 'N/A' }}</td>
                                     <td>{{ number_format(candidate_data['total_cost_usd'], 3) if candidate_data['led_cost_usd'] > 0 or candidate_data['smt_cost_usd'] > 0 else 'N/A' }}</td>
+                                    <td>{{ number_format(candidate_data['total_cost_rmb'], 2) if candidate_data['total_cost_rmb'] is not none else 'N/A' }}</td>
                                     <td>{{ candidate['Quote'] if candidate.get('Quote') else 'N/A' }}</td>
                                 </tr>
                             {% endfor %}
