@@ -9,9 +9,11 @@ import csv
 from scipy.signal import find_peaks
 from scipy.signal import medfilt
 
-WATCH_FOLDER   = Path(r"C:\Users\KN\Desktop\Sync\Ampco\Parts\LED Official Spec\Chart")
+from path_config import load_chart_runtime
+
+BASE_DIR = Path(__file__).resolve().parent
+WATCH_FOLDER, DEBUG_FOLDER, _ = load_chart_runtime(BASE_DIR)
 ARCHIVE_FOLDER = WATCH_FOLDER / "archive"
-DEBUG_FOLDER   = WATCH_FOLDER / "debug"
 PROCESSED_FOLDER = WATCH_FOLDER / "processed"
 
 logging.basicConfig(

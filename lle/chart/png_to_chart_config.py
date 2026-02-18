@@ -5,14 +5,14 @@ import numpy as np
 import json
 import shutil
 from pathlib import Path
+from path_config import load_chart_runtime
 
 # ==========================
 # PATH CONFIG
 # ==========================
 BASE_DIR = Path(__file__).resolve().parent
-RAW_DIR = (BASE_DIR / "../../data/chart/raw").resolve()
+RAW_DIR, DEBUG_DIR, _ = load_chart_runtime(BASE_DIR)
 CONFIG_PATH = RAW_DIR / "chart_config.json"
-DEBUG_DIR = RAW_DIR / "debug"
 
 FIT_DEFAULT = {"max_degree": 6, "min_degree": 4}
 CHART_DEFAULTS = {

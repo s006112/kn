@@ -30,8 +30,7 @@ def infer_model_name(debug_dir: Path) -> str:
 
 def main() -> None:
     base_dir = Path(__file__).resolve().parent
-    raw_dir, debug_dir , _ = load_chart_runtime(base_dir)
-    debug_dir = raw_dir / "debug"
+    raw_dir, debug_dir, _ = load_chart_runtime(base_dir)
     if not debug_dir.exists():
         raise RuntimeError(f"Debug directory not found: {debug_dir}")
 

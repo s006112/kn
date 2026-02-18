@@ -21,14 +21,14 @@ import subprocess
 import sys
 import shutil
 from pathlib import Path
+from path_config import load_chart_runtime
 
 
 def clear_debug_dir(base_dir: Path) -> None:
     """
     Remove debug directory completely to avoid stale intermediate state.
     """
-    raw_dir = (base_dir / "../../data/chart/raw").resolve()
-    debug_dir = raw_dir / "debug"
+    _, debug_dir, _ = load_chart_runtime(base_dir)
 
     if debug_dir.exists():
         print(f"[CLEAN] Removing debug directory: {debug_dir}")
