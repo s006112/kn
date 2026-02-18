@@ -17,24 +17,24 @@ DEBUG_DIR = RAW_DIR / "debug"
 FIT_DEFAULT = {"max_degree": 6, "min_degree": 4}
 CHART_DEFAULTS = {
     "lm_test": {
-        "2700": 65.4,
-        "3000": 67.3,
-        "3500": 67.3,
-        "4000": 71.8,
-        "5000": 71.8,
-        "5700": 71.8,
-        "6500": 71.1
+        "2700": 59.8,
+        "3000": 61.5,
+        "3500": 61.5,
+        "4000": 64.9,
+        "5000": 64.9,
+        "5700": 64.5,
+        "6500": 64.5
     },
-    "CRI": 80,
-    "If_max": 180,
+    "CRI": 90,
+    "If_max": 350,
     "If": 150,
     "USD": 0.1,
-    "RMB": 0.0300,
+    "RMB": 0.0365,
     "Quote_date": "2026-01-28",
     "Vf": 0.0,
     "Tj": 0.0,
-    "FIL": {"domain": {"x_min": 0.0, "x_max": 180.0, "y_min": 0.0, "y_max": 1.20}, "swap_xy": False},
-    "FIV": {"domain": {"x_min": 2.65, "x_max": 3.05, "y_min": 0.0, "y_max": 180.0}, "swap_xy": True},
+    "FIL": {"domain": {"x_min": 0.0, "x_max": 360.0, "y_min": 0.0, "y_max": 2.0}, "swap_xy": False},
+    "FIV": {"domain": {"x_min": 2.55, "x_max": 3.35, "y_min": 0.0, "y_max": 360.0}, "swap_xy": True},
     "FTL": {"domain": {"x_min": 0.0, "x_max": 125.0, "y_min": 0.80, "y_max": 1.0}, "swap_xy": False},
     "FTV": {"domain": {"x_min": 25.0, "x_max": 125.0, "y_min": 0.0, "y_max": 1.0}, "swap_xy": False},
 }

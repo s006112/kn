@@ -1,3 +1,4 @@
+# algorithm.py  (direct drop-in, complete)
 import math
 from solver import solve_target_if_newton
 from topology import generate_config_solutions
@@ -67,7 +68,7 @@ def process_led_candidates(
         if target_led_lumen > 0 and lumen_at_target > 0:
             led_count = math.ceil(target_led_lumen / lumen_at_target)
 
-        # --- voltage (move BEFORE debug print) ---
+        # --- voltage (single compute; previously duplicated) ---
         vf_at_target = 0.0
         try:
             vf_debug = calculateVfWithDebug(target_if, tj, row)
@@ -91,16 +92,6 @@ def process_led_candidates(
             "k_eta=", round(k_eta, 3),
             "k_phi=", round(k_phi, 3),
         )
-
-
-        # --- voltage ---
-        try:
-            vf_debug = calculateVfWithDebug(target_if, tj, row)
-            vf_at_target = float(vf_debug["vf_final"])
-        except Exception:
-            vf_at_target = 0.0
-
-        power = vf_at_target * target_if / 1000.0 if vf_at_target > 0 else 0.0
 
         # --- write back ---
         row.update(
