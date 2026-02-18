@@ -289,25 +289,24 @@
                                                 <th>V</th>
                                                 <th>mA</th>
                                                 <th>Pin (W)</th>
-                                                <th>USD</th>
                                                 <th>RMB</th>
                                                 <th>Added</th>
                                                 <th>LEDs</th>
                                             </tr>
                                         </thead>
                                         <tbody>
+                                            {% set min_led_add = (candidate_data['solutions_display'] | map(attribute='solution') | map(attribute='led_add') | min) %}
                                             {% for solution_data in candidate_data['solutions_display'] %}
                                                 {% set solution = solution_data['solution'] %}
-                                                <tr {% if solution['led_add'] == 0 %}class="zero-led-add-row"{% endif %}>
+                                                <tr {% if solution['led_add'] == min_led_add %}class="zero-led-add-row"{% endif %}>
                                                     <td>{{ number_format(solution['P'], 0) }}P{{ number_format(solution['S'], 0) }}S</td>
                                                     <td>{{ number_format(solution['P'], 0) }}</td>
                                                     <td>{{ number_format(solution['S'], 0) }}</td>
                                                     <td>{{ number_format(solution['V_chain'], 1) }}</td>
                                                     <td>{{ number_format(solution_data['total_current'], 0) if solution_data['total_current'] > 0 else 'N/A' }}</td>
                                                     <td>{{ number_format(solution_data['power_watts'], 1) if solution_data['power_watts'] > 0 else 'N/A' }}</td>
-                                                    <td>{{ number_format(solution_data['total_cost_usd'], 3) if solution_data['led_cost_usd'] > 0 or solution_data['smt_cost_usd'] > 0 else 'N/A' }}</td>
                                                     <td>{{ number_format(solution_data['total_cost_rmb'], 2) if solution_data['led_cost_rmb'] > 0 or solution_data['smt_cost_rmb_total'] > 0 else 'N/A' }}</td>
-                                                    <td {% if solution['led_add'] == 0 %}class="zero-led-add-cell"{% endif %}>
+                                                    <td {% if solution['led_add'] == min_led_add %}class="zero-led-add-cell"{% endif %}>
                                                         {{ number_format(solution['led_add'], 0) }}
                                                     </td>
                                                     <td>{{ number_format(solution['total_leds'], 0) }}</td>
