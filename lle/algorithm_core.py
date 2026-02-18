@@ -17,28 +17,33 @@ def _isset(row, key):
     return key in row and row[key] is not None
 
 
+# -------------------------------------------------
+# Poly helpers (compressed version)
+# -------------------------------------------------
+
 def _poly6_value(x_value, row, prefix):
-    value = 0
-    value += row[f"{prefix}_0"] if _isset(row, f"{prefix}_0") else 0
-    value += (row[f"{prefix}_1"] if _isset(row, f"{prefix}_1") else 0) * x_value
-    value += (row[f"{prefix}_2"] if _isset(row, f"{prefix}_2") else 0) * pow(x_value, 2)
-    value += (row[f"{prefix}_3"] if _isset(row, f"{prefix}_3") else 0) * pow(x_value, 3)
-    value += (row[f"{prefix}_4"] if _isset(row, f"{prefix}_4") else 0) * pow(x_value, 4)
-    value += (row[f"{prefix}_5"] if _isset(row, f"{prefix}_5") else 0) * pow(x_value, 5)
-    value += (row[f"{prefix}_6"] if _isset(row, f"{prefix}_6") else 0) * pow(x_value, 6)
+    value = 0.0
+    for i in range(7):
+        key = f"{prefix}_{i}"
+        coef = row.get(key)
+        if coef is not None:
+            value += coef * (x_value ** i)
     return value
 
 
 def _poly6_derivative(x_value, row, prefix):
-    derivative = 0
-    derivative += row[f"{prefix}_1"] if _isset(row, f"{prefix}_1") else 0
-    derivative += (row[f"{prefix}_2"] if _isset(row, f"{prefix}_2") else 0) * 2 * x_value
-    derivative += (row[f"{prefix}_3"] if _isset(row, f"{prefix}_3") else 0) * 3 * pow(x_value, 2)
-    derivative += (row[f"{prefix}_4"] if _isset(row, f"{prefix}_4") else 0) * 4 * pow(x_value, 3)
-    derivative += (row[f"{prefix}_5"] if _isset(row, f"{prefix}_5") else 0) * 5 * pow(x_value, 4)
-    derivative += (row[f"{prefix}_6"] if _isset(row, f"{prefix}_6") else 0) * 6 * pow(x_value, 5)
+    derivative = 0.0
+    for i in range(1, 7):
+        key = f"{prefix}_{i}"
+        coef = row.get(key)
+        if coef is not None:
+            derivative += coef * i * (x_value ** (i - 1))
     return derivative
 
+
+# -------------------------------------------------
+# FIV / FIL
+# -------------------------------------------------
 
 def calculateFIV(if_value, row):
     try:
@@ -75,6 +80,10 @@ def calculateFILDerivative(if_value, row):
         return 0.0
 
 
+# -------------------------------------------------
+# Objective
+# -------------------------------------------------
+
 def calculateObjectiveFunction(if_value, k_eta, k_phi, row):
     try:
         fiv = calculateFIV(if_value, row)
@@ -90,24 +99,29 @@ def calculateObjectiveFunctionDerivative(if_value, k_eta, k_phi, row):
         fiv = calculateFIV(if_value, row)
         fiv_derivative = calculateFIVDerivative(if_value, row)
         fil_derivative = calculateFILDerivative(if_value, row)
+
         f_derivative = (
-            k_eta * (fiv / 1000.0 + (if_value / 1000.0) * fiv_derivative) - k_phi * fil_derivative
+            k_eta * (fiv / 1000.0 + (if_value / 1000.0) * fiv_derivative)
+            - k_phi * fil_derivative
         )
+
         if abs(f_derivative) < 1e-10:
             return 1e-10
+
         return _num(f_derivative, 1e-10)
+
     except Exception:
         return 1e-10
 
 
+# -------------------------------------------------
+# Voltage
+# -------------------------------------------------
+
 def calculateVfWithDebug(target_if, target_tj, row):
     try:
-        # Vf at 25C (already numeric-safe via calculateFIV)
         vf_at_25C = calculateFIV(target_if, row)
-
-        # Temperature factor (default MUST be 1.0 for logical consistency)
         vf_factor = _num(_poly6_value(target_tj, row, "FTV"), 1.0)
-
         vf_final = vf_at_25C * vf_factor
 
         return {
@@ -119,7 +133,6 @@ def calculateVfWithDebug(target_if, target_tj, row):
         }
 
     except Exception:
-        # Preserve original fallback semantics
         return {
             "vf_final": 3.0,
             "vf_at_25C": 3.0,

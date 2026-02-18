@@ -27,15 +27,12 @@ def solution_cost_breakdown(
         unit_rmb=unit_rmb,
         smt_cost_rmb=smt_cost_rmb,
     )
-    led_cost_usd = led_cost_rmb / usd_rate if led_cost_rmb > 0 else 0.0
-    smt_cost_usd = smt_cost_rmb_total / usd_rate if smt_cost_rmb_total > 0 else 0.0
-    total_cost_usd = total_cost_rmb / usd_rate if total_cost_rmb > 0 else 0.0
 
     return {
-        "total_cost_usd": total_cost_usd,
+        "total_cost_usd": total_cost_rmb / usd_rate if total_cost_rmb > 0 else 0.0,
         "total_cost_rmb": total_cost_rmb,
-        "led_cost_usd": led_cost_usd,
-        "smt_cost_usd": smt_cost_usd,
+        "led_cost_usd": led_cost_rmb / usd_rate if led_cost_rmb > 0 else 0.0,
+        "smt_cost_usd": smt_cost_rmb_total / usd_rate if smt_cost_rmb_total > 0 else 0.0,
         "led_cost_rmb": led_cost_rmb,
         "smt_cost_rmb_total": smt_cost_rmb_total,
     }
@@ -44,6 +41,7 @@ def solution_cost_breakdown(
 def _candidate_cost_item(candidate_index, candidate, led_config_solutions, smt_cost_rmb, usd_rate):
     first_solution = led_config_solutions[candidate_index][0]
     total_leds = _num(first_solution.get("total_leds", 0), 0)
+
     costs = solution_cost_breakdown(
         total_leds=total_leds,
         unit_rmb=float(candidate.get("RMB", 0) or 0.0),
@@ -54,9 +52,9 @@ def _candidate_cost_item(candidate_index, candidate, led_config_solutions, smt_c
     return {
         "index": candidate_index,
         "candidate": candidate,
-        "cost": float(costs.get("total_cost_rmb", 0) or 0.0),
         "total_leds": total_leds,
-        **costs,
+        "cost": float(costs["total_cost_rmb"]),
+        "costs": costs,  # ← store full breakdown once
     }
 
 
@@ -95,6 +93,7 @@ def build_presented_results(
         idx = item["index"]
         cand = item["candidate"]
         total_leds = float(item.get("total_leds", 0) or 0.0)
+        costs = item["costs"]  # ← reuse, no recalculation
 
         lm_per_led = float(cand.get("lumen_at_target_Tj_target_if", 0) or 0.0)
         fixture_lm = (
@@ -108,19 +107,6 @@ def build_presented_results(
             else 0.0
         )
 
-        costs = solution_cost_breakdown(
-            total_leds=total_leds,
-            unit_rmb=float(cand.get("RMB", 0) or 0.0),
-            smt_cost_rmb=smt_cost_rmb,
-            usd_rate=usd_rate,
-        )
-        led_cost_usd = float(costs.get("led_cost_usd", 0) or 0.0)
-        smt_cost_usd = float(costs.get("smt_cost_usd", 0) or 0.0)
-        total_cost_usd = float(costs.get("total_cost_usd", 0) or 0.0)
-        led_cost_rmb = float(costs.get("led_cost_rmb", 0) or 0.0)
-        smt_cost_rmb_total = float(costs.get("smt_cost_rmb_total", 0) or 0.0)
-        total_cost_rmb = float(costs.get("total_cost_rmb", 0) or 0.0)
-
         sorted_candidates_display.append(
             {
                 "index": idx,
@@ -128,14 +114,14 @@ def build_presented_results(
                 "fixture_lm": fixture_lm,
                 "input_power": input_power,
                 "total_led_count": int(total_leds) if total_leds > 0 else None,
-                "total_cost_usd": total_cost_usd
-                if (led_cost_usd > 0 or smt_cost_usd > 0)
+                "total_cost_usd": costs["total_cost_usd"]
+                if (costs["led_cost_usd"] > 0 or costs["smt_cost_usd"] > 0)
                 else None,
-                "total_cost_rmb": total_cost_rmb
-                if (led_cost_rmb > 0 or smt_cost_rmb_total > 0)
+                "total_cost_rmb": costs["total_cost_rmb"]
+                if (costs["led_cost_rmb"] > 0 or costs["smt_cost_rmb_total"] > 0)
                 else None,
-                "led_cost_usd": led_cost_usd,
-                "smt_cost_usd": smt_cost_usd,
+                "led_cost_usd": costs["led_cost_usd"],
+                "smt_cost_usd": costs["smt_cost_usd"],
             }
         )
 
@@ -157,7 +143,8 @@ def build_presented_results(
                 else 0.0
             )
 
-            costs = solution_cost_breakdown(
+            # solution-level cost must still compute (different total_leds)
+            sol_costs = solution_cost_breakdown(
                 total_leds=total_leds_sol,
                 unit_rmb=float(cand.get("RMB", 0) or 0.0),
                 smt_cost_rmb=smt_cost_rmb,
@@ -169,7 +156,7 @@ def build_presented_results(
                     "solution": sol,
                     "total_current": total_current,
                     "power_watts": power_watts,
-                    **costs,
+                    **sol_costs,
                 }
             )
 
