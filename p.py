@@ -22,7 +22,7 @@ MODEL_EXTRACT_MATRIX = {
         "gpt-5-mini",
         #"sonar",
         "grok-4-1-fast-non-reasoning",
-        "gemini-3-pro-preview",
+        "gemini-3.1-pro-preview",
     ],
     "PREMIUM_WATCH_FOLDER": [
         "gpt-5.1",

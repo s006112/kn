@@ -13,8 +13,6 @@
 
     <!-- Phase 2: Parameter Input Form -->
     <div class="form-container">
-        <h2 class="form-title">LED Count Calculation Parameters</h2>
-        <p>Enter the target specifications for your LED luminaire design:</p>
 
         {% if request.method == 'POST' and validation_errors %}
             <div class="validation-error">
@@ -85,7 +83,7 @@
                     </div>
 
                     <div class="form-row">
-                        <label for="optical_transmission">Luminaire Optical Transmission Rate:</label>
+                        <label for="optical_transmission">Luminaire Efficiency:</label>
                         <input type="number"
                                id="optical_transmission"
                                name="optical_transmission"
