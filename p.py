@@ -19,8 +19,8 @@ MODEL_PRETEXT = "gpt-4.1-mini"
 MODEL_DISTILL = "o3"
 MODEL_EXTRACT_MATRIX = {
     "EXTRACT_WATCH_FOLDER": [
-        "gpt-5-mini",
-        #"sonar",
+        "gpt-5.1",
+        "sonar",
         "grok-4-1-fast-non-reasoning",
         "gemini-3.1-pro-preview",
     ],
