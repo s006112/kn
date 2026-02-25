@@ -181,6 +181,11 @@
                     </div>
                 </div>
             </div>
+            <div id="lm-test-overrides">
+                {% for row_id, lm_value in lm_test_overrides.items() %}
+                    <input type="hidden" name="lm_test_{{ row_id }}" value="{{ lm_value }}">
+                {% endfor %}
+            </div>
             <!-- Auto-submit enabled: no manual submit button -->
         </form>
     </div>
@@ -244,7 +249,7 @@
                                                    class="lm-test-input"
                                                    name="lm_test_{{ candidate['ID'] }}"
                                                    value="{{ (candidate['lm_test']|int if candidate['lm_test'] == (candidate['lm_test']|int) else candidate['lm_test']) if candidate.get('lm_test') is not none else 0 }}"
-                                                   step="0.5"
+                                                   step="0.2"
                                                    min="0">
                                         {% else %}
                                             {{ number_format(candidate['lm_test'], 1) if candidate.get('lm_test') is not none else 'N/A' }}
@@ -364,10 +369,10 @@
 
 <script>
 (function () {
-    const form = document.getElementById("params-form");
-    if (!form) return;
+    const paramsForm = document.getElementById("params-form");
+    if (!paramsForm) return;
 
-    const controls = form.querySelectorAll("input, select");
+    const controls = paramsForm.querySelectorAll("input, select");
     let t = null;
     let submitting = false;
 
@@ -376,11 +381,12 @@
         if (t) clearTimeout(t);
         t = setTimeout(() => {
             // only submit when browser-level validity passes (required/min/max etc.)
-            if (!form.checkValidity()) return;
+            if (!paramsForm.checkValidity()) return;
             submitting = true;
-            form.submit();
+            paramsForm.submit();
         }, delayMs);
     }
+    window.__scheduleParamsSubmit = scheduleSubmit;
 
     controls.forEach((el) => {
         // For selects: change is enough
@@ -395,26 +401,54 @@
 })();
 
 (function () {
-    const form = document.getElementById("lm-test-form");
-    if (!form) return;
+    const lmForm = document.getElementById("lm-test-form");
+    const paramsForm = document.getElementById("params-form");
+    const overridesRoot = document.getElementById("lm-test-overrides");
+    if (!lmForm || !paramsForm || !overridesRoot) return;
 
-    const controls = form.querySelectorAll(".lm-test-input");
-    let t = null;
-    let submitting = false;
-
-    function scheduleSubmit(delayMs) {
-        if (submitting) return;
-        if (t) clearTimeout(t);
-        t = setTimeout(() => {
-            if (!form.checkValidity()) return;
-            submitting = true;
-            form.submit();
-        }, delayMs);
+    function setOverrideField(name, value) {
+        let hidden = overridesRoot.querySelector(`input[name="${name}"]`);
+        if (!hidden) {
+            hidden = document.createElement("input");
+            hidden.type = "hidden";
+            hidden.name = name;
+            overridesRoot.appendChild(hidden);
+        }
+        hidden.value = value;
     }
 
+    function removeOverrideField(name) {
+        const hidden = overridesRoot.querySelector(`input[name="${name}"]`);
+        if (hidden) hidden.remove();
+    }
+
+    function syncInputToOverride(el) {
+        if (!el || !el.name) return;
+        if (el.value === "") {
+            removeOverrideField(el.name);
+            return;
+        }
+        if (!el.checkValidity()) return;
+        setOverrideField(el.name, el.value);
+    }
+
+    const controls = lmForm.querySelectorAll(".lm-test-input");
+    lmForm.addEventListener("submit", (event) => event.preventDefault());
+
     controls.forEach((el) => {
-        el.addEventListener("input", () => scheduleSubmit(450));
-        el.addEventListener("change", () => scheduleSubmit(0));
+        syncInputToOverride(el);
+        el.addEventListener("input", () => {
+            syncInputToOverride(el);
+            if (typeof window.__scheduleParamsSubmit === "function") {
+                window.__scheduleParamsSubmit(450);
+            }
+        });
+        el.addEventListener("change", () => {
+            syncInputToOverride(el);
+            if (typeof window.__scheduleParamsSubmit === "function") {
+                window.__scheduleParamsSubmit(0);
+            }
+        });
     });
 })();
 </script>

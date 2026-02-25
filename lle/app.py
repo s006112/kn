@@ -183,8 +183,11 @@ def main():
 
             for row in candidate_rows:
                 row["lm_test"] = to_float(row.get("lm_test", 0), 0)
-                row_id = row.get("ID")
-                if isinstance(row_id, int) and row_id in lm_test_overrides:
+                try:
+                    row_id = int(row.get("ID"))
+                except Exception:
+                    row_id = None
+                if row_id is not None and row_id in lm_test_overrides:
                     row["lm_test"] = lm_test_overrides[row_id]
 
             led_candidates, led_config_solutions = process_led_candidates(
@@ -233,6 +236,7 @@ def main():
         candidate_count=candidate_count,
         sorted_candidates_display=sorted_candidates_display,
         candidate_costs_display=candidate_costs_display,
+        lm_test_overrides=lm_test_overrides,
         **params,
     )
 
