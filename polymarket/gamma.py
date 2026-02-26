@@ -21,17 +21,15 @@ def _loads(v: Any) -> Any:
     return v
 
 
-def _top(levels: Any) -> str:
-    if isinstance(levels, list) and levels and isinstance(levels[0], dict) and "price" in levels[0]:
-        return str(levels[0]["price"])
-    return "NA"
-
-
 def _f(v: Any):
     try:
         return float(v)
     except Exception:
         return None
+
+
+def _last_trade(book: dict) -> Any:
+    return book.get("last_trade_price") or book.get("lastTradePrice") or book.get("last_trade") or "NA"
 
 
 def find_current_round():
@@ -78,16 +76,14 @@ def find_current_round():
         raise RuntimeError("Cannot parse clobTokenIds")
     token_ids = [str(x) for x in token_ids]
 
-    up_token, down_token = token_ids[0], token_ids[1]
+    up_token = token_ids[0]
     if isinstance(outcomes, list) and len(outcomes) == len(token_ids):
         for i, o in enumerate(outcomes):
             x = str(o).lower()
             if x in ("up", "yes"):
                 up_token = token_ids[i]
-            if x in ("down", "no"):
-                down_token = token_ids[i]
 
-    return title, up_token, down_token, end_ts
+    return title, up_token, end_ts
 
 
 def get_book(token_id: str) -> dict:
@@ -97,28 +93,22 @@ def get_book(token_id: str) -> dict:
 
 
 def main() -> None:
-    title, up_token, down_token, end_ts = find_current_round()
+    title, up_token, end_ts = find_current_round()
     print(f"Market: {title}")
     print(f"Up token_id: {up_token}")
     print(f"end_time(UTC): {dt.datetime.utcfromtimestamp(end_ts).isoformat()}Z")
-    print("Streaming: up price, down price, best_bid, best_ask, last_trade_price (if present)")
+    print("Streaming: up price, down price, last_trade_price (if present)")
     while True:
         tick_start = time.time()
         now = int(time.time())
         t_remain = end_ts - now
         up_book = get_book(up_token)
-        up_price = up_book.get("last_trade_price") or up_book.get("lastTradePrice") or up_book.get("last_trade") or "NA"
+        up_price = _last_trade(up_book)
         up_val = _f(up_price)
         down_price = f"{(1.0 - up_val):.3f}" if up_val is not None else "NA"
-        bid = _top(up_book.get("bids"))
-        ask = _top(up_book.get("asks"))
-        last = up_book.get("last_trade_price") or up_book.get("lastTradePrice") or up_book.get("last_trade") or "NA"
-        print(
-            f"t_remain={t_remain:>4}s | up={up_price} | down={down_price} | "
-            f"bid={bid} | ask={ask} | last={last}"
-        )
+        print(f"t_remain={t_remain:>4}s | up={up_price} | down={down_price} | last={up_price}")
         if t_remain <= 0:
-            title, up_token, down_token, end_ts = find_current_round()
+            title, up_token, end_ts = find_current_round()
             print(f"\n[rollover] Market: {title}")
             print(f"[rollover] Up token_id: {up_token}")
             print(f"[rollover] end_time(UTC): {dt.datetime.utcfromtimestamp(end_ts).isoformat()}Z")
