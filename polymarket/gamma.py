@@ -28,10 +28,6 @@ def _f(v: Any):
         return None
 
 
-def _last_trade(book: dict) -> Any:
-    return book.get("last_trade_price") or book.get("lastTradePrice") or book.get("last_trade") or "NA"
-
-
 def find_current_round():
     now = int(time.time())
     candidates = []
@@ -103,10 +99,10 @@ def main() -> None:
         now = int(time.time())
         t_remain = end_ts - now
         up_book = get_book(up_token)
-        up_price = _last_trade(up_book)
-        up_val = _f(up_price)
+        last_trade_price = up_book.get("last_trade_price") or "NA"
+        up_val = _f(last_trade_price)
         down_price = f"{(1.0 - up_val):.3f}" if up_val is not None else "NA"
-        print(f"t_remain={t_remain:>4}s | up={up_price} | down={down_price} | last={up_price}")
+        print(f"t_remain={t_remain:>4}s | last={last_trade_price} | up={last_trade_price} | down={down_price} ")
         if t_remain <= 0:
             title, up_token, end_ts = find_current_round()
             print(f"\n[rollover] Market: {title}")
