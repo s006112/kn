@@ -3,7 +3,6 @@
 import datetime as dt
 import json
 import time
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import requests
@@ -28,6 +27,13 @@ def _top(levels: Any) -> str:
     return "NA"
 
 
+def _f(v: Any):
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+
 def find_current_round():
     now = int(time.time())
     candidates = []
@@ -46,6 +52,9 @@ def find_current_round():
             for m in ev.get("markets", []) or []:
                 title = (m.get("question") or m.get("title") or "").strip()
                 if "bitcoin up or down" not in title.lower():
+                    continue
+                slug = str(m.get("slug") or "").lower()
+                if "-15m-" not in slug:
                     continue
                 end_iso = m.get("endDate") or m.get("endDateIso")
                 if not end_iso:
@@ -93,17 +102,14 @@ def main() -> None:
     print(f"Up token_id: {up_token}")
     print(f"end_time(UTC): {dt.datetime.utcfromtimestamp(end_ts).isoformat()}Z")
     print("Streaming: up price, down price, best_bid, best_ask, last_trade_price (if present)")
-    pool = ThreadPoolExecutor(max_workers=2)
     while True:
         tick_start = time.time()
         now = int(time.time())
         t_remain = end_ts - now
-        up_future = pool.submit(get_book, up_token)
-        down_future = pool.submit(get_book, down_token)
-        up_book = up_future.result()
-        down_book = down_future.result()
+        up_book = get_book(up_token)
         up_price = up_book.get("last_trade_price") or up_book.get("lastTradePrice") or up_book.get("last_trade") or "NA"
-        down_price = down_book.get("last_trade_price") or down_book.get("lastTradePrice") or down_book.get("last_trade") or "NA"
+        up_val = _f(up_price)
+        down_price = f"{(1.0 - up_val):.3f}" if up_val is not None else "NA"
         bid = _top(up_book.get("bids"))
         ask = _top(up_book.get("asks"))
         last = up_book.get("last_trade_price") or up_book.get("lastTradePrice") or up_book.get("last_trade") or "NA"
