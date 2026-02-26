@@ -101,8 +101,15 @@ def main() -> None:
         up_book = get_book(up_token)
         last_trade_price = up_book.get("last_trade_price") or "NA"
         up_val = _f(last_trade_price)
-        down_price = f"{(1.0 - up_val):.3f}" if up_val is not None else "NA"
-        print(f"t_remain={t_remain:>4}s | last={last_trade_price} | up={last_trade_price} | down={down_price} ")
+        if up_val is None:
+            up_price, down_price = "NA", "NA"
+        elif up_val >= 0.5:
+            up_price = f"{up_val:.3f}"
+            down_price = f"{(1.0 - up_val):.3f}"
+        else:
+            down_price = f"{up_val:.3f}"
+            up_price = f"{(1.0 - up_val):.3f}"
+        print(f"t_remain={t_remain:>4}s | last={last_trade_price} | up={up_price} | down={down_price} ")
         if t_remain <= 0:
             title, up_token, end_ts = find_current_round()
             print(f"\n[rollover] Market: {title}")
