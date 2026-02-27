@@ -99,6 +99,7 @@ def main() -> None:
     title, up_token, down_token, end_ts = find_current_round()
     print(f"Market: {title}")
     print(f"Up token_id: {up_token}")
+    print(f"Down token_id: {down_token}")
     print(f"end_time(UTC): {dt.datetime.utcfromtimestamp(end_ts).isoformat()}Z")
     print("Streaming: up price, down price, last_trade_price (if present)")
 
