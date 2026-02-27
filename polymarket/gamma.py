@@ -64,7 +64,6 @@ def find_current_rounds():
         raise RuntimeError("No live Bitcoin Up or Down market found")
 
     candidates.sort(key=lambda x: x[0])
-    print("Market candidates:")
     for ts, _, candidate_title in candidates:
         print(f"- {dt.datetime.utcfromtimestamp(ts).isoformat()}Z | {candidate_title}")
     rounds = []
@@ -112,11 +111,9 @@ def main() -> None:
         print(f"Market {i}: {r['title']}")
         print(f"Up token_id: {r['up_token']}")
         print(f"Down token_id: {r['down_token']}")
-        print(f"end_time(UTC): {dt.datetime.utcfromtimestamp(r['end_ts']).isoformat()}Z")
     print("Streaming: up price, down price, last_trade_price (if present)")
 
     while True:
-        tick_start = time.time()
         now = int(time.time())
         parts = []
         need_rollover = False
@@ -147,9 +144,8 @@ def main() -> None:
                 print(f"\n[rollover] Market {i}: {r['title']}")
                 print(f"[rollover] Up token_id: {r['up_token']}")
                 print(f"[rollover] Down token_id: {r['down_token']}")
-                print(f"[rollover] end_time(UTC): {dt.datetime.utcfromtimestamp(r['end_ts']).isoformat()}Z")
 
-        time.sleep(max(0, 0.5 - (time.time() - tick_start)))
+        time.sleep(0)
 
 
 if __name__ == "__main__":
