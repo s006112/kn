@@ -115,7 +115,7 @@ def main() -> None:
             print(f"\n[rollover] Market: {title}")
             print(f"[rollover] Up token_id: {up_token}")
             print(f"[rollover] end_time(UTC): {dt.datetime.utcfromtimestamp(end_ts).isoformat()}Z")
-        time.sleep(max(0, 1 - (time.time() - tick_start)))
+        time.sleep(max(0, 0.5 - (time.time() - tick_start)))
 
 
 if __name__ == "__main__":
