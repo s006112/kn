@@ -1,62 +1,137 @@
 import time
 import logging
-from clob_connect import get_poly_client  # 直接調用剛寫好的初始化函式
+import requests
+from clob_connect import get_poly_client
 from py_clob_client.clob_types import OrderArgs
 import gamma
 
+# 設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger("PolyBot")
 
-# 策略常數
-INVEST_USD = 5.0
-BUY_LIMIT = 0.45
-BUY_TRIGGER = 0.46
-SELL_LIMIT = 0.50
+# 策略常數與開關
+DRY_RUN = True  # True 則不實行下單，僅打印 log
+INVEST_USD, BUY_LIMIT, BUY_TRIGGER, SELL_LIMIT = 5.0, 0.50, 0.51, 0.55
+ORDERS_API_AVAILABLE = True
+
+
+def get_position_balance(address, token_id):
+    """讀取指定 token 的持倉（免 API key）。"""
+    try:
+        r = requests.get(
+            "https://data-api.polymarket.com/positions",
+            params={"user": address, "sizeThreshold": 0},
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json() or []
+        for row in rows:
+            if str(row.get("asset")) == str(token_id):
+                return float(row.get("size", 0) or 0)
+    except Exception:
+        pass
+    return 0.0
+
+
+def get_open_orders(client, token_id):
+    """
+    相容不同 py_clob_client 版本的 open orders 取得方式。
+    DRY_RUN 模式下不呼叫 CLOB 私有 API（避免 401）。
+    """
+    global ORDERS_API_AVAILABLE
+
+    if DRY_RUN:
+        return []
+
+    if not ORDERS_API_AVAILABLE:
+        return []
+
+    try:
+        orders = client.get_orders()
+
+        if isinstance(orders, dict):
+            orders = orders.get("data", [])
+
+        if not isinstance(orders, list):
+            return []
+
+        return [o for o in orders if str(o.get("asset_id")) == str(token_id)]
+
+    except requests.exceptions.HTTPError as e:
+        if getattr(e.response, "status_code", None) == 401:
+            logger.error("CLOB API 401 Unauthorized - check API creds / wallet binding")
+        ORDERS_API_AVAILABLE = False
+        return []
+
+    except Exception as e:
+        logger.error(f"get_open_orders error: {e}")
+        ORDERS_API_AVAILABLE = False
+        return []
+
+
+def run_trade(client, side, size, price, token_id):
+    """執行或模擬下單"""
+    args = OrderArgs(price=price, size=size, side=side, token_id=token_id)
+
+    if DRY_RUN:
+        logger.info(f"[DRY_RUN] {side} {size} @ {price}")
+        return
+
+    logger.info(f"實行下單: {side} {size} @ {price}")
+    return client.create_order(args)
+
 
 def main():
     client = get_poly_client()
-    if not client: return
-    
-    logger.info(f"機器人啟動。地址: {client.get_address()}")
+    if not client:
+        return
+
+    address = client.get_address()
+    logger.info(f"啟動 地址: {address} | DRY_RUN: {DRY_RUN}")
+
+    target = None
+    target_refresh_ts = 0
 
     while True:
         try:
-            # 1. 市場發現
-            rounds = gamma.find_current_rounds()
-            if not rounds:
-                time.sleep(10); continue
-            
-            target = rounds[0]
-            up_token = target['up_token']
-            t_remain = target['end_ts'] - int(time.time())
+            now = int(time.time())
 
-            # 2. 狀態檢查 (持倉與掛單)
-            balance = float(client.get_balance(up_token).get("balance", 0))
-            open_orders = client.get_open_orders()
-            has_buy = any(o.get("token_id") == up_token and o.get("side") == "BUY" for o in open_orders)
-            has_sell = any(o.get("token_id") == up_token and o.get("side") == "SELL" for o in open_orders)
+            # --- 每 60 秒刷新一次市場 ---
+            if not target or now - target_refresh_ts > 60:
+                rounds = gamma.find_current_rounds()
+                if not rounds:
+                    raise Exception("No active rounds")
+                target = rounds[0]
+                target_refresh_ts = now
 
-            # 3. 買入規則 (840s <= t_remain <= 1020s)
-            if 840 <= t_remain <= 1020 and balance == 0 and not has_buy:
-                book = gamma.get_book(up_token)
-                best_ask = gamma._f(book.get("asks", [{}])[-1].get("price"))
-                
-                if best_ask and best_ask > BUY_TRIGGER:
-                    shares = round(INVEST_USD / BUY_LIMIT, 2)
-                    logger.info(f"下買單: {shares} shares @ {BUY_LIMIT}")
-                    client.create_order(OrderArgs(price=BUY_LIMIT, size=shares, side="BUY", token_id=up_token))
+            token, end_ts = target['up_token'], target['end_ts']
+            t_remain = end_ts - now
 
-            # 4. 賣出規則
-            if balance > 0 and not has_sell:
-                logger.info(f"下賣單: {balance} shares @ {SELL_LIMIT}")
-                client.create_order(OrderArgs(price=SELL_LIMIT, size=balance, side="SELL", token_id=up_token))
+            balance = get_position_balance(address, token)
+            orders = get_open_orders(client, token)
+            has_side = lambda s: any(str(o.get('side', '')).upper() == s for o in orders)
 
-            print(f"Time: {t_remain}s | Pos: {balance} | Market: {target['title'][:15]}", end="\r")
+            # 買入
+            if 840 <= t_remain <= 1020 and balance == 0 and not has_side("BUY"):
+                book = gamma.get_book(token)
+                ask = gamma._f(book.get("asks", [{}])[-1].get("price"))
+                if ask and ask > BUY_TRIGGER:
+                    run_trade(client, "BUY", round(INVEST_USD / BUY_LIMIT, 2), BUY_LIMIT, token)
+
+            # 賣出
+            if balance > 0 and not has_side("SELL"):
+                run_trade(client, "SELL", balance, SELL_LIMIT, token)
+
+            print(
+                f"Time: {t_remain:>4}s | Pos: {balance:>6} | Market: {target['title'][:15]}",
+                end="\r"
+            )
 
         except Exception as e:
-            logger.error(f"Error: {e}"); time.sleep(10)
-        
-        time.sleep(5)
+            logger.error(f"Error: {e}")
+            time.sleep(0)
+
+        time.sleep(0)
 
 if __name__ == "__main__":
     main()
