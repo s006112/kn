@@ -363,6 +363,7 @@ def call_gemini_image(
     size: str,
     n: int,
     init_image: Optional[bytes] = None,
+    init_images: Optional[List[bytes]] = None,
 ) -> List[bytes]:
     """Invoke Gemini image-capable models and collect inline or remote bytes."""
 
@@ -407,7 +408,20 @@ def call_gemini_image(
             if content:
                 yield from _parts_to_images(getattr(content, "parts", None))
 
-    if init_image is not None:
+    image_inputs = [img for img in (init_images or []) if img]
+    if image_inputs:
+        parts: List[Dict[str, Any]] = [
+            {
+                "inline_data": {
+                    "mime_type": "image/png",
+                    "data": img,
+                }
+            }
+            for img in image_inputs
+        ]
+        parts.append({"text": prompt})
+        contents: Any = [{"role": "user", "parts": parts}]
+    elif init_image is not None:
         contents: Any = [
             {
                 "role": "user",
@@ -490,6 +504,7 @@ def generate_image(
     size: str = "1024x1024",
     n: int = 1,
     image_bytes: Optional[bytes] = None,
+    image_bytes_list: Optional[List[bytes]] = None,
 ) -> List[bytes]:
     """Unified entry point for all image backends."""
     if not model:
@@ -497,6 +512,8 @@ def generate_image(
     model_name = model.strip()
     backend_name, backend_cfg = _resolve_image_backend(model_name)
     client = backend_cfg["client_getter"]()
+    images = [img for img in (image_bytes_list or []) if img]
+    primary_image = images[0] if images else image_bytes
 
     if backend_name == "stability":
         return backend_cfg["call_fn"](
@@ -505,27 +522,27 @@ def generate_image(
             prompt,
             size,
             n,
-            init_image=image_bytes,
+            init_image=primary_image,
         )
 
     if backend_name == "grok-image":
-        if image_bytes is None:
+        if primary_image is None:
             raise RuntimeError("Grok image editing requires an input image.")
-        print(f"DEBUG: Grok image edit, model={model_name}, bytes={len(image_bytes)}")
+        print(f"DEBUG: Grok image edit, model={model_name}, bytes={len(primary_image)}")
         return call_grok_i2i(
             client,
             model_name,
             prompt,
             size,
             n,
-            init_image=image_bytes,
+            init_image=primary_image,
         )
 
     # OpenAI gpt-image-1 在這裡自動切換為 images/edits
-    if backend_name == "openai" and image_bytes is not None:
+    if backend_name == "openai" and primary_image is not None:
         if model_name.lower().startswith("gpt-image-1"):
             print(
-                f"DEBUG: OpenAI image edit, model={model_name}, bytes={len(image_bytes)}"
+                f"DEBUG: OpenAI image edit, model={model_name}, bytes={len(primary_image)}"
             )
             return call_openai_i2i(
                 client,
@@ -533,11 +550,19 @@ def generate_image(
                 prompt,
                 size,
                 n,
-                init_image=image_bytes,
+                init_image=primary_image,
             )
 
     if backend_name == "gemini":
-        return backend_cfg["call_fn"](client, model_name, prompt, size, n, init_image=image_bytes)
+        return backend_cfg["call_fn"](
+            client,
+            model_name,
+            prompt,
+            size,
+            n,
+            init_image=primary_image,
+            init_images=images or None,
+        )
 
     return backend_cfg["call_fn"](client, model_name, prompt, size, n)
 

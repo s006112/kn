@@ -55,6 +55,7 @@ MODEL_CATALOG = {
 
 PROMPT_RENDERING_PATH = Path(__file__).parent / "prompt" / "prompt_rendering.txt"
 MODEL_OPTIONS = list(MODEL_CATALOG)
+MAX_BLEND_INPUTS = 14
 
 if PROMPT_RENDERING_PATH.exists():
     PROMPT_RENDERING = PROMPT_RENDERING_PATH.read_text("utf-8")
@@ -65,12 +66,27 @@ else:
     PROMPT_RENDERING = ""
 
 
-def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
+def _supports_multi_image_blending(model_name: str) -> bool:
+    lowered = model_name.lower()
+    return lowered.startswith("gemini") and "image" in lowered
+
+
+def _blend_prompt_suffix(image_count: int) -> str:
+    return (
+        "Blend all provided references into one cohesive photorealistic result. "
+        f"Use each uploaded reference (1 to {image_count}) as a required source. "
+        "If people are present, preserve identity consistency for up to 5 people. "
+        "Keep defining object/material attributes from each reference and maintain coherent "
+        "perspective, lighting direction, and shadows. Do not add extra people."
+    )
+
+
+def request_render(image_bytes_list: list[bytes] | None, model: str, prompt: str) -> bytes:
     """Purpose:
     Generate a single image via `generate_image`, optionally conditioning on an uploaded sketch.
 
     Inputs:
-    - image_bytes: Optional source image bytes passed through to the backend.
+    - image_bytes_list: Optional source image bytes list passed through to the backend.
     - model: Model identifier passed to the backend.
     - prompt: Additional prompt text appended to the template prompt.
 
@@ -94,12 +110,17 @@ def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
     if not final_prompt:
         raise RuntimeError("Rendering prompt is empty.")
 
+    input_images = [item for item in (image_bytes_list or []) if item]
+    if len(input_images) > 1:
+        final_prompt = f"{final_prompt}\n\n{_blend_prompt_suffix(len(input_images))}"
+
     images = generate_image(
         model=model,
         prompt=final_prompt,
         size="1024x1024",
         n=1,
-        image_bytes=image_bytes,
+        image_bytes=input_images[0] if input_images else None,
+        image_bytes_list=input_images or None,
     )
 
     if not images:
@@ -108,12 +129,12 @@ def request_render(image_bytes: bytes | None, model: str, prompt: str) -> bytes:
     return images[0]
 
 
-def handle_render(uploaded: str | None, model: str | list[str] | None, prompt: str):
+def handle_render(uploaded: str | list[str] | None, model: str | list[str] | None, prompt: str):
     """Purpose:
     Validate inputs, read an uploaded file, render one image per selected model, and upload artifacts.
 
     Inputs:
-    - uploaded: Local filepath from Gradio's `File(type="filepath")`, or `None`.
+    - uploaded: Local filepath(s) from Gradio's `File(type="filepath")`, or `None`.
     - model: A single model id, a list of model ids, or `None` (from Gradio CheckboxGroup).
     - prompt: Additional prompt text.
 
@@ -129,8 +150,9 @@ def handle_render(uploaded: str | None, model: str | list[str] | None, prompt: s
 
     Failure modes:
     - Returns user-facing validation errors when no models are selected or models are invalid.
+    - Returns user-facing upload validation errors for missing or excess files.
     - Returns `([], "Rendering failed: ...")` on rendering/upload failures after logging.
-    - Rendering without an uploaded filepath fails because output filenames derive from `uploaded`.
+    - Returns an explicit payload-size error for multi-image Gemini requests above 20MB.
     """
     if isinstance(model, str):
         models = [model]
@@ -144,24 +166,48 @@ def handle_render(uploaded: str | None, model: str | list[str] | None, prompt: s
     if invalid_models:
         return [], "Select valid models from the list before submitting."
 
-    sketch_bytes: bytes | None = None
-    if uploaded:
+    if isinstance(uploaded, str):
+        uploaded_files = [uploaded]
+    else:
+        uploaded_files = [path for path in (uploaded or []) if path]
+
+    if not uploaded_files:
+        return [], "Upload at least one image before submitting."
+
+    if len(uploaded_files) > MAX_BLEND_INPUTS:
+        return [], f"Upload up to {MAX_BLEND_INPUTS} images."
+
+    source_images: list[bytes] = []
+    for uploaded_file in uploaded_files:
         try:
-            with open(uploaded, "rb") as image_file:
-                sketch_bytes = image_file.read()
+            with open(uploaded_file, "rb") as image_file:
+                source_images.append(image_file.read())
         except Exception as exc:
             logger.exception("Unable to read the uploaded image.")
             return None, f"Failed to read the uploaded file: {exc}"
-        upload_and_share_file(uploaded, PNG_REMOTE_DIR, share=False)
+        upload_and_share_file(uploaded_file, PNG_REMOTE_DIR, share=False)
+
+    if len(source_images) > 1 and any(_supports_multi_image_blending(item) for item in models):
+        total_bytes = sum(len(item) for item in source_images)
+        if total_bytes > 20 * 1024 * 1024:
+            return [], (
+                "Rendering failed: Gemini inline image payload exceeds 20MB. "
+                "Reduce image count or file size."
+            )
 
     try:
         rendered_images = []
+        fallback_models = []
+        source_stem = Path(uploaded_files[0]).stem
+        blend_suffix = f"_blend{len(uploaded_files)}" if len(uploaded_files) > 1 else ""
         for model_name in models:
-            rendered_bytes = request_render(sketch_bytes, model_name, prompt)
+            rendered_bytes = request_render(source_images, model_name, prompt)
             rendered_image = Image.open(BytesIO(rendered_bytes))
             rendered_images.append((rendered_image, model_name))
+            if len(uploaded_files) > 1 and not _supports_multi_image_blending(model_name):
+                fallback_models.append(model_name)
             ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            generated_filename = f"{Path(uploaded).stem}_{model_name}_{ts}.png"
+            generated_filename = f"{source_stem}{blend_suffix}_{model_name}_{ts}.png"
             upload_and_share_file(
                 rendered_bytes,
                 PNG_REMOTE_DIR,
@@ -171,6 +217,10 @@ def handle_render(uploaded: str | None, model: str | list[str] | None, prompt: s
         status = "Rendering complete."
         if len(models) > 1:
             status = f"Rendering complete for {len(models)} models."
+        if fallback_models:
+            status = (
+                f"{status} {', '.join(fallback_models)} used the first uploaded image only."
+            )
         return rendered_images, status
     except Exception as exc:
         logger.exception("Rendering failed.")
@@ -201,8 +251,9 @@ def get_demo() -> "gr.Blocks":
         gr.Markdown("## Sketch-to-Rendering Studio")
         with gr.Row():
             upload_image = gr.File(
-                label="Upload sketch photo or CAD drawing (images only)",
+                label="Upload reference images",
                 type="filepath",
+                file_count="multiple",
                 file_types=[".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff"],
             )
             model_picker = gr.CheckboxGroup(
@@ -227,7 +278,7 @@ def get_demo() -> "gr.Blocks":
             )
             status_message = gr.Textbox(
                 label="Status",
-                value="Upload an image, select one or more models, then press Generate Rendering.",
+                value="Upload images, select one or more models, then press Generate Rendering.",
                 interactive=False,
             )
         generate_btn.click(
