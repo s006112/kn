@@ -1,19 +1,24 @@
 pip3 install --no-deps -U yt-dlp --break-system-packages
 
 # download apt
-sudo apt-get update # update package lists
-sudo apt-get autoclean   #只会删除「过期的 .deb」
-apt-get install -y --download-only \
-  docker-compose # download .deb
-cp /var/cache/apt/archives/*.deb /offline-deb/   # copy to offline share folder
+apt update # update package lists
+apt-get install -y --download-only libreoffice-writer ghostscript tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra       # .deb 会进入：/var/cache/apt/archives
+cp /var/cache/apt/archives/*.deb /offline-deb/   # 复制到离线仓库 
 
-dpkg -i /offline-deb/*.deb || true # 先粗装, 强制解压全部 .deb（不检查依赖）
-apt-get -f install -y # 用你现有的 /offline-deb 补依赖
+# Install deb 
+dpkg -i /offline-deb/*.deb || true # 把所有包解压 （不检查依赖）
+apt-get -f install --no-download    # 解析依赖关系，重新配置正确顺序
 
-sudo apt-get install -y --no-download --fix-missing python3-pip # install from cached .deb
-sudo apt-get install -y --no-download --fix-missing libreoffice-writer ghostscript tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra # per
-sudo apt-get install ffmpeg-y --no-download --fix-missing ffmpeg # whisper
-sudo apt-get install -y --no-download --fix-missing xxxxxhujm2fjljcl
+#apt list
+python3-pip
+libreoffice-writer
+ghostscript
+tesseract-ocr
+tesseract-ocr-chi-sim
+tesseract-ocr-chi-tra 
+ffmpeg
+
+
 
 # download wheels
 pip3 index versions xxxxx # check versions from PyPI
@@ -45,7 +50,7 @@ pip3 install --no-index --find-links=/wheels scipy==1.15.3 opencv_python_headles
 # ----------------------------------------------------------------------------
 # LLM API clients / cloud inference
 # ----------------------------------------------------------------------------
-pip3 install --no-index --find-links=/wheels openai
+pip3 install --no-index --find-links=/wheels openai==2.8.1 perplexityai==0.20.0 google-genai==1.52.0 openai-whisper==20240930
   openai==2.8.1 \               # OpenAI API (new SDK style)
   perplexityai==0.20.0 \        # Perplexity API client
   google-genai==1.52.0 \        # Google Gemini / GenAI SDK
@@ -54,8 +59,8 @@ pip3 install --no-index --find-links=/wheels openai
 # ----------------------------------------------------------------------------
 # Local LLM / Diffusion / HF inference stack
 # ----------------------------------------------------------------------------
-pip3 install --no-index --find-links=/wheels diffusers==0.36.0 sentence-transformers==5.1.0 kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1
-  diffusers==0.36.0 \           # Stable Diffusion / Z-Image pipeline
+pip3 install --no-index --find-links=/wheels diffusers==0.35.2 sentence-transformers==5.1.0 kernels==0.11.1 accelerate==1.12.0 protobuf==6.33.1 sentencepiece==0.2.1 transformers==4.57.1
+  diffusers==0.35.2 \           # Stable Diffusion / Z-Image pipeline
   sentence-transformers==5.1.0 \# Embedding models wrapper
   kernels==0.11.1 \             # Kernel utilities (Jupyter / runtime helpers)
   accelerate==1.12.0 \          # Mixed precision & device mapping
@@ -66,8 +71,8 @@ pip3 install --no-index --find-links=/wheels diffusers==0.36.0 sentence-transfor
 # ----------------------------------------------------------------------------
 # Document parsing / OCR / RAG ingestion
 # ----------------------------------------------------------------------------
-pip3 install --no-index --find-links=/wheels pillow==12.1.0 pytesseract==0.3.13 bs4==0.0.2 PyMuPDF==1.24.10 python-docx==0.8.11 openpyxl==3.1.5 xlrd==2.0.1 einops==0.8.1 ocrmypdf==16.11.0
-  pillow==12.1.0 \               # Image processing backend
+pip3 install --no-index --find-links=/wheels pillow==12.0.0 pytesseract==0.3.13 bs4==0.0.2 PyMuPDF==1.24.10 python-docx==0.8.11 openpyxl==3.1.5 xlrd==2.0.1 einops==0.8.1 ocrmypdf==16.11.0
+  pillow==12.0.0 \               # Image processing backend
   pytesseract==0.3.13 \         # Tesseract OCR wrapper
   bs4==0.0.2 \                  # BeautifulSoup wrapper
   PyMuPDF==1.24.10 \            # PDF render & text extraction
@@ -82,6 +87,7 @@ pip3 install --no-index --find-links=/wheels pillow==12.1.0 pytesseract==0.3.13 
 # ----------------------------------------------------------------------------
 pip3 install --no-index --find-links=/wheels \
   torch==2.2.2+cu118            # CUDA 11.8 build; avoid 2.1.x (pytree / transformers bugs)
+
 
 # ----------------------------------------------------------------------------
 # Vector database / ANN search
