@@ -305,6 +305,7 @@ def call_openai_i2i(
     size: str,
     n: int,
     init_image: bytes,
+    init_images: Optional[List[bytes]] = None,
 ) -> List[bytes]:
     """Call OpenAI /v1/images/edits for image-to-image editing."""
     api_key = getattr(client, "api_key", None)
@@ -317,13 +318,18 @@ def call_openai_i2i(
         "Authorization": f"Bearer {api_key}",
     }
 
-    files = {
-        "image": ("init.png", init_image, "image/png"),
-        "model": (None, model),
-        "prompt": (None, prompt),
-        "n": (None, str(max(1, n))),
-        "size": (None, size),
-    }
+    image_inputs = [img for img in (init_images or []) if img]
+    if not image_inputs:
+        image_inputs = [init_image]
+
+    files: List[tuple[str, Any]] = [
+        ("model", (None, model)),
+        ("prompt", (None, prompt)),
+        ("n", (None, str(max(1, n)))),
+        ("size", (None, size)),
+    ]
+    for idx, img in enumerate(image_inputs):
+        files.append(("image[]", (f"init_{idx}.png", img, "image/png")))
 
     resp = requests.post(url, headers=headers, files=files, timeout=120)
     if resp.status_code != 200:
@@ -551,6 +557,7 @@ def generate_image(
                 size,
                 n,
                 init_image=primary_image,
+                init_images=images or None,
             )
 
     if backend_name == "gemini":
