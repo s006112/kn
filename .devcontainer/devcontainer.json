@@ -1,10 +1,11 @@
 {
   "name": "kn-dev",
   "image": "ubuntu:22.04-custom",
-
   "workspaceFolder": "/workspaces/kn",
+  "remoteUser": "1000",
 
   "runArgs": [
+    "--user=1000:1000",
     "--gpus=all",
 
     "--device=/dev/snd",
@@ -16,13 +17,14 @@
 
   "mounts": [
     "source=${localEnv:HOME}/Desktop,target=/desktop,type=bind",
-    "source=${localEnv:HOME}/Desktop/Sync/Software/Whisper,target=/root/.cache/whisper,type=bind",
+    "source=${localEnv:HOME}/Desktop/Sync/Software/Whisper,target=/home/user/.cache/whisper,type=bind",
     "source=${localEnv:HOME}/Desktop/Sync/Software/Linux/offline-cache/apt-archives,target=/offline-deb,type=bind",
     "source=${localEnv:HOME}/Desktop/Sync/Software/Linux/offline-cache/pip-wheels,target=/wheels,type=bind",
-    "source=${localEnv:HOME}/Desktop/Sync/Software/Linux/hf_models,target=/root/.cache/huggingface/hub,type=bind"
+    "source=${localEnv:HOME}/Desktop/Sync/Software/Linux/hf_models,target=/home/user/.cache/huggingface,type=bind"
   ],
 
   "containerEnv": {
+    "HOME": "/home/user",
     "NVIDIA_VISIBLE_DEVICES": "all",
     "NVIDIA_DRIVER_CAPABILITIES": "compute,utility,graphics"
   }
