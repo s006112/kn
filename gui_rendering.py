@@ -38,8 +38,8 @@ logger = configure_logging("rendering")
 
 MODEL_CATALOG = {
     # Cost hints are embedded in labels to make quick UI comparisons possible.
-    "gemini-3-pro-image-preview": "Nano-Banana-2",   # $120, $0.134 per 1K/2K image
-    "gemini-3.1-flash-image-preview": "Nano-Banana-1.5",   # $60, $0.045 per 1K/2K image
+    "gemini-3-pro-image-preview": "Nano-Banana-Pro",   # $120, $0.134 per 1K/2K image
+    "gemini-3.1-flash-image-preview": "Nano-Banana-2",   # $60, $0.045 per 1K/2K image
     "gemini-2.5-flash-image": "Nano-Banana",   # $0.039 per image
     "gpt-image-1.5": "GPT-1.5",    # $32, $0.133 per image
     "gpt-image-1": "GPT-1",   # $40, $0.167 per image
