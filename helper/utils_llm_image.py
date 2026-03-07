@@ -38,6 +38,38 @@ _STABILITY_MODEL_CONFIG: Dict[str, Dict[str, str]] = {
 }
 
 
+def _collect_image_inputs(
+    init_image: Optional[bytes],
+    init_images: Optional[List[bytes]] = None,
+    max_items: Optional[int] = None,
+) -> List[bytes]:
+    image_inputs = [img for img in (init_images or []) if img]
+    if not image_inputs and init_image is not None:
+        image_inputs = [init_image]
+    if max_items is not None:
+        image_inputs = image_inputs[:max_items]
+    return image_inputs
+
+
+def _detect_image_mime(data: bytes) -> str:
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "application/octet-stream"
+
+
+def _get_grok_max_input_images(model: str) -> int:
+    model_key = model.lower().strip()
+    if model_key == "grok-imagine-image-pro":
+        return 1
+    return 3
+
+
 def _build_stability_payload(
     cfg: Dict[str, str],
     prompt: str,
@@ -176,6 +208,7 @@ def call_grok_i2i(
     size: str,
     n: int,
     init_image: bytes,
+    init_images: Optional[List[bytes]] = None,
 ) -> List[bytes]:
     """Image-to-image for xAI (SDK first, JSON HTTP fallback)."""
     del size  # xAI image edit endpoint does not use OpenAI-style size.
@@ -183,17 +216,6 @@ def call_grok_i2i(
     api_key = getattr(client, "api_key", None)
     if not api_key:
         raise RuntimeError("Grok client is missing api_key.")
-
-    def _detect_mime(data: bytes) -> str:
-        if data.startswith(b"\x89PNG\r\n\x1a\n"):
-            return "image/png"
-        if data.startswith(b"\xff\xd8\xff"):
-            return "image/jpeg"
-        if data.startswith((b"GIF87a", b"GIF89a")):
-            return "image/gif"
-        if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-            return "image/webp"
-        return "application/octet-stream"
 
     def _extract_image_bytes(item: Any) -> Optional[bytes]:
         if item is None:
@@ -231,9 +253,18 @@ def call_grok_i2i(
         return None
 
     count = max(1, n)
-    mime = _detect_mime(init_image)
-    image_b64 = base64.b64encode(init_image).decode("utf-8")
-    image_data_uri = f"data:{mime};base64,{image_b64}"
+    image_inputs = _collect_image_inputs(
+        init_image,
+        init_images,
+        max_items=_get_grok_max_input_images(model),
+    )
+    if not image_inputs:
+        raise RuntimeError("Grok image editing requires an input image.")
+    image_data_uris = [
+        f"data:{_detect_image_mime(img)};base64,{base64.b64encode(img).decode('utf-8')}"
+        for img in image_inputs
+    ]
+    primary_image_uri = image_data_uris[0]
 
     sdk_error: Optional[str] = None
     try:
@@ -246,11 +277,15 @@ def call_grok_i2i(
 
         sdk_images: List[bytes] = []
         for _ in range(count):
-            response = sdk_client.image.sample(
-                prompt=prompt,
-                model=model,
-                image_url=image_data_uri,
-            )
+            request_kwargs: Dict[str, Any] = {
+                "prompt": prompt,
+                "model": model,
+            }
+            if len(image_data_uris) == 1:
+                request_kwargs["image_url"] = primary_image_uri
+            else:
+                request_kwargs["image_urls"] = image_data_uris
+            response = sdk_client.image.sample(**request_kwargs)
             if img := _extract_image_bytes(response):
                 sdk_images.append(img)
 
@@ -272,11 +307,20 @@ def call_grok_i2i(
         "model": model,
         "prompt": prompt,
         "n": count,
-        "image": {
-            "url": image_data_uri,
-            "type": "image_url",
-        },
     }
+    if len(image_data_uris) == 1:
+        body["image"] = {
+            "url": primary_image_uri,
+            "type": "image_url",
+        }
+    else:
+        body["images"] = [
+            {
+                "url": image_uri,
+                "type": "image_url",
+            }
+            for image_uri in image_data_uris
+        ]
 
     resp = requests.post(url, headers=headers, json=body, timeout=120)
     if resp.status_code != 200:
@@ -318,9 +362,7 @@ def call_openai_i2i(
         "Authorization": f"Bearer {api_key}",
     }
 
-    image_inputs = [img for img in (init_images or []) if img]
-    if not image_inputs:
-        image_inputs = [init_image]
+    image_inputs = _collect_image_inputs(init_image, init_images)
 
     files: List[tuple[str, Any]] = [
         ("model", (None, model)),
@@ -414,7 +456,7 @@ def call_gemini_image(
             if content:
                 yield from _parts_to_images(getattr(content, "parts", None))
 
-    image_inputs = [img for img in (init_images or []) if img]
+    image_inputs = _collect_image_inputs(init_image, init_images)
     if image_inputs:
         parts: List[Dict[str, Any]] = [
             {
@@ -427,21 +469,6 @@ def call_gemini_image(
         ]
         parts.append({"text": prompt})
         contents: Any = [{"role": "user", "parts": parts}]
-    elif init_image is not None:
-        contents: Any = [
-            {
-                "role": "user",
-                "parts": [
-                    {
-                        "inline_data": {
-                            "mime_type": "image/png",
-                            "data": init_image,
-                        }
-                    },
-                    {"text": prompt},
-                ],
-            }
-        ]
     else:
         contents = prompt
 
@@ -542,6 +569,7 @@ def generate_image(
             size,
             n,
             init_image=primary_image,
+            init_images=images or None,
         )
 
     # OpenAI gpt-image-1 在這裡自動切換為 images/edits
