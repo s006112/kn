@@ -35,7 +35,7 @@ from email.policy import default as email_default_policy
 from email.utils import parseaddr
 from typing import Iterable, List
 
-from helper.utils_config import (
+from helper.helper_config import (
     configure_logging,
     load_env,
     get_env_flag,

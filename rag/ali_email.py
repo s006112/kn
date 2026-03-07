@@ -74,7 +74,7 @@ import time
 from datetime import datetime, time as dt_time
 from zoneinfo import ZoneInfo
 
-from helper.utils_config import configure_logging, get_env_int  # type: ignore
+from helper.helper_config import configure_logging, get_env_int  # type: ignore
 from helper.utils_imap_types import EmailMessage, SendResult
 from helper.utils_imap_ops import mark_imap_message_seen  # type: ignore
 

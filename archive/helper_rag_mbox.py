@@ -85,7 +85,7 @@ from pathlib import Path
 from typing import Optional, Any, Dict, List, Tuple
 
 # Assume these helpers are in place
-from helper.utils_llm import call_llm
+from helper.helper_llm import call_llm
 from rag.helper_faiss_embedding import embed
 
 

@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from helper.utils_config import load_env, configure_logging  # type: ignore
+from helper.helper_config import load_env, configure_logging  # type: ignore
 from helper.utils_imap_config import load_smtp_config  # type: ignore
 from helper.utils_imap_types import EmailMessage, SendResult  # type: ignore
 from helper.utils_imap_ops import append_to_imap_sent  # type: ignore

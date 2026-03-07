@@ -27,8 +27,8 @@ from pathlib import Path
 from PIL import Image
 from clipboard_polyfill import CLIPBOARD_POLYFILL
 from helper.helper_nextcloud import upload_and_share_file
-from helper.utils_config import configure_logging, load_env
-from helper.utils_llm_image import generate_image
+from helper.helper_config import configure_logging, load_env
+from helper.helper_llm_image import generate_image
 import gradio as gr
 
 PNG_REMOTE_DIR = "/Documents/Rendering"

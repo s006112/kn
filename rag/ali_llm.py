@@ -18,8 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from helper.utils_config import load_prompt_text
-from helper.utils_llm import call_llm
+from helper.helper_config import load_prompt_text
+from helper.helper_llm import call_llm
 from helper.utils_imap_types import EmailMessage
 from rag.helper_rag_pipeline import get_rag_engine
 from rag.ali_router import RouteResult, route_email

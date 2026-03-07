@@ -31,8 +31,8 @@ from pathlib import Path
 import gradio as gr
 
 from clipboard_polyfill import CLIPBOARD_POLYFILL
-from helper.utils_config import configure_logging, load_env, load_prompt_text
-from helper.utils_llm import call_llm
+from helper.helper_config import configure_logging, load_env, load_prompt_text
+from helper.helper_llm import call_llm
 
 # LLM_MODEL = "gemini-2.5-pro"
 #LLM_MODEL = "sonar"

@@ -35,7 +35,7 @@ import faiss
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from helper.utils_llm import call_llm
+from helper.helper_llm import call_llm
 from rag.helper_faiss_embedding import embed
 from rag.helper_query_rewriting import rewrite_query_variants, merge_candidates_maxscore
 

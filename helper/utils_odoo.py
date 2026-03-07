@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from xmlrpc import client as xmlrpc_client
 
-from helper.utils_config import configure_logging, load_env
+from helper.helper_config import configure_logging, load_env
 from helper.utils_odoo_id import find_id
 from helper.helper_nextcloud import upload_and_share_file
 

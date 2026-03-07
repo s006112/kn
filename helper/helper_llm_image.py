@@ -5,7 +5,7 @@ import openai
 import requests
 from google.genai import errors as genai_errors
 
-from helper.utils_llm import (
+from helper.helper_llm import (
     get_gemini_client,
     get_grok_client,
     get_openai_client,

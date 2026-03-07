@@ -31,7 +31,7 @@ from utils_files import (
     release_text_file_permissions,
     read_file_with_encodings,
 )
-from helper.utils_llm import call_llm
+from helper.helper_llm import call_llm
 from utils_md import (
     merge_to_markdown,
     create_or_find_note_for_base_name,
