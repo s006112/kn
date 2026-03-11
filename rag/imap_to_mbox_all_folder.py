@@ -19,6 +19,8 @@ DEFAULT_SINCE_DATE = "2026-01-27"
 DEFAULT_OUT_DIR = Path("data/mbox/raw")
 DEFAULT_STATE_PATH = Path("data/mbox/raw/imap_state.json")
 DEFAULT_CHUNK_SIZE = 100
+DISCOVER_ALL_FOLDERS = True
+DEFAULT_FOLDERS = ("SENT", "INBOX")
 
 # ============================================================
 # LOAD ACCOUNT FROM .env
@@ -61,6 +63,71 @@ def list_folders(imap):
             folders.append(folder)
     return folders
 
+def fetch_folder(imap, folder, since, mbox):
+    typ, _ = imap.select(f'"{folder}"', readonly=True)
+    if typ != "OK":
+        print(f"[!] SKIP folder {folder}")
+        return 0
+
+    typ, data = imap.uid("SEARCH", None, f"SINCE {since}")
+    uids = data[0].decode().split() if data and data[0] else []
+    print(f"[+] {folder}: {len(uids)} mails since {since}")
+
+    count = 0
+
+    for uid in uids:
+        typ, resp = imap.uid("FETCH", uid, "(UID FLAGS BODY.PEEK[])")
+        if typ != "OK":
+            print(f"[!] FETCH FAIL UID {uid} in {folder}")
+            continue
+
+        flags = []
+        raw_mail = None
+
+        for line in resp:
+            if not line:
+                continue
+
+            if isinstance(line, tuple):
+                header, body = line
+                try:
+                    header_text = header.decode(errors="ignore")
+                except:
+                    header_text = str(header)
+
+                if "FLAGS (" in header_text:
+                    flags = parse_flags_from_line(header_text)
+
+                if isinstance(body, (bytes, bytearray)):
+                    raw_mail = bytes(body)
+            else:
+                try:
+                    text = line.decode(errors="ignore")
+                except:
+                    text = str(line)
+                if "FLAGS (" in text:
+                    flags = parse_flags_from_line(text)
+
+        if raw_mail is None:
+            print(f"[!] NO BODY UID {uid} in {folder}")
+            continue
+
+        msg = message_from_bytes(raw_mail)
+        m = mailbox.mboxMessage(msg)
+
+        m["X-IMAP-UID"] = uid
+        m["X-IMAP-Folder"] = folder
+        m["X-IMAP-Flags"] = " ".join(flags)
+        m["X-IMAP-Flags-Count"] = str(len(flags))
+
+        mbox.add(m)
+        count += 1
+
+        if any(f.startswith("$label") for f in flags):
+            print(f"[HIT] {folder} UID {uid} FLAGS {flags}")
+
+    return count
+
 # ============================================================
 # MAIN
 # ============================================================
@@ -80,8 +147,12 @@ def main():
     imap.login(IMAP_USERNAME, IMAP_PASSWORD)
     print("[+] LOGGED IN")
 
-    folders = list_folders(imap)
-    print(f"[+] FOUND {len(folders)} folders")
+    if DISCOVER_ALL_FOLDERS:
+        folders = list_folders(imap)
+        print(f"[+] FOUND {len(folders)} folders")
+    else:
+        folders = list(DEFAULT_FOLDERS)
+        print(f"[+] USING FIXED FOLDERS: {folders}")
 
     since = to_imap_date(DEFAULT_SINCE_DATE)
 
@@ -95,65 +166,7 @@ def main():
     total_count = 0
 
     for folder in folders:
-        typ, _ = imap.select(f'"{folder}"', readonly=True)
-        if typ != "OK":
-            print(f"[!] SKIP folder {folder}")
-            continue
-
-        typ, data = imap.uid("SEARCH", None, f"SINCE {since}")
-        uids = data[0].decode().split()
-        print(f"[+] {folder}: {len(uids)} mails since {since}")
-
-        for uid in uids:
-            typ, resp = imap.uid("FETCH", uid, "(UID FLAGS BODY.PEEK[])")
-            if typ != "OK":
-                print(f"[!] FETCH FAIL UID {uid} in {folder}")
-                continue
-
-            flags = []
-            raw_mail = None
-
-            for line in resp:
-                if not line:
-                    continue
-
-                if isinstance(line, tuple):
-                    header, body = line
-                    try:
-                        header_text = header.decode(errors="ignore")
-                    except:
-                        header_text = str(header)
-
-                    if "FLAGS (" in header_text:
-                        flags = parse_flags_from_line(header_text)
-
-                    if isinstance(body, (bytes, bytearray)):
-                        raw_mail = bytes(body)
-                else:
-                    try:
-                        text = line.decode(errors="ignore")
-                    except:
-                        text = str(line)
-                    if "FLAGS (" in text:
-                        flags = parse_flags_from_line(text)
-
-            if raw_mail is None:
-                print(f"[!] NO BODY UID {uid} in {folder}")
-                continue
-
-            msg = message_from_bytes(raw_mail)
-            m = mailbox.mboxMessage(msg)
-
-            m["X-IMAP-UID"] = uid
-            m["X-IMAP-Folder"] = folder
-            m["X-IMAP-Flags"] = " ".join(flags)
-            m["X-IMAP-Flags-Count"] = str(len(flags))
-
-            mbox.add(m)
-            total_count += 1
-
-            if any(f.startswith("$label") for f in flags):
-                print(f"[HIT] {folder} UID {uid} FLAGS {flags}")
+        total_count += fetch_folder(imap, folder, since, mbox)
 
     mbox.flush()
     mbox.close()
