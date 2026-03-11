@@ -78,10 +78,10 @@ from helper.helper_config import configure_logging, get_env_int  # type: ignore
 from helper.utils_imap_types import EmailMessage, SendResult
 from helper.utils_imap_ops import mark_imap_message_seen  # type: ignore
 
-from rag.ali_fetch import fetch_new_messages, fetch_sender_replies  # type: ignore
-from rag.ali_llm import generate_review_package, render_review  # type: ignore
-from rag.ali_send import send_reply  # type: ignore
-from rag.ali_mail_parse import (
+from ali.ali_fetch import fetch_new_messages, fetch_sender_replies  # type: ignore
+from ali.ali_llm import generate_review_package, render_review  # type: ignore
+from ali.ali_send import send_reply  # type: ignore
+from ali.ali_mail_parse import (
     REVIEW_SUBJECT_MARKER,
     REVIEW_SUBJECT_PATTERN,
     extract_last_review_state,
@@ -92,9 +92,7 @@ from rag.ali_mail_parse import (
 # -----------------------------------------------------------------------------
 
 LLM_MODEL = "sonar-pro"
-SYSTEM_PROMPT_PATH = (
-    Path(__file__).resolve().parents[1] / "prompt" / "prompt_ali_system.txt"
-)
+SYSTEM_PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompt" / "prompt_ali_system.txt"
 
 _HKT_ZONE = ZoneInfo("Asia/Hong_Kong")
 _DAY_START = dt_time(9, 0)

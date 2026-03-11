@@ -21,10 +21,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ali_email.ali_fetch import fetch_new_messages
-from ali_email.ali_llm import generate_reply
-from ali_email.ali_send import send_reply
-from ali_email import LLM_MODEL, SYSTEM_PROMPT_PATH
+from ali import LLM_MODEL, SYSTEM_PROMPT_PATH
+from ali.ali_fetch import fetch_new_messages
+from ali.ali_llm import generate_review_package, render_review
+from ali.ali_send import send_reply
 
 
 def main():
@@ -46,11 +46,12 @@ def main():
 
         print("=== Generating LLM reply... ===")
         try:
-            reply_body = generate_reply(
+            review = generate_review_package(
                 msg,
                 system_prompt_path=SYSTEM_PROMPT_PATH,
                 model=LLM_MODEL,
             )
+            reply_body = render_review(review)
             print("LLM reply preview:", reply_body[:200].replace("\n", " "))
         except Exception as e:
             print("LLM ERROR:", e)

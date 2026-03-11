@@ -5,7 +5,7 @@ Responsibility
 This module loads RAG artifacts for a selected mode, executes similarity retrieval over stored embeddings, builds retrieval context, and returns LLM answers with a similarity report table.
 
 Used by:
-* rag/ali_llm.py
+* ali/ali_llm.py
 * gui_web_rag.py
 
 Pipelines:

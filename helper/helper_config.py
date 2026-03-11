@@ -7,7 +7,7 @@ Used by:
 * gui_weekly_summary.py
 * core_per_report.py
 * core_so_import.py
-* ali_email/ali_email.py
+* ali/ali_email.py
 * ali_email/ali_fetch.py
 * ali_email/ali_llm.py
 * ali_email/ali_send.py

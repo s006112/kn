@@ -7,7 +7,7 @@ ARCHITECTURE.md 定位是系统宪法，不是施工图。只写：
 
 ## Purpose
 
-This document defines the active architecture and non-negotiable invariants of the ALI email review system as implemented in the current `rag/*.py` code.
+This document defines the active architecture and non-negotiable invariants of the ALI email review system as implemented in the current `ali/*.py` code.
 
 Its purpose is to:
 - prevent complexity drift
@@ -27,7 +27,7 @@ If code and this document diverge, this document is the intended target state. C
 
 2. **Forward-Only Reply Model**
    - The only allowed outbound recipient is the human reviewer who forwarded the original email.
-   - Recipient enforcement is hard-blocked in `rag/ali_send.py`.
+   - Recipient enforcement is hard-blocked in `ali/ali_send.py`.
 
 3. **Silence Means Termination**
    - An empty reviewer reply is treated as REJECT.
@@ -53,7 +53,7 @@ These invariants are enforced across orchestration, fetch, and send layers and M
 
 The active runtime is a **two-phase polling loop**:
 
-`pipeline_run()` in `rag/ali_email.py`
+`pipeline_run()` in `ali/ali_email.py`
 
 1. **Phase 1: New forwarded emails**
    - fetch unread non-review-thread messages
@@ -68,7 +68,7 @@ The active runtime is a **two-phase polling loop**:
    - send revised internal review to the same reviewer only
    - mark reply message as SEEN only after successful handling
 
-Polling cadence is time-based in `rag/ali_email.py` and is not part of the semantic architecture.
+Polling cadence is time-based in `ali/ali_email.py` and is not part of the semantic architecture.
 
 ---
 
@@ -79,7 +79,7 @@ Step0 -> Step1 -> Step2 -> Step3 -> Step4 -> Step5
 ### Step0: Input Normalization and Review-State Parsing
 
 Owned by:
-- `rag/ali_mail_parse.py`
+- `ali/ali_mail_parse.py`
 
 Responsibilities:
 - normalize subject/body input
@@ -100,7 +100,7 @@ Relationship:
 ### Step1: Routing
 
 Owned by:
-- `rag/ali_router.py`
+- `ali/ali_router.py`
 
 Responsibilities:
 - classify the email into a route category
@@ -131,7 +131,7 @@ Relationship:
 ### Step2: Retrieval / Tools
 
 Owned by:
-- `rag/ali_llm.py` for retrieval gating
+- `ali/ali_llm.py` for retrieval gating
 - `rag/helper_rag_pipeline.py` for retrieval execution
 
 Responsibilities:
@@ -155,7 +155,7 @@ Relationship:
 ### Step3: Draft Generation
 
 Owned by:
-- `rag/ali_llm.py`
+- `ali/ali_llm.py`
 
 Responsibilities:
 - generate the internal reviewer-facing draft
@@ -188,7 +188,7 @@ Relationship:
 ### Step4: Reflection
 
 Owned by:
-- `rag/ali_llm.py`
+- `ali/ali_llm.py`
 
 Responsibilities:
 - post-generation refinement hook only
@@ -211,8 +211,8 @@ Relationship:
 ### Step5: Packaging
 
 Owned by:
-- `rag/ali_llm.py` for protocol rendering
-- `rag/ali_email.py` for review subject/version sequencing
+- `ali/ali_llm.py` for protocol rendering
+- `ali/ali_email.py` for review subject/version sequencing
 
 Responsibilities:
 - wrap the draft with ALI review protocol markers
@@ -235,7 +235,7 @@ Relationship:
 ## Orchestration Contract
 
 Owned by:
-- `rag/ali_email.py`
+- `ali/ali_email.py`
 
 Responsibilities:
 - run the two-phase polling loop
@@ -251,7 +251,7 @@ Must not:
 - construct prompts
 - make content decisions
 
-`rag/ali_email.py` is intentionally narrow and should remain stable.
+`ali/ali_email.py` is intentionally narrow and should remain stable.
 
 ---
 
@@ -259,13 +259,13 @@ Must not:
 
 | Module | Responsibility |
 | --- | --- |
-| `rag/ali_email.py` | Orchestration, phase sequencing, invariant enforcement, guarded execution |
-| `rag/ali_fetch.py` | IMAP fetch selection, sender allowlist gate, raw-record to `EmailMessage` conversion |
-| `rag/ali_mail_parse.py` | Input normalization, override extraction, review-state parsing, protocol constants |
-| `rag/ali_router.py` | Deterministic route selection only |
-| `rag/ali_llm.py` | Retrieval gating, v1 generation, v2+ edit-only generation, reflection hook, review rendering |
+| `ali/ali_email.py` | Orchestration, phase sequencing, invariant enforcement, guarded execution |
+| `ali/ali_fetch.py` | IMAP fetch selection, sender allowlist gate, raw-record to `EmailMessage` conversion |
+| `ali/ali_mail_parse.py` | Input normalization, override extraction, review-state parsing, protocol constants |
+| `ali/ali_router.py` | Deterministic route selection only |
+| `ali/ali_llm.py` | Retrieval gating, v1 generation, v2+ edit-only generation, reflection hook, review rendering |
 | `rag/helper_rag_pipeline.py` | Retrieval engine execution over FAISS artifacts plus answer/context assembly |
-| `rag/ali_send.py` | Reviewer-only outbound delivery with forward-sender enforcement |
+| `ali/ali_send.py` | Reviewer-only outbound delivery with forward-sender enforcement |
 
 Logic MUST NOT migrate upward.
 The further “up” a module is, the less semantic intelligence it may contain.
@@ -275,7 +275,7 @@ The further “up” a module is, the less semantic intelligence it may contain.
 ## Fetch Contract
 
 Owned by:
-- `rag/ali_fetch.py`
+- `ali/ali_fetch.py`
 
 Rules for Phase 1:
 - fetch unread messages only
@@ -321,7 +321,7 @@ If routing output is mocked, the rest of the pipeline must still function.
 ## Delivery Contract
 
 Owned by:
-- `rag/ali_send.py`
+- `ali/ali_send.py`
 
 Delivery rules:
 - outbound email is reviewer-only
@@ -338,32 +338,32 @@ Delivery must not:
 
 ## Evolution Rules
 
-- `rag/ali_email.py` is **STABLE**
+- `ali/ali_email.py` is **STABLE**
   - bug fixes only
   - invariant enforcement only
   - no new semantic features unless they are strictly orchestration concerns
 
 - Feature evolution should occur in:
-  - `rag/ali_router.py`
-  - `rag/ali_llm.py`
+  - `ali/ali_router.py`
+  - `ali/ali_llm.py`
   - `rag/helper_rag_pipeline.py`
   - future dedicated Step4 modules, if Step4 becomes real
 
-- `rag/ali_mail_parse.py` may evolve only for:
+- `ali/ali_mail_parse.py` may evolve only for:
   - normalization correctness
   - override extraction correctness
   - review protocol parsing correctness
 
 - Legacy or experiment code may exist only if:
   - isolated from active execution
-  - not referenced by `rag/ali_email.py`
+  - not referenced by `ali/ali_email.py`
   - clearly marked as non-authoritative
 
 ---
 
 ## Anti-Patterns (Explicitly Forbidden)
 
-- adding routing logic to `rag/ali_email.py`
+- adding routing logic to `ali/ali_email.py`
 - mixing parsing with generation
 - letting LLMs decide control flow
 - rerunning retrieval on the v2+ edit-only path

@@ -22,8 +22,8 @@ from helper.helper_config import load_prompt_text
 from helper.helper_llm import call_llm
 from helper.utils_imap_types import EmailMessage
 from rag.helper_rag_pipeline import get_rag_engine
-from rag.ali_router import RouteResult, route_email
-from rag.ali_mail_parse import (
+from ali.ali_router import RouteResult, route_email
+from ali.ali_mail_parse import (
     REVIEW_FOOTER_LINE,
     REVIEW_HEADER_LINE_TEMPLATE,
     extract_override_instructions,

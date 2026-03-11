@@ -6,7 +6,7 @@ This document summarizes the role of every Python file under `rag/` as it exists
 
 | File | Purpose |
 | --- | --- |
-| `ali_email.py` | Top-level orchestrator for the ALI internal email-review workflow. It polls mail, separates new forwarded emails from reviewer replies, generates internal review drafts, sends them back to the reviewer, and enforces the project safety invariants. |
+| `ali/ali_email.py` | Top-level orchestrator for the ALI internal email-review workflow. It polls mail, separates new forwarded emails from reviewer replies, generates internal review drafts, sends them back to the reviewer, and enforces the project safety invariants. |
 | `ali_fetch.py` | IMAP fetch layer for the ALI workflow. It connects to the configured mailbox, selects which messages are eligible for processing, converts fetched records into internal `EmailMessage` objects, and exposes separate fetch paths for new messages and reviewer replies. |
 | `ali_llm.py` | Draft-generation layer for ALI. It performs routing, optional RAG retrieval for safety/regulation questions, first-pass draft generation, override-based edit-only regeneration, optional reflection, and final review-package rendering. |
 | `ali_mail_parse.py` | Email normalization and review-thread parser. It normalizes subject/body input, extracts override instructions from reviewer replies, and parses the last ALI review version/draft from prior review emails. |
