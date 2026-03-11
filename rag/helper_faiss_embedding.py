@@ -2,12 +2,25 @@
 helper_faiss_embedding.py
 
 Responsibility:
-Provide a local/offline embedding helper (BGE M3) for FAISS indexing and RAG retrieval workflows.
+Load a local/offline BGE M3 embedding model, expose a singleton-backed embedding entry point, and convert legacy PyTorch binary weights to safetensors when required for local model loading.
 
 Used by:
 * rag/faiss_index_builder.py
 * rag/helper_rag_pipeline.py
-* rag/jsonl_to_faiss.py
+
+Pipelines:
+- texts -> tokenize -> forward_pass -> cls_pool -> normalize -> numpy
+- load_failure -> detect_weights_format -> convert_weights -> reload
+
+Invariants:
+- Embedding inference runs with a locally cached model in offline mode.
+- The public embed helper reuses a singleton model instance within the process.
+- Returned embeddings are L2 normalized NumPy arrays on CPU memory.
+
+Out of scope:
+- Downloading model assets from remote registries.
+- Building or saving FAISS indexes.
+- Query ranking or retrieval orchestration.
 
 """
 
