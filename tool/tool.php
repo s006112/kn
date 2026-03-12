@@ -216,7 +216,14 @@ if (isset($_POST["webPageInput"])) {
                         $lines = explode("\n", $text);
                         $blankLinePlaceholder = '__KEEP_BLANK_LINE__';
                         $lines = array_map(function($line) use ($blankLinePlaceholder) {
-                            return trim($line) === '---' ? $blankLinePlaceholder : $line;
+                            $trimmedLine = trim($line);
+                            if ($trimmedLine === '---') {
+                                return $blankLinePlaceholder;
+                            }
+                            if (preg_match('/^(#{1,6})\s+(.+)$/', $trimmedLine, $matches) && $matches[1] !== '###') {
+                                return '### ' . $matches[2];
+                            }
+                            return $line;
                         }, $lines);
                         $lines = array_filter($lines, function($line) {
                             return trim($line) !== '';
