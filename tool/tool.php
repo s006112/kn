@@ -1,35 +1,29 @@
 <?php
+session_start();
+// Buffer output so headers (redirects) can be sent from form blocks
+ob_start();
 if (isset($_POST["webPageInput"])) {
     $text = $_POST["webPageInput"];
-
-    // 1. Strictly capture the first line as title (up to first line break)
     $lines = preg_split('/\r?\n/', $text, 2);
     $title = isset($lines[0]) ? trim($lines[0]) : '';
 
-    // 2. Clean the title for filename (remove illegal chars)
     $filename = preg_replace('/[\\/:*?"<>|\r\n]+/', '', $title);
-    $filename = mb_substr($filename, 0, 50); // limit length
+    $filename = mb_substr($filename, 0, 50);
     $filename = trim($filename);
     if ($filename === '') $filename = 'untitled';
     $filename .= '.txt';
 
-    // 3. Remove literal 'Image' (case-insensitive, as a word)
     $text = preg_replace('/\bImage\b/i', '', $text);
-    // 4. Remove standalone two-digit numbers (e.g., 01, 23)
     $text = preg_replace('/\b\d{2}\b/', '', $text);
-    // 5. Remove URLs (http, https, www)
     $text = preg_replace('/https?:\/\/\S+|www\.\S+/i', '', $text);
-    // 6. If contains Chinese, collapse all whitespace
+
     if (preg_match('/[\x{4e00}-\x{9fa5}]/u', $text)) {
         $text = preg_replace('/\s+/u', '', $text);
     } else {
-        // Otherwise, collapse multiple spaces to one, trim
         $text = preg_replace('/\s+/u', ' ', trim($text));
     }
-    // 7. Remove any extra blank lines
     $text = preg_replace('/\n{2,}/', "\n", $text);
 
-    // 8. Output as file download
     header('Content-Type: text/plain; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     header('Content-Length: ' . strlen($text));
@@ -48,6 +42,8 @@ if (isset($_POST["webPageInput"])) {
         body {
             margin: 20px;
             font-family: "Microsoft YaHei", "SimSun", Arial, sans-serif;
+            background-color: #121212;
+            color: #f5f5f5;
         }
         .grid-container {
             display: grid;
@@ -57,7 +53,7 @@ if (isset($_POST["webPageInput"])) {
             margin: 0 auto;
         }
         .form-container {
-            background-color: #f5f5f5;
+            background-color: #333;
             padding: 15px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -69,9 +65,13 @@ if (isset($_POST["webPageInput"])) {
             padding: 8px;
             box-sizing: border-box;
             margin-bottom: 10px;
-            border: 1px solid #ddd;
+            border: 1px solid #555;
             border-radius: 4px;
+            background-color: #444;
+            color: #f5f5f5;
         }
+        /* Let the web page cleaner textarea honor its rows attribute */
+        #webPageInput { height: auto; }
         button {
             width: 100%;
             padding: 8px;
@@ -93,7 +93,7 @@ if (isset($_POST["webPageInput"])) {
         <div class="form-container">
             <form method="post" action="">
                 <textarea id="userInput" name="userInput" rows="5" cols="80" placeholder="Input text..."><?php 
-                    if (isset($_POST["userInput"])) {
+                    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["userInput"])) {
                         $text = $_POST["userInput"];
                         
                         function toSimplified($text) {
@@ -132,7 +132,13 @@ if (isset($_POST["webPageInput"])) {
                         }
                         
                         $converted = toSimplified($text);
-                        echo htmlspecialchars($converted, ENT_QUOTES, 'UTF-8');
+                        $_SESSION['results']['userInput'] = $converted;
+                        header('Location: ' . $_SERVER['PHP_SELF'] . '#userInput');
+                        exit;
+                    }
+                    if (isset($_SESSION['results']['userInput'])) {
+                        echo htmlspecialchars($_SESSION['results']['userInput'], ENT_QUOTES, 'UTF-8');
+                        unset($_SESSION['results']['userInput']);
                     }
                 ?></textarea>
                 <button type="submit">Traditional to Simplified</button>
@@ -143,40 +149,35 @@ if (isset($_POST["webPageInput"])) {
         <div class="form-container">
             <form method="post" action="">
                 <textarea id="addDottedListInput" name="addDottedListInput" rows="5" cols="80" placeholder="Input text..."><?php 
-                    if (isset($_POST["addDottedListInput"])) {
+                    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["addDottedListInput"])) {
                         $text = $_POST["addDottedListInput"];
                         
-                        // Split into lines
                         $lines = explode("\n", $text);
-                        
-                        // Process each line
                         $result = array_map(function($line) {
-                            // Preserve original whitespace at the start
                             $originalIndent = '';
                             if (preg_match('/^(\s+)/', $line, $matches)) {
                                 $originalIndent = $matches[1];
                             }
-                            
-                            // If line already has "- ", preserve it with its position
                             if (strpos($line, '- ') !== false) {
                                 return $line;
                             }
-                            
-                            // Only add "- " to non-empty lines that don't already have it
                             if (trim($line) !== '') {
                                 return $originalIndent . "- " . ltrim($line);
                             }
-                            
                             return $line;
                         }, $lines);
-                        
-                        // Filter out empty lines and join back
                         $result = array_filter($result, function($line) {
                             return trim($line) !== '';
                         });
                         $result = implode("\n", $result);
                         
-                        echo htmlspecialchars($result, ENT_QUOTES, 'UTF-8');
+                        $_SESSION['results']['addDottedListInput'] = $result;
+                        header('Location: ' . $_SERVER['PHP_SELF'] . '#addDottedListInput');
+                        exit;
+                    }
+                    if (isset($_SESSION['results']['addDottedListInput'])) {
+                        echo htmlspecialchars($_SESSION['results']['addDottedListInput'], ENT_QUOTES, 'UTF-8');
+                        unset($_SESSION['results']['addDottedListInput']);
                     }
                 ?></textarea>
                 <button type="submit">Add dotted list</button>
@@ -187,13 +188,16 @@ if (isset($_POST["webPageInput"])) {
         <div class="form-container">
             <form method="post" action="">
                 <textarea id="whitespaceInput" name="whitespaceInput" rows="5" cols="80" placeholder="Input text..."><?php 
-                    if (isset($_POST["whitespaceInput"])) {
+                    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["whitespaceInput"])) {
                         $text = $_POST["whitespaceInput"];
-                        
-                        // Remove all whitespace (spaces, tabs, newlines)
                         $result = preg_replace('/\s+/', '', $text);
-                        
-                        echo htmlspecialchars($result, ENT_QUOTES, 'UTF-8');
+                        $_SESSION['results']['whitespaceInput'] = $result;
+                        header('Location: ' . $_SERVER['PHP_SELF'] . '#whitespaceInput');
+                        exit;
+                    }
+                    if (isset($_SESSION['results']['whitespaceInput'])) {
+                        echo htmlspecialchars($_SESSION['results']['whitespaceInput'], ENT_QUOTES, 'UTF-8');
+                        unset($_SESSION['results']['whitespaceInput']);
                     }
                 ?></textarea>
                 <button type="submit">Remove All Whitespace</button>
@@ -208,11 +212,18 @@ if (isset($_POST["webPageInput"])) {
                     if (isset($_POST["lineInput"])) {
                         $text = $_POST["lineInput"];
                         
-                        // Split text into lines, remove empty ones, and rejoin
+                        // Split text into lines, keep markdown separator lines as blanks, remove other empty ones, and rejoin
                         $lines = explode("\n", $text);
+                        $blankLinePlaceholder = '__KEEP_BLANK_LINE__';
+                        $lines = array_map(function($line) use ($blankLinePlaceholder) {
+                            return trim($line) === '---' ? $blankLinePlaceholder : $line;
+                        }, $lines);
                         $lines = array_filter($lines, function($line) {
                             return trim($line) !== '';
                         });
+                        $lines = array_map(function($line) use ($blankLinePlaceholder) {
+                            return $line === $blankLinePlaceholder ? '' : $line;
+                        }, $lines);
                         $result = implode("\n", $lines);
                         
                         echo htmlspecialchars($result, ENT_QUOTES, 'UTF-8');
@@ -227,26 +238,24 @@ if (isset($_POST["webPageInput"])) {
         <div class="form-container">
             <form method="post" action="">
                 <textarea id="dottedListInput" name="dottedListInput" rows="5" cols="80" placeholder="Input text..."><?php 
-                    if (isset($_POST["dottedListInput"])) {
+                    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["dottedListInput"])) {
                         $text = $_POST["dottedListInput"];
-                        
-                        // Split into lines
                         $lines = explode("\n", $text);
-                        
-                        // Process each line
                         $result = array_map(function($line) {
-                            // Remove leading tabs/spaces and "- " from each line
                             $line = preg_replace('/^[\t ]*- /', '', $line);
                             return trim($line);
                         }, $lines);
-                        
-                        // Filter out empty lines and join back
                         $result = array_filter($result, function($line) {
                             return !empty($line);
                         });
                         $result = implode("\n", $result);
-                        
-                        echo htmlspecialchars($result, ENT_QUOTES, 'UTF-8');
+                        $_SESSION['results']['dottedListInput'] = $result;
+                        header('Location: ' . $_SERVER['PHP_SELF'] . '#dottedListInput');
+                        exit;
+                    }
+                    if (isset($_SESSION['results']['dottedListInput'])) {
+                        echo htmlspecialchars($_SESSION['results']['dottedListInput'], ENT_QUOTES, 'UTF-8');
+                        unset($_SESSION['results']['dottedListInput']);
                     }
                 ?></textarea>
                 <button type="submit">Remove dotted list</button>
@@ -258,10 +267,9 @@ if (isset($_POST["webPageInput"])) {
         <div class="form-container">
             <form method="post" action="">
                 <textarea id="markdownInput" name="markdownInput" rows="5" cols="80" placeholder="Input markdown text..."><?php 
-                    if (isset($_POST["markdownInput"])) {
+                    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["markdownInput"])) {
                         $text = $_POST["markdownInput"];
                         
-                        // Remove markdown symbols
                         $patterns = array(
                             '/#{1,6}\s/' => '',           // Headers
                             '/\*\*([^*]+)\*\*/' => '$1',  // Bold
@@ -276,23 +284,25 @@ if (isset($_POST["webPageInput"])) {
                         
                         $text = preg_replace(array_keys($patterns), array_values($patterns), $text);
                         
-                        // Normalize multiple blank lines to single blank line
                         $lines = explode("\n", $text);
                         $result = "";
                         $prevLineEmpty = false;
-                        
                         foreach ($lines as $line) {
                             $currentLine = trim($line);
                             $currentLineEmpty = (strlen($currentLine) === 0);
-                            
                             if (!($prevLineEmpty && $currentLineEmpty)) {
                                 $result .= $currentLine . "\n";
                             }
-                            
                             $prevLineEmpty = $currentLineEmpty;
                         }
                         
-                        echo htmlspecialchars($result, ENT_QUOTES, 'UTF-8');
+                        $_SESSION['results']['markdownInput'] = $result;
+                        header('Location: ' . $_SERVER['PHP_SELF'] . '#markdownInput');
+                        exit;
+                    }
+                    if (isset($_SESSION['results']['markdownInput'])) {
+                        echo htmlspecialchars($_SESSION['results']['markdownInput'], ENT_QUOTES, 'UTF-8');
+                        unset($_SESSION['results']['markdownInput']);
                     }
                 ?></textarea>
                 <button type="submit">Remove Markdown Formatting</button>
@@ -302,46 +312,8 @@ if (isset($_POST["webPageInput"])) {
 
         <!-- Web Page Text Cleaner Form -->
         <div class="form-container">
-            <form method="post" action="">
-                <textarea id="webPageInput" name="webPageInput" rows="5" cols="80" placeholder="Paste web page text here..."><?php 
-                    if (isset($_POST["webPageInput"])) {
-                        $text = $_POST["webPageInput"];
-
-                        // 1. Strictly capture the first line as title (up to first line break)
-                        $lines = preg_split('/\r?\n/', $text, 2);
-                        $title = isset($lines[0]) ? trim($lines[0]) : '';
-
-                        // 2. Clean the title for filename (remove illegal chars)
-                        $filename = preg_replace('/[\\/:*?"<>|\r\n]+/', '', $title);
-                        $filename = mb_substr($filename, 0, 50); // limit length
-                        $filename = trim($filename);
-                        if ($filename === '') $filename = 'untitled';
-                        $filename .= '.txt';
-
-                        // 3. Remove literal 'Image' (case-insensitive, as a word)
-                        $text = preg_replace('/\bImage\b/i', '', $text);
-                        // 4. Remove standalone two-digit numbers (e.g., 01, 23)
-                        $text = preg_replace('/\b\d{2}\b/', '', $text);
-                        // 5. Remove URLs (http, https, www)
-                        $text = preg_replace('/https?:\/\/\S+|www\.\S+/i', '', $text);
-                        // 6. If contains Chinese, collapse all whitespace
-                        if (preg_match('/[\x{4e00}-\x{9fa5}]/u', $text)) {
-                            $text = preg_replace('/\s+/u', '', $text);
-                        } else {
-                            // Otherwise, collapse multiple spaces to one, trim
-                            $text = preg_replace('/\s+/u', ' ', trim($text));
-                        }
-                        // 7. Remove any extra blank lines
-                        $text = preg_replace('/\n{2,}/', "\n", $text);
-
-                        // 8. Output as file download
-                        header('Content-Type: text/plain; charset=UTF-8');
-                        header('Content-Disposition: attachment; filename="' . $filename . '"');
-                        header('Content-Length: ' . strlen($text));
-                        echo $text;
-                        exit;
-                    }
-                ?></textarea>
+            <form method="post" action="" target="_blank">
+                <textarea id="webPageInput" name="webPageInput" rows="20" cols="200" placeholder="Paste web page text here..."></textarea>
                 <button type="submit">Clean Web Page Text</button>
             </form>
         </div>
@@ -350,28 +322,34 @@ if (isset($_POST["webPageInput"])) {
         <div class="form-container">
             <form method="post" action="">
                 <textarea id="allNumberMarkersInput" name="allNumberMarkersInput" rows="5" cols="80" placeholder="Input text..."><?php 
-                    if (isset($_POST["allNumberMarkersInput"])) {
+                    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["allNumberMarkersInput"])) {
                         $text = $_POST["allNumberMarkersInput"];
                         
-                        // Remove all numerical markers at the start of lines (Arabic and Chinese, including bold-wrapped)
                         $lines = explode("\n", $text);
                         $result = array_map(function($line) {
                             // 1. Remove bold-wrapped Arabic number markers: **10. ...**
                             $line = preg_replace('/^(\*{2})([ \t]*\d+(?:[\.\d]*)?)([\.、\)\）\:，]|\s)+(.*)\1/u', '**$4**', $line);
                             // 2. Remove normal Arabic number markers: 10. ...
                             $line = preg_replace('/^([ \t]*)(\d+(?:[\.\d]*)?)([\.、\)\）\:，]|\s)+/u', '$1', $line);
-                            // 3. Remove Chinese enumeration marker (一、二、etc. with 、 or ，) at the start, preserving all other markdown and inline markdown
+                            // 3. Remove Chinese enumeration marker
                             if (preg_match('/^(#{1,6}\s*)?([一二三四五六七八九十百千]+)[、，](.*)/u', $line, $matches)) {
                                 $header = isset($matches[1]) ? $matches[1] : '';
                                 $content = $matches[3];
                                 return $header . $content;
                             }
-                            // 4. Remove all leading spaces before a dash for bullet points (but not for headers)
+                            // 4. Normalize dash bullet spacing
                             $line = preg_replace('/^\s*-(\s+)/', '-$1', $line);
                             return $line;
                         }, $lines);
                         $result = implode("\n", $result);
-                        echo htmlspecialchars($result, ENT_QUOTES, 'UTF-8');
+                        
+                        $_SESSION['results']['allNumberMarkersInput'] = $result;
+                        header('Location: ' . $_SERVER['PHP_SELF'] . '#allNumberMarkersInput');
+                        exit;
+                    }
+                    if (isset($_SESSION['results']['allNumberMarkersInput'])) {
+                        echo htmlspecialchars($_SESSION['results']['allNumberMarkersInput'], ENT_QUOTES, 'UTF-8');
+                        unset($_SESSION['results']['allNumberMarkersInput']);
                     }
                 ?></textarea>
                 <button type="submit">Remove All Number Markers</button>
@@ -383,7 +361,7 @@ if (isset($_POST["webPageInput"])) {
         <div class="form-container">
             <form method="post" action="">
                 <textarea id="xmlInput" name="xmlInput" rows="5" cols="80" placeholder="Input XML text..."><?php 
-                    if (isset($_POST["xmlInput"])) {
+                    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["xmlInput"])) {
                         $text = $_POST["xmlInput"];
                         
                         // Load XML string
@@ -429,11 +407,17 @@ if (isset($_POST["webPageInput"])) {
                             // Filter empty lines and join
                             $processed_lines = array_filter($processed_lines);
                             $result = implode(' ', $processed_lines);
-                            echo htmlspecialchars($result, ENT_QUOTES, 'UTF-8');
                         } else {
                             // If XML parsing failed, return original text
-                            echo htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+                            $result = $text;
                         }
+                        $_SESSION['results']['xmlInput'] = $result;
+                        header('Location: ' . $_SERVER['PHP_SELF'] . '#xmlInput');
+                        exit;
+                    }
+                    if (isset($_SESSION['results']['xmlInput'])) {
+                        echo htmlspecialchars($_SESSION['results']['xmlInput'], ENT_QUOTES, 'UTF-8');
+                        unset($_SESSION['results']['xmlInput']);
                     }
                 ?></textarea>
                 <button type="submit">Convert XML to Raw Text</button>
