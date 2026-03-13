@@ -14,7 +14,7 @@ def main():
     sections = []
     for path in markdown_files:
         content = path.read_text(encoding="utf-8")
-        sections.append(f"# {path.name}\n\n{content.rstrip()}")
+        sections.append(f"# {path.name}\n{content.rstrip()}")
 
     output_name = f"obsidian_{datetime.now().strftime('%d%m%y_%H%M%S')}.md"
     output_path = Path("/desktop") / output_name
