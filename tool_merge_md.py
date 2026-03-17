@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 def main():
-    source_dir = Path("/desktop/Obsidian/Ontology")
+    source_dir = Path("/desktop/Obsidian/O_2025/Ontology")
     if source_dir.exists():
         markdown_files = sorted(
             path for path in source_dir.iterdir() if path.is_file() and path.suffix.lower() == ".md"
