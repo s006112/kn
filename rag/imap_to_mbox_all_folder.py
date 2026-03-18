@@ -171,7 +171,9 @@ def main():
     since = to_imap_date(DEFAULT_SINCE_DATE)
 
     DEFAULT_OUT_DIR.mkdir(parents=True, exist_ok=True)
-    mbox_path = DEFAULT_OUT_DIR / "test.mbox"
+    mbox_path = DEFAULT_OUT_DIR / (
+        f"{IMAP_USERNAME.split('@', 1)[0]}_{datetime.strptime(DEFAULT_SINCE_DATE, '%Y-%m-%d').strftime('%y%m%d')}_{datetime.utcnow().strftime('%y%m%d')}.mbox"
+    )
     if mbox_path.exists():
         mbox_path.unlink()
 
