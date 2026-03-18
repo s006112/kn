@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+parse_mbox_to_chunk.py
 Responsibility:
 Convert one or more local mbox files into a JSONL stream of "canonical block" records derived from each email body and
 optionally from parsed attachments.

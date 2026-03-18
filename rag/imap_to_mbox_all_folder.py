@@ -50,6 +50,13 @@ def parse_flags_from_line(line):
     raw = line[i + 7 : j].strip()
     return raw.split()
 
+def _progress_bar(done: int, total: int):
+    width = 100
+    ratio = done / total if total else 1.0
+    filled = int(width * ratio)
+    bar = "█" * filled + "-" * (width - filled)
+    print(f"\r[{bar}] {done}/{total}", end="", flush=True)
+
 def list_folders(imap):
     typ, data = imap.list()
     if typ != "OK":
@@ -75,10 +82,11 @@ def fetch_folder(imap, folder, since, mbox):
 
     count = 0
 
-    for uid in uids:
+    for i, uid in enumerate(uids, start=1):
         typ, resp = imap.uid("FETCH", uid, "(UID FLAGS BODY.PEEK[])")
         if typ != "OK":
             print(f"[!] FETCH FAIL UID {uid} in {folder}")
+            _progress_bar(i, len(uids))
             continue
 
         flags = []
@@ -110,6 +118,7 @@ def fetch_folder(imap, folder, since, mbox):
 
         if raw_mail is None:
             print(f"[!] NO BODY UID {uid} in {folder}")
+            _progress_bar(i, len(uids))
             continue
 
         msg = message_from_bytes(raw_mail)
@@ -125,6 +134,11 @@ def fetch_folder(imap, folder, since, mbox):
 
         if any(f.startswith("$label") for f in flags):
             print(f"[HIT] {folder} UID {uid} FLAGS {flags}")
+
+        _progress_bar(i, len(uids))
+
+    if uids:
+        print()
 
     return count
 
