@@ -85,11 +85,11 @@ def _should_bypass_admin(from_addr: str) -> bool:
     """
     env_values = dotenv_values(_DOTENV_PATH)
 
-    admin_addr = str(env_values.get("ADMIN_USERNAME") or os.getenv("ADMIN_USERNAME") or "").strip().lower()
+    admin_addr = str(env_values.get("ADMIN_USERNAME", "")).strip().lower()
     if not admin_addr:
         return False
 
-    debug_raw = str(env_values.get("DEBUG_MODE") or os.getenv("DEBUG_MODE") or "").strip()
+    debug_raw = str(env_values.get("DEBUG_MODE", "")).strip()
     debug_mode = True if debug_raw == "" else debug_raw.lower() == "true"
 
     return not debug_mode and (from_addr or "").lower() == admin_addr
