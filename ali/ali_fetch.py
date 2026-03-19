@@ -33,13 +33,14 @@ if str(ROOT) not in sys.path:
 from email import message_from_bytes
 from email.policy import default as email_default_policy
 from email.utils import parseaddr
+import os
 from typing import Iterable, List
+
+from dotenv import dotenv_values
 
 from helper.helper_config import (
     configure_logging,
     load_env,
-    get_env_flag,
-    get_env_str,
 )  # type: ignore
 from helper.utils_imap_client import ImapClient, RawFetchedRecord  # type: ignore
 from helper.utils_imap_config import load_imap_config  # type: ignore
@@ -51,14 +52,11 @@ from ali.ali_mail_parse import (
 )  # review-thread detection
 
 _ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"
+_DOTENV_PATH = ROOT / ".env"
 
 
-# Load environment and derive debug-bypass behavior.
-# When DEBUG_MODE is set to "false" in the environment, bypass any unread
-# messages coming from the configured ADMIN_USERNAME
+# Load environment once so the module has access to dotenv-backed settings.
 load_env()
-_DEBUG_MODE = get_env_flag("DEBUG_MODE", default=False)     # False = No response to ADMIN
-_ADMIN_ADDR = get_env_str("ADMIN_USERNAME", "").lower()
 
 
 # ---------------------------------------------------------------------
@@ -72,6 +70,29 @@ def _is_allowed_sender(from_addr: str) -> bool:
     Do not remove.
     """
     return (from_addr or "").lower().endswith(_ALLOWED_DOMAIN_SUFFIX)
+
+
+def _should_bypass_admin(from_addr: str) -> bool:
+    """
+    Return True when admin-originated mail should be skipped.
+
+    In this module, DEBUG_MODE means:
+    - True: process mail from ADMIN_USERNAME normally.
+    - False: bypass mail whose sender matches ADMIN_USERNAME.
+
+    This check reads .env live so a running ali_email.py poller sees
+    DEBUG_MODE/ADMIN_USERNAME changes without a process restart.
+    """
+    env_values = dotenv_values(_DOTENV_PATH)
+
+    admin_addr = str(env_values.get("ADMIN_USERNAME") or os.getenv("ADMIN_USERNAME") or "").strip().lower()
+    if not admin_addr:
+        return False
+
+    debug_raw = str(env_values.get("DEBUG_MODE") or os.getenv("DEBUG_MODE") or "").strip()
+    debug_mode = True if debug_raw == "" else debug_raw.lower() == "true"
+
+    return not debug_mode and (from_addr or "").lower() == admin_addr
 
 
 def _build_client(logger, *, require_credentials: bool) -> tuple[ImapClient, str]:
@@ -192,7 +213,7 @@ def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
 
             # If DEBUG_MODE is explicitly disabled, bypass messages from the
             # configured IMAP user (commonly the internal IT account).
-            if not _DEBUG_MODE and (email.from_addr or "").lower() == _ADMIN_ADDR:
+            if _should_bypass_admin(email.from_addr):
                 logger.info(
                     "Bypassing message from %s uid=%s due to DEBUG_MODE=FALSE",
                     email.from_addr,
@@ -260,7 +281,7 @@ def fetch_sender_replies() -> List[EmailMessage]:
         for rec in records:
             email = _raw_to_email_message(rec)
             # Skip internal IT/IMAP user when DEBUG_MODE is disabled
-            if not _DEBUG_MODE and (email.from_addr or "").lower() == _ADMIN_ADDR:
+            if _should_bypass_admin(email.from_addr):
                 logger.info(
                     "Bypassing reply from %s uid=%s due to DEBUG_MODE=FALSE",
                     email.from_addr,
