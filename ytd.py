@@ -30,7 +30,7 @@ FORM_HTML = """<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>yt-dlp Downloader</title>
+  <title>Downloader</title>
   <style>
     body {{font-family: sans-serif; margin: 2rem; background: #f6f6f6;}}
     main {{max-width: 480px; margin: auto; background: #fff; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1);}}
@@ -47,7 +47,7 @@ FORM_HTML = """<!doctype html>
 </head>
 <body>
   <main>
-    <h2>Download audio with yt-dlp</h2>
+    <h2>Download audio</h2>
     <form method="post">
       <input type="hidden" name="mode" value="worst">
       <input type="text" name="url" placeholder="https://example.com/video" required>
@@ -64,7 +64,7 @@ FORM_HTML = """<!doctype html>
       <button type="submit">MP3</button>
     </form>
     {status}
-    <small>Top form runs <code>yt-dlp -f &quot;(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst&quot;</code>; the 720p form runs <code>yt-dlp -f &quot;(bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a])/(bestvideo[height=720]+bestaudio)/(bestvideo[ext=mp4][height&lt;=720]+bestaudio[ext=m4a])/(bestvideo[height&lt;=720]+bestaudio)/best[height&lt;=720]&quot; --merge-output-format mp4</code>; the MP3 form runs <code>yt-dlp -x --audio-format mp3 -f &quot;bestaudio/best&quot;</code>. Files are removed after each request.</small>
+    <small>Top form runs. Files are removed after each request.</small>
   </main>
 </body>
 </html>
@@ -338,7 +338,7 @@ def main():
         raise
 
     host, port = server.server_address[:2]
-    print(f"Serving yt-dlp downloader on http://{host}:{port}")
+    print(f"Serving  downloader on http://{host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
