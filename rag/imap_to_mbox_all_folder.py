@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# imap_to_mbox_all_folder.py
 import os
 import ssl
 import imaplib
@@ -15,12 +16,13 @@ from datetime import datetime
 DEFAULT_SERVER = "mail.ampco.com.hk"
 DEFAULT_PORT = 993
 DEFAULT_TIMEOUT = 300
-DEFAULT_SINCE_DATE = "2026-03-01"
+DEFAULT_SINCE_DATE = "2026-02-01"
 DEFAULT_OUT_DIR = Path("data/mbox/raw")
 DEFAULT_STATE_PATH = Path("data/mbox/raw/imap_state.json")
 DEFAULT_CHUNK_SIZE = 100
-DISCOVER_ALL_FOLDERS = False
+DISCOVER_ALL_FOLDERS = True
 DEFAULT_FOLDERS = ("INBOX",)
+IGNORE_FOLDERS = ("Trash","Junk")
 
 # ============================================================
 # LOAD ACCOUNT FROM .env
@@ -167,6 +169,8 @@ def main():
     else:
         folders = list(DEFAULT_FOLDERS)
         print(f"[+] USING FIXED FOLDERS: {folders}")
+
+    folders = [folder for folder in folders if folder not in IGNORE_FOLDERS]
 
     since = to_imap_date(DEFAULT_SINCE_DATE)
 
