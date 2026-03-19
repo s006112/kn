@@ -107,6 +107,10 @@ def main():
         output_jsonl = OUTPUT_DIR / block_filename
         chunks_jsonl = OUTPUT_DIR / f"{base_prefix}_chunks.jsonl"
 
+        if chunks_jsonl.exists():
+            print(f"[SKIP] Chunks JSONL already exists: {chunks_jsonl}")
+            continue
+
         print(f"[INFO] Processing {mbox_file}")
         mbox = mailbox.mbox(str(mbox_file))
 
