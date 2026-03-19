@@ -57,7 +57,7 @@ _ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"
 # When DEBUG_MODE is set to "false" in the environment, bypass any unread
 # messages coming from the configured ADMIN_USERNAME
 load_env()
-_DEBUG_MODE = get_env_flag("DEBUG_MODE", default=True)
+_DEBUG_MODE = get_env_flag("DEBUG_MODE", default=False)     # False = No response to ADMIN
 _ADMIN_ADDR = get_env_str("ADMIN_USERNAME", "").lower()
 
 
