@@ -139,6 +139,9 @@ def _make_chunk(text: str, base_meta: dict, idx: int, total: int):
 def build_chunks_jsonl(json_dir: Path, block_suffix: str, out_path: Path):
     pattern = os.path.join(json_dir, f"*{block_suffix}")
     files = glob(pattern)
+    base_stem = out_path.stem
+    if base_stem.endswith("_chunks"):
+        base_stem = base_stem[:-7]
 
     chunks = []
     drop_logs = []
@@ -207,11 +210,11 @@ def build_chunks_jsonl(json_dir: Path, block_suffix: str, out_path: Path):
     _dump_chunks_jsonl(chunks, out_path)
 
     if drop_logs:
-        drop_path = out_path.with_name(out_path.stem + "_chunk_drop.jsonl")
+        drop_path = out_path.with_name(base_stem + "_drop.jsonl")
         _dump_chunks_jsonl([(x["text"], x) for x in drop_logs], drop_path)
 
     if split_logs:
-        split_path = out_path.with_name(out_path.stem + "_chunk_split_added.jsonl")
+        split_path = out_path.with_name(base_stem + "_split_added.jsonl")
         with open(split_path, "w", encoding="utf-8") as f:
             for x in split_logs:
                 if x is None:
@@ -220,5 +223,4 @@ def build_chunks_jsonl(json_dir: Path, block_suffix: str, out_path: Path):
                     f.write(json.dumps(x, ensure_ascii=False) + "\n")
 
     print(f"CLEAN STATS: {stats}\nCHUNKS WRITTEN → {out_path}")
-
 

@@ -9,7 +9,7 @@ Pipelines:
 - mbox_iterate -> message_parse -> metadata_build -> body_parse -> block_enrich -> jsonl_write -> attachment_save -> attachment_parse
 
 Invariants:
-- Overwrites `data/mbox/jsonl/email_blocks.jsonl` on each run.
+- Overwrites `data/mbox/jsonl/<mbox_stem>_blocks.jsonl` for each mbox file processed.
 - Skips any message that lacks a `Message-ID` header.
 - Saves each attachment payload to disk before attempting any attachment parsing.
 
@@ -40,13 +40,11 @@ from parse_raw_to_jsonl import (
 )
 
 
-BLOCK_SUFFIX = "mbox_blocks.jsonl"
 RAW_MBOX_DIR = ROOT_DIR / "data" / "mbox" / "raw"
-OUTPUT_JSONL = ROOT_DIR / "data" / "mbox" / "jsonl" / f"{BLOCK_SUFFIX}"
-CHUNKS_JSONL = ROOT_DIR / "data" / "mbox" / "jsonl" / f"{BLOCK_SUFFIX.replace('blocks', 'chunks')}"
+OUTPUT_DIR = ROOT_DIR / "data" / "mbox" / "jsonl"
 
 ATTACHMENT_PARSERS = {
-    ".pdf":  parse_pdf_bytes_to_canonical_blocks,
+    #".pdf":  parse_pdf_bytes_to_canonical_blocks,
     #**{ext: parse_doc_bytes_to_canonical_blocks for ext in (".doc", ".docx")},
     #**{ext: parse_xls_bytes_to_canonical_blocks for ext in (".xls", ".xlsx")},
 }
@@ -89,24 +87,30 @@ def write_block(out, block: dict):
 def main():
     """
     Purpose:
-    Iterate all files in the raw mbox directory, parse each message, and emit canonical block JSONL to a fixed output path.
+    Iterate all files in the raw mbox directory, parse each message, and emit canonical block JSONL per mbox file.
 
     Inputs:
     - None.
 
     Outputs:
-    - None. Writes JSONL to `data/mbox/jsonl/email_blocks.jsonl` and saves attachment payloads under `data/mbox/raw/<ext>/`.
+    - None. Writes JSONL to `data/mbox/jsonl/<mbox_stem>_blocks.jsonl` and saves attachment payloads under
+      `data/mbox/raw/<ext>/`.
     """
-    OUTPUT_JSONL.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    with OUTPUT_JSONL.open("w", encoding="utf-8") as out:
-        for mbox_file in RAW_MBOX_DIR.iterdir():
-            if mbox_file.is_dir():
-                continue
+    for mbox_file in RAW_MBOX_DIR.iterdir():
+        if mbox_file.is_dir():
+            continue
 
-            print(f"[INFO] Processing {mbox_file}")
-            mbox = mailbox.mbox(str(mbox_file))
+        base_prefix = mbox_file.stem
+        block_filename = f"{base_prefix}_blocks.jsonl"
+        output_jsonl = OUTPUT_DIR / block_filename
+        chunks_jsonl = OUTPUT_DIR / f"{base_prefix}_chunks.jsonl"
 
+        print(f"[INFO] Processing {mbox_file}")
+        mbox = mailbox.mbox(str(mbox_file))
+
+        with output_jsonl.open("w", encoding="utf-8") as out:
             for raw in mbox:
                 email = BytesParser(policy=policy.default).parsebytes(raw.as_bytes())
 
@@ -165,17 +169,17 @@ def main():
                         b.update(base_meta)
                         write_block(out, b)
 
-            mbox.close()
+        mbox.close()
 
-    print(f"[DONE] Canonical email JSONL written to {OUTPUT_JSONL}")
+        print(f"[DONE] Canonical email JSONL written to {output_jsonl}")
 
-    print("[INFO] Building chunks jsonl...")
-    build_chunks_jsonl(
-        OUTPUT_JSONL.parent,
-        BLOCK_SUFFIX,
-        CHUNKS_JSONL,
-    )
-    print(f"[DONE] Chunks JSONL written to {CHUNKS_JSONL}")
+        print("[INFO] Building chunks jsonl...")
+        build_chunks_jsonl(
+            OUTPUT_DIR,
+            block_filename,
+            chunks_jsonl,
+        )
+        print(f"[DONE] Chunks JSONL written to {chunks_jsonl}")
 
 if __name__ == "__main__":
     main()
