@@ -259,7 +259,7 @@ def get_demo() -> "gr.Blocks":
             model_picker = gr.CheckboxGroup(
                 label="Choose a rendering model",
                 choices=[(MODEL_CATALOG.get(model, model), model) for model in MODEL_OPTIONS],
-                value=[MODEL_OPTIONS[2], MODEL_OPTIONS[6]],
+                value=[MODEL_OPTIONS[2]],
             )
         prompt_editor = gr.Textbox(
             label="Additional prompt (optional)",
