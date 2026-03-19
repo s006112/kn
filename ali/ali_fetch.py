@@ -55,10 +55,10 @@ _ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"
 
 # Load environment and derive debug-bypass behavior.
 # When DEBUG_MODE is set to "false" in the environment, bypass any unread
-# messages coming from the configured IMAP_USERNAME (e.g. kennyng@ampco.com.hk).
+# messages coming from the configured ADMIN_USERNAME
 load_env()
 _DEBUG_MODE = get_env_flag("DEBUG_MODE", default=True)
-_KENNY_ADDR = get_env_str("IMAP_USERNAME", "").lower()
+_ADMIN_ADDR = get_env_str("ADMIN_USERNAME", "").lower()
 
 
 # ---------------------------------------------------------------------
@@ -192,7 +192,7 @@ def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
 
             # If DEBUG_MODE is explicitly disabled, bypass messages from the
             # configured IMAP user (commonly the internal IT account).
-            if not _DEBUG_MODE and (email.from_addr or "").lower() == _KENNY_ADDR:
+            if not _DEBUG_MODE and (email.from_addr or "").lower() == _ADMIN_ADDR:
                 logger.info(
                     "Bypassing message from %s uid=%s due to DEBUG_MODE=FALSE",
                     email.from_addr,
@@ -260,7 +260,7 @@ def fetch_sender_replies() -> List[EmailMessage]:
         for rec in records:
             email = _raw_to_email_message(rec)
             # Skip internal IT/IMAP user when DEBUG_MODE is disabled
-            if not _DEBUG_MODE and (email.from_addr or "").lower() == _KENNY_ADDR:
+            if not _DEBUG_MODE and (email.from_addr or "").lower() == _ADMIN_ADDR:
                 logger.info(
                     "Bypassing reply from %s uid=%s due to DEBUG_MODE=FALSE",
                     email.from_addr,
