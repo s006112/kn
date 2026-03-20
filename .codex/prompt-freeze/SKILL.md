@@ -1,5 +1,5 @@
 ---
-name: minimal-prompt-freeze
+name: prompt-freeze
 description: Normalize fragmented human intent into a single, precise, and executable prompt contract. This skill converts vague or partial input into a structurally complete prompt that is safe for downstream AI execution and freezes requirement semantics. It never generates code or solutions, only a clean and copy-ready prompt.
 ---
 

@@ -7,7 +7,7 @@ import mailbox
 from email import message_from_bytes
 from pathlib import Path
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ============================================================
 # KEEP YOUR CONFIG (DO NOT TOUCH)
@@ -17,6 +17,7 @@ DEFAULT_SERVER = "mail.ampco.com.hk"
 DEFAULT_PORT = 993
 DEFAULT_TIMEOUT = 300
 DEFAULT_SINCE_DATE = "2026-02-01"
+DEFAULT_END_DATE = "Today"    # "Today", or YYYY-MM-DD"
 DEFAULT_OUT_DIR = Path("data/mbox/raw")
 DEFAULT_STATE_PATH = Path("data/mbox/raw/imap_state.json")
 DEFAULT_CHUNK_SIZE = 100
@@ -43,6 +44,14 @@ if not IMAP_USERNAME or not IMAP_PASSWORD:
 
 def to_imap_date(d):
     return datetime.strptime(d, "%Y-%m-%d").strftime("%d-%b-%Y")
+
+def build_search_criteria(since_date, end_date):
+    if end_date == "Today":
+        return f"SINCE {to_imap_date(since_date)}"
+
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+    before_date = (end_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+    return f"SINCE {to_imap_date(since_date)} BEFORE {to_imap_date(before_date)}"
 
 def parse_flags_from_line(line):
     i = line.find("FLAGS (")
@@ -72,15 +81,15 @@ def list_folders(imap):
             folders.append(folder)
     return folders
 
-def fetch_folder(imap, folder, since, mbox):
+def fetch_folder(imap, folder, search_criteria, mbox):
     typ, _ = imap.select(f'"{folder}"', readonly=True)
     if typ != "OK":
         print(f"[!] SKIP folder {folder}")
         return 0
 
-    typ, data = imap.uid("SEARCH", None, f"SINCE {since}")
+    typ, data = imap.uid("SEARCH", None, search_criteria)
     uids = data[0].decode().split() if data and data[0] else []
-    print(f"[+] {folder}: {len(uids)} mails since {since}")
+    print(f"[+] {folder}: {len(uids)} mails for {search_criteria}")
 
     count = 0
 
@@ -172,11 +181,16 @@ def main():
 
     folders = [folder for folder in folders if folder not in IGNORE_FOLDERS]
 
-    since = to_imap_date(DEFAULT_SINCE_DATE)
+    search_criteria = build_search_criteria(DEFAULT_SINCE_DATE, DEFAULT_END_DATE)
 
     DEFAULT_OUT_DIR.mkdir(parents=True, exist_ok=True)
+    end_date_for_name = (
+        datetime.utcnow().strftime('%y%m%d')
+        if DEFAULT_END_DATE == "Today"
+        else datetime.strptime(DEFAULT_END_DATE, '%Y-%m-%d').strftime('%y%m%d')
+    )
     mbox_path = DEFAULT_OUT_DIR / (
-        f"{IMAP_USERNAME.split('@', 1)[0]}_{datetime.strptime(DEFAULT_SINCE_DATE, '%Y-%m-%d').strftime('%y%m%d')}_{datetime.utcnow().strftime('%y%m%d')}.mbox"
+        f"{IMAP_USERNAME.split('@', 1)[0]}_{datetime.strptime(DEFAULT_SINCE_DATE, '%Y-%m-%d').strftime('%y%m%d')}_{end_date_for_name}.mbox"
     )
     if mbox_path.exists():
         mbox_path.unlink()
@@ -186,7 +200,7 @@ def main():
     total_count = 0
 
     for folder in folders:
-        total_count += fetch_folder(imap, folder, since, mbox)
+        total_count += fetch_folder(imap, folder, search_criteria, mbox)
 
     mbox.flush()
     mbox.close()

@@ -1,5 +1,5 @@
 
-Minimal Complexity Guard Checklist
+Complexity Guard Checklist
 
 - [ ] No code modifications were made.
 - [ ] Each file has LOC measurement.

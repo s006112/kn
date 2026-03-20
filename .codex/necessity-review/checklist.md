@@ -1,4 +1,4 @@
-Minimal Necessity Review Checklist
+Necessity Review Checklist
 
 Review-only phase
 - [ ] Scope is explicit (files + constraints).

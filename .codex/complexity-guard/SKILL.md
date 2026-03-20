@@ -1,9 +1,9 @@
 ---
-name: minimal-complexity-guard
+name: complexity-guard
 description: Enforces strict complexity budgets on code and workflows by reviewing structural size and cognitive load. This skill NEVER modifies code. It only evaluates whether approved changes exceed human-manageable complexity limits and requires explicit human authorization for any complexity expansion. Triggered by: complexity guard, complexity budget, structure limit, file too large, module too complex, flow too many states, keep code understandable.
 ---
 
-# minimal-complexity-guard
+# complexity-guard
 
 ## Purpose
 Prevent structural complexity from exceeding human cognitive limits.
@@ -138,7 +138,7 @@ This skill only guards structural limits.
 
 ## Example usage
 
-Use skill: minimal-complexity-guard
+Use skill: complexity-guard
 Scope:
 * Files: ali_email.py, ali_fetch.py
 * Approved candidates: C1, C3

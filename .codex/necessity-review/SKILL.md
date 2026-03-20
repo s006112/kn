@@ -1,9 +1,9 @@
 ---
-name: minimal-necessity-review
+name: necessity-review
 description: Performs necessity-first code review to shrink AI-generated or human-written code by proposing deletions and merges with evidence, while preserving behavior exactly. The agent MUST NOT modify or delete any code unless the user explicitly approves each proposed change. Triggered by requests like: shrink, compress, converge, remove redundancy, minimal changes, preserve behavior, boring code, no cleverness, refactor only when critical.
 ---
 
-# minimal-necessity-review
+# necessity-review
 
 ## Purpose
 Enforce a necessity-first review process:
