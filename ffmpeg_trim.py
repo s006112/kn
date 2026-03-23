@@ -83,6 +83,7 @@ def process_file(file_path):
         "ffmpeg", "-y", "-i", str(file_path),
         "-ss", start_time,
         "-to", end_time,
+        "-b:v", "3000K",
         "-c", "copy",
         str(output_path)
     ]
@@ -100,6 +101,12 @@ def process_file(file_path):
             print(f"[status] FFmpeg failed for {file_path.name}: {result.stderr.strip()}")
     except Exception as e:
         print(f"Failed to trim {file_path.name}: {e}")
+
+def scan_existing_files():
+    print(f"[status] Scanning existing files in: {WATCH_FOLDER}")
+    for file_path in sorted(WATCH_FOLDER.iterdir()):
+        if file_path.is_file():
+            process_file(file_path)
 
 class MediaWatcherHandler(FileSystemEventHandler):
     def on_created(self, event):
@@ -121,6 +128,8 @@ def main():
     if not WATCH_FOLDER.exists():
         print(f"Directory not found: {WATCH_FOLDER}")
         return
+
+    scan_existing_files()
 
     event_handler = MediaWatcherHandler()
     observer = Observer()
