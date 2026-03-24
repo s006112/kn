@@ -33,10 +33,9 @@ def format_time(token):
 
 def move_to_trash(file_path):
     """
-    Moves the file to a local .trash folder within the watch directory
-    to avoid permanent deletion while maintaining portability.
+    Moves the file to the user's standard desktop trash folder.
     """
-    trash_dir = WATCH_FOLDER / ".trash"
+    trash_dir = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "Trash" / "files"
     try:
         if not trash_dir.exists():
             trash_dir.mkdir(parents=True, exist_ok=True)
@@ -78,13 +77,19 @@ def process_file(file_path):
         print(f"[status] Skipped because output already exists: {output_path.name}")
         return
 
-    # FFmpeg command: fast stream copy (-c copy) to preserve quality and speed
+    # Use a size-focused re-encode: CRF plus a slower preset compresses better
+    # than a simple bitrate target for most real-world clips.
     cmd = [
         "ffmpeg", "-y", "-i", str(file_path),
         "-ss", start_time,
         "-to", end_time,
-        "-b:v", "3000K",
-        "-c", "copy",
+        "-vf", "scale=640:360",  # Resize video to 640x360.
+        "-c:v", "libx264",  # Encode video with H.264.
+        "-crf", "28",  # CRF quality range is typically 18-32; smaller means better quality and larger files.
+        "-preset", "slow",  # Spend more CPU time for better compression.
+        "-c:a", "aac",  # Encode audio as AAC for MP4 compatibility.
+        "-b:a", "96K",  # Limit audio bitrate to keep audio smaller.
+        "-movflags", "+faststart",  # Move MP4 metadata to the front for faster playback start.
         str(output_path)
     ]
 
