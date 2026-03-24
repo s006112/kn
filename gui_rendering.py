@@ -1,4 +1,9 @@
-"""Gradio GUI entrypoint for model-backed image generation using an uploaded sketch.
+"""Own file name: gui_rendering.py
+
+Responsibility:
+This module defines the Gradio rendering UI and the request handlers that read uploaded
+reference images, call the image-generation backend, and upload source and generated image
+artifacts to the configured remote directory.
 
 Used by:
 * (no direct callers found)
@@ -8,13 +13,14 @@ Pipelines:
 - ui -> get_demo -> blocks -> click -> handle_render -> request_render -> generate_image -> upload_and_share_file -> gallery
 
 Invariants:
-- `MODEL_OPTIONS` is the source of truth for allowed model identifiers.
-- `PROMPT_RENDERING` is `""` when `prompt/prompt_rendering.txt` is missing.
-- `request_render` and `handle_render` do not import or require Gradio.
+- `MODEL_OPTIONS` is derived from `MODEL_CATALOG` and defines the allowed model identifiers.
+- `PROMPT_RENDERING` falls back to `""` when `prompt/prompt_rendering.txt` is missing.
+- `request_render` does not import or require Gradio.
+- `handle_render` returns a status string for both success and failure paths.
 
 Out of scope:
-- Validation beyond membership in `MODEL_OPTIONS`.
-- Storage backends beyond calling `upload_and_share_file`.
+- Image-generation backend implementation.
+- Remote storage behavior beyond calling `upload_and_share_file`.
 - Launch configuration beyond the hard-coded `__main__` invocation.
 """
 
@@ -56,6 +62,7 @@ MODEL_CATALOG = {
 PROMPT_RENDERING_PATH = Path(__file__).parent / "prompt" / "prompt_rendering.txt"
 MODEL_OPTIONS = list(MODEL_CATALOG)
 MAX_BLEND_INPUTS = 14
+RENDERING_REFERENCE_URL = "https://nextcloud.ampco.com.hk/index.php/s/GtNbJbGpr624iQW"
 
 if PROMPT_RENDERING_PATH.exists():
     PROMPT_RENDERING = PROMPT_RENDERING_PATH.read_text("utf-8")
@@ -67,11 +74,30 @@ else:
 
 
 def _supports_multi_image_blending(model_name: str) -> bool:
+    """Purpose:
+    Determine whether a model name is treated as supporting multi-image blending.
+
+    Inputs:
+    - model_name: Model identifier to inspect.
+
+    Outputs:
+    - `True` when the lowercased identifier starts with `gemini` and contains `image`;
+      otherwise `False`.
+    """
     lowered = model_name.lower()
     return lowered.startswith("gemini") and "image" in lowered
 
 
 def _blend_prompt_suffix(image_count: int) -> str:
+    """Purpose:
+    Build the fixed prompt suffix used for multi-image blending requests.
+
+    Inputs:
+    - image_count: Number of uploaded reference images.
+
+    Outputs:
+    - Instruction text that requires the backend to incorporate all uploaded references.
+    """
     return (
         "Blend all provided references into one cohesive photorealistic result. "
         f"Use each uploaded reference (1 to {image_count}) as a required source. "
@@ -83,23 +109,15 @@ def _blend_prompt_suffix(image_count: int) -> str:
 
 def request_render(image_bytes_list: list[bytes] | None, model: str, prompt: str) -> bytes:
     """Purpose:
-    Generate a single image via `generate_image`, optionally conditioning on an uploaded sketch.
+    Build the final prompt and request one generated image from `generate_image`.
 
     Inputs:
-    - image_bytes_list: Optional source image bytes list passed through to the backend.
+    - image_bytes_list: Optional uploaded source image bytes passed through to the backend.
     - model: Model identifier passed to the backend.
     - prompt: Additional prompt text appended to the template prompt.
 
     Outputs:
-    - Rendered image bytes (the first element returned by `generate_image`).
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - Raises `RuntimeError` if the combined prompt is empty.
-    - Raises `ValueError` if the backend returns no images.
-    - Propagates exceptions from `generate_image`.
+    - The first generated image as raw bytes.
     """
     system_prompt = PROMPT_RENDERING.strip()
     user_text = (prompt or "").strip()
@@ -131,28 +149,20 @@ def request_render(image_bytes_list: list[bytes] | None, model: str, prompt: str
 
 def handle_render(uploaded: str | list[str] | None, model: str | list[str] | None, prompt: str):
     """Purpose:
-    Validate inputs, read an uploaded file, render one image per selected model, and upload artifacts.
+    Validate uploaded inputs, render one image per selected model, and upload source and
+    generated artifacts.
 
     Inputs:
-    - uploaded: Local filepath(s) from Gradio's `File(type="filepath")`, or `None`.
-    - model: A single model id, a list of model ids, or `None` (from Gradio CheckboxGroup).
+    - uploaded: Local file path or paths from Gradio's `File(type="filepath")`, or `None`.
+    - model: Selected model id or model ids from the Gradio checkbox group, or `None`.
     - prompt: Additional prompt text.
 
     Outputs:
-    - `(rendered_images, status_message)` where `rendered_images` is a list of
-      `(PIL.Image.Image, caption)` tuples for display in a Gradio Gallery.
-    - On upload/read failures, returns an empty list (or `None` on one legacy path) plus an error string.
-
-    Side effects:
-    - Reads the uploaded file from disk when `uploaded` is provided.
-    - Calls `upload_and_share_file` for the uploaded file and each rendered image.
-    - Logs exceptions.
-
-    Failure modes:
-    - Returns user-facing validation errors when no models are selected or models are invalid.
-    - Returns user-facing upload validation errors for missing or excess files.
-    - Returns `([], "Rendering failed: ...")` on rendering/upload failures after logging.
-    - Returns an explicit payload-size error for multi-image Gemini requests above 20MB.
+    - A tuple of `(rendered_images, status_message)` for the Gradio gallery and status box.
+    - `rendered_images` is a list of `(PIL.Image.Image, caption)` tuples on success.
+    - Successful completion messages include the fixed rendering reference URL.
+    - Validation and failure paths return an empty list, or `None` on the file-read failure path,
+      plus a user-facing status message.
     """
     if isinstance(model, str):
         models = [model]
@@ -221,6 +231,7 @@ def handle_render(uploaded: str | list[str] | None, model: str | list[str] | Non
             status = (
                 f"{status} {', '.join(fallback_models)} used the first uploaded image only."
             )
+        status = f'{status} [ARCHIVED NEXRCLOUD FOLDER]({RENDERING_REFERENCE_URL})'
         return rendered_images, status
     except Exception as exc:
         logger.exception("Rendering failed.")
@@ -230,20 +241,13 @@ def handle_render(uploaded: str | list[str] | None, model: str | list[str] | Non
 @lru_cache(maxsize=1)
 def get_demo() -> "gr.Blocks":
     """Purpose:
-    Build and cache the Gradio `Blocks` demo wiring inputs to `handle_render`.
+    Build and cache the Gradio `Blocks` interface wired to `handle_render`.
 
     Inputs:
     - None.
 
     Outputs:
-    - A `gr.Blocks` instance.
-
-    Side effects:
-    - Imports Gradio inside the function.
-    - Memoizes the constructed UI via `lru_cache`.
-
-    Failure modes:
-    - Propagates exceptions raised during Gradio component construction.
+    - A cached `gr.Blocks` instance.
     """
     import gradio as gr
 
@@ -276,10 +280,8 @@ def get_demo() -> "gr.Blocks":
                 rows=1,
                 format="jpeg",
             )
-            status_message = gr.Textbox(
-                label="Status",
-                value="Upload images, select one or more models, then press Generate Rendering.",
-                interactive=False,
+            status_message = gr.Markdown(
+                value="Upload images, select one or more models, then press Generate Rendering."
             )
         generate_btn.click(
             fn=handle_render,
