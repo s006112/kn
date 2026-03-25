@@ -164,6 +164,8 @@ class DownloadHandler(BaseHTTPRequestHandler):
 
         params = parse_qs(decoded, keep_blank_values=True)
         url = params.get("url", [""])[0].strip()
+        if "&" in url:
+            url = url.split("&", 1)[0]
         if not url:
             return None, None, "Please enter a URL."
         mode = params.get("mode", ["worst"])[0].strip().lower()
