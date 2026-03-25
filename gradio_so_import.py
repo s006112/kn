@@ -8,7 +8,7 @@ from core_so_import import run_so_import as core_run_so_import
 from clipboard_polyfill import CLIPBOARD_POLYFILL
 
 _SHOW_PO_TEXTBOXES = os.getenv("DEBUG_TEXTBOXES", "false").strip().lower() == "true"
-LLM_MODEL = "gpt-5-mini"
+LLM_MODEL = "gpt-5.4-mini"
 
 
 def handle_upload(file_path: str, salesperson: str) -> tuple[str, str, str, dict]:
