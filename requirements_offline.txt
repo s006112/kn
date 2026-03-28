@@ -18,14 +18,18 @@ tesseract-ocr-chi-sim
 tesseract-ocr-chi-tra 
 ffmpeg
 
-
-
 # download wheels
 pip3 index versions xxxxx # check versions from PyPI
 pip3 download -d /wheels --only-binary=:all: xxxxxxxxxxx
 pip3 download -d /wheels --only-binary=:all: \
   torch==2.2.2+cu118 \
   --index-url https://download.pytorch.org/whl/cu118 \
+
+
+# Cohere transription model
+pip3 install --no-index --find-links=/wheels librosa==0.11.0 soundfile==0.13.1
+
+
 
 # ----------------------------------------------------------------------------
 # Core packages – runtime / web UI / base infrastructure
