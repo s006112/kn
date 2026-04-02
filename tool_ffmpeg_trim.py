@@ -1,4 +1,4 @@
-# ffmpeg_trim.py
+# tool_ffmpeg_trim.py
 
 import os
 import re
