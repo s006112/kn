@@ -33,7 +33,7 @@ from pathlib import Path
 from PIL import Image
 from clipboard_polyfill import CLIPBOARD_POLYFILL
 from helper.helper_nextcloud import upload_and_share_file
-from helper.helper_config import configure_logging, load_env
+from helper.helper_config import configure_logging, get_env_flag, load_env
 from helper.helper_llm_image import generate_image
 import gradio as gr
 
@@ -41,6 +41,7 @@ PNG_REMOTE_DIR = "/Documents/Rendering"
 
 load_env(dotenv_path=Path(__file__).parent / ".env")
 logger = configure_logging("rendering")
+_NEXTCLOUD_BACKUP_ENABLED = get_env_flag("RENDERING_NEXTCLOUD_BACKUP", True)
 
 MODEL_CATALOG = {
     # Cost hints are embedded in labels to make quick UI comparisons possible.
@@ -195,7 +196,8 @@ def handle_render(uploaded: str | list[str] | None, model: str | list[str] | Non
         except Exception as exc:
             logger.exception("Unable to read the uploaded image.")
             return None, f"Failed to read the uploaded file: {exc}"
-        upload_and_share_file(uploaded_file, PNG_REMOTE_DIR, share=False)
+        if _NEXTCLOUD_BACKUP_ENABLED:
+            upload_and_share_file(uploaded_file, PNG_REMOTE_DIR, share=False)
 
     if len(source_images) > 1 and any(_supports_multi_image_blending(item) for item in models):
         total_bytes = sum(len(item) for item in source_images)
@@ -218,12 +220,13 @@ def handle_render(uploaded: str | list[str] | None, model: str | list[str] | Non
                 fallback_models.append(model_name)
             ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             generated_filename = f"{source_stem}{blend_suffix}_{model_name}_{ts}.png"
-            upload_and_share_file(
-                rendered_bytes,
-                PNG_REMOTE_DIR,
-                share=False,
-                filename=generated_filename,
-            )
+            if _NEXTCLOUD_BACKUP_ENABLED:
+                upload_and_share_file(
+                    rendered_bytes,
+                    PNG_REMOTE_DIR,
+                    share=False,
+                    filename=generated_filename,
+                )
         status = "Rendering complete."
         if len(models) > 1:
             status = f"Rendering complete for {len(models)} models."
@@ -231,7 +234,8 @@ def handle_render(uploaded: str | list[str] | None, model: str | list[str] | Non
             status = (
                 f"{status} {', '.join(fallback_models)} used the first uploaded image only."
             )
-        status = f'{status} [ARCHIVED NEXRCLOUD FOLDER]({RENDERING_REFERENCE_URL})'
+        if _NEXTCLOUD_BACKUP_ENABLED:
+            status = f'{status} [ARCHIVED NEXRCLOUD FOLDER]({RENDERING_REFERENCE_URL})'
         return rendered_images, status
     except Exception as exc:
         logger.exception("Rendering failed.")

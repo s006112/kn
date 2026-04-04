@@ -85,7 +85,7 @@ def process_file(file_path):
         "-to", end_time,
         "-vf", "scale=640:360",  # Resize video to 640x360.
         "-c:v", "libx264",  # Encode video with H.264.
-        "-crf", "28",  # CRF quality range is typically 18-32; smaller means better quality and larger files.
+        "-crf", "24",  # CRF quality range is typically 18-32; smaller means better quality and larger files.
         "-preset", "slow",  # Spend more CPU time for better compression.
         "-c:a", "aac",  # Encode audio as AAC for MP4 compatibility.
         "-b:a", "96K",  # Limit audio bitrate to keep audio smaller.
