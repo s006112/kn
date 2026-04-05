@@ -41,7 +41,7 @@ PNG_REMOTE_DIR = "/Documents/Rendering"
 
 load_env(dotenv_path=Path(__file__).parent / ".env")
 logger = configure_logging("rendering")
-_NEXTCLOUD_BACKUP_ENABLED = get_env_flag("RENDERING_NEXTCLOUD_BACKUP", True)
+_NEXTCLOUD_BACKUP_ENABLED = False
 
 MODEL_CATALOG = {
     # Cost hints are embedded in labels to make quick UI comparisons possible.

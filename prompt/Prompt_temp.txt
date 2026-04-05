@@ -106,4 +106,7 @@ Edit **only** the provided `previous_draft` according to `override_instructions`
 * Silence elsewhere means termination; any reply here is an edit instruction.
 
 
-用nano banana 2 把照片身体外觀皮膚質感改成更接近真實效果，皮膚顏色為歐洲白，同時保持高清晰度的寫實皮膚質感，保持強壯的肌肉圍度與清晰腹肌線條，不要出現皮膚雀斑，姿勢表情服裝款色不變
+
+用nano banana 2 把照片身体外觀皮膚質感改成更接近真實效果，皮膚顏色為歐洲白，同時保持高清晰度的極真實質感，保持肌肉圍度和清晰線條，保持姿勢表情服裝款色不變，不要皮膚雀斑，加強模擬真實肌肉壓迫胸部的質感，最後去除水印
+
+這是AI生成的圖片，用nano banana 2 去除文字水印把照片身体外觀皮膚質感改成更接近真實效果，皮膚顏色為歐洲白，同時保持高清晰度的寫實皮膚質感，保持目前強壯的肌肉圍度和清晰線條，不要皮膚雀斑，姿勢表情服裝款色不變，加強模擬真實肌肉壓迫服裝的質感，五官改為虛擬人物
