@@ -20,6 +20,7 @@ BTC_MID_KEY = "@142"
 GRID_STEP = 150.0
 BUDGET_USDC = 30.0
 DRY_RUN = False
+CHECK_PAIR_SHAPE = False
 PAIR_PRICE_TOLERANCE = 0.1
 
 
@@ -156,7 +157,7 @@ def get_pair_state(orders):
     if buy_price >= sell_price:
         return None
 
-    if abs((sell_price - buy_price) - (2 * GRID_STEP)) > PAIR_PRICE_TOLERANCE:
+    if CHECK_PAIR_SHAPE and abs((sell_price - buy_price) - (2 * GRID_STEP)) > PAIR_PRICE_TOLERANCE:
         return None
 
     reference_price = (buy_price + sell_price) / 2.0
