@@ -17,11 +17,15 @@ API_KEY = os.getenv("HYPERLIQUID_API_KEY")
 SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
-GRID_STEP = 150.0
-BUDGET_USDC = 30.0
+GRID_STEP = 200.0
+BUDGET_USDC = 50.0
 DRY_RUN = False
 CHECK_PAIR_SHAPE = False
 PAIR_PRICE_TOLERANCE = 0.1
+ALLOW_BUY_ONLY_WHEN_NO_BTC = True
+
+PAIR_MODE = "PAIR"
+BUY_ONLY_MODE = "BUY_ONLY"
 
 
 def get_open_orders(info):
@@ -87,6 +91,28 @@ def build_pair_actions(info, reference_price=None):
     ]
 
 
+def classify_order_result(result):
+    statuses = result.get("response", {}).get("data", {}).get("statuses", [])
+    if not statuses:
+        print(f"ORDER FAILED: unknown response {result}")
+        return {"ok": False, "reason": "unknown"}
+
+    first = statuses[0]
+    if "error" in first:
+        error = first["error"]
+        print(f"ORDER FAILED: {error}")
+        if "Insufficient spot balance" in error:
+            return {"ok": False, "reason": "insufficient_spot_balance", "error": error}
+        return {"ok": False, "reason": "exchange_error", "error": error}
+
+    if "resting" in first or "filled" in first:
+        state = "resting" if "resting" in first else "filled"
+        return {"ok": True, "state": state}
+
+    print(f"ORDER FAILED: unknown response {result}")
+    return {"ok": False, "reason": "unknown"}
+
+
 def place_limit_order(exchange, action):
     side = action["side"]
     price = float(action["price"])
@@ -94,7 +120,7 @@ def place_limit_order(exchange, action):
 
     if DRY_RUN:
         print(f"WOULD PLACE {side} @ {price} size={size}")
-        return
+        return {"ok": True, "state": "dry_run"}
 
     result = exchange.order(
         SYMBOL,
@@ -105,6 +131,7 @@ def place_limit_order(exchange, action):
         False,
     )
     print(result)
+    return classify_order_result(result)
 
 
 def bulk_cancel_all(exchange, orders):
@@ -182,6 +209,15 @@ def pair_matches_state(current_pair_state, pair_state):
     return True
 
 
+def build_runtime_state(actions, reference_price, mode):
+    return {
+        "mode": mode,
+        "buy_price": float(actions[0]["price"]),
+        "sell_price": float(actions[1]["price"]),
+        "reference_price": reference_price,
+    }
+
+
 def place_pair(exchange, actions):
     print()
     print("=== ACTIONS ===")
@@ -190,8 +226,52 @@ def place_pair(exchange, actions):
 
     print()
     print("=== EXECUTE ===")
+    placement = {
+        "ok": False,
+        "mode": None,
+        "buy_ok": False,
+        "sell_ok": False,
+        "buy_result": None,
+        "sell_result": None,
+    }
     for a in actions:
-        place_limit_order(exchange, a)
+        result = place_limit_order(exchange, a)
+        if a["side"] == "BUY":
+            placement["buy_result"] = result
+            placement["buy_ok"] = result["ok"]
+        else:
+            placement["sell_result"] = result
+            placement["sell_ok"] = result["ok"]
+
+    if placement["buy_ok"] and placement["sell_ok"]:
+        placement["ok"] = True
+        placement["mode"] = PAIR_MODE
+        return placement
+
+    if (
+        placement["buy_ok"]
+        and not placement["sell_ok"]
+        and placement["sell_result"] is not None
+        and placement["sell_result"].get("reason") == "insufficient_spot_balance"
+        and ALLOW_BUY_ONLY_WHEN_NO_BTC
+    ):
+        placement["ok"] = True
+        placement["mode"] = BUY_ONLY_MODE
+        print("STATUS: SELL rejected due to insufficient BTC, fallback to BUY_ONLY")
+        return placement
+
+    return placement
+
+
+def cleanup_failed_pair(info, exchange):
+    print("ERROR: pair placement failed")
+    orders = get_open_orders(info)
+    if not orders:
+        return
+
+    bulk_cancel_all(exchange, orders)
+    if not wait_no_open_orders(info):
+        print("ERROR: open orders still remain after failed pair placement")
 
 
 def run_main_loop(info, exchange, pair_state):
@@ -203,6 +283,55 @@ def run_main_loop(info, exchange, pair_state):
         time.sleep(1.0)
         orders = get_open_orders(info)
         buy_count, sell_count = count_orders(orders)
+        mode = pair_state["mode"]
+
+        if mode == BUY_ONLY_MODE:
+            if buy_count == 1 and sell_count == 0:
+                abnormal_count = 0
+                continue
+
+            if buy_count == 1 and sell_count == 1:
+                current_pair_state = get_pair_state(orders)
+                if current_pair_state is not None and pair_matches_state(current_pair_state, pair_state):
+                    pair_state["mode"] = PAIR_MODE
+                    abnormal_count = 0
+                    print("STATUS: recovered to PAIR mode")
+                    continue
+
+            if buy_count == 0 and sell_count == 0:
+                filled_order_side = "BUY"
+                reference_price = pair_state["buy_price"]
+            else:
+                abnormal_count += 1
+                print(
+                    "LOOP STATUS: buy-only mode "
+                    f"buy={buy_count} sell={sell_count} abnormal={abnormal_count} orders={orders}"
+                )
+                if abnormal_count >= 3:
+                    print(
+                        "ERROR: repeated abnormal buy-only order state "
+                        f"buy={buy_count} sell={sell_count} orders={orders}"
+                    )
+                    return
+                continue
+
+            abnormal_count = 0
+            print(f"FILLED SIDE: {filled_order_side}")
+            print(f"REFERENCE PRICE: {reference_price}")
+
+            bulk_cancel_all(exchange, orders)
+            if not wait_no_open_orders(info):
+                print("ERROR: open orders still remain after fill handling")
+                return
+
+            actions = build_pair_actions(info, reference_price)
+            placement = place_pair(exchange, actions)
+            if not placement["ok"]:
+                cleanup_failed_pair(info, exchange)
+                return
+
+            pair_state = build_runtime_state(actions, reference_price, placement["mode"])
+            continue
 
         if buy_count == 1 and sell_count == 1:
             current_pair_state = get_pair_state(orders)
@@ -261,13 +390,12 @@ def run_main_loop(info, exchange, pair_state):
             return
 
         actions = build_pair_actions(info, reference_price)
-        place_pair(exchange, actions)
+        placement = place_pair(exchange, actions)
+        if not placement["ok"]:
+            cleanup_failed_pair(info, exchange)
+            return
 
-        pair_state = {
-            "buy_price": float(actions[0]["price"]),
-            "sell_price": float(actions[1]["price"]),
-            "reference_price": reference_price,
-        }
+        pair_state = build_runtime_state(actions, reference_price, placement["mode"])
 
 
 def create_exchange():
@@ -299,6 +427,7 @@ def main():
         if pair_state is None:
             print("ERROR: failed to derive current pair state")
             return
+        pair_state["mode"] = PAIR_MODE
         print("STATUS: valid pair, keep")
 
     elif orders:
@@ -315,12 +444,15 @@ def main():
 
     if pair_state is None:
         actions = build_pair_actions(info)
-        place_pair(exchange, actions)
-        pair_state = {
-            "buy_price": float(actions[0]["price"]),
-            "sell_price": float(actions[1]["price"]),
-            "reference_price": float(actions[0]["price"]) + GRID_STEP,
-        }
+        placement = place_pair(exchange, actions)
+        if not placement["ok"]:
+            cleanup_failed_pair(info, exchange)
+            return
+        pair_state = build_runtime_state(
+            actions,
+            float(actions[0]["price"]) + GRID_STEP,
+            placement["mode"],
+        )
 
     if DRY_RUN:
         print("DRY_RUN: skip live main loop")
