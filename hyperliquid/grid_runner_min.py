@@ -20,6 +20,7 @@ BUDGET_USDC = 50.0
 DRY_RUN = False
 PAIR_PRICE_TOLERANCE = 0.1
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
+REANCHOR_BREAK_STEPS = 3
 
 PAIR_MODE = "PAIR"
 BUY_ONLY_MODE = "BUY_ONLY"
@@ -226,7 +227,32 @@ def rebuild(info, exchange, orders, reference_price=None):
     return None
 
 
-def get_loop_action(orders, state):
+def should_reanchor_residual_order(info, orders):
+    if len(orders) != 1:
+        return False
+
+    btc_mid = float(info.all_mids().get(BTC_MID_KEY, 0))
+    if btc_mid <= 0:
+        raise ValueError("Failed to get BTC mid price")
+
+    threshold_distance = REANCHOR_BREAK_STEPS * GRID_STEP
+    order = orders[0]
+    order_price = float(order["limitPx"])
+
+    if order["side"] == "B":
+        if btc_mid - order_price >= threshold_distance:
+            print(f"re-anchor triggered: stale BUY mid={btc_mid} buy={order_price}")
+            return True
+        return False
+
+    if order_price - btc_mid >= threshold_distance:
+        print(f"re-anchor triggered: stale SELL mid={btc_mid} sell={order_price}")
+        return True
+
+    return False
+
+
+def get_loop_action(info, orders, state):
     buy_count = 0
     sell_count = 0
     for order in orders:
@@ -250,16 +276,22 @@ def get_loop_action(orders, state):
 
     if state["mode"] == PAIR_MODE:
         if buy_count == 0 and sell_count == 1:
-            print("🔥 fill detected: BUY filled")
+            if should_reanchor_residual_order(info, orders):
+                return "reanchor", None
+            print("fill detected: BUY filled")
             return "rebuild", state["buy_price"]
 
         if buy_count == 1 and sell_count == 0:
-            print("🔥 fill detected: SELL filled")
+            if should_reanchor_residual_order(info, orders):
+                return "reanchor", None
+            print("fill detected: SELL filled")
             return "rebuild", state["sell_price"]
 
         return "abnormal", None
 
     if buy_count == 1 and sell_count == 0:
+        if should_reanchor_residual_order(info, orders):
+            return "reanchor", None
         return "keep", None
 
     if buy_count == 0 and sell_count == 0:
@@ -275,9 +307,16 @@ def run_main_loop(info, exchange, state):
     while True:
         time.sleep(1.0)
         orders = get_open_orders(info)
-        action, reference_price = get_loop_action(orders, state)
+        action, reference_price = get_loop_action(info, orders, state)
 
         if action == "keep":
+            abnormal_count = 0
+            continue
+
+        if action == "reanchor":
+            state = rebuild(info, exchange, orders)
+            if state is None:
+                return
             abnormal_count = 0
             continue
 
