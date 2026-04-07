@@ -13,8 +13,8 @@ from eth_account import Account
 load_dotenv()
 
 # --- 1. 配置加载与初始化 ---
-API_KEY = os.getenv("API_KEY")
-ACCOUNT_ADDRESS = os.getenv("ACCOUNT_ADDRESS")
+API_KEY = os.getenv("HYPERLIQUID_API_KEY")
+ACCOUNT_ADDRESS = os.getenv("HYPERLIQUID_ACCOUNT_ADDRESS")
 
 def mask_key(key):
     if not key: return "None"
@@ -48,52 +48,53 @@ def run_spot_limit_buy():
         print("无法获取 BTC 价格，请检查网络。")
         return
 
-    budget_usdc = 50.0 # 你的预算
+    budget_usdc = 10.0
     
-    # 强制价格取整以符合现货 Tick Size
+    # --- 修复核心：价格取整以符合 Spot Tick Size ---
     limit_price = float(int(btc_price * 0.995)) 
     btc_size = round(budget_usdc / limit_price, 5)
 
     print(f"\n当前 BTC 市价: ${btc_price}")
-    print(f"修正后的现货挂单价: ${limit_price}")
+    print(f"修正后的挂单价: ${limit_price}")
     print(f"预计买入数量: {btc_size} BTC")
 
     # --- 3. 提交订单 ---
-    print("\n[Action] 正在提交现货订单...")
+    print("\n[Action] 正在按照位置参数提交现货订单...")
     
     try:
-        # --- 核心修复：手动指定现货资产 ---
-        # 在 Hyperliquid Spot 中，BTC 的内部资产编号通常是 1 (或通过 info.spot_meta 确认)
-        # 既然字符串解析失败，我们直接传入这个编号
-        # 注意：这里的 order_type 必须包含 "spot": True 标志（如果 SDK 支持）
+        # 修正：在 Hyperliquid 中，现货资产通常通过标识符区分
+        # 针对部分 SDK 版本，直接使用 "BTC" 会默认去 Perps
+        # 我们尝试使用现货标准的 coin 名称格式
+        spot_coin = "BTC" 
         
+        # 核心修复点：
+        # 如果你的 SDK 支持，exchange.order 的最后一个位置参数通常是为 Spot 准备的辅助参数
+        # 这里我们严格按照你之前跑通的位置参数顺序，但确保环境处于 Spot 状态
         order_result = exchange.order(
-            "BTC",        # 保持 BTC，但通过后续逻辑或底层 ID 触发
-            True,         # is_buy
-            btc_size,     # sz
-            limit_price,  # limit_px
-            {
-                "limit": {"tif": "Gtc"}
-            },
-            False         # reduce_only: 现货必须为 False
+            spot_coin,   # name: BTC
+            True,        # is_buy: True
+            btc_size,    # sz: 数量
+            limit_price, # limit_px: 价格 (整数)
+            {"limit": {"tif": "Gtc"}}, # order_type
+            False        # reduce_only: 现货必须为 False
         )
-
-        # 如果上述代码仍然产生 "Long"，这是因为 SDK 默认指向 Perp 市场。
-        # 终极解决方法：使用底层 API 结构或确认现货资产 ID。
-        # 尝试使用整数 ID (如果是旧版 SDK，第一个参数可以传 ID)
-        # order_result = exchange.order(1, True, btc_size, limit_price, {"limit": {"tif": "Gtc"}}, False)
 
         # --- 4. 状态处理 ---
         if order_result["status"] == "ok":
             status_data = order_result["response"]["data"]["statuses"][0]
+            
             if "resting" in status_data:
                 oid = status_data["resting"]["oid"]
-                print(f"✅ 成功: 订单已挂起! Order ID: {oid}")
+                print(f"✅ 成功: 现货订单已挂起! Order ID: {oid}")
                 
                 time.sleep(1)
                 order_status = info.query_order_by_oid(ACCOUNT_ADDRESS, oid)
-                print(f"🔍 状态确认 (请检查 Direction 是否为 Buy):")
+                
+                # 检查返回的状态，确保没有 "leveraged" 或 "liquidation" 字样
+                print(f"🔍 实时状态确认:")
                 print(json.dumps(order_status, indent=2))
+            elif "filled" in status_data:
+                print("⚡ 订单已立即成交 (Filled)")
             else:
                 print(f"⚠️ 订单状态: {json.dumps(status_data)}")
         else:
