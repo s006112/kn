@@ -42,13 +42,13 @@ def run_spot_limit_buy():
 
     # --- 2. 获取市场价格 ---
     all_mids = info.all_mids()
-    btc_price = float(all_mids.get("BTC", 0))
+    btc_price = float(all_mids.get("@142", 0))
     
     if btc_price == 0:
         print("无法获取 BTC 价格，请检查网络。")
         return
 
-    budget_usdc = 10.0
+    budget_usdc = 50.0
     
     # --- 修复核心：价格取整以符合 Spot Tick Size ---
     limit_price = float(int(btc_price * 0.995)) 
@@ -62,16 +62,14 @@ def run_spot_limit_buy():
     print("\n[Action] 正在按照位置参数提交现货订单...")
     
     try:
-        # 修正：在 Hyperliquid 中，现货资产通常通过标识符区分
-        # 针对部分 SDK 版本，直接使用 "BTC" 会默认去 Perps
-        # 我们尝试使用现货标准的 coin 名称格式
-        spot_coin = "BTC" 
+        # Hyperliquid SDK 里 "BTC" 会映射到 perp 资产；现货 BTC/USDC 对应 UBTC/USDC。
+        spot_coin = "UBTC/USDC"
         
         # 核心修复点：
         # 如果你的 SDK 支持，exchange.order 的最后一个位置参数通常是为 Spot 准备的辅助参数
         # 这里我们严格按照你之前跑通的位置参数顺序，但确保环境处于 Spot 状态
         order_result = exchange.order(
-            spot_coin,   # name: BTC
+            spot_coin,   # name: UBTC/USDC
             True,        # is_buy: True
             btc_size,    # sz: 数量
             limit_price, # limit_px: 价格 (整数)
