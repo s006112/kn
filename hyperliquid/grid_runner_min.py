@@ -392,6 +392,101 @@ def cleanup_failed_pair(info, exchange):
         print("ERROR: open orders still remain after failed pair placement")
 
 
+def handle_buy_only_mode(orders, buy_count, sell_count, pair_state, abnormal_count):
+    if buy_count == 1 and sell_count == 0:
+        return "continue", 0, None
+
+    if buy_count == 1 and sell_count == 1:
+        current_pair_state = get_pair_state(orders)
+        if current_pair_state is not None and pair_matches_state(current_pair_state, pair_state):
+            pair_state["mode"] = PAIR_MODE
+            print("STATUS: recovered to PAIR mode")
+            return "continue", 0, None
+
+    if buy_count == 0 and sell_count == 0:
+        filled_order_side = "BUY"
+        reference_price = pair_state["buy_price"]
+        print(f"FILLED SIDE: {filled_order_side}")
+        print(f"REFERENCE PRICE: {reference_price}")
+        return "rebuild", 0, reference_price
+
+    abnormal_count += 1
+    print(
+        "LOOP STATUS: buy-only mode "
+        f"buy={buy_count} sell={sell_count} abnormal={abnormal_count} orders={orders}"
+    )
+    if abnormal_count >= 3:
+        print(
+            "ERROR: repeated abnormal buy-only order state "
+            f"buy={buy_count} sell={sell_count} orders={orders}"
+        )
+        return "exit", abnormal_count, None
+    return "continue", abnormal_count, None
+
+
+def handle_pair_mode(orders, buy_count, sell_count, pair_state, abnormal_count):
+    if buy_count == 1 and sell_count == 1:
+        current_pair_state = get_pair_state(orders)
+        if current_pair_state is None:
+            abnormal_count += 1
+            print(f"LOOP STATUS: invalid pair shape abnormal={abnormal_count} orders={orders}")
+            if abnormal_count >= 3:
+                print(f"ERROR: repeated abnormal order state buy=1 sell=1 orders={orders}")
+                return "exit", abnormal_count, None
+            return "continue", abnormal_count, None
+        if not pair_matches_state(current_pair_state, pair_state):
+            abnormal_count += 1
+            print(
+                "LOOP STATUS: pair mismatch "
+                f"abnormal={abnormal_count} current_pair={current_pair_state} "
+                f"expected_pair={pair_state} orders={orders}"
+            )
+            if abnormal_count >= 3:
+                print(
+                    "ERROR: repeated abnormal order state "
+                    f"buy=1 sell=1 current_pair={current_pair_state} "
+                    f"expected_pair={pair_state} orders={orders}"
+                )
+                return "exit", abnormal_count, None
+            return "continue", abnormal_count, None
+        return "continue", 0, None
+
+    if buy_count == 0 and sell_count == 1:
+        filled_order_side = "BUY"
+        reference_price = pair_state["buy_price"]
+    elif buy_count == 1 and sell_count == 0:
+        filled_order_side = "SELL"
+        reference_price = pair_state["sell_price"]
+    else:
+        abnormal_count += 1
+        print(f"LOOP STATUS: buy={buy_count} sell={sell_count} abnormal={abnormal_count} orders={orders}")
+        if abnormal_count >= 3:
+            print(
+                f"ERROR: repeated abnormal order state buy={buy_count} sell={sell_count} orders={orders}"
+            )
+            return "exit", abnormal_count, None
+        return "continue", abnormal_count, None
+
+    print(f"FILLED SIDE: {filled_order_side}")
+    print(f"REFERENCE PRICE: {reference_price}")
+    return "rebuild", 0, reference_price
+
+
+def handle_rebuild(info, exchange, orders, reference_price):
+    bulk_cancel_all(exchange, orders)
+    if not wait_no_open_orders(info):
+        print("ERROR: open orders still remain after fill handling")
+        return None
+
+    actions = build_pair_actions(info, reference_price)
+    placement = place_pair(exchange, actions)
+    if not placement["ok"]:
+        cleanup_failed_pair(info, exchange)
+        return None
+
+    return build_runtime_state(actions, reference_price, placement["mode"])
+
+
 def run_main_loop(info, exchange, pair_state):
     """
     Purpose:
@@ -412,118 +507,25 @@ def run_main_loop(info, exchange, pair_state):
         orders = get_open_orders(info)
         buy_count, sell_count = count_orders(orders)
         mode = pair_state["mode"]
+        reference_price = None
 
         if mode == BUY_ONLY_MODE:
-            if buy_count == 1 and sell_count == 0:
-                abnormal_count = 0
-                continue
-
-            if buy_count == 1 and sell_count == 1:
-                current_pair_state = get_pair_state(orders)
-                if current_pair_state is not None and pair_matches_state(current_pair_state, pair_state):
-                    pair_state["mode"] = PAIR_MODE
-                    abnormal_count = 0
-                    print("STATUS: recovered to PAIR mode")
-                    continue
-
-            if buy_count == 0 and sell_count == 0:
-                filled_order_side = "BUY"
-                reference_price = pair_state["buy_price"]
-            else:
-                abnormal_count += 1
-                print(
-                    "LOOP STATUS: buy-only mode "
-                    f"buy={buy_count} sell={sell_count} abnormal={abnormal_count} orders={orders}"
-                )
-                if abnormal_count >= 3:
-                    print(
-                        "ERROR: repeated abnormal buy-only order state "
-                        f"buy={buy_count} sell={sell_count} orders={orders}"
-                    )
-                    return
-                continue
-
-            abnormal_count = 0
-            print(f"FILLED SIDE: {filled_order_side}")
-            print(f"REFERENCE PRICE: {reference_price}")
-
-            bulk_cancel_all(exchange, orders)
-            if not wait_no_open_orders(info):
-                print("ERROR: open orders still remain after fill handling")
-                return
-
-            actions = build_pair_actions(info, reference_price)
-            placement = place_pair(exchange, actions)
-            if not placement["ok"]:
-                cleanup_failed_pair(info, exchange)
-                return
-
-            pair_state = build_runtime_state(actions, reference_price, placement["mode"])
-            continue
-
-        if buy_count == 1 and sell_count == 1:
-            current_pair_state = get_pair_state(orders)
-            if current_pair_state is None:
-                abnormal_count += 1
-                print(
-                    f"LOOP STATUS: invalid pair shape abnormal={abnormal_count} orders={orders}"
-                )
-                if abnormal_count >= 3:
-                    print(f"ERROR: repeated abnormal order state buy=1 sell=1 orders={orders}")
-                    return
-                continue
-            if not pair_matches_state(current_pair_state, pair_state):
-                abnormal_count += 1
-                print(
-                    "LOOP STATUS: pair mismatch "
-                    f"abnormal={abnormal_count} current_pair={current_pair_state} "
-                    f"expected_pair={pair_state} orders={orders}"
-                )
-                if abnormal_count >= 3:
-                    print(
-                        "ERROR: repeated abnormal order state "
-                        f"buy=1 sell=1 current_pair={current_pair_state} "
-                        f"expected_pair={pair_state} orders={orders}"
-                    )
-                    return
-                continue
-            abnormal_count = 0
-            continue
-
-        if buy_count == 0 and sell_count == 1:
-            filled_order_side = "BUY"
-            reference_price = pair_state["buy_price"]
-        elif buy_count == 1 and sell_count == 0:
-            filled_order_side = "SELL"
-            reference_price = pair_state["sell_price"]
-        else:
-            abnormal_count += 1
-            print(
-                f"LOOP STATUS: buy={buy_count} sell={sell_count} abnormal={abnormal_count} orders={orders}"
+            result, abnormal_count, reference_price = handle_buy_only_mode(
+                orders, buy_count, sell_count, pair_state, abnormal_count
             )
-            if abnormal_count >= 3:
-                print(
-                    f"ERROR: repeated abnormal order state buy={buy_count} sell={sell_count} orders={orders}"
-                )
-                return
+        else:
+            result, abnormal_count, reference_price = handle_pair_mode(
+                orders, buy_count, sell_count, pair_state, abnormal_count
+            )
+
+        if result == "continue":
             continue
-
-        abnormal_count = 0
-        print(f"FILLED SIDE: {filled_order_side}")
-        print(f"REFERENCE PRICE: {reference_price}")
-
-        bulk_cancel_all(exchange, orders)
-        if not wait_no_open_orders(info):
-            print("ERROR: open orders still remain after fill handling")
+        if result == "exit":
             return
 
-        actions = build_pair_actions(info, reference_price)
-        placement = place_pair(exchange, actions)
-        if not placement["ok"]:
-            cleanup_failed_pair(info, exchange)
+        pair_state = handle_rebuild(info, exchange, orders, reference_price)
+        if pair_state is None:
             return
-
-        pair_state = build_runtime_state(actions, reference_price, placement["mode"])
 
 
 def create_exchange():
