@@ -83,12 +83,12 @@ def process_file(file_path):
         "ffmpeg", "-y", "-i", str(file_path),
         "-ss", start_time,
         "-to", end_time,
-        "-vf", "scale=640:360",  # Resize video to 640x360.
+        #"-vf", "scale=640:360",  # Resize video to 640x360.
         "-c:v", "libx264",  # Encode video with H.264.
-        "-crf", "24",  # CRF quality range is typically 18-32; smaller means better quality and larger files.
+        #"-crf", "24",  # CRF quality range is typically 18-32; smaller means better quality and larger files.
         "-preset", "slow",  # Spend more CPU time for better compression.
-        "-c:a", "aac",  # Encode audio as AAC for MP4 compatibility.
-        "-b:a", "96K",  # Limit audio bitrate to keep audio smaller.
+        #"-c:a", "aac",  # Encode audio as AAC for MP4 compatibility.
+        #"-b:a", "96K",  # Limit audio bitrate to keep audio smaller.
         "-movflags", "+faststart",  # Move MP4 metadata to the front for faster playback start.
         str(output_path)
     ]
