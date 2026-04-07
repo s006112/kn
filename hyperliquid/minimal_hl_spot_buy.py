@@ -1,4 +1,4 @@
-# minimal_hl_spot_buy.py
+# minimal_hl_spot_buy_grid_step.py
 # pip install hyperliquid-python-sdk python-dotenv eth-account
 
 import os
@@ -9,6 +9,9 @@ from hyperliquid.info import Info
 from eth_account import Account
 
 load_dotenv()
+
+grid_step = 200.0
+budget_usdc = 10.0
 
 API_KEY = os.getenv("HYPERLIQUID_API_KEY")
 ACCOUNT_ADDRESS = os.getenv("HYPERLIQUID_ACCOUNT_ADDRESS")
@@ -26,31 +29,36 @@ def main():
         account_address=ACCOUNT_ADDRESS
     )
 
-    # 1. 取 BTC 现价
+    # Get current BTC price
     all_mids = info.all_mids()
     btc_price = float(all_mids.get("@142", 0))
-
     if btc_price <= 0:
         print("Failed to get BTC price")
         return
 
-    # 2. 设置最小测试参数
-    budget_usdc = 30.0
-    limit_price = float(int(btc_price * 0.995))   # 略低于市价挂买单
+    # Create limit order at next nearest lower grid level
+    # Example: 60387 -> 60300 when grid_step = 100
+    limit_price = float(int(btc_price // grid_step) * grid_step)
+
+    # Safety check: avoid equal/invalid price
+    if limit_price <= 0:
+        print("Invalid limit price")
+        return
+
     btc_size = round(budget_usdc / limit_price, 5)
 
     print("BTC mid price:", btc_price)
+    print("Grid step:", grid_step)
     print("Limit price:", limit_price)
     print("BTC size:", btc_size)
 
-    # 3. 下最简单的现货限价买单
     result = exchange.order(
-        "UBTC/USDC",                  # 现货对
-        True,                         # buy
-        btc_size,                     # size
-        limit_price,                  # limit price
-        {"limit": {"tif": "Gtc"}},    # Good till cancel
-        False                         # reduce_only must be False for spot
+        "UBTC/USDC",
+        True,
+        btc_size,
+        limit_price,
+        {"limit": {"tif": "Gtc"}},
+        False
     )
 
     print(result)
