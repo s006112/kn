@@ -10,7 +10,7 @@ from eth_account import Account
 
 load_dotenv()
 
-grid_step = 200.0
+grid_step = 500.0
 budget_usdc = 10.0
 
 API_KEY = os.getenv("HYPERLIQUID_API_KEY")
