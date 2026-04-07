@@ -1,3 +1,5 @@
+# hyperliquid_recursive.py, pip3 install hyperliquid-python-sdk
+ 
 import os
 import time
 
@@ -16,11 +18,10 @@ SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
 GRID_STEP = 100.0
-BUDGET_USDC = 50.0
-DRY_RUN = False
+BUDGET_USDC = 100.0
 PAIR_PRICE_TOLERANCE = 0.1
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
-REANCHOR_BREAK_STEPS = 3
+REANCHOR_BREAK_STEPS = 2
 
 PAIR_MODE = "PAIR"
 BUY_ONLY_MODE = "BUY_ONLY"
@@ -99,6 +100,14 @@ def get_pair_state(orders):
     }
 
 
+def pair_matches_state(current_pair, state):
+    if abs(current_pair["buy_price"] - state["buy_price"]) > PAIR_PRICE_TOLERANCE:
+        return False
+    if abs(current_pair["sell_price"] - state["sell_price"]) > PAIR_PRICE_TOLERANCE:
+        return False
+    return True
+
+
 def build_pair(reference_price):
     if reference_price <= 0:
         raise ValueError("Invalid reference price")
@@ -136,10 +145,6 @@ def classify_order_result(result):
 
 
 def place_limit_order(exchange, action):
-    if DRY_RUN:
-        print(f"DRY RUN: {action['side']} @{action['price']} size={action['size']}")
-        return "ok"
-
     result = exchange.order(
         SYMBOL,
         action["side"] == "BUY",
@@ -163,10 +168,6 @@ def cleanup_orders(info, exchange, orders):
     if not orders:
         return True
 
-    if DRY_RUN:
-        print("DRY RUN: cancel all")
-        return True
-
     exchange.bulk_cancel([{"coin": SYMBOL, "oid": order["oid"]} for order in orders])
     if wait_no_open_orders(info):
         return True
@@ -181,7 +182,6 @@ def place_pair(exchange, reference_price):
         f"rebuilding: reference_price={reference_price} "
         f"buy={buy_action['price']} sell={sell_action['price']}"
     )
-
     buy_status = place_limit_order(exchange, buy_action)
     sell_status = place_limit_order(exchange, sell_action)
 
@@ -231,9 +231,12 @@ def should_reanchor_residual_order(info, orders):
     if len(orders) != 1:
         return False
 
-    btc_mid = float(info.all_mids().get(BTC_MID_KEY, 0))
+    try:
+        btc_mid = float(info.all_mids().get(BTC_MID_KEY, 0))
+    except Exception:
+        return False
     if btc_mid <= 0:
-        raise ValueError("Failed to get BTC mid price")
+        return False
 
     threshold_distance = REANCHOR_BREAK_STEPS * GRID_STEP
     order = orders[0]
@@ -241,12 +244,12 @@ def should_reanchor_residual_order(info, orders):
 
     if order["side"] == "B":
         if btc_mid - order_price >= threshold_distance:
-            print(f"re-anchor triggered: stale BUY mid={btc_mid} buy={order_price}")
+            print("re-anchor triggered: stale BUY")
             return True
         return False
 
     if order_price - btc_mid >= threshold_distance:
-        print(f"re-anchor triggered: stale SELL mid={btc_mid} sell={order_price}")
+        print("re-anchor triggered: stale SELL")
         return True
 
     return False
@@ -265,9 +268,7 @@ def get_loop_action(info, orders, state):
         current_pair = get_pair_state(orders)
         if current_pair is None:
             return "abnormal", None
-        if abs(current_pair["buy_price"] - state["buy_price"]) > PAIR_PRICE_TOLERANCE:
-            return "abnormal", None
-        if abs(current_pair["sell_price"] - state["sell_price"]) > PAIR_PRICE_TOLERANCE:
+        if not pair_matches_state(current_pair, state):
             return "abnormal", None
         if state["mode"] == BUY_ONLY_MODE:
             state["mode"] = PAIR_MODE
@@ -277,21 +278,21 @@ def get_loop_action(info, orders, state):
     if state["mode"] == PAIR_MODE:
         if buy_count == 0 and sell_count == 1:
             if should_reanchor_residual_order(info, orders):
-                return "reanchor", None
-            print("fill detected: BUY filled")
+                return "rebuild", None
+            print("🔥 fill detected: BUY filled")
             return "rebuild", state["buy_price"]
 
         if buy_count == 1 and sell_count == 0:
             if should_reanchor_residual_order(info, orders):
-                return "reanchor", None
-            print("fill detected: SELL filled")
+                return "rebuild", None
+            print("✅ fill detected: SELL filled")
             return "rebuild", state["sell_price"]
 
         return "abnormal", None
 
     if buy_count == 1 and sell_count == 0:
         if should_reanchor_residual_order(info, orders):
-            return "reanchor", None
+            return "rebuild", None
         return "keep", None
 
     if buy_count == 0 and sell_count == 0:
@@ -310,13 +311,6 @@ def run_main_loop(info, exchange, state):
         action, reference_price = get_loop_action(info, orders, state)
 
         if action == "keep":
-            abnormal_count = 0
-            continue
-
-        if action == "reanchor":
-            state = rebuild(info, exchange, orders)
-            if state is None:
-                return
             abnormal_count = 0
             continue
 
@@ -352,7 +346,7 @@ def main():
         return
 
     info = Info(constants.MAINNET_API_URL)
-    exchange = None if DRY_RUN else create_exchange()
+    exchange = create_exchange()
 
     orders = get_open_orders(info)
     buy_count, sell_count = summarize_orders(orders)
@@ -367,9 +361,6 @@ def main():
         state = rebuild(info, exchange, orders)
         if state is None:
             return
-
-    if DRY_RUN:
-        return
 
     run_main_loop(info, exchange, state)
 
