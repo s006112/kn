@@ -1,5 +1,28 @@
-# grid_runner_min.py
-# pip install hyperliquid-python-sdk python-dotenv eth-account
+"""
+grid_runner_min.py
+
+Responsibility
+This module runs a live Hyperliquid spot grid loop for `UBTC/USDC`. It maintains a
+two-sided grid when both orders can rest, and it degrades to buy-only mode only when
+the sell order is rejected for insufficient spot balance and the fallback flag is enabled.
+
+Used by:
+* (no direct callers found)
+
+Pipelines:
+- env -> bootstrap -> inspect -> classify -> build -> place -> monitor -> rebuild
+
+Invariants
+- Runtime state must record whether open orders are interpreted as `PAIR` or `BUY_ONLY`.
+- Pair mode only treats `1 BUY + 1 SELL` as the steady state.
+- Buy-only mode only treats `1 BUY + 0 SELL` as the steady state.
+- Buy-only fallback is only entered when the sell placement failure reason is insufficient spot balance.
+
+Out of scope
+- Pre-checking balances before submitting orders.
+- Persisting runtime mode across process restarts.
+- Recovering from non-balance exchange failures beyond logging, cleanup, and exit.
+"""
 
 import os
 import time
@@ -17,8 +40,8 @@ API_KEY = os.getenv("HYPERLIQUID_API_KEY")
 SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
-GRID_STEP = 200.0
-BUDGET_USDC = 50.0
+GRID_STEP = 100.0
+BUDGET_USDC = 100.0
 DRY_RUN = False
 CHECK_PAIR_SHAPE = False
 PAIR_PRICE_TOLERANCE = 0.1
@@ -29,10 +52,12 @@ BUY_ONLY_MODE = "BUY_ONLY"
 
 
 def get_open_orders(info):
+    """Return the current open spot orders for the configured account."""
     return info.open_orders(ACCOUNT_ADDRESS)
 
 
 def get_btc_mid_price(info):
+    """Return the positive BTC mid price used to anchor a new grid reference."""
     px = float(info.all_mids().get(BTC_MID_KEY, 0))
     if px <= 0:
         raise ValueError("Failed to get BTC mid price")
@@ -40,6 +65,7 @@ def get_btc_mid_price(info):
 
 
 def count_orders(orders):
+    """Return `(buy_count, sell_count)` for an open-order snapshot."""
     buy_count = 0
     sell_count = 0
 
@@ -53,6 +79,7 @@ def count_orders(orders):
 
 
 def summarize_orders(orders):
+    """Print the open-order snapshot and return `(buy_count, sell_count)`."""
     buy_count, sell_count = count_orders(orders)
 
     print("=== OPEN ORDERS ===")
@@ -71,6 +98,15 @@ def summarize_orders(orders):
 
 
 def build_pair_actions(info, reference_price=None):
+    """
+    Purpose:
+    Build the target buy and sell limit-order actions for one grid step around a reference price.
+    Inputs:
+    - info: Hyperliquid `Info` client instance.
+    - reference_price: Optional float reference price. When omitted, the current BTC mid is rounded down to the grid.
+    Outputs:
+    - Two-item list containing a buy action and a sell action.
+    """
     if reference_price is None:
         btc_mid = get_btc_mid_price(info)
         reference_price = float(int(btc_mid // GRID_STEP) * GRID_STEP)
@@ -92,6 +128,14 @@ def build_pair_actions(info, reference_price=None):
 
 
 def classify_order_result(result):
+    """
+    Purpose:
+    Classify an exchange order response into success or a specific failure reason.
+    Inputs:
+    - result: Raw response object returned by `exchange.order`.
+    Outputs:
+    - Dict with `ok` plus either a success `state` or a failure `reason`.
+    """
     statuses = result.get("response", {}).get("data", {}).get("statuses", [])
     if not statuses:
         print(f"ORDER FAILED: unknown response {result}")
@@ -114,6 +158,15 @@ def classify_order_result(result):
 
 
 def place_limit_order(exchange, action):
+    """
+    Purpose:
+    Submit one limit order action unless dry run mode is enabled.
+    Inputs:
+    - exchange: Hyperliquid `Exchange` client instance.
+    - action: Dict containing `side`, `price`, and `size`.
+    Outputs:
+    - Dict describing whether the order submission succeeded and why.
+    """
     side = action["side"]
     price = float(action["price"])
     size = float(action["size"])
@@ -135,6 +188,15 @@ def place_limit_order(exchange, action):
 
 
 def bulk_cancel_all(exchange, orders):
+    """
+    Purpose:
+    Cancel every open order in the provided snapshot.
+    Inputs:
+    - exchange: Hyperliquid `Exchange` client instance.
+    - orders: Iterable of Hyperliquid open order objects.
+    Outputs:
+    - None.
+    """
     if not orders:
         return
 
@@ -152,6 +214,16 @@ def bulk_cancel_all(exchange, orders):
 
 
 def wait_no_open_orders(info, max_tries=10, interval_sec=1.0):
+    """
+    Purpose:
+    Poll until the account has no open orders or the retry limit is reached.
+    Inputs:
+    - info: Hyperliquid `Info` client instance.
+    - max_tries: Maximum number of polling attempts.
+    - interval_sec: Sleep interval between polling attempts.
+    Outputs:
+    - `True` when no open orders remain, otherwise `False`.
+    """
     for i in range(max_tries):
         orders = get_open_orders(info)
         print(f"check {i+1}/{max_tries}: open_orders={len(orders)}")
@@ -162,6 +234,14 @@ def wait_no_open_orders(info, max_tries=10, interval_sec=1.0):
 
 
 def get_pair_state(orders):
+    """
+    Purpose:
+    Derive a valid two-sided pair state from an open-order snapshot.
+    Inputs:
+    - orders: Iterable of Hyperliquid open order objects.
+    Outputs:
+    - Dict with `buy_price`, `sell_price`, and `reference_price`, or `None` when the snapshot is not a valid pair.
+    """
     buy_order = None
     sell_order = None
 
@@ -197,6 +277,15 @@ def get_pair_state(orders):
 
 
 def pair_matches_state(current_pair_state, pair_state):
+    """
+    Purpose:
+    Check whether a live pair snapshot matches the tracked runtime pair within tolerance.
+    Inputs:
+    - current_pair_state: Pair-state dict derived from live open orders.
+    - pair_state: Tracked runtime state dict.
+    Outputs:
+    - `True` when buy and sell prices match within tolerance, otherwise `False`.
+    """
     if current_pair_state is None or pair_state is None:
         return False
 
@@ -210,6 +299,17 @@ def pair_matches_state(current_pair_state, pair_state):
 
 
 def build_runtime_state(actions, reference_price, mode):
+    """
+    Purpose:
+    Build the in-memory state object used by the main loop to interpret open orders.
+    Inputs:
+    - actions: Two-item list containing the current buy and sell actions.
+    - reference_price: Float reference price associated with the current grid state.
+    - mode: Runtime mode string, either `PAIR` or `BUY_ONLY`.
+    Outputs:
+    - Dict with runtime mode and tracked order prices. In `BUY_ONLY` mode, `sell_price`
+      remains the target grid sell reference even when no live sell order is resting.
+    """
     return {
         "mode": mode,
         "buy_price": float(actions[0]["price"]),
@@ -219,6 +319,15 @@ def build_runtime_state(actions, reference_price, mode):
 
 
 def place_pair(exchange, actions):
+    """
+    Purpose:
+    Submit the current buy and sell actions and classify the resulting runtime mode.
+    Inputs:
+    - exchange: Hyperliquid `Exchange` client instance.
+    - actions: Two-item list containing the current buy and sell actions.
+    Outputs:
+    - Dict describing per-side order results, overall success, and the resulting runtime mode.
+    """
     print()
     print("=== ACTIONS ===")
     for a in actions:
@@ -264,6 +373,15 @@ def place_pair(exchange, actions):
 
 
 def cleanup_failed_pair(info, exchange):
+    """
+    Purpose:
+    Cancel residual open orders after a pair placement attempt failed.
+    Inputs:
+    - info: Hyperliquid `Info` client instance.
+    - exchange: Hyperliquid `Exchange` client instance.
+    Outputs:
+    - None.
+    """
     print("ERROR: pair placement failed")
     orders = get_open_orders(info)
     if not orders:
@@ -275,6 +393,16 @@ def cleanup_failed_pair(info, exchange):
 
 
 def run_main_loop(info, exchange, pair_state):
+    """
+    Purpose:
+    Monitor open orders, detect fills according to the current runtime mode, and rebuild the grid.
+    Inputs:
+    - info: Hyperliquid `Info` client instance.
+    - exchange: Hyperliquid `Exchange` client instance.
+    - pair_state: Runtime state dict containing mode and tracked prices.
+    Outputs:
+    - None.
+    """
     print()
     print("=== MAIN LOOP ===")
     abnormal_count = 0
@@ -399,6 +527,14 @@ def run_main_loop(info, exchange, pair_state):
 
 
 def create_exchange():
+    """
+    Purpose:
+    Create the authenticated Hyperliquid exchange client for live order placement.
+    Inputs:
+    - None.
+    Outputs:
+    - Hyperliquid `Exchange` client instance.
+    """
     if not API_KEY:
         raise ValueError("Missing HYPERLIQUID_API_KEY")
 
@@ -411,6 +547,14 @@ def create_exchange():
 
 
 def main():
+    """
+    Purpose:
+    Bootstrap clients, normalize the starting order state, and start the live grid loop.
+    Inputs:
+    - None.
+    Outputs:
+    - None.
+    """
     if not ACCOUNT_ADDRESS:
         print("Missing HYPERLIQUID_ACCOUNT_ADDRESS")
         return

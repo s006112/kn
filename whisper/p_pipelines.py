@@ -42,6 +42,7 @@ if str(ROOT_DIR) not in sys.path:
 from p_context import PipelineContext
 from p_pretext import PretextHandler, PretextProcessor, request_pretext_processing
 from p_extract import ExtractHandler, PremiumExtractHandler
+from p_torrent import scan_torrent_watch_folder
 from p_ttml import handle_ttml, is_file_ready
 from p_audio import process_audio_queue
 from utils_unlink import clean_dead_links
@@ -243,6 +244,8 @@ def scan_existing_files(ctx: PipelineContext) -> None:
     Failure modes:
     - Logs rename errors and continues; may propagate other filesystem errors.
     """
+    scan_torrent_watch_folder(ctx.config)
+
     pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
     extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
     premium_watch_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
@@ -325,6 +328,8 @@ def periodic_file_scanner(ctx: PipelineContext) -> None:
     while not ctx.shutdown_flag.is_set():
         try:
             time.sleep(60)
+
+            scan_torrent_watch_folder(ctx.config)
 
             current = list_matching_files(
                 pretext_watch_folder,
