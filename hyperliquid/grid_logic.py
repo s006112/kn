@@ -82,11 +82,17 @@ def pair_matches_state(current_pair, state, pair_price_tolerance):
 def should_reanchor_residual_order(
     info,
     orders,
+    mode,
+    buy_only_mode,
+    sell_only_mode,
     btc_mid_key,
     grid_step,
     reanchor_break,
     reanchor_break_steps,
 ):
+    if mode not in (buy_only_mode, sell_only_mode):
+        return False
+
     if not reanchor_break:
         return False
 

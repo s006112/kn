@@ -22,7 +22,7 @@ BUDGET_USDC = 50.0
 PAIR_PRICE_TOLERANCE = 0.1
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
 ALLOW_SELL_ONLY_WHEN_NO_USDC = True
-REANCHOR_BREAK = False
+REANCHOR_BREAK = True
 REANCHOR_BREAK_STEPS = 2
 
 PAIR_MODE = "PAIR"
@@ -257,6 +257,9 @@ def get_loop_action(info, orders, state):
         if should_reanchor_residual_order(
             info,
             orders,
+            state["mode"],
+            BUY_ONLY_MODE,
+            SELL_ONLY_MODE,
             BTC_MID_KEY,
             GRID_STEP,
             REANCHOR_BREAK,
@@ -266,8 +269,7 @@ def get_loop_action(info, orders, state):
         return "keep", None
 
     if buy_count == 0 and sell_count == 0:
-        print("fill detected: BUY filled")
-        return "rebuild", state["buy_price"]
+        return "abnormal", None
 
     return "abnormal", None
 
