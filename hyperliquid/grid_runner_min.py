@@ -17,7 +17,9 @@ SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
 BUDGET_USDC = 100.0
-GRID_STEP = 200.0
+GRID_STEP = 100.0
+BUY_GRID_FACTOR = 1.0
+SELL_GRID_FACTOR = 1.5
 PAIR_PRICE_TOLERANCE = 0.1
 MANUAL_PAIR_TOLERANCE = True
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
@@ -95,7 +97,7 @@ def get_mid_reference_price(info):
     reference_price = float(int(btc_mid // GRID_STEP) * GRID_STEP)
     if reference_price <= 0:
         raise ValueError("Invalid reference price")
-    if reference_price - GRID_STEP <= 0:
+    if reference_price - (BUY_GRID_FACTOR * GRID_STEP) <= 0:
         raise ValueError("Invalid buy price")
 
     return reference_price
@@ -105,14 +107,16 @@ def build_pair(reference_price):
     if reference_price <= 0:
         raise ValueError("Invalid reference price")
 
-    buy_price = reference_price - GRID_STEP
+    buy_price = reference_price - (BUY_GRID_FACTOR * GRID_STEP)
+    sell_price = reference_price + (SELL_GRID_FACTOR * GRID_STEP)
+
     if buy_price <= 0:
         raise ValueError("Invalid buy price")
 
     size = round(BUDGET_USDC / reference_price, 5)
     return (
         {"side": "BUY", "price": buy_price, "size": size},
-        {"side": "SELL", "price": reference_price + GRID_STEP, "size": size},
+        {"side": "SELL", "price": sell_price, "size": size},
     )
 
 
@@ -262,24 +266,32 @@ def detect_fill_driven_rebuild(state, orders, order_shape):
 
     return None
 
+
 def validate_keep_state(info, orders, state, order_shape):
     if state["mode"] == PAIR_MODE:
         if MANUAL_PAIR_TOLERANCE:
             if is_manual_pair_keepable(orders):
-                log_keep_state("pair", "contract: keep pair")
+                #log_keep_state("pair", "contract: keep pair")
                 return True
             return False
 
         if order_shape != PAIR_MODE:
             return False
 
-        current_pair = get_pair_state(orders, GRID_STEP, PAIR_PRICE_TOLERANCE, PAIR_MODE)
+        current_pair = get_pair_state(
+            orders,
+            GRID_STEP,
+            BUY_GRID_FACTOR,
+            SELL_GRID_FACTOR,
+            PAIR_PRICE_TOLERANCE,
+            PAIR_MODE,
+        )
         if current_pair is None:
             return False
         if not pair_matches_state(current_pair, state, PAIR_PRICE_TOLERANCE):
             return False
 
-        log_keep_state("pair", "contract: keep pair")
+        #log_keep_state("pair", "contract: keep pair")
         return True
 
     return False
@@ -349,6 +361,8 @@ def get_loop_action(info, orders, state):
     order_shape = classify_order_shape(
         orders,
         GRID_STEP,
+        BUY_GRID_FACTOR,
+        SELL_GRID_FACTOR,
         PAIR_PRICE_TOLERANCE,
         PAIR_MODE,
         BUY_ONLY_MODE,
@@ -426,7 +440,14 @@ def main():
 
     state = None
     if buy_count == 1 and sell_count == 1:
-        state = get_pair_state(orders, GRID_STEP, PAIR_PRICE_TOLERANCE, PAIR_MODE)
+        state = get_pair_state(
+            orders,
+            GRID_STEP,
+            BUY_GRID_FACTOR,
+            SELL_GRID_FACTOR,
+            PAIR_PRICE_TOLERANCE,
+            PAIR_MODE,
+        )
         if state is not None:
             log_msg("pair valid")
 

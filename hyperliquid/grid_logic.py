@@ -11,7 +11,14 @@ def count_order_sides(orders):
     return buy_count, sell_count
 
 
-def get_pair_state(orders, grid_step, pair_price_tolerance, pair_mode):
+def get_pair_state(
+    orders,
+    grid_step,
+    buy_grid_factor,
+    sell_grid_factor,
+    pair_price_tolerance,
+    pair_mode,
+):
     buy_price = None
     sell_price = None
 
@@ -34,7 +41,9 @@ def get_pair_state(orders, grid_step, pair_price_tolerance, pair_mode):
         return None
     if buy_price <= 0 or buy_price >= sell_price:
         return None
-    if abs((sell_price - buy_price) - (2 * grid_step)) > pair_price_tolerance:
+
+    expected_gap = (buy_grid_factor + sell_grid_factor) * grid_step
+    if abs((sell_price - buy_price) - expected_gap) > pair_price_tolerance:
         return None
 
     return {
@@ -48,6 +57,8 @@ def get_pair_state(orders, grid_step, pair_price_tolerance, pair_mode):
 def classify_order_shape(
     orders,
     grid_step,
+    buy_grid_factor,
+    sell_grid_factor,
     pair_price_tolerance,
     pair_mode,
     buy_only_mode,
@@ -57,7 +68,14 @@ def classify_order_shape(
     buy_count, sell_count = count_order_sides(orders)
 
     if buy_count == 1 and sell_count == 1:
-        pair_state = get_pair_state(orders, grid_step, pair_price_tolerance, pair_mode)
+        pair_state = get_pair_state(
+            orders,
+            grid_step,
+            buy_grid_factor,
+            sell_grid_factor,
+            pair_price_tolerance,
+            pair_mode,
+        )
         if pair_state is not None:
             return pair_mode
         return abnormal_mode
