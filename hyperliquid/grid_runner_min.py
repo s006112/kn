@@ -19,7 +19,7 @@ SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
 GRID_STEP = 50.0
-BUDGET_USDC = 100.0
+BUDGET_USDC = 100.0      # $$$$$$$
 PAIR_PRICE_TOLERANCE = 0.1
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
 ALLOW_SELL_ONLY_WHEN_NO_USDC = True
@@ -40,6 +40,7 @@ from grid_logic import (
     classify_order_shape,
     get_pair_state,
     pair_matches_state,
+    should_reanchor_residual_order,
 )
 
 
@@ -243,11 +244,11 @@ def detect_fill_driven_rebuild(state, orders, order_shape):
 
     if previous_mode == PAIR_MODE:
         if order_shape == SELL_ONLY_MODE:
-            log_msg("🔥 fill detected: BUY filled")
+            log_msg("fill detected: BUY filled -> SELL residual -> rebuild")
             return "rebuild", state["buy_price"]
 
         if order_shape == BUY_ONLY_MODE:
-            log_msg("✅ fill detected: SELL filled")
+            log_msg("fill detected: SELL filled -> BUY residual -> rebuild")
             return "rebuild", state["sell_price"]
 
         return None
@@ -293,30 +294,20 @@ def detect_anchor_break(info, orders, state, order_shape):
     if len(orders) != 1:
         return None
 
-    order = orders[0]
-    order_price = float(order["limitPx"])
-    threshold_distance = REANCHOR_BREAK_STEPS * GRID_STEP
-
-    try:
-        btc_mid = float(info.all_mids().get(BTC_MID_KEY, 0))
-    except Exception:
+    if not should_reanchor_residual_order(
+        info,
+        orders,
+        state["mode"],
+        BUY_ONLY_MODE,
+        SELL_ONLY_MODE,
+        BTC_MID_KEY,
+        GRID_STEP,
+        REANCHOR_BREAK,
+        REANCHOR_BREAK_STEPS,
+    ):
         return None
-    if btc_mid <= 0:
-        return None
 
-    if state["mode"] == BUY_ONLY_MODE:
-        if order["side"] != "B":
-            return None
-        if btc_mid - order_price < threshold_distance:
-            return None
-
-    if state["mode"] == SELL_ONLY_MODE:
-        if order["side"] == "B":
-            return None
-        if order_price - btc_mid < threshold_distance:
-            return None
-
-    log_msg("contract: anchor break")
+    log_msg("🪝 contract: anchor break")
     return "rebuild", None
 
 

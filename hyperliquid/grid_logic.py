@@ -111,13 +111,6 @@ def should_reanchor_residual_order(
     order_price = float(order["limitPx"])
 
     if order["side"] == "B":
-        if btc_mid - order_price >= threshold_distance:
-            print("re-anchor triggered: stale BUY")
-            return True
-        return False
+        return btc_mid - order_price >= threshold_distance
 
-    if order_price - btc_mid >= threshold_distance:
-        print("re-anchor triggered: stale SELL")
-        return True
-
-    return False
+    return order_price - btc_mid >= threshold_distance
