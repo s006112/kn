@@ -1,22 +1,22 @@
 """grid_run.py
 
-Responsibility
-This module runs the Hyperliquid spot grid process for `UBTC/USDC`: it loads credentials, derives or restores grid state from open orders, rebuilds paired or single-sided orders when required, and loops until repeated abnormal states or rebuild failures stop the process.
+职责
+该模块运行 `UBTC/USDC` 的 Hyperliquid 现货网格流程：加载凭证，从当前挂单推导或恢复网格状态，在需要时重建成对或单边订单，并在出现连续异常状态或重建失败前持续循环。
 
-Pipelines:
-- startup -> credentials -> snapshot -> validate -> rebuild
-- loop -> orders -> classify -> decide -> rebuild
-- actions -> submit -> classify -> state -> monitor
+流程:
+- 启动 -> 凭证 -> 快照 -> 校验 -> 重建
+- 循环 -> 订单 -> 分类 -> 决策 -> 重建
+- 动作 -> 提交 -> 分类 -> 状态 -> 监控
 
-Invariants
-- The module uses the configured constants for symbol, pricing gaps, tolerances, and mode names on every decision path.
-- A rebuild returns a usable state only when order placement succeeds in `PAIR`, `BUY_ONLY`, or `SELL_ONLY` mode; abnormal or failed rebuilds stop progress.
-- The main loop resets abnormal tracking after `keep` and successful `rebuild` actions and exits after `MAX_ABNORMAL_COUNT` consecutive abnormal outcomes.
+不变式
+- 模块在所有决策路径中都使用已配置的交易对、价格间距、容差和模式常量。
+- 只有当 `PAIR`、`BUY_ONLY` 或 `SELL_ONLY` 模式下的下单成功时，重建才会返回可用状态；异常或失败的重建不会继续推进流程。
+- 主循环在执行 `keep` 或成功 `rebuild` 后会重置异常计数，并在连续出现 `MAX_ABNORMAL_COUNT` 次异常结果后退出。
 
-Out of scope
-- Defining pair-validation or residual-reanchor rules beyond the imported helper functions.
-- Persisting state outside process memory.
-- Recovering from exceptions raised by exchange construction, mid-price lookup, or malformed order payloads.
+范围外
+- 不定义导入的辅助函数之外的配对校验或残单重锚规则。
+- 不在进程内存之外持久化状态。
+- 不恢复交易所客户端创建、中间价读取或异常订单载荷触发的异常。
 """
 
 import os
@@ -68,42 +68,42 @@ from grid_logic import (
 
 
 def get_open_orders(info):
-    """Purpose:
-    Fetch open orders for the configured account address.
+    """作用:
+    获取当前配置账户地址的未完成订单。
 
-    Inputs:
-    info: Hyperliquid `Info` client with `open_orders`.
+    输入:
+    info: 带有 `open_orders` 方法的 Hyperliquid `Info` 客户端。
 
-    Outputs:
-    Returns the result of `info.open_orders(ACCOUNT_ADDRESS)`. Propagates exceptions raised by the client call.
+    输出:
+    返回 `info.open_orders(ACCOUNT_ADDRESS)` 的结果。透传客户端调用抛出的异常。
     """
     return info.open_orders(ACCOUNT_ADDRESS)
 
 
 def log_msg(message):
-    """Purpose:
-    Print a timestamped log line.
+    """作用:
+    打印带时间戳的日志行。
 
-    Inputs:
-    message: Text appended after the current local timestamp.
+    输入:
+    message: 追加在当前本地时间戳之后的文本。
 
-    Outputs:
-    Returns `None` after printing a formatted line to stdout.
+    输出:
+    向标准输出打印格式化日志后返回 `None`。
     """
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] {message}")
 
 
 def log_keep_state(keep_type, message):
-    """Purpose:
-    Throttle repeated keep-state log messages by type and elapsed time.
+    """作用:
+    按类型和时间间隔限制重复的 keep 状态日志输出。
 
-    Inputs:
-    keep_type: Label used to suppress repeated logs of the same keep state.
-    message: Log text emitted when the throttle allows output.
+    输入:
+    keep_type: 用于抑制同类重复日志的标签。
+    message: 通过限流检查后要输出的日志文本。
 
-    Outputs:
-    Returns `None`. Updates the module-level keep-log trackers only when `keep_type` changes or at least `KEEP_LOG_INTERVAL_SEC` seconds have elapsed.
+    输出:
+    返回 `None`。仅当 `keep_type` 发生变化，或距离上次同类日志至少经过 `KEEP_LOG_INTERVAL_SEC` 秒时，才会更新模块级 keep 日志跟踪状态。
     """
     global last_keep_log_type
     global last_keep_log_ts
@@ -119,14 +119,14 @@ def log_keep_state(keep_type, message):
 
 
 def summarize_orders(orders):
-    """Purpose:
-    Log the current open orders and count buy and sell sides.
+    """作用:
+    记录当前挂单摘要并统计买卖两侧数量。
 
-    Inputs:
-    orders: Iterable of order mappings with `side`, `limitPx`, `sz`, and `oid`.
+    输入:
+    orders: 可迭代的订单映射对象，包含 `side`、`limitPx`、`sz` 和 `oid` 字段。
 
-    Outputs:
-    Returns a `(buy_count, sell_count)` tuple. Logs `"OPEN ORDERS: none"` for an empty input; otherwise logs a pipe-delimited summary where side `"B"` is shown as `BUY` and every other side is shown as `SELL`.
+    输出:
+    返回 `(buy_count, sell_count)` 元组。输入为空时记录 `"OPEN ORDERS: none"`；否则记录以竖线分隔的订单摘要，其中 `side == "B"` 显示为 `BUY`，其余值显示为 `SELL`。
     """
     if not orders:
         log_msg("OPEN ORDERS: none")
@@ -148,14 +148,14 @@ def summarize_orders(orders):
 
 
 def get_mid_reference_price(info):
-    """Purpose:
-    Derive the reference price from the current BTC mid price and configured grid step.
+    """作用:
+    根据当前 BTC 中间价和配置的网格步长推导参考价。
 
-    Inputs:
-    info: Hyperliquid `Info` client with `all_mids`.
+    输入:
+    info: 带有 `all_mids` 方法的 Hyperliquid `Info` 客户端。
 
-    Outputs:
-    Returns the BTC mid price floored to the nearest `GRID_STEP` as a float. Raises `ValueError` when the mid price is missing or non-positive, when the floored reference price is non-positive, or when the implied buy price would be non-positive. Propagates exceptions raised by `info.all_mids()` or float conversion.
+    输出:
+    返回向下取整到最近 `GRID_STEP` 的 BTC 中间价浮点值。若中间价缺失或非正、取整后的参考价非正、或推导出的买价非正，则抛出 `ValueError`。透传 `info.all_mids()` 或浮点转换抛出的异常。
     """
     btc_mid = float(info.all_mids().get(BTC_MID_KEY, 0))
     if btc_mid <= 0:
@@ -171,14 +171,14 @@ def get_mid_reference_price(info):
 
 
 def build_pair(reference_price):
-    """Purpose:
-    Build the configured buy and sell limit-order actions around a reference price.
+    """作用:
+    围绕给定参考价构造配置好的买卖限价单动作。
 
-    Inputs:
-    reference_price: Positive price anchor used to derive both order prices and shared size.
+    输入:
+    reference_price: 正数价格锚点，用于推导买卖价格和共享下单数量。
 
-    Outputs:
-    Returns a `(buy_action, sell_action)` tuple of mappings with `side`, `price`, and `size`, where size is `round(BUDGET_USDC / reference_price, 5)`. Raises `ValueError` when `reference_price` is non-positive or the computed buy price is non-positive.
+    输出:
+    返回 `(buy_action, sell_action)` 元组，元素均为包含 `side`、`price` 和 `size` 的映射，其中 `size` 为 `round(BUDGET_USDC / reference_price, 5)`。当 `reference_price` 非正或计算出的买价非正时抛出 `ValueError`。
     """
     if reference_price <= 0:
         raise ValueError("Invalid reference price")
@@ -197,14 +197,14 @@ def build_pair(reference_price):
 
 
 def classify_order_result(result):
-    """Purpose:
-    Normalize an exchange order response into the module's status labels.
+    """作用:
+    将交易所下单响应归一化为模块内部使用的状态标签。
 
-    Inputs:
-    result: Mapping that may contain `response.data.statuses`.
+    输入:
+    result: 可能包含 `response.data.statuses` 的映射对象。
 
-    Outputs:
-    Returns `"ok"` when the first status contains `resting` or `filled`, `"insufficient_spot_balance"` when the first status contains an error message with `Insufficient spot balance`, and `"error"` for missing statuses or all other status shapes. Logs failures before returning non-`"ok"` results.
+    输出:
+    当首个状态包含 `resting` 或 `filled` 时返回 `"ok"`；当首个状态包含带有 `Insufficient spot balance` 的错误信息时返回 `"insufficient_spot_balance"`；缺少状态或其余所有状态形态均返回 `"error"`。在返回非 `"ok"` 结果前会记录失败日志。
     """
     statuses = result.get("response", {}).get("data", {}).get("statuses", [])
     if not statuses:
@@ -227,15 +227,15 @@ def classify_order_result(result):
 
 
 def place_limit_order(exchange, action):
-    """Purpose:
-    Submit one GTC limit order and classify the exchange response.
+    """作用:
+    提交一笔 GTC 限价单，并对交易所响应进行分类。
 
-    Inputs:
-    exchange: Hyperliquid `Exchange` client with `order`.
-    action: Mapping with `side`, `size`, and `price`, where `side == "BUY"` selects the buy flag.
+    输入:
+    exchange: 带有 `order` 方法的 Hyperliquid `Exchange` 客户端。
+    action: 包含 `side`、`size` 和 `price` 的映射，其中 `side == "BUY"` 时表示买单。
 
-    Outputs:
-    Returns the normalized status string from `classify_order_result()`. Propagates exceptions raised by `exchange.order()` or by required action field access and conversion.
+    输出:
+    返回 `classify_order_result()` 归一化后的状态字符串。透传 `exchange.order()`、动作字段访问或类型转换抛出的异常。
     """
     result = exchange.order(
         SYMBOL,
@@ -249,16 +249,16 @@ def place_limit_order(exchange, action):
 
 
 def wait_no_open_orders(info, max_tries=10, interval_sec=1.0):
-    """Purpose:
-    Poll until the configured account has no open orders or the retry limit is reached.
+    """作用:
+    轮询直到配置账户没有挂单，或达到重试上限。
 
-    Inputs:
-    info: Hyperliquid `Info` client with `open_orders`.
-    max_tries: Maximum number of polling attempts.
-    interval_sec: Sleep interval between polling attempts.
+    输入:
+    info: 带有 `open_orders` 方法的 Hyperliquid `Info` 客户端。
+    max_tries: 最大轮询次数。
+    interval_sec: 每次轮询之间的睡眠秒数。
 
-    Outputs:
-    Returns `True` when an attempt observes no open orders; otherwise returns `False` after exhausting `max_tries`. Propagates exceptions raised by `get_open_orders()`.
+    输出:
+    当某次轮询观察到没有挂单时返回 `True`；否则在耗尽 `max_tries` 后返回 `False`。透传 `get_open_orders()` 抛出的异常。
     """
     for _ in range(max_tries):
         if not get_open_orders(info):
@@ -268,16 +268,16 @@ def wait_no_open_orders(info, max_tries=10, interval_sec=1.0):
 
 
 def cleanup_orders(info, exchange, orders):
-    """Purpose:
-    Cancel the provided open orders and verify that none remain.
+    """作用:
+    撤销给定挂单并确认它们已经全部消失。
 
-    Inputs:
-    info: Hyperliquid `Info` client used to confirm order removal.
-    exchange: Hyperliquid `Exchange` client with `bulk_cancel`.
-    orders: Iterable of order mappings with `oid`.
+    输入:
+    info: 用于确认订单是否已移除的 Hyperliquid `Info` 客户端。
+    exchange: 带有 `bulk_cancel` 方法的 Hyperliquid `Exchange` 客户端。
+    orders: 包含 `oid` 字段的订单映射可迭代对象。
 
-    Outputs:
-    Returns `True` immediately when `orders` is empty, or after `bulk_cancel()` is followed by a successful `wait_no_open_orders()` check. Returns `False` and logs a cleanup-failure message when open orders remain after waiting. Propagates exceptions raised by `bulk_cancel()`, by order field access, or by `wait_no_open_orders()`.
+    输出:
+    当 `orders` 为空时立即返回 `True`；或在调用 `bulk_cancel()` 后通过 `wait_no_open_orders()` 确认成功时返回 `True`。若等待后仍有挂单，则记录 cleanup failure 日志并返回 `False`。透传 `bulk_cancel()`、订单字段访问或 `wait_no_open_orders()` 抛出的异常。
     """
     if not orders:
         return True
@@ -291,15 +291,28 @@ def cleanup_orders(info, exchange, orders):
 
 
 def place_pair(exchange, reference_price):
-    """Purpose:
-    Place the configured buy and sell orders for one grid rebuild attempt and derive the resulting mode state.
+    """作用：
+    执行一次网格重建的下单动作（同时提交买单与卖单），并根据下单结果生成新的策略状态。
 
-    Inputs:
-    exchange: Hyperliquid `Exchange` client used to submit both orders.
-    reference_price: Price anchor passed to `build_pair()`.
+    输入：
+    exchange：Hyperliquid 的 Exchange 客户端，用于提交订单
+    reference_price：价格锚点，用于构造买卖挂单价格
 
-    Outputs:
-    Returns a state mapping with `mode`, `buy_price`, `sell_price`, and `reference_price`. The mode is `PAIR` when both orders return `"ok"`, `BUY_ONLY` or `SELL_ONLY` on the configured insufficient-balance fallbacks, and `ABNORMAL` otherwise. Propagates exceptions raised by `build_pair()` or `place_limit_order()`.
+    输出：
+    返回一个 state 字典，包含：
+    - mode：当前状态（PAIR / BUY_ONLY / SELL_ONLY / ABNORMAL）
+    - buy_price：本次构建的买单价格
+    - sell_price：本次构建的卖单价格
+    - reference_price：本次使用的价格锚点
+
+    状态规则：
+    - 若买卖订单均成功（"ok"），则 mode = PAIR
+    - 若仅买单成功且卖单因余额不足失败，则 mode = BUY_ONLY（需开启对应 fallback）
+    - 若仅卖单成功且买单因余额不足失败，则 mode = SELL_ONLY（需开启对应 fallback）
+    - 其他情况均视为 ABNORMAL
+
+    异常：
+    不捕获 build_pair() 或 place_limit_order() 抛出的异常，调用方需自行处理
     """
     buy_action, sell_action = build_pair(reference_price)
     log_msg(
@@ -352,17 +365,17 @@ def place_pair(exchange, reference_price):
 
 
 def rebuild(info, exchange, orders, reference_price=None):
-    """Purpose:
-    Cancel existing orders, choose a reference price when needed, and attempt to establish a non-abnormal state.
+    """作用:
+    撤销已有挂单，在需要时选择参考价，并尝试建立一个非异常状态。
 
-    Inputs:
-    info: Hyperliquid `Info` client used for order queries and optional mid-price lookup.
-    exchange: Hyperliquid `Exchange` client used for cancellation and order placement.
-    orders: Current open orders to cancel before rebuilding.
-    reference_price: Optional explicit reference price; when `None`, `get_mid_reference_price()` is used.
+    输入:
+    info: 用于查询订单以及可选中间价读取的 Hyperliquid `Info` 客户端。
+    exchange: 用于撤单和下单的 Hyperliquid `Exchange` 客户端。
+    orders: 重建前需要撤销的当前挂单。
+    reference_price: 可选的显式参考价；当其为 `None` 时使用 `get_mid_reference_price()`。
 
-    Outputs:
-    Returns the state from `place_pair()` when it is not `ABNORMAL`. Returns `None` when cleanup fails before or after placement, or when the placement result is `ABNORMAL`. Propagates exceptions raised by cleanup, reference-price derivation, order queries, or order placement.
+    输出:
+    当 `place_pair()` 返回的状态不是 `ABNORMAL` 时，返回该状态。若前置或后置清理失败，或下单结果为 `ABNORMAL`，则返回 `None`。透传清理、参考价推导、订单查询或下单过程抛出的异常。
     """
     if orders and not cleanup_orders(info, exchange, orders):
         return None
@@ -382,16 +395,16 @@ def rebuild(info, exchange, orders, reference_price=None):
 
 
 def resolve_fill_rebuild_action(state, orders, order_shape):
-    """Purpose:
-    Resolve whether a fill event occurred and return corresponding rebuild action
+    """作用:
+    判断是否发生了成交驱动的重建条件，并返回对应动作。
 
-    Inputs:
-    state: Mapping with at least `mode`, `buy_price`, and `sell_price`.
-    orders: Current open-order collection used for residual completion checks.
-    order_shape: Current shape classification for `orders`.
+    输入:
+    state: 至少包含 `mode`、`buy_price` 和 `sell_price` 的状态映射。
+    orders: 当前挂单集合，用于检查残单是否已经完成。
+    order_shape: `orders` 的当前形态分类结果。
 
-    Outputs:
-    Returns `("rebuild", reference_price)` for a prior `PAIR` state that becomes a single-sided residual, using the filled side's prior price as the rebuild reference. Returns `("rebuild", reference_price)` for `BUY_ONLY` or `SELL_ONLY` states when no orders remain, using that residual side's stored price. Returns `None` otherwise.
+    输出:
+    当先前状态为 `PAIR` 且当前变为单边残单时，返回 `("rebuild", reference_price)`，并使用已成交那一侧此前的价格作为重建参考价。对于 `BUY_ONLY` 或 `SELL_ONLY` 状态，当当前已无挂单时，也返回 `("rebuild", reference_price)`，并使用该残单侧保存的价格。其余情况返回 `None`。
     """
     previous_mode = state["mode"]
 
@@ -418,17 +431,17 @@ def resolve_fill_rebuild_action(state, orders, order_shape):
 
 
 def validate_keep_state(info, orders, state, order_shape):
-    """Purpose:
-    Decide whether the current orders still satisfy the keep contract for a paired state.
+    """作用:
+    判断当前订单是否仍满足成对状态的 keep 条件。
 
-    Inputs:
-    info: Unused parameter preserved by the caller flow.
-    orders: Current open orders.
-    state: Stored state mapping with at least `mode`, `buy_price`, and `sell_price`.
-    order_shape: Current shape classification for `orders`.
+    输入:
+    info: 调用链保留但当前未使用的参数。
+    orders: 当前挂单集合。
+    state: 至少包含 `mode`、`buy_price` 和 `sell_price` 的已保存状态映射。
+    order_shape: `orders` 的当前形态分类结果。
 
-    Outputs:
-    Returns `True` only for `PAIR` state. When `MANUAL_PAIR_TOLERANCE` is enabled, returns `True` if `is_manual_pair_keepable()` sees exactly one buy and one sell. Otherwise returns `True` only when `order_shape` is `PAIR`, `get_pair_state()` succeeds, and `pair_matches_state()` confirms both prices within tolerance. Returns `False` on all other paths. Propagates exceptions raised by pair validation helpers on malformed order fields.
+    输出:
+    仅在 `PAIR` 状态下可能返回 `True`。当启用 `MANUAL_PAIR_TOLERANCE` 时，只要 `is_manual_pair_keepable()` 判定为一买一卖就返回 `True`。否则仅当 `order_shape` 为 `PAIR`、`get_pair_state()` 成功且 `pair_matches_state()` 确认两侧价格均在容差内时返回 `True`。其余路径均返回 `False`。透传配对校验辅助函数因异常订单字段抛出的异常。
     """
     if state["mode"] == PAIR_MODE:
         if MANUAL_PAIR_TOLERANCE:
@@ -459,17 +472,17 @@ def validate_keep_state(info, orders, state, order_shape):
 
 
 def detect_anchor_break(info, orders, state, order_shape):
-    """Purpose:
-    Detect when a single-sided residual order has moved far enough from the BTC mid price to force rebuild.
+    """作用:
+    检测单边残单是否已经偏离 BTC 中间价到必须重建的程度。
 
-    Inputs:
-    info: Hyperliquid `Info` client used by the residual reanchor helper.
-    orders: Current open orders.
-    state: Stored state mapping with at least `mode`.
-    order_shape: Current shape classification for `orders`.
+    输入:
+    info: 被残单重锚辅助函数使用的 Hyperliquid `Info` 客户端。
+    orders: 当前挂单集合。
+    state: 至少包含 `mode` 的已保存状态映射。
+    order_shape: `orders` 的当前形态分类结果。
 
-    Outputs:
-    Returns `("rebuild", None)` only when reanchoring is enabled, the stored mode is single-sided, the current shape matches that mode, exactly one order is present, and `should_reanchor_residual_order()` returns `True`. Returns `None` on all other paths. Propagates exceptions raised by the helper on malformed order fields after its guarded checks.
+    输出:
+    仅当重锚功能开启、保存的模式为单边、当前形态与该模式一致、当前恰好只有一笔订单且 `should_reanchor_residual_order()` 返回 `True` 时，返回 `("rebuild", None)`。其余路径返回 `None`。在辅助函数完成自身保护性检查之后，透传其因异常订单字段抛出的异常。
     """
     if not REANCHOR_BREAK:
         return None
@@ -501,17 +514,17 @@ def detect_anchor_break(info, orders, state, order_shape):
 
 
 def detect_single_sided_action(info, orders, state, order_shape):
-    """Purpose:
-    Decide whether a single-sided state should be kept or rebuilt.
+    """作用:
+    决定单边状态应继续保持还是触发重建。
 
-    Inputs:
-    info: Hyperliquid `Info` client used for anchor-break evaluation.
-    orders: Current open orders.
-    state: Stored state mapping with at least `mode`.
-    order_shape: Current shape classification for `orders`.
+    输入:
+    info: 用于评估 anchor break 的 Hyperliquid `Info` 客户端。
+    orders: 当前挂单集合。
+    state: 至少包含 `mode` 的已保存状态映射。
+    order_shape: `orders` 的当前形态分类结果。
 
-    Outputs:
-    Returns `("keep", None)` for valid single-sided residuals that do not trigger anchor-break rebuilds. Returns the result of `detect_anchor_break()` when it requests rebuild. Returns `None` when the stored mode is not single-sided, when the current shape does not match the stored mode, or when the residual order side does not match the expected side.
+    输出:
+    对于未触发 anchor break 的有效单边残单，返回 `("keep", None)`。当 `detect_anchor_break()` 请求重建时，返回其结果。当保存模式不是单边、当前形态与保存模式不一致，或残单方向与预期方向不一致时，返回 `None`。
     """
     if state["mode"] == BUY_ONLY_MODE:
         if order_shape != BUY_ONLY_MODE:
@@ -591,16 +604,16 @@ def get_loop_action(info, orders, state):
 
 
 def run_main_loop(info, exchange, state):
-    """Purpose:
-    Poll open orders continuously and apply keep, rebuild, or abnormal handling until exit.
+    """作用:
+    持续轮询挂单，并在退出前执行 keep、rebuild 或 abnormal 处理。
 
-    Inputs:
-    info: Hyperliquid `Info` client used for polling and rebuild decisions.
-    exchange: Hyperliquid `Exchange` client used when rebuilds are required.
-    state: Initial accepted state mapping for the running contract.
+    输入:
+    info: 用于轮询与重建决策的 Hyperliquid `Info` 客户端。
+    exchange: 需要执行重建时使用的 Hyperliquid `Exchange` 客户端。
+    state: 运行中合约的初始已接受状态映射。
 
-    Outputs:
-    Returns `None`. Continues indefinitely while actions resolve to `keep` or successful `rebuild`; exits after a rebuild failure, an abnormal rebuild result, or `MAX_ABNORMAL_COUNT` consecutive abnormal loop actions. Logs abnormal summaries and exit conditions as they occur.
+    输出:
+    返回 `None`。当动作持续解析为 `keep` 或成功的 `rebuild` 时无限循环；当重建失败、重建结果异常，或连续出现 `MAX_ABNORMAL_COUNT` 次异常循环动作时退出。过程中会记录异常摘要与退出条件。
     """
     abnormal_count = 0
 
@@ -633,14 +646,14 @@ def run_main_loop(info, exchange, state):
 
 
 def create_exchange():
-    """Purpose:
-    Construct the Hyperliquid exchange client for the configured API key and account address.
+    """作用:
+    为当前配置的 API key 和账户地址构造 Hyperliquid 交易客户端。
 
-    Inputs:
-    None.
+    输入:
+    无。
 
-    Outputs:
-    Returns an `Exchange` instance bound to `constants.MAINNET_API_URL` and `ACCOUNT_ADDRESS`. Raises `ValueError` when `API_KEY` is missing. Propagates exceptions raised by `Account.from_key()` or `Exchange`.
+    输出:
+    返回绑定到 `constants.MAINNET_API_URL` 和 `ACCOUNT_ADDRESS` 的 `Exchange` 实例。当 `API_KEY` 缺失时抛出 `ValueError`。透传 `Account.from_key()` 或 `Exchange` 抛出的异常。
     """
     if not API_KEY:
         raise ValueError("Missing HYPERLIQUID_API_KEY")
@@ -653,14 +666,14 @@ def create_exchange():
 
 
 def main():
-    """Purpose:
-    Start the grid process from the current open orders and keep it running until exit conditions are met.
+    """作用:
+    从当前挂单启动网格流程，并持续运行直到满足退出条件。
 
-    Inputs:
-    None.
+    输入:
+    无。
 
-    Outputs:
-    Returns `None`. Logs and exits immediately when `ACCOUNT_ADDRESS` is missing. Otherwise builds clients, summarizes current orders, accepts an existing valid pair when present, falls back to `rebuild()` when needed, and enters `run_main_loop()` only when a non-abnormal initial state is established. Propagates exceptions from client construction, state derivation, and loop execution.
+    输出:
+    返回 `None`。当 `ACCOUNT_ADDRESS` 缺失时立即记录日志并退出。否则创建客户端、汇总当前挂单、在存在有效配对时直接接受该状态、必要时回退到 `rebuild()`，并仅在建立了非异常初始状态后进入 `run_main_loop()`。透传客户端创建、状态推导和循环执行过程抛出的异常。
     """
     if not ACCOUNT_ADDRESS:
         log_msg("Missing HYPERLIQUID_ACCOUNT_ADDRESS")

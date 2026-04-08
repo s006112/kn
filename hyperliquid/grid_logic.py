@@ -1,36 +1,36 @@
 """grid_logic.py
 
-Responsibility
-This helper module classifies open-order shapes for the Hyperliquid grid loop, derives validated paired-order state from existing orders, compares paired prices against stored state, and decides when a single residual order has drifted far enough from the BTC mid price to require reanchoring.
+职责
+该辅助模块负责为 Hyperliquid 网格循环分类当前挂单形态，从已有订单推导经过校验的成对订单状态，将当前成对价格与已保存状态进行比较，并判断单边残单是否已偏离 BTC 中间价到需要重锚的程度。
 
 Used by:
 * hyperliquid/grid_run.py
 
-Pipelines:
-- orders -> counts -> pair_state -> shape
-- state -> prices -> tolerance -> match
-- mode -> mids -> distance -> reanchor
+流程:
+- 订单 -> 计数 -> 配对状态 -> 形态
+- 状态 -> 价格 -> 容差 -> 匹配
+- 模式 -> 中间价 -> 距离 -> 重锚
 
-Invariants
-- Side `"B"` is always counted as buy; every other side value is counted as sell.
-- A paired state is returned only when exactly one buy price and one sell price are present, both prices are positive, the buy price is below the sell price, and the gap matches the configured grid distance within tolerance.
-- Residual reanchor checks return `False` when the mode is not single-sided, when reanchoring is disabled, when order count is not one, or when BTC mid lookup fails or is non-positive.
+不变式
+- `side == "B"` 始终按买单计数，其余 side 值一律按卖单计数。
+- 只有当恰好存在一个买价和一个卖价，且两个价格都为正、买价低于卖价、并且价差在配置的网格距离容差内时，才会返回成对状态。
+- 当模式不是单边、重锚功能关闭、订单数不为一、或 BTC 中间价读取失败或非正时，残单重锚检查始终返回 `False`。
 
-Out of scope
-- Placing, canceling, or modifying orders.
-- Logging, retries, and loop control.
-- Budget sizing, reference-price construction, and exchange credential handling.
+范围外
+- 不负责下单、撤单或修改订单。
+- 不负责日志、重试和循环控制。
+- 不负责预算 sizing、参考价构造和交易所凭证处理。
 """
 
 def count_order_sides(orders):
-    """Purpose:
-    Count buy-side and non-buy-side orders.
+    """作用:
+    统计买侧订单和非买侧订单数量。
 
-    Inputs:
-    orders: Iterable of order mappings with a `side` field.
+    输入:
+    orders: 可迭代的订单映射对象，包含 `side` 字段。
 
-    Outputs:
-    Returns a `(buy_count, sell_count)` tuple where side `"B"` increments `buy_count` and every other side value increments `sell_count`.
+    输出:
+    返回 `(buy_count, sell_count)` 元组，其中 `side == "B"` 时增加 `buy_count`，其余 side 值增加 `sell_count`。
     """
     buy_count = 0
     sell_count = 0
@@ -52,19 +52,19 @@ def get_pair_state(
     pair_price_tolerance,
     pair_mode,
 ):
-    """Purpose:
-    Validate whether the provided orders form a single grid pair and, if so, build its state snapshot.
+    """作用:
+    校验给定订单是否构成单个网格配对，并在成立时构造对应状态快照。
 
-    Inputs:
-    orders: Iterable of order mappings with `side` and `limitPx` fields.
-    grid_step: Price step used to compute the expected gap between the pair prices.
-    buy_grid_factor: Multiplier applied to `grid_step` for the buy leg.
-    sell_grid_factor: Multiplier applied to `grid_step` for the sell leg.
-    pair_price_tolerance: Maximum allowed absolute deviation from the expected gap.
-    pair_mode: Mode value stored in the returned state mapping.
+    输入:
+    orders: 可迭代的订单映射对象，包含 `side` 和 `limitPx` 字段。
+    grid_step: 用于计算配对价格预期价差的价格步长。
+    buy_grid_factor: 应用于 `grid_step` 的买侧倍数。
+    sell_grid_factor: 应用于 `grid_step` 的卖侧倍数。
+    pair_price_tolerance: 相对预期价差允许的最大绝对偏差。
+    pair_mode: 写入返回状态映射中的模式值。
 
-    Outputs:
-    Returns a mapping with `mode`, `buy_price`, `sell_price`, and `reference_price` when there is exactly one buy order, exactly one non-buy order, both prices are valid, and the observed gap is within tolerance of `(buy_grid_factor + sell_grid_factor) * grid_step`; otherwise returns `None`. Propagates lookup and float-conversion exceptions from malformed order fields.
+    输出:
+    当且仅当恰好存在一个买单、一个非买单、两边价格均有效，且观察到的价差与 `(buy_grid_factor + sell_grid_factor) * grid_step` 的偏差在容差内时，返回包含 `mode`、`buy_price`、`sell_price` 和 `reference_price` 的映射；否则返回 `None`。透传异常订单字段导致的取值和浮点转换异常。
     """
     buy_price = None
     sell_price = None
@@ -112,22 +112,22 @@ def classify_order_shape(
     sell_only_mode,
     abnormal_mode,
 ):
-    """Purpose:
-    Classify the current open orders as a valid pair, a single-sided residual, or abnormal.
+    """作用:
+    将当前挂单分类为有效配对、单边残单或异常状态。
 
-    Inputs:
-    orders: Iterable of order mappings with `side` and, for pair validation, `limitPx` fields.
-    grid_step: Price step used when validating a paired order gap.
-    buy_grid_factor: Multiplier applied to `grid_step` for the buy leg.
-    sell_grid_factor: Multiplier applied to `grid_step` for the sell leg.
-    pair_price_tolerance: Maximum allowed absolute deviation from the expected paired gap.
-    pair_mode: Return value for a valid paired shape.
-    buy_only_mode: Return value for exactly one buy order and no sells.
-    sell_only_mode: Return value for exactly one sell order and no buys.
-    abnormal_mode: Return value for every other shape, including invalid two-order pairs.
+    输入:
+    orders: 可迭代的订单映射对象，包含 `side`，在配对校验场景下还需要 `limitPx` 字段。
+    grid_step: 校验配对价差时使用的价格步长。
+    buy_grid_factor: 应用于 `grid_step` 的买侧倍数。
+    sell_grid_factor: 应用于 `grid_step` 的卖侧倍数。
+    pair_price_tolerance: 相对预期配对价差允许的最大绝对偏差。
+    pair_mode: 有效配对形态对应的返回值。
+    buy_only_mode: 恰好一个买单且没有卖单时的返回值。
+    sell_only_mode: 恰好一个卖单且没有买单时的返回值。
+    abnormal_mode: 其余所有形态的返回值，包括无效的双边配对。
 
-    Outputs:
-    Returns one of the provided mode values based on `count_order_sides()` and, for one-buy one-sell cases, `get_pair_state()`. Propagates exceptions raised by pair validation on malformed order fields.
+    输出:
+    根据 `count_order_sides()` 的结果决定返回提供的模式值之一；在一买一卖的情况下，会进一步调用 `get_pair_state()` 进行判定。透传配对校验在异常订单字段下抛出的异常。
     """
     buy_count, sell_count = count_order_sides(orders)
 
@@ -154,16 +154,16 @@ def classify_order_shape(
 
 
 def pair_matches_state(current_pair, state, pair_price_tolerance):
-    """Purpose:
-    Check whether paired buy and sell prices still match a stored state within tolerance.
+    """作用:
+    检查当前配对的买卖价格是否仍在容差范围内匹配已保存状态。
 
-    Inputs:
-    current_pair: Mapping with `buy_price` and `sell_price`.
-    state: Mapping with `buy_price` and `sell_price`.
-    pair_price_tolerance: Maximum allowed absolute deviation for each side.
+    输入:
+    current_pair: 包含 `buy_price` 和 `sell_price` 的映射。
+    state: 包含 `buy_price` 和 `sell_price` 的映射。
+    pair_price_tolerance: 每一侧价格允许的最大绝对偏差。
 
-    Outputs:
-    Returns `True` when both side-price differences are within tolerance; otherwise returns `False`.
+    输出:
+    当买卖两侧的价格差都在容差范围内时返回 `True`；否则返回 `False`。
     """
     if abs(current_pair["buy_price"] - state["buy_price"]) > pair_price_tolerance:
         return False
@@ -173,14 +173,14 @@ def pair_matches_state(current_pair, state, pair_price_tolerance):
 
 
 def is_manual_pair_keepable(orders):
-    """Purpose:
-    Check whether the order set contains exactly one buy order and one sell-side order.
+    """作用:
+    检查订单集合是否恰好包含一个买单和一个卖侧订单。
 
-    Inputs:
-    orders: Iterable of order mappings with a `side` field.
+    输入:
+    orders: 可迭代的订单映射对象，包含 `side` 字段。
 
-    Outputs:
-    Returns `True` when `count_order_sides()` reports one buy and one sell; otherwise returns `False`.
+    输出:
+    当 `count_order_sides()` 统计结果为一买一卖时返回 `True`；否则返回 `False`。
     """
     buy_count, sell_count = count_order_sides(orders)
     return buy_count == 1 and sell_count == 1
@@ -197,22 +197,22 @@ def should_reanchor_residual_order(
     reanchor_break,
     reanchor_break_steps,
 ):
-    """Purpose:
-    Decide whether a single residual order should be reanchored after the BTC mid price moves away from it.
+    """作用:
+    判断在 BTC 中间价远离单边残单后，该订单是否需要重锚。
 
-    Inputs:
-    info: Object exposing `all_mids()` for BTC mid-price lookup.
-    orders: Sequence of order mappings expected to contain `side` and `limitPx`.
-    mode: Current strategy mode value.
-    buy_only_mode: Mode value that represents a buy-side residual.
-    sell_only_mode: Mode value that represents a sell-side residual.
-    btc_mid_key: Key used to read the BTC mid price from `info.all_mids()`.
-    grid_step: Price step multiplied by `reanchor_break_steps` to form the threshold distance.
-    reanchor_break: Flag that enables residual reanchor checks.
-    reanchor_break_steps: Number of grid steps required before reanchoring.
+    输入:
+    info: 暴露 `all_mids()` 方法、用于读取 BTC 中间价的对象。
+    orders: 序列类型的订单映射对象，预期包含 `side` 和 `limitPx` 字段。
+    mode: 当前策略模式值。
+    buy_only_mode: 表示买侧残单的模式值。
+    sell_only_mode: 表示卖侧残单的模式值。
+    btc_mid_key: 从 `info.all_mids()` 中读取 BTC 中间价使用的键。
+    grid_step: 与 `reanchor_break_steps` 相乘后形成阈值距离的价格步长。
+    reanchor_break: 是否启用残单重锚检查的开关。
+    reanchor_break_steps: 触发重锚所需的网格步数。
 
-    Outputs:
-    Returns `True` only when reanchoring is enabled, `mode` is single-sided, exactly one order is present, BTC mid lookup succeeds with a positive value, and the mid price has moved away from the residual order by at least `reanchor_break_steps * grid_step`. Returns `False` for disallowed modes, disabled checks, invalid order counts, mid-price lookup failures, and non-positive mid prices. Propagates lookup and float-conversion exceptions from malformed order fields after the mid-price guard passes.
+    输出:
+    仅当重锚功能开启、`mode` 为单边模式、恰好存在一笔订单、BTC 中间价读取成功且为正，并且中间价与残单价格的距离至少达到 `reanchor_break_steps * grid_step` 时返回 `True`。对于不允许的模式、关闭的检查、非法订单数量、中间价读取失败或非正中间价，返回 `False`。在通过中间价保护性检查后，透传异常订单字段导致的取值和浮点转换异常。
     """
     if mode not in (buy_only_mode, sell_only_mode):
         return False
