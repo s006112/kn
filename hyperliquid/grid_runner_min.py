@@ -238,17 +238,27 @@ def rebuild(info, exchange, orders, reference_price=None):
     return None
 
 
-def detect_fill_driven_rebuild(state, order_shape):
-    if state["mode"] != PAIR_MODE:
+def detect_fill_driven_rebuild(state, orders, order_shape):
+    previous_mode = state["mode"]
+
+    if previous_mode == PAIR_MODE:
+        if order_shape == SELL_ONLY_MODE:
+            log_msg("🔥 fill detected: BUY filled")
+            return "rebuild", state["buy_price"]
+
+        if order_shape == BUY_ONLY_MODE:
+            log_msg("✅ fill detected: SELL filled")
+            return "rebuild", state["sell_price"]
+
         return None
 
-    if order_shape == SELL_ONLY_MODE:
-        log_msg("🔥 fill detected: BUY filled")
-        return "rebuild", state["buy_price"]
+    if previous_mode == BUY_ONLY_MODE and len(orders) == 0:
+        log_msg("residual fill completed: BUY_ONLY -> rebuild")
+        return "rebuild", None
 
-    if order_shape == BUY_ONLY_MODE:
-        log_msg("✅ fill detected: SELL filled")
-        return "rebuild", state["sell_price"]
+    if previous_mode == SELL_ONLY_MODE and len(orders) == 0:
+        log_msg("residual fill completed: SELL_ONLY -> rebuild")
+        return "rebuild", None
 
     return None
 
@@ -351,7 +361,7 @@ def get_loop_action(info, orders, state):
         ABNORMAL_MODE,
     )
 
-    fill_driven_action = detect_fill_driven_rebuild(state, order_shape)
+    fill_driven_action = detect_fill_driven_rebuild(state, orders, order_shape)
     if fill_driven_action is not None:
         return fill_driven_action
 
