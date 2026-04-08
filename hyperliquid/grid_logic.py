@@ -78,6 +78,49 @@ def pair_matches_state(current_pair, state, pair_price_tolerance):
         return False
     return True
 
+def get_pair_keep_type(
+    orders,
+    state,
+    grid_step,
+    pair_price_tolerance,
+    pair_mode,
+    pair_mode_flag,
+):
+    current_pair = get_pair_state(orders, grid_step, pair_price_tolerance, pair_mode)
+    if current_pair is not None:
+        if pair_matches_state(current_pair, state, pair_price_tolerance):
+            return "strict"
+        return None
+
+    if pair_mode_flag:
+        return None
+
+    buy_count, sell_count = count_order_sides(orders)
+    if buy_count != 1 or sell_count != 1:
+        return None
+
+    buy_price = None
+    sell_price = None
+
+    for order in orders:
+        if order["side"] == "B":
+            buy_price = float(order["limitPx"])
+        else:
+            sell_price = float(order["limitPx"])
+
+    if buy_price is None or sell_price is None:
+        return None
+
+    if buy_price <= 0 or sell_price <= 0:
+        return None
+    if buy_price >= sell_price:
+        return None
+
+    spacing_error = abs((sell_price - buy_price) - (2 * grid_step))
+    if spacing_error > pair_price_tolerance:
+        return "bypass"
+
+    return None
 
 def should_reanchor_residual_order(
     info,

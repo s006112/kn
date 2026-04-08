@@ -19,8 +19,9 @@ SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
 BUDGET_USDC = 200.0      # $$$$$$$
-GRID_STEP = 50.0
+GRID_STEP = 75.0
 PAIR_PRICE_TOLERANCE = 0.1
+PAIR_MODE_FLAG = False
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
 ALLOW_SELL_ONLY_WHEN_NO_USDC = True
 REANCHOR_BREAK = True
@@ -39,7 +40,7 @@ last_keep_log_ts = 0.0
 from grid_logic import (
     classify_order_shape,
     get_pair_state,
-    pair_matches_state,
+    get_pair_keep_type,
     should_reanchor_residual_order,
 )
 
@@ -264,21 +265,23 @@ def detect_fill_driven_rebuild(state, orders, order_shape):
     return None
 
 
-def validate_keep_state(info, orders, state, order_shape):
-    if state["mode"] == PAIR_MODE:
-        if order_shape != PAIR_MODE:
-            return False
+def validate_keep_state(info, orders, state):
+    if state["mode"] != PAIR_MODE:
+        return False
 
-        current_pair = get_pair_state(orders, GRID_STEP, PAIR_PRICE_TOLERANCE, PAIR_MODE)
-        if current_pair is None:
-            return False
-        if not pair_matches_state(current_pair, state, PAIR_PRICE_TOLERANCE):
-            return False
+    pair_keep_type = get_pair_keep_type(
+        orders,
+        state,
+        GRID_STEP,
+        PAIR_PRICE_TOLERANCE,
+        PAIR_MODE,
+        PAIR_MODE_FLAG,
+    )
+    if pair_keep_type is None:
+        return False
 
-        log_keep_state("pair", "contract: keep pair")
-        return True
-
-    return False
+    log_keep_state("pair", "contract: keep pair")
+    return True
 
 
 def detect_anchor_break(info, orders, state, order_shape):
@@ -356,7 +359,7 @@ def get_loop_action(info, orders, state):
     if fill_driven_action is not None:
         return fill_driven_action
 
-    if validate_keep_state(info, orders, state, order_shape):
+    if validate_keep_state(info, orders, state):
         return "keep", None
 
     single_sided_action = detect_single_sided_action(info, orders, state, order_shape)
