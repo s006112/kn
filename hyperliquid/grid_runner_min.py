@@ -221,34 +221,20 @@ def get_loop_action(info, orders, state):
 
     if state["mode"] == PAIR_MODE:
         if order_shape == SELL_ONLY_MODE:
-            if should_reanchor_residual_order(
-                info,
-                orders,
-                BTC_MID_KEY,
-                GRID_STEP,
-                REANCHOR_BREAK,
-                REANCHOR_BREAK_STEPS,
-            ):
-                return "rebuild", None
             print("🔥 fill detected: BUY filled")
             return "rebuild", state["buy_price"]
 
         if order_shape == BUY_ONLY_MODE:
-            if should_reanchor_residual_order(
-                info,
-                orders,
-                BTC_MID_KEY,
-                GRID_STEP,
-                REANCHOR_BREAK,
-                REANCHOR_BREAK_STEPS,
-            ):
-                return "rebuild", None
             print("✅ fill detected: SELL filled")
             return "rebuild", state["sell_price"]
 
         return "abnormal", None
 
     if order_shape == BUY_ONLY_MODE or order_shape == SELL_ONLY_MODE:
+        if state["mode"] not in (BUY_ONLY_MODE, SELL_ONLY_MODE):
+            return "abnormal", None
+        if state["mode"] != order_shape:
+            return "abnormal", None
         if should_reanchor_residual_order(
             info,
             orders,
