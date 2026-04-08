@@ -201,6 +201,7 @@ def rebuild(info, exchange, orders, reference_price=None):
     if orders and not cleanup_orders(info, exchange, orders):
         return None
 
+    # reference_price=None means Anchor Break or forced rebuild → must use fresh mid
     if reference_price is None:
         reference_price = get_mid_reference_price(info)
 
@@ -227,17 +228,7 @@ def get_loop_action(info, orders, state):
         ABNORMAL_MODE,
     )
 
-    if order_shape == PAIR_MODE:
-        current_pair = get_pair_state(orders, GRID_STEP, PAIR_PRICE_TOLERANCE, PAIR_MODE)
-        if current_pair is None:
-            return "abnormal", None
-        if not pair_matches_state(current_pair, state, PAIR_PRICE_TOLERANCE):
-            return "abnormal", None
-        if state["mode"] == BUY_ONLY_MODE:
-            state["mode"] = PAIR_MODE
-            print("pair valid")
-        return "keep", None
-
+    # explicit fill-driven priority
     if state["mode"] == PAIR_MODE:
         if order_shape == SELL_ONLY_MODE:
             print("🔥 fill detected: BUY filled")
@@ -247,7 +238,16 @@ def get_loop_action(info, orders, state):
             print("✅ fill detected: SELL filled")
             return "rebuild", state["sell_price"]
 
-        return "abnormal", None
+    if order_shape == PAIR_MODE:
+        current_pair = get_pair_state(orders, GRID_STEP, PAIR_PRICE_TOLERANCE, PAIR_MODE)
+        if current_pair is None:
+            return "abnormal", None
+        if not pair_matches_state(current_pair, state, PAIR_PRICE_TOLERANCE):
+            return "abnormal", None
+        if state["mode"] in (BUY_ONLY_MODE, SELL_ONLY_MODE):
+            state["mode"] = PAIR_MODE
+            print("pair valid")
+        return "keep", None
 
     if order_shape == BUY_ONLY_MODE or order_shape == SELL_ONLY_MODE:
         if state["mode"] not in (BUY_ONLY_MODE, SELL_ONLY_MODE):
@@ -288,7 +288,8 @@ def run_main_loop(info, exchange, state):
 
         if action == "rebuild":
             state = rebuild(info, exchange, orders, reference_price)
-            if state is None:
+            if state is None or state["mode"] == ABNORMAL_MODE:
+                print("rebuild failed or abnormal mode, exit")
                 return
             abnormal_count = 0
             continue
@@ -331,7 +332,8 @@ def main():
 
     if state is None:
         state = rebuild(info, exchange, orders)
-        if state is None:
+        if state is None or state["mode"] == ABNORMAL_MODE:
+            print("initial rebuild failed or abnormal mode")
             return
 
     run_main_loop(info, exchange, state)
