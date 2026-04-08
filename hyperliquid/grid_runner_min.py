@@ -18,8 +18,8 @@ API_KEY = os.getenv("HYPERLIQUID_API_KEY")
 SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
+BUDGET_USDC = 200.0      # $$$$$$$
 GRID_STEP = 50.0
-BUDGET_USDC = 100.0      # $$$$$$$
 PAIR_PRICE_TOLERANCE = 0.1
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
 ALLOW_SELL_ONLY_WHEN_NO_USDC = True
@@ -244,11 +244,11 @@ def detect_fill_driven_rebuild(state, orders, order_shape):
 
     if previous_mode == PAIR_MODE:
         if order_shape == SELL_ONLY_MODE:
-            log_msg("fill detected: BUY filled -> SELL residual -> rebuild")
+            log_msg("🔥 fill detected: BUY filled -> SELL residual -> rebuild")
             return "rebuild", state["buy_price"]
 
         if order_shape == BUY_ONLY_MODE:
-            log_msg("fill detected: SELL filled -> BUY residual -> rebuild")
+            log_msg("✅ fill detected: SELL filled -> BUY residual -> rebuild")
             return "rebuild", state["sell_price"]
 
         return None
