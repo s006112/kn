@@ -26,9 +26,13 @@ REANCHOR_BREAK_STEPS = 2
 
 PAIR_MODE = "PAIR"
 BUY_ONLY_MODE = "BUY_ONLY"
+SELL_ONLY_MODE = "SELL_ONLY"
+ABNORMAL_MODE = "ABNORMAL"
 MAX_ABNORMAL_COUNT = 3
 
 from grid_logic import (
+    classify_order_shape,
+    count_order_sides,
     get_pair_state,
     pair_matches_state,
     should_reanchor_residual_order,
@@ -193,15 +197,18 @@ def rebuild(info, exchange, orders, reference_price=None):
 
 
 def get_loop_action(info, orders, state):
-    buy_count = 0
-    sell_count = 0
-    for order in orders:
-        if order["side"] == "B":
-            buy_count += 1
-        else:
-            sell_count += 1
+    buy_count, sell_count = count_order_sides(orders)
+    order_shape = classify_order_shape(
+        orders,
+        GRID_STEP,
+        PAIR_PRICE_TOLERANCE,
+        PAIR_MODE,
+        BUY_ONLY_MODE,
+        SELL_ONLY_MODE,
+        ABNORMAL_MODE,
+    )
 
-    if buy_count == 1 and sell_count == 1:
+    if order_shape == PAIR_MODE:
         current_pair = get_pair_state(orders, GRID_STEP, PAIR_PRICE_TOLERANCE, PAIR_MODE)
         if current_pair is None:
             return "abnormal", None
@@ -213,7 +220,7 @@ def get_loop_action(info, orders, state):
         return "keep", None
 
     if state["mode"] == PAIR_MODE:
-        if buy_count == 0 and sell_count == 1:
+        if order_shape == SELL_ONLY_MODE:
             if should_reanchor_residual_order(
                 info,
                 orders,
@@ -226,7 +233,7 @@ def get_loop_action(info, orders, state):
             print("🔥 fill detected: BUY filled")
             return "rebuild", state["buy_price"]
 
-        if buy_count == 1 and sell_count == 0:
+        if order_shape == BUY_ONLY_MODE:
             if should_reanchor_residual_order(
                 info,
                 orders,
@@ -241,7 +248,7 @@ def get_loop_action(info, orders, state):
 
         return "abnormal", None
 
-    if buy_count == 1 and sell_count == 0:
+    if order_shape == BUY_ONLY_MODE or order_shape == SELL_ONLY_MODE:
         if should_reanchor_residual_order(
             info,
             orders,

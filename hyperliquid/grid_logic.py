@@ -1,3 +1,16 @@
+def count_order_sides(orders):
+    buy_count = 0
+    sell_count = 0
+
+    for order in orders:
+        if order["side"] == "B":
+            buy_count += 1
+        else:
+            sell_count += 1
+
+    return buy_count, sell_count
+
+
 def get_pair_state(orders, grid_step, pair_price_tolerance, pair_mode):
     buy_price = None
     sell_price = None
@@ -30,6 +43,32 @@ def get_pair_state(orders, grid_step, pair_price_tolerance, pair_mode):
         "sell_price": sell_price,
         "reference_price": reference_price,
     }
+
+
+def classify_order_shape(
+    orders,
+    grid_step,
+    pair_price_tolerance,
+    pair_mode,
+    buy_only_mode,
+    sell_only_mode,
+    abnormal_mode,
+):
+    buy_count, sell_count = count_order_sides(orders)
+
+    if buy_count == 1 and sell_count == 1:
+        pair_state = get_pair_state(orders, grid_step, pair_price_tolerance, pair_mode)
+        if pair_state is not None:
+            return pair_mode
+        return abnormal_mode
+
+    if buy_count == 1 and sell_count == 0:
+        return buy_only_mode
+
+    if buy_count == 0 and sell_count == 1:
+        return sell_only_mode
+
+    return abnormal_mode
 
 
 def pair_matches_state(current_pair, state, pair_price_tolerance):
