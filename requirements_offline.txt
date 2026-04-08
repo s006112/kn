@@ -1,4 +1,5 @@
 pip3 install --no-deps -U yt-dlp --break-system-packages
+pip3 install hyperliquid-python-sdk --break-system-packages
 
 # download apt
 apt update # update package lists
