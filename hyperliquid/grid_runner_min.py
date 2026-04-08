@@ -18,15 +18,14 @@ SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
 GRID_STEP = 100.0
-BUDGET_USDC = 100.0
+BUDGET_USDC = 50.0
 PAIR_PRICE_TOLERANCE = 0.1
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
+REANCHOR_BREAK = False
 REANCHOR_BREAK_STEPS = 2
-BALANCE_EPSILON = 1e-8
 
 PAIR_MODE = "PAIR"
 BUY_ONLY_MODE = "BUY_ONLY"
-SELL_ONLY_MODE = "SELL_ONLY"
 MAX_ABNORMAL_COUNT = 3
 
 
@@ -66,23 +65,6 @@ def get_mid_reference_price(info):
         raise ValueError("Invalid buy price")
 
     return reference_price
-
-
-def get_balances(info):
-    state = info.spot_user_state(ACCOUNT_ADDRESS)
-    balances = state.get("balances", [])
-
-    btc_balance = 0.0
-    usdc_balance = 0.0
-    for balance in balances:
-        coin = balance.get("coin")
-        total = float(balance.get("total", 0) or 0)
-        if coin == "UBTC":
-            btc_balance = total
-        elif coin == "USDC":
-            usdc_balance = total
-
-    return btc_balance, usdc_balance
 
 
 def get_pair_state(orders):
@@ -247,33 +229,22 @@ def rebuild(info, exchange, orders, reference_price=None):
 
 
 def should_reanchor_residual_order(info, orders):
+    if not REANCHOR_BREAK:
+        return False
+
     if len(orders) != 1:
         return False
 
     try:
         btc_mid = float(info.all_mids().get(BTC_MID_KEY, 0))
-        btc_balance, usdc_balance = get_balances(info)
     except Exception:
         return False
     if btc_mid <= 0:
         return False
 
+    threshold_distance = REANCHOR_BREAK_STEPS * GRID_STEP
     order = orders[0]
     order_price = float(order["limitPx"])
-
-    has_btc = btc_balance > BALANCE_EPSILON
-    has_usdc = usdc_balance > BALANCE_EPSILON
-
-    if order["side"] == "B":
-        # residual BUY -> can we still SELL?
-        if has_btc:
-            return False
-    else:
-        # residual SELL -> can we still BUY?
-        if has_usdc:
-            return False
-
-    threshold_distance = REANCHOR_BREAK_STEPS * GRID_STEP
 
     if order["side"] == "B":
         if btc_mid - order_price >= threshold_distance:
@@ -303,7 +274,7 @@ def get_loop_action(info, orders, state):
             return "abnormal", None
         if not pair_matches_state(current_pair, state):
             return "abnormal", None
-        if state["mode"] != PAIR_MODE:
+        if state["mode"] == BUY_ONLY_MODE:
             state["mode"] = PAIR_MODE
             print("pair valid")
         return "keep", None
@@ -313,41 +284,24 @@ def get_loop_action(info, orders, state):
             if should_reanchor_residual_order(info, orders):
                 return "rebuild", None
             print("🔥 fill detected: BUY filled")
-            state["mode"] = SELL_ONLY_MODE
-            return "keep", None
+            return "rebuild", state["buy_price"]
 
         if buy_count == 1 and sell_count == 0:
             if should_reanchor_residual_order(info, orders):
                 return "rebuild", None
             print("✅ fill detected: SELL filled")
-            state["mode"] = BUY_ONLY_MODE
-            return "keep", None
-
-        return "abnormal", None
-
-    if state["mode"] == BUY_ONLY_MODE:
-        if buy_count == 1 and sell_count == 0:
-            if should_reanchor_residual_order(info, orders):
-                return "rebuild", None
-            return "keep", None
-
-        if buy_count == 0 and sell_count == 0:
-            print("fill detected: BUY filled")
-            return "rebuild", state["buy_price"]
-
-        return "abnormal", None
-
-    if state["mode"] == SELL_ONLY_MODE:
-        if buy_count == 0 and sell_count == 1:
-            if should_reanchor_residual_order(info, orders):
-                return "rebuild", None
-            return "keep", None
-
-        if buy_count == 0 and sell_count == 0:
-            print("fill detected: SELL filled")
             return "rebuild", state["sell_price"]
 
         return "abnormal", None
+
+    if buy_count == 1 and sell_count == 0:
+        if should_reanchor_residual_order(info, orders):
+            return "rebuild", None
+        return "keep", None
+
+    if buy_count == 0 and sell_count == 0:
+        print("fill detected: BUY filled")
+        return "rebuild", state["buy_price"]
 
     return "abnormal", None
 
