@@ -2,6 +2,7 @@
  
 import os
 import time
+from datetime import datetime
 
 from dotenv import load_dotenv
 from eth_account import Account
@@ -18,12 +19,13 @@ SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
 GRID_STEP = 50.0
-BUDGET_USDC = 50.0
+BUDGET_USDC = 100.0
 PAIR_PRICE_TOLERANCE = 0.1
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
 ALLOW_SELL_ONLY_WHEN_NO_USDC = True
 REANCHOR_BREAK = True
 REANCHOR_BREAK_STEPS = 2
+KEEP_LOG_INTERVAL_SEC = 60
 
 PAIR_MODE = "PAIR"
 BUY_ONLY_MODE = "BUY_ONLY"
@@ -31,12 +33,13 @@ SELL_ONLY_MODE = "SELL_ONLY"
 ABNORMAL_MODE = "ABNORMAL"
 MAX_ABNORMAL_COUNT = 3
 
+last_keep_log_type = None
+last_keep_log_ts = 0.0
+
 from grid_logic import (
     classify_order_shape,
-    count_order_sides,
     get_pair_state,
     pair_matches_state,
-    should_reanchor_residual_order,
 )
 
 
@@ -44,9 +47,28 @@ def get_open_orders(info):
     return info.open_orders(ACCOUNT_ADDRESS)
 
 
+def log_msg(message):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] {message}")
+
+
+def log_keep_state(keep_type, message):
+    global last_keep_log_type
+    global last_keep_log_ts
+
+    now = time.time()
+    if (
+        keep_type != last_keep_log_type
+        or now - last_keep_log_ts >= KEEP_LOG_INTERVAL_SEC
+    ):
+        log_msg(message)
+        last_keep_log_type = keep_type
+        last_keep_log_ts = now
+
+
 def summarize_orders(orders):
     if not orders:
-        print("OPEN ORDERS: none")
+        log_msg("OPEN ORDERS: none")
         return 0, 0
 
     parts = []
@@ -60,7 +82,7 @@ def summarize_orders(orders):
         else:
             sell_count += 1
 
-    print("OPEN ORDERS:", " | ".join(parts))
+    log_msg(f"OPEN ORDERS: {' | '.join(parts)}")
     return buy_count, sell_count
 
 
@@ -96,13 +118,13 @@ def build_pair(reference_price):
 def classify_order_result(result):
     statuses = result.get("response", {}).get("data", {}).get("statuses", [])
     if not statuses:
-        print(f"order failed: {result}")
+        log_msg(f"order failed: {result}")
         return "error"
 
     status = statuses[0]
     if "error" in status:
         error = status["error"]
-        print(f"order failed: {error}")
+        log_msg(f"order failed: {error}")
         if "Insufficient spot balance" in error:
             return "insufficient_spot_balance"
         return "error"
@@ -110,7 +132,7 @@ def classify_order_result(result):
     if "resting" in status or "filled" in status:
         return "ok"
 
-    print(f"order failed: {result}")
+    log_msg(f"order failed: {result}")
     return "error"
 
 
@@ -142,13 +164,13 @@ def cleanup_orders(info, exchange, orders):
     if wait_no_open_orders(info):
         return True
 
-    print("cleanup failure: open orders still remain")
+    log_msg("cleanup failure: open orders still remain")
     return False
 
 
 def place_pair(exchange, reference_price):
     buy_action, sell_action = build_pair(reference_price)
-    print(
+    log_msg(
         f"rebuilding: reference_price={reference_price} "
         f"buy={buy_action['price']} sell={sell_action['price']}"
     )
@@ -168,7 +190,7 @@ def place_pair(exchange, reference_price):
         and sell_status == "insufficient_spot_balance"
         and ALLOW_BUY_ONLY_WHEN_NO_BTC
     ):
-        print("buy-only fallback")
+        log_msg("buy-only fallback")
         return {
             "mode": BUY_ONLY_MODE,
             "buy_price": buy_action["price"],
@@ -181,7 +203,7 @@ def place_pair(exchange, reference_price):
         and buy_status == "insufficient_spot_balance"
         and ALLOW_SELL_ONLY_WHEN_NO_USDC
     ):
-        print("sell-only fallback")
+        log_msg("sell-only fallback")
         return {
             "mode": SELL_ONLY_MODE,
             "buy_price": buy_action["price"],
@@ -216,8 +238,109 @@ def rebuild(info, exchange, orders, reference_price=None):
     return None
 
 
+def detect_fill_driven_rebuild(state, order_shape):
+    if state["mode"] != PAIR_MODE:
+        return None
+
+    if order_shape == SELL_ONLY_MODE:
+        log_msg("🔥 fill detected: BUY filled")
+        return "rebuild", state["buy_price"]
+
+    if order_shape == BUY_ONLY_MODE:
+        log_msg("✅ fill detected: SELL filled")
+        return "rebuild", state["sell_price"]
+
+    return None
+
+
+def validate_keep_state(info, orders, state, order_shape):
+    if state["mode"] == PAIR_MODE:
+        if order_shape != PAIR_MODE:
+            return False
+
+        current_pair = get_pair_state(orders, GRID_STEP, PAIR_PRICE_TOLERANCE, PAIR_MODE)
+        if current_pair is None:
+            return False
+        if not pair_matches_state(current_pair, state, PAIR_PRICE_TOLERANCE):
+            return False
+
+        log_keep_state("pair", "contract: keep pair")
+        return True
+
+    return False
+
+
+def detect_anchor_break(info, orders, state, order_shape):
+    if not REANCHOR_BREAK:
+        return None
+
+    if state["mode"] not in (BUY_ONLY_MODE, SELL_ONLY_MODE):
+        return None
+
+    if order_shape != state["mode"]:
+        return None
+
+    if len(orders) != 1:
+        return None
+
+    order = orders[0]
+    order_price = float(order["limitPx"])
+    threshold_distance = REANCHOR_BREAK_STEPS * GRID_STEP
+
+    try:
+        btc_mid = float(info.all_mids().get(BTC_MID_KEY, 0))
+    except Exception:
+        return None
+    if btc_mid <= 0:
+        return None
+
+    if state["mode"] == BUY_ONLY_MODE:
+        if order["side"] != "B":
+            return None
+        if btc_mid - order_price < threshold_distance:
+            return None
+
+    if state["mode"] == SELL_ONLY_MODE:
+        if order["side"] == "B":
+            return None
+        if order_price - btc_mid < threshold_distance:
+            return None
+
+    log_msg("contract: anchor break")
+    return "rebuild", None
+
+
+def detect_single_sided_action(info, orders, state, order_shape):
+    if state["mode"] == BUY_ONLY_MODE:
+        if order_shape != BUY_ONLY_MODE:
+            return None
+        if len(orders) != 1 or orders[0]["side"] != "B":
+            return None
+
+        anchor_break_action = detect_anchor_break(info, orders, state, order_shape)
+        if anchor_break_action is not None:
+            return anchor_break_action
+
+        log_keep_state("buy-only", "contract: keep buy-only")
+        return "keep", None
+
+    if state["mode"] == SELL_ONLY_MODE:
+        if order_shape != SELL_ONLY_MODE:
+            return None
+        if len(orders) != 1 or orders[0]["side"] == "B":
+            return None
+
+        anchor_break_action = detect_anchor_break(info, orders, state, order_shape)
+        if anchor_break_action is not None:
+            return anchor_break_action
+
+        log_keep_state("sell-only", "contract: keep sell-only")
+        return "keep", None
+
+    return None
+
+
 def get_loop_action(info, orders, state):
-    buy_count, sell_count = count_order_sides(orders)
     order_shape = classify_order_shape(
         orders,
         GRID_STEP,
@@ -228,49 +351,18 @@ def get_loop_action(info, orders, state):
         ABNORMAL_MODE,
     )
 
-    # explicit fill-driven priority
-    if state["mode"] == PAIR_MODE:
-        if order_shape == SELL_ONLY_MODE:
-            print("🔥 fill detected: BUY filled")
-            return "rebuild", state["buy_price"]
+    fill_driven_action = detect_fill_driven_rebuild(state, order_shape)
+    if fill_driven_action is not None:
+        return fill_driven_action
 
-        if order_shape == BUY_ONLY_MODE:
-            print("✅ fill detected: SELL filled")
-            return "rebuild", state["sell_price"]
-
-    if order_shape == PAIR_MODE:
-        current_pair = get_pair_state(orders, GRID_STEP, PAIR_PRICE_TOLERANCE, PAIR_MODE)
-        if current_pair is None:
-            return "abnormal", None
-        if not pair_matches_state(current_pair, state, PAIR_PRICE_TOLERANCE):
-            return "abnormal", None
-        if state["mode"] in (BUY_ONLY_MODE, SELL_ONLY_MODE):
-            state["mode"] = PAIR_MODE
-            print("pair valid")
+    if validate_keep_state(info, orders, state, order_shape):
         return "keep", None
 
-    if order_shape == BUY_ONLY_MODE or order_shape == SELL_ONLY_MODE:
-        if state["mode"] not in (BUY_ONLY_MODE, SELL_ONLY_MODE):
-            return "abnormal", None
-        if state["mode"] != order_shape:
-            return "abnormal", None
-        if should_reanchor_residual_order(
-            info,
-            orders,
-            state["mode"],
-            BUY_ONLY_MODE,
-            SELL_ONLY_MODE,
-            BTC_MID_KEY,
-            GRID_STEP,
-            REANCHOR_BREAK,
-            REANCHOR_BREAK_STEPS,
-        ):
-            return "rebuild", None
-        return "keep", None
+    single_sided_action = detect_single_sided_action(info, orders, state, order_shape)
+    if single_sided_action is not None:
+        return single_sided_action
 
-    if buy_count == 0 and sell_count == 0:
-        return "abnormal", None
-
+    log_msg("contract: abnormal")
     return "abnormal", None
 
 
@@ -289,16 +381,19 @@ def run_main_loop(info, exchange, state):
         if action == "rebuild":
             state = rebuild(info, exchange, orders, reference_price)
             if state is None or state["mode"] == ABNORMAL_MODE:
-                print("rebuild failed or abnormal mode, exit")
+                log_msg("rebuild failed or abnormal mode, exit")
                 return
             abnormal_count = 0
             continue
 
         abnormal_count += 1
         buy_count, sell_count = summarize_orders(orders)
-        print(f"abnormal state {abnormal_count}/{MAX_ABNORMAL_COUNT}: buy={buy_count} sell={sell_count}")
+        log_msg(
+            f"abnormal state {abnormal_count}/{MAX_ABNORMAL_COUNT}: "
+            f"buy={buy_count} sell={sell_count}"
+        )
         if abnormal_count >= MAX_ABNORMAL_COUNT:
-            print("abnormal exit")
+            log_msg("abnormal exit")
             return
 
 
@@ -315,7 +410,7 @@ def create_exchange():
 
 def main():
     if not ACCOUNT_ADDRESS:
-        print("Missing HYPERLIQUID_ACCOUNT_ADDRESS")
+        log_msg("Missing HYPERLIQUID_ACCOUNT_ADDRESS")
         return
 
     info = Info(constants.MAINNET_API_URL)
@@ -328,12 +423,12 @@ def main():
     if buy_count == 1 and sell_count == 1:
         state = get_pair_state(orders, GRID_STEP, PAIR_PRICE_TOLERANCE, PAIR_MODE)
         if state is not None:
-            print("pair valid")
+            log_msg("pair valid")
 
     if state is None:
         state = rebuild(info, exchange, orders)
         if state is None or state["mode"] == ABNORMAL_MODE:
-            print("initial rebuild failed or abnormal mode")
+            log_msg("initial rebuild failed or abnormal mode")
             return
 
     run_main_loop(info, exchange, state)
