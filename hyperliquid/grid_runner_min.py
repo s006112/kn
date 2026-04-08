@@ -21,6 +21,7 @@ GRID_STEP = 50.0
 BUDGET_USDC = 50.0
 PAIR_PRICE_TOLERANCE = 0.1
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
+ALLOW_SELL_ONLY_WHEN_NO_USDC = True
 REANCHOR_BREAK = False
 REANCHOR_BREAK_STEPS = 2
 
@@ -175,7 +176,25 @@ def place_pair(exchange, reference_price):
             "reference_price": reference_price,
         }
 
-    return None
+    if (
+        sell_status == "ok"
+        and buy_status == "insufficient_spot_balance"
+        and ALLOW_SELL_ONLY_WHEN_NO_USDC
+    ):
+        print("sell-only fallback")
+        return {
+            "mode": SELL_ONLY_MODE,
+            "buy_price": buy_action["price"],
+            "sell_price": sell_action["price"],
+            "reference_price": reference_price,
+        }
+
+    return {
+        "mode": ABNORMAL_MODE,
+        "buy_price": buy_action["price"],
+        "sell_price": sell_action["price"],
+        "reference_price": reference_price,
+    }
 
 
 def rebuild(info, exchange, orders, reference_price=None):
@@ -186,7 +205,7 @@ def rebuild(info, exchange, orders, reference_price=None):
         reference_price = get_mid_reference_price(info)
 
     state = place_pair(exchange, reference_price)
-    if state is not None:
+    if state is not None and state["mode"] != ABNORMAL_MODE:
         return state
 
     orders = get_open_orders(info)
