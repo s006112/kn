@@ -1,5 +1,3 @@
-# grid_runner_min.py, pip3 install hyperliquid-python-sdk
- 
 import os
 import time
 from datetime import datetime
@@ -18,10 +16,10 @@ API_KEY = os.getenv("HYPERLIQUID_API_KEY")
 SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
-BUDGET_USDC = 200.0      # $$$$$$$
-GRID_STEP = 75.0
+BUDGET_USDC = 200.0
+GRID_STEP = 100.0
 PAIR_PRICE_TOLERANCE = 0.1
-PAIR_MODE_FLAG = False
+MANUAL_PAIR_TOLERANCE = True
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
 ALLOW_SELL_ONLY_WHEN_NO_USDC = True
 REANCHOR_BREAK = True
@@ -40,7 +38,8 @@ last_keep_log_ts = 0.0
 from grid_logic import (
     classify_order_shape,
     get_pair_state,
-    get_pair_keep_type,
+    pair_matches_state,
+    is_manual_pair_keepable,
     should_reanchor_residual_order,
 )
 
@@ -225,7 +224,6 @@ def rebuild(info, exchange, orders, reference_price=None):
     if orders and not cleanup_orders(info, exchange, orders):
         return None
 
-    # reference_price=None means Anchor Break or forced rebuild → must use fresh mid
     if reference_price is None:
         reference_price = get_mid_reference_price(info)
 
@@ -265,23 +263,27 @@ def detect_fill_driven_rebuild(state, orders, order_shape):
     return None
 
 
-def validate_keep_state(info, orders, state):
-    if state["mode"] != PAIR_MODE:
-        return False
+def validate_keep_state(info, orders, state, order_shape):
+    if state["mode"] == PAIR_MODE:
+        if MANUAL_PAIR_TOLERANCE:
+            if is_manual_pair_keepable(orders):
+                log_keep_state("pair", "contract: keep pair")
+                return True
+            return False
 
-    pair_keep_type = get_pair_keep_type(
-        orders,
-        state,
-        GRID_STEP,
-        PAIR_PRICE_TOLERANCE,
-        PAIR_MODE,
-        PAIR_MODE_FLAG,
-    )
-    if pair_keep_type is None:
-        return False
+        if order_shape != PAIR_MODE:
+            return False
 
-    log_keep_state("pair", "contract: keep pair")
-    return True
+        current_pair = get_pair_state(orders, GRID_STEP, PAIR_PRICE_TOLERANCE, PAIR_MODE)
+        if current_pair is None:
+            return False
+        if not pair_matches_state(current_pair, state, PAIR_PRICE_TOLERANCE):
+            return False
+
+        log_keep_state("pair", "contract: keep pair")
+        return True
+
+    return False
 
 
 def detect_anchor_break(info, orders, state, order_shape):
@@ -359,7 +361,7 @@ def get_loop_action(info, orders, state):
     if fill_driven_action is not None:
         return fill_driven_action
 
-    if validate_keep_state(info, orders, state):
+    if validate_keep_state(info, orders, state, order_shape):
         return "keep", None
 
     single_sided_action = detect_single_sided_action(info, orders, state, order_shape)
