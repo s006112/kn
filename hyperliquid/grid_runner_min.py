@@ -1,4 +1,4 @@
-# hyperliquid_recursive.py, pip3 install hyperliquid-python-sdk
+# grid_runner_min.py, pip3 install hyperliquid-python-sdk
  
 import os
 import time
@@ -17,7 +17,7 @@ API_KEY = os.getenv("HYPERLIQUID_API_KEY")
 SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
-GRID_STEP = 100.0
+GRID_STEP = 50.0
 BUDGET_USDC = 50.0
 PAIR_PRICE_TOLERANCE = 0.1
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
@@ -27,6 +27,12 @@ REANCHOR_BREAK_STEPS = 2
 PAIR_MODE = "PAIR"
 BUY_ONLY_MODE = "BUY_ONLY"
 MAX_ABNORMAL_COUNT = 3
+
+from grid_logic import (
+    get_pair_state,
+    pair_matches_state,
+    should_reanchor_residual_order,
+)
 
 
 def get_open_orders(info):
@@ -65,48 +71,6 @@ def get_mid_reference_price(info):
         raise ValueError("Invalid buy price")
 
     return reference_price
-
-
-def get_pair_state(orders):
-    buy_price = None
-    sell_price = None
-
-    for order in orders:
-        if order["side"] == "B":
-            if buy_price is not None:
-                return None
-            buy_price = float(order["limitPx"])
-        else:
-            if sell_price is not None:
-                return None
-            sell_price = float(order["limitPx"])
-
-    if buy_price is None or sell_price is None:
-        return None
-
-    reference_price = (buy_price + sell_price) / 2.0
-
-    if reference_price <= 0:
-        return None
-    if buy_price <= 0 or buy_price >= sell_price:
-        return None
-    if abs((sell_price - buy_price) - (2 * GRID_STEP)) > PAIR_PRICE_TOLERANCE:
-        return None
-
-    return {
-        "mode": PAIR_MODE,
-        "buy_price": buy_price,
-        "sell_price": sell_price,
-        "reference_price": reference_price,
-    }
-
-
-def pair_matches_state(current_pair, state):
-    if abs(current_pair["buy_price"] - state["buy_price"]) > PAIR_PRICE_TOLERANCE:
-        return False
-    if abs(current_pair["sell_price"] - state["sell_price"]) > PAIR_PRICE_TOLERANCE:
-        return False
-    return True
 
 
 def build_pair(reference_price):
@@ -228,37 +192,6 @@ def rebuild(info, exchange, orders, reference_price=None):
     return None
 
 
-def should_reanchor_residual_order(info, orders):
-    if not REANCHOR_BREAK:
-        return False
-
-    if len(orders) != 1:
-        return False
-
-    try:
-        btc_mid = float(info.all_mids().get(BTC_MID_KEY, 0))
-    except Exception:
-        return False
-    if btc_mid <= 0:
-        return False
-
-    threshold_distance = REANCHOR_BREAK_STEPS * GRID_STEP
-    order = orders[0]
-    order_price = float(order["limitPx"])
-
-    if order["side"] == "B":
-        if btc_mid - order_price >= threshold_distance:
-            print("re-anchor triggered: stale BUY")
-            return True
-        return False
-
-    if order_price - btc_mid >= threshold_distance:
-        print("re-anchor triggered: stale SELL")
-        return True
-
-    return False
-
-
 def get_loop_action(info, orders, state):
     buy_count = 0
     sell_count = 0
@@ -269,10 +202,10 @@ def get_loop_action(info, orders, state):
             sell_count += 1
 
     if buy_count == 1 and sell_count == 1:
-        current_pair = get_pair_state(orders)
+        current_pair = get_pair_state(orders, GRID_STEP, PAIR_PRICE_TOLERANCE, PAIR_MODE)
         if current_pair is None:
             return "abnormal", None
-        if not pair_matches_state(current_pair, state):
+        if not pair_matches_state(current_pair, state, PAIR_PRICE_TOLERANCE):
             return "abnormal", None
         if state["mode"] == BUY_ONLY_MODE:
             state["mode"] = PAIR_MODE
@@ -281,13 +214,27 @@ def get_loop_action(info, orders, state):
 
     if state["mode"] == PAIR_MODE:
         if buy_count == 0 and sell_count == 1:
-            if should_reanchor_residual_order(info, orders):
+            if should_reanchor_residual_order(
+                info,
+                orders,
+                BTC_MID_KEY,
+                GRID_STEP,
+                REANCHOR_BREAK,
+                REANCHOR_BREAK_STEPS,
+            ):
                 return "rebuild", None
             print("🔥 fill detected: BUY filled")
             return "rebuild", state["buy_price"]
 
         if buy_count == 1 and sell_count == 0:
-            if should_reanchor_residual_order(info, orders):
+            if should_reanchor_residual_order(
+                info,
+                orders,
+                BTC_MID_KEY,
+                GRID_STEP,
+                REANCHOR_BREAK,
+                REANCHOR_BREAK_STEPS,
+            ):
                 return "rebuild", None
             print("✅ fill detected: SELL filled")
             return "rebuild", state["sell_price"]
@@ -295,7 +242,14 @@ def get_loop_action(info, orders, state):
         return "abnormal", None
 
     if buy_count == 1 and sell_count == 0:
-        if should_reanchor_residual_order(info, orders):
+        if should_reanchor_residual_order(
+            info,
+            orders,
+            BTC_MID_KEY,
+            GRID_STEP,
+            REANCHOR_BREAK,
+            REANCHOR_BREAK_STEPS,
+        ):
             return "rebuild", None
         return "keep", None
 
@@ -357,7 +311,7 @@ def main():
 
     state = None
     if buy_count == 1 and sell_count == 1:
-        state = get_pair_state(orders)
+        state = get_pair_state(orders, GRID_STEP, PAIR_PRICE_TOLERANCE, PAIR_MODE)
         if state is not None:
             print("pair valid")
 
