@@ -192,10 +192,11 @@ def build_pair(reference_price):
     if buy_price <= 0:
         raise ValueError("Invalid buy price")
 
-    size = round(BUDGET_USDC / reference_price, 5)
+    buy_size = round(BUDGET_USDC / buy_price, 5)
+    sell_size = round(BUDGET_USDC / sell_price, 5)
     return (
-        {"side": "BUY", "price": buy_price, "size": size},
-        {"side": "SELL", "price": sell_price, "size": size},
+        {"side": "BUY", "price": buy_price, "size": buy_size},
+        {"side": "SELL", "price": sell_price, "size": sell_size},
     )
 
 
