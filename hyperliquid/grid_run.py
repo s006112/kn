@@ -416,11 +416,11 @@ def resolve_fill_rebuild_action(state, orders, order_shape):
 
     if previous_mode == PAIR_MODE:
         if order_shape == SELL_ONLY_MODE:
-            log_msg("🔥 fill detected: BUY filled -> SELL residual -> rebuild")
+            log_msg(f"🔥 BUY filled - {format_price(state['buy_price'])}")
             return "rebuild", state["buy_price"]
 
         if order_shape == BUY_ONLY_MODE:
-            log_msg("✅ fill detected: SELL filled -> BUY residual -> rebuild")
+            log_msg(f"✅ SELL filled - {format_price(state['sell_price'])}")
             return "rebuild", state["sell_price"]
 
         return None
