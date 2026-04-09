@@ -292,28 +292,26 @@ def cleanup_orders(info, exchange, orders):
 
 
 def place_pair(exchange, reference_price):
-    """作用：
+    """作用:
     执行一次网格重建的下单动作（同时提交买单与卖单），并根据下单结果生成新的策略状态。
 
-    输入：
-    exchange：Hyperliquid 的 Exchange 客户端，用于提交订单
-    reference_price：价格锚点，用于构造买卖挂单价格
+    输入:
+    exchange: Hyperliquid 的 `Exchange` 客户端，用于提交订单。
+    reference_price: 本次下单/重建使用的价格锚点，用于构造新的买卖挂单价格。
 
-    输出：
-    返回一个 state 字典，包含：
-    - mode：当前状态（PAIR / BUY_ONLY / SELL_ONLY / ABNORMAL）
-    - buy_price：本次构建的买单价格
-    - sell_price：本次构建的卖单价格
-    - reference_price：本次使用的价格锚点
+    输出:
+    返回一个 `state` 字典，包含 `mode`、`buy_price`、`sell_price` 和 `reference_price`。
+    其中 `reference_price` 表示本次构造新订单时使用的 placement / rebuild anchor；
+    它不是 `get_pair_state()` 返回的 `pair_center_price`，两者字段名和语义都不相同。
 
-    状态规则：
-    - 若买卖订单均成功（"ok"），则 mode = PAIR
-    - 若仅买单成功且卖单因余额不足失败，则 mode = BUY_ONLY（需开启对应 fallback）
-    - 若仅卖单成功且买单因余额不足失败，则 mode = SELL_ONLY（需开启对应 fallback）
-    - 其他情况均视为 ABNORMAL
+    状态规则:
+    若买卖订单均成功（`"ok"`），则 `mode = PAIR`；
+    若仅买单成功且卖单因余额不足失败，则 `mode = BUY_ONLY`（需开启对应 fallback）；
+    若仅卖单成功且买单因余额不足失败，则 `mode = SELL_ONLY`（需开启对应 fallback）；
+    其他情况均视为 `ABNORMAL`。
 
-    异常：
-    不捕获 build_pair() 或 place_limit_order() 抛出的异常，调用方需自行处理
+    异常:
+    不捕获 `build_pair()` 或 `place_limit_order()` 抛出的异常，调用方需自行处理。
     """
     buy_action, sell_action = build_pair(reference_price)
     log_msg(
@@ -376,7 +374,10 @@ def rebuild(info, exchange, orders, reference_price=None):
     reference_price: 可选的显式参考价；当其为 `None` 时使用 `get_mid_reference_price()`。
 
     输出:
-    当 `place_pair()` 返回的状态不是 `ABNORMAL` 时，返回该状态。若前置或后置清理失败，或下单结果为 `ABNORMAL`，则返回 `None`。透传清理、参考价推导、订单查询或下单过程抛出的异常。
+    当 `place_pair()` 返回的状态不是 `ABNORMAL` 时，返回该状态；该返回值沿用
+    `place_pair()` 的 schema，因此包含 `reference_price` 这一重建锚点字段，而不会改写成
+    `get_pair_state()` 使用的 `pair_center_price`。若前置或后置清理失败，或下单结果为
+    `ABNORMAL`，则返回 `None`。透传清理、参考价推导、订单查询或下单过程抛出的异常。
     """
     if orders and not cleanup_orders(info, exchange, orders):
         return None
@@ -400,7 +401,9 @@ def resolve_fill_rebuild_action(state, orders, order_shape):
     判断是否发生了成交驱动的重建条件，并返回对应动作。
 
     输入:
-    state: 至少包含 `mode`、`buy_price` 和 `sell_price` 的状态映射。
+    state: 至少包含 `mode`、`buy_price` 和 `sell_price` 的状态映射。该状态可能来自
+    `get_pair_state()`（包含 `pair_center_price`）或 `place_pair()`（包含 `reference_price`），
+    但本函数不要求这两个字段存在，也不将它们视为同一概念。
     orders: 当前挂单集合，用于检查残单是否已经完成。
     order_shape: `orders` 的当前形态分类结果。
 
@@ -438,7 +441,9 @@ def validate_keep_state(info, orders, state, order_shape):
     输入:
     info: 调用链保留但当前未使用的参数。
     orders: 当前挂单集合。
-    state: 至少包含 `mode`、`buy_price` 和 `sell_price` 的已保存状态映射。
+    state: 至少包含 `mode`、`buy_price` 和 `sell_price` 的已保存状态映射。该状态可能来自
+    `get_pair_state()` 并带有 `pair_center_price`，也可能来自 `place_pair()` 并带有
+    `reference_price`；本函数只校验保存的买卖价格，不假定这两个字段等价。
     order_shape: `orders` 的当前形态分类结果。
 
     输出:
@@ -473,7 +478,8 @@ def detect_anchor_break(info, orders, state, order_shape):
     输入:
     info: 被残单重锚辅助函数使用的 Hyperliquid `Info` 客户端。
     orders: 当前挂单集合。
-    state: 至少包含 `mode` 的已保存状态映射。
+    state: 至少包含 `mode` 的已保存状态映射。该状态可以带有 `pair_center_price` 或
+    `reference_price`，但本函数只根据 `mode` 和当前订单检查单边重锚，不把两者混为同一字段。
     order_shape: `orders` 的当前形态分类结果。
 
     输出:
@@ -515,7 +521,9 @@ def detect_single_sided_action(info, orders, state, order_shape):
     输入:
     info: 用于评估 anchor break 的 Hyperliquid `Info` 客户端。
     orders: 当前挂单集合。
-    state: 至少包含 `mode` 的已保存状态映射。
+    state: 至少包含 `mode` 的已保存状态映射，可能来自 `get_pair_state()` 的
+    `pair_center_price` schema，也可能来自 `place_pair()` 的 `reference_price` schema；
+    本函数不要求也不推断这两个字段等价。
     order_shape: `orders` 的当前形态分类结果。
 
     输出:
@@ -552,23 +560,30 @@ def detect_single_sided_action(info, orders, state, order_shape):
 
 def get_loop_action(info, orders, state):
     """
-    作用：
+    作用:
     根据当前 open orders 与上一轮已接受的 state，
     判定这一轮主循环应执行的唯一动作。
 
-    判定顺序：
+    输入:
+    info: 用于订单状态判断和潜在重建决策的 Hyperliquid `Info` 客户端。
+    orders: 当前挂单集合。
+    state: 上一轮已接受的状态映射，可能来自 `get_pair_state()` 并包含
+    `pair_center_price`，也可能来自 `place_pair()` 并包含 `reference_price`；
+    本函数及其调用链不会将这两个字段名或语义统一。
+
+    判定顺序:
     1. 先分类当前订单形状
     2. 优先检查是否命中 fill-driven rebuild
     3. 再检查 PAIR_MODE 是否满足 keep 条件
     4. 再检查 BUY_ONLY / SELL_ONLY 是否应 keep 或触发 anchor break
     5. 若以上都不满足，则判定为 abnormal
 
-    返回：
+    返回:
     - ("keep", None)
     - ("rebuild", reference_price 或 None)
     - ("abnormal", None)
 
-    边界：
+    边界:
     本函数只负责决策，不负责下单、撤单或实际 rebuild 执行。
     """
     order_shape = classify_order_shape(
@@ -605,7 +620,9 @@ def run_main_loop(info, exchange, state):
     输入:
     info: 用于轮询与重建决策的 Hyperliquid `Info` 客户端。
     exchange: 需要执行重建时使用的 Hyperliquid `Exchange` 客户端。
-    state: 运行中合约的初始已接受状态映射。
+    state: 运行中合约的初始已接受状态映射；若来自 `get_pair_state()`，可包含
+    `pair_center_price`，若来自 `place_pair()`/`rebuild()`，则包含 `reference_price`。
+    这些字段表示不同语义，本循环不会把它们视为同一概念。
 
     输出:
     返回 `None`。当动作持续解析为 `keep` 或成功的 `rebuild` 时无限循环；当重建失败、重建结果异常，或连续出现 `MAX_ABNORMAL_COUNT` 次异常循环动作时退出。过程中会记录异常摘要与退出条件。
@@ -668,7 +685,11 @@ def main():
     无。
 
     输出:
-    返回 `None`。当 `ACCOUNT_ADDRESS` 缺失时立即记录日志并退出。否则创建客户端、汇总当前挂单、在存在有效配对时直接接受该状态、必要时回退到 `rebuild()`，并仅在建立了非异常初始状态后进入 `run_main_loop()`。透传客户端创建、状态推导和循环执行过程抛出的异常。
+    返回 `None`。当 `ACCOUNT_ADDRESS` 缺失时立即记录日志并退出。否则创建客户端、
+    汇总当前挂单、在存在有效配对时直接接受 `get_pair_state()` 返回的状态
+    （其中包含 `pair_center_price` 这一配对快照中点），必要时回退到 `rebuild()`
+    获取包含 `reference_price` 的下单锚点状态，并仅在建立了非异常初始状态后进入
+    `run_main_loop()`。透传客户端创建、状态推导和循环执行过程抛出的异常。
     """
     if not ACCOUNT_ADDRESS:
         log_msg("Missing HYPERLIQUID_ACCOUNT_ADDRESS")

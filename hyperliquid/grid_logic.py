@@ -64,7 +64,12 @@ def get_pair_state(
     pair_mode: 写入返回状态映射中的模式值。
 
     输出:
-    当且仅当恰好存在一个买单、一个非买单、两边价格均有效，且观察到的价差与 `(buy_grid_factor + sell_grid_factor) * grid_step` 的偏差在容差内时，返回包含 `mode`、`buy_price`、`sell_price` 和 `reference_price` 的映射；否则返回 `None`。透传异常订单字段导致的取值和浮点转换异常。
+    当且仅当恰好存在一个买单、一个非买单、两边价格均有效，且观察到的价差与
+    `(buy_grid_factor + sell_grid_factor) * grid_step` 的偏差在容差内时，
+    返回包含 `mode`、`buy_price`、`sell_price` 和 `pair_center_price` 的映射。
+    其中 `pair_center_price` 仅表示基于当前这组已存在买卖挂单快照推导出的中点价格，
+    不是市场锚点，不是重建参考价，也不是更新后的市场参考价；否则返回 `None`。
+    透传异常订单字段导致的取值和浮点转换异常。
     """
     buy_price = None
     sell_price = None
@@ -82,9 +87,9 @@ def get_pair_state(
     if buy_price is None or sell_price is None:
         return None
 
-    reference_price = (buy_price + sell_price) / 2.0
+    pair_center_price = (buy_price + sell_price) / 2.0
 
-    if reference_price <= 0:
+    if pair_center_price <= 0:
         return None
     if buy_price <= 0 or buy_price >= sell_price:
         return None
@@ -93,13 +98,13 @@ def get_pair_state(
     if abs((sell_price - buy_price) - expected_gap) > pair_price_tolerance:
         return None
 
+    # Snapshot midpoint from the existing pair, not a market/rebuild anchor.
     return {
         "mode": pair_mode,
         "buy_price": buy_price,
         "sell_price": sell_price,
-        "reference_price": reference_price,
+        "pair_center_price": pair_center_price,
     }
-
 
 def classify_order_shape(
     orders,
