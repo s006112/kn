@@ -37,6 +37,7 @@ SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
 BUDGET_USDC = 150.0
+USDC_OFFSET = 0.0
 GRID_STEP = 100.0
 BUY_GRID_FACTOR = 1.0
 SELL_GRID_FACTOR = 1.5
@@ -185,8 +186,8 @@ def build_pair(reference_price):
     if reference_price <= 0:
         raise ValueError("Invalid reference price")
 
-    buy_price = reference_price - (BUY_GRID_FACTOR * GRID_STEP)
-    sell_price = reference_price + (SELL_GRID_FACTOR * GRID_STEP)
+    buy_price = reference_price - (BUY_GRID_FACTOR * GRID_STEP) + USDC_OFFSET
+    sell_price = reference_price + (SELL_GRID_FACTOR * GRID_STEP) - USDC_OFFSET
 
     if buy_price <= 0:
         raise ValueError("Invalid buy price")
@@ -456,6 +457,7 @@ def validate_keep_state(info, orders, state, order_shape):
 
         current_pair = get_pair_state(
             orders,
+            USDC_OFFSET,
             GRID_STEP,
             BUY_GRID_FACTOR,
             SELL_GRID_FACTOR,
@@ -589,6 +591,7 @@ def get_loop_action(info, orders, state):
     """
     order_shape = classify_order_shape(
         orders,
+        USDC_OFFSET,
         GRID_STEP,
         BUY_GRID_FACTOR,
         SELL_GRID_FACTOR,
@@ -706,6 +709,7 @@ def main():
     if buy_count == 1 and sell_count == 1:
         state = get_pair_state(
             orders,
+            USDC_OFFSET,
             GRID_STEP,
             BUY_GRID_FACTOR,
             SELL_GRID_FACTOR,
