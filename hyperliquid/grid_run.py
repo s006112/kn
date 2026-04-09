@@ -67,12 +67,6 @@ from grid_logic import (
 def get_open_orders(info):
     """作用:
     获取当前配置账户地址的未完成订单。
-
-    输入:
-    info: 带有 `open_orders` 方法的 Hyperliquid `Info` 客户端。
-
-    输出:
-    返回 `info.open_orders(ACCOUNT_ADDRESS)` 的结果。透传客户端调用抛出的异常。
     """
     return info.open_orders(ACCOUNT_ADDRESS)
 
@@ -80,12 +74,6 @@ def get_open_orders(info):
 def log_msg(message):
     """作用:
     打印带时间戳的日志行。
-
-    输入:
-    message: 追加在当前本地时间戳之后的文本。
-
-    输出:
-    向标准输出打印格式化日志后返回 `None`。
     """
     timestamp = datetime.now(GMT_PLUS_8).strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] {message}")
@@ -162,7 +150,7 @@ def get_mid_reference_price(info):
     if btc_mid <= 0:
         raise ValueError("Failed to get BTC mid price")
 
-    reference_price = float(int(btc_mid // GRID_STEP) * GRID_STEP)
+    reference_price = float(int((btc_mid / GRID_STEP) + 0.5) * GRID_STEP)   # round-half-up
     if reference_price <= 0:
         raise ValueError("Invalid reference price")
     if reference_price - (BUY_GRID_FACTOR * GRID_STEP) <= 0:
