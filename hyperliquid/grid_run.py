@@ -38,7 +38,7 @@ BTC_MID_KEY = "@142"
 
 BUDGET_USDC = 100.0
 GRID_STEP = 100.0
-BUY_GRID_FACTOR = 1.5
+BUY_GRID_FACTOR = 1.0
 SELL_GRID_FACTOR = 1.5
 PAIR_PRICE_TOLERANCE = 0.1
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
@@ -126,25 +126,38 @@ def summarize_orders(orders):
     sell_count = 0
     for order in orders:
         side = "BUY" if order["side"] == "B" else "SELL"
-        parts.append(f"{side} = {format_price(order['limitPx'])}")   #  size={order['sz']} oid={order['oid']}
+        parts.append(f"{side} - {format_price(order['limitPx'])}")   #  size={order['sz']} oid={order['oid']}
         if order["side"] == "B":
             buy_count += 1
         else:
             sell_count += 1
 
-    log_msg(f"OPEN ORDERS: {' | '.join(parts)}")
+    log_msg(f"OPEN ORDERS | {' | '.join(parts)}")
     return buy_count, sell_count
 
 
 def get_mid_reference_price(info):
     """作用:
-    根据当前 BTC 中间价和配置的网格步长推导参考价。
+    根据当前 BTC 中间价和配置的网格步长推导参考价（对齐到最近网格）。
 
     输入:
     info: 带有 `all_mids` 方法的 Hyperliquid `Info` 客户端。
 
     输出:
-    返回向下取整到最近 `GRID_STEP` 的 BTC 中间价浮点值。若中间价缺失或非正、取整后的参考价非正、或推导出的买价非正，则抛出 `ValueError`。透传 `info.all_mids()` 或浮点转换抛出的异常。
+    返回按 round-half-up 规则对齐到最近 `GRID_STEP` 的 BTC 中间价浮点值。
+    即将 `btc_mid / GRID_STEP` 四舍五入（.5 一律进位）后再乘回 `GRID_STEP`，
+    用于作为网格下单的参考锚点价格。
+
+    行为说明:
+    - 当价格位于两个网格中点以下时，向下对齐
+    - 当价格位于中点及以上时，向上对齐（.5 → 上）
+    - 不使用 Python 默认的 banker’s rounding（round-half-to-even）
+
+    异常:
+    - 当中间价缺失或非正时，抛出 `ValueError`
+    - 当推导出的参考价非正时，抛出 `ValueError`
+    - 当根据参考价计算出的买价非正时，抛出 `ValueError`
+    - 透传 `info.all_mids()` 或浮点转换抛出的异常
     """
     btc_mid = float(info.all_mids().get(BTC_MID_KEY, 0))
     if btc_mid <= 0:
@@ -303,8 +316,8 @@ def place_pair(exchange, reference_price):
     """
     buy_action, sell_action = build_pair(reference_price)
     log_msg(
-        f"rebuilding: ref = {format_price(reference_price)} | "
-        f"buy = {format_price(buy_action['price'])} | sell = {format_price(sell_action['price'])}"
+        
+        f"REBUILD | SELL - {format_price(sell_action['price'])} | REF - {format_price(reference_price)} | BUY - {format_price(buy_action['price'])}"
     )
     buy_status = place_limit_order(exchange, buy_action)
     sell_status = place_limit_order(exchange, sell_action)
