@@ -21,8 +21,7 @@
 
 import os
 import time
-from datetime import datetime
-
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from eth_account import Account
 from hyperliquid.exchange import Exchange
@@ -56,6 +55,7 @@ MAX_ABNORMAL_COUNT = 3
 
 last_keep_log_type = None
 last_keep_log_ts = 0.0
+GMT_PLUS_8 = timezone(timedelta(hours=8))
 
 from grid_logic import (
     classify_order_shape,
@@ -63,7 +63,6 @@ from grid_logic import (
     pair_matches_state,
     should_reanchor_residual_order,
 )
-
 
 def get_open_orders(info):
     """作用:
@@ -88,8 +87,12 @@ def log_msg(message):
     输出:
     向标准输出打印格式化日志后返回 `None`。
     """
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = datetime.now(GMT_PLUS_8).strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] {message}")
+
+
+def format_price(price): # 将价格格式化为整数显示字符串。
+    return str(int(round(float(price))))
 
 
 def log_keep_state(keep_type, message):
@@ -135,7 +138,7 @@ def summarize_orders(orders):
     sell_count = 0
     for order in orders:
         side = "BUY" if order["side"] == "B" else "SELL"
-        parts.append(f"{side} = {order['limitPx']}")   #  size={order['sz']} oid={order['oid']}
+        parts.append(f"{side} = {format_price(order['limitPx'])}")   #  size={order['sz']} oid={order['oid']}
         if order["side"] == "B":
             buy_count += 1
         else:
@@ -314,8 +317,8 @@ def place_pair(exchange, reference_price):
     """
     buy_action, sell_action = build_pair(reference_price)
     log_msg(
-        f"rebuilding: ref = {reference_price} | "
-        f"buy = {buy_action['price']} | sell = {sell_action['price']}"
+        f"rebuilding: ref = {format_price(reference_price)} | "
+        f"buy = {format_price(buy_action['price'])} | sell = {format_price(sell_action['price'])}"
     )
     buy_status = place_limit_order(exchange, buy_action)
     sell_status = place_limit_order(exchange, sell_action)
