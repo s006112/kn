@@ -172,20 +172,6 @@ def pair_matches_state(current_pair, state, pair_price_tolerance):
     return True
 
 
-def is_manual_pair_keepable(orders):
-    """作用:
-    检查订单集合是否恰好包含一个买单和一个卖侧订单。
-
-    输入:
-    orders: 可迭代的订单映射对象，包含 `side` 字段。
-
-    输出:
-    当 `count_order_sides()` 统计结果为一买一卖时返回 `True`；否则返回 `False`。
-    """
-    buy_count, sell_count = count_order_sides(orders)
-    return buy_count == 1 and sell_count == 1
-
-
 def should_reanchor_residual_order(
     info,
     orders,

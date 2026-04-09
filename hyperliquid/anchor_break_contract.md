@@ -72,28 +72,6 @@
     PAIR_MODE：keep
     BUY_ONLY_MODE / SELL_ONLY_MODE 且 non-stale：keep
 
-10A. Manual Pair Tolerance（Test Mode）
-    僅在以下條件成立時啟用：
-
-    MANUAL_PAIR_TOLERANCE = True
-    mode 為 PAIR_MODE
-    open orders 為恰好 1 BUY + 1 SELL
-
-    在此模式下：
-
-    不要求 pair shape 有效
-    不要求與 state 中的歷史 buy_price / sell_price 匹配
-    僅以「1 BUY + 1 SELL」作為 keep 條件
-
-    此模式僅用於測試或人工干預場景：
-
-    不影響 fill-driven rebuild 判定
-    不影響 BUY_ONLY_MODE / SELL_ONLY_MODE 行為
-    不影響 Anchor Break 判定與約束
-    不得改變 mode 定義本身
-
-    當 MANUAL_PAIR_TOLERANCE = False 時，必須回復嚴格 pair 驗證邏輯
-
 11. Constraints
     不得在 PAIR_MODE 或 ABNORMAL 下觸發 Anchor Break
     不得把資產不足等同 stale

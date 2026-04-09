@@ -39,10 +39,9 @@ BTC_MID_KEY = "@142"
 
 BUDGET_USDC = 100.0
 GRID_STEP = 100.0
-BUY_GRID_FACTOR = 1.0
+BUY_GRID_FACTOR = 1.5
 SELL_GRID_FACTOR = 1.5
 PAIR_PRICE_TOLERANCE = 0.1
-MANUAL_PAIR_TOLERANCE = True
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
 ALLOW_SELL_ONLY_WHEN_NO_USDC = True
 REANCHOR_BREAK = True
@@ -62,7 +61,6 @@ from grid_logic import (
     classify_order_shape,
     get_pair_state,
     pair_matches_state,
-    is_manual_pair_keepable,
     should_reanchor_residual_order,
 )
 
@@ -137,7 +135,7 @@ def summarize_orders(orders):
     sell_count = 0
     for order in orders:
         side = "BUY" if order["side"] == "B" else "SELL"
-        parts.append(f"{side} @{order['limitPx']} size={order['sz']} oid={order['oid']}")
+        parts.append(f"{side} = {order['limitPx']}")   #  size={order['sz']} oid={order['oid']}
         if order["side"] == "B":
             buy_count += 1
         else:
@@ -316,8 +314,8 @@ def place_pair(exchange, reference_price):
     """
     buy_action, sell_action = build_pair(reference_price)
     log_msg(
-        f"rebuilding: reference_price={reference_price} "
-        f"buy={buy_action['price']} sell={sell_action['price']}"
+        f"rebuilding: ref = {reference_price} | "
+        f"buy = {buy_action['price']} | sell = {sell_action['price']}"
     )
     buy_status = place_limit_order(exchange, buy_action)
     sell_status = place_limit_order(exchange, sell_action)
@@ -441,15 +439,9 @@ def validate_keep_state(info, orders, state, order_shape):
     order_shape: `orders` 的当前形态分类结果。
 
     输出:
-    仅在 `PAIR` 状态下可能返回 `True`。当启用 `MANUAL_PAIR_TOLERANCE` 时，只要 `is_manual_pair_keepable()` 判定为一买一卖就返回 `True`。否则仅当 `order_shape` 为 `PAIR`、`get_pair_state()` 成功且 `pair_matches_state()` 确认两侧价格均在容差内时返回 `True`。其余路径均返回 `False`。透传配对校验辅助函数因异常订单字段抛出的异常。
+    仅在 `PAIR` 状态下可能返回 `True`。仅当 `order_shape` 为 `PAIR`、`get_pair_state()` 成功且 `pair_matches_state()` 确认两侧价格均在容差内时返回 `True`。其余路径均返回 `False`。透传配对校验辅助函数因异常订单字段抛出的异常。
     """
     if state["mode"] == PAIR_MODE:
-        if MANUAL_PAIR_TOLERANCE:
-            if is_manual_pair_keepable(orders):
-                log_keep_state("pair", "contract: keep pair")
-                return True
-            return False
-
         if order_shape != PAIR_MODE:
             return False
 
@@ -465,7 +457,7 @@ def validate_keep_state(info, orders, state, order_shape):
             return False
         if not pair_matches_state(current_pair, state, PAIR_PRICE_TOLERANCE):
             return False
-        log_keep_state("pair", "XXX contract: keep pair")
+        log_keep_state("pair", "contract: keep pair")
         return True
 
     return False
