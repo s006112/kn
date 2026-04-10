@@ -11,6 +11,7 @@
 - 只在成功得到非 `ABNORMAL` 新状态后继续主循环
 
 策略特定的单边 residual stale 处理不属于本文档，见子合同 `contract_anchor_break.md`。
+- residual stale = “一个单边残单，而且它已经不再符合当前 grid / anchor / contract，因此必须触发 rebuild”
 
 ## 2. Accepted State Model
 

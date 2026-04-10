@@ -231,7 +231,7 @@ def classify_order_result(result):
 
 def place_limit_order(exchange, action):
     """作用:
-    提交一笔 GTC 限价单，并对交易所响应进行分类。
+    提交一笔 ALO 限价单，并对交易所响应进行分类。
 
     输入:
     exchange: 带有 `order` 方法的 Hyperliquid `Exchange` 客户端。
@@ -245,10 +245,11 @@ def place_limit_order(exchange, action):
         action["side"] == "BUY",
         float(action["size"]),
         float(action["price"]),
-        {"limit": {"tif": "Gtc"}},
+        {"limit": {"tif": "Alo"}},
         False,
     )
-    return classify_order_result(result)
+    status = classify_order_result(result)
+    return status
 
 
 def wait_no_open_orders(info, max_tries=10, interval_sec=1.0):
