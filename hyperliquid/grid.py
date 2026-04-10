@@ -524,12 +524,22 @@ def detect_single_sided_action(info, orders, state, order_shape):
     info: 用于评估 anchor break 的 Hyperliquid `Info` 客户端。
     orders: 当前挂单集合。
     state: 至少包含 `mode` 的已保存状态映射，可能来自 `get_pair_state()` 的
-    `pair_center_price` schema，也可能来自 `place_pair()` 的 `reference_price` schema；
-    本函数不要求也不推断这两个字段等价。
+        `pair_center_price` schema，也可能来自 `place_pair()` 的 `reference_price` schema；
+        本函数不要求也不推断这两个字段等价。
     order_shape: `orders` 的当前形态分类结果。
 
     输出:
-    对于未触发 anchor break 的有效单边残单，返回 `("keep", None)`。当 `detect_anchor_break()` 请求重建时，返回其结果。当保存模式不是单边、当前形态与保存模式不一致，或残单方向与预期方向不一致时，返回 `None`。
+    - 对于 `BUY_ONLY` 模式：
+    - 若未触发 anchor break，返回 `("keep", None)`
+    - 若 `detect_anchor_break()` 请求重建，返回其结果
+    - 对于 `SELL_ONLY` 模式：
+    - 始终返回 `("keep", None)`（不执行 anchor break 检查）
+
+    当保存模式不是单边、当前形态与保存模式不一致，或残单方向与预期方向不一致时，返回 `None`。
+
+    边界说明:
+    当前实现中，anchor break 仅适用于 `BUY_ONLY` 残单；
+    `SELL_ONLY` 残单不会触发 anchor break。
     """
     if state["mode"] == BUY_ONLY_MODE:
         if order_shape != BUY_ONLY_MODE:
@@ -549,10 +559,6 @@ def detect_single_sided_action(info, orders, state, order_shape):
             return None
         if len(orders) != 1 or orders[0]["side"] == "B":
             return None
-
-        anchor_break_action = detect_anchor_break(info, orders, state, order_shape)
-        if anchor_break_action is not None:
-            return anchor_break_action
 
         log_keep_state("sell-only", "contract: keep sell-only")
         return "keep", None
