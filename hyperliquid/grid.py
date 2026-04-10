@@ -37,7 +37,6 @@ SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
 BUDGET_USDC = 200.0
-USDC_OFFSET = 0.0
 GRID_STEP = 100.0
 BUY_GRID_FACTOR = 1.0
 SELL_GRID_FACTOR = 1.25
@@ -180,13 +179,13 @@ def build_pair(reference_price):
     reference_price: 正数价格锚点，用于推导买卖价格和共享下单数量。
 
     输出:
-    返回 `(buy_action, sell_action)` 元组，元素均为包含 `side`、`price` 和 `size` 的映射，其中 `size` 为 `round(BUDGET_USDC / reference_price, 5)`。当 `reference_price` 非正或计算出的买价非正时抛出 `ValueError`。
+    返回 `(buy_action, sell_action)` 元组，元素均为包含 `side`、`price` 和 `size` 的映射，其中 `size` 为 `round(BUDGET_USDC / xxx_price, 5)`。
     """
     if reference_price <= 0:
         raise ValueError("Invalid reference price")
 
-    buy_price = reference_price - (BUY_GRID_FACTOR * GRID_STEP) + USDC_OFFSET
-    sell_price = reference_price + (SELL_GRID_FACTOR * GRID_STEP) - USDC_OFFSET
+    buy_price = reference_price - (BUY_GRID_FACTOR * GRID_STEP)
+    sell_price = reference_price + (SELL_GRID_FACTOR * GRID_STEP)
 
     if buy_price <= 0:
         raise ValueError("Invalid buy price")
@@ -458,7 +457,6 @@ def validate_keep_state(info, orders, state, order_shape):
 
         current_pair = get_pair_state(
             orders,
-            USDC_OFFSET,
             GRID_STEP,
             BUY_GRID_FACTOR,
             SELL_GRID_FACTOR,
@@ -592,7 +590,6 @@ def get_loop_action(info, orders, state):
     """
     order_shape = classify_order_shape(
         orders,
-        USDC_OFFSET,
         GRID_STEP,
         BUY_GRID_FACTOR,
         SELL_GRID_FACTOR,
@@ -701,7 +698,6 @@ def main():
     if buy_count == 1 and sell_count == 1:
         state = get_pair_state(
             orders,
-            USDC_OFFSET,
             GRID_STEP,
             BUY_GRID_FACTOR,
             SELL_GRID_FACTOR,

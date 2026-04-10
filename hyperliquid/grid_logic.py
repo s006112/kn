@@ -46,7 +46,6 @@ def count_order_sides(orders):
 
 def get_pair_state(
     orders,
-    usdc_offset,
     grid_step,
     buy_grid_factor,
     sell_grid_factor,
@@ -95,7 +94,7 @@ def get_pair_state(
     if buy_price <= 0 or buy_price >= sell_price:
         return None
 
-    expected_gap = (buy_grid_factor + sell_grid_factor) * grid_step - 2 * usdc_offset
+    expected_gap = (buy_grid_factor + sell_grid_factor) * grid_step
     if abs((sell_price - buy_price) - expected_gap) > pair_price_tolerance:
         return None
 
@@ -109,7 +108,6 @@ def get_pair_state(
 
 def classify_order_shape(
     orders,
-    usdc_offset,
     grid_step,
     buy_grid_factor,
     sell_grid_factor,
@@ -141,7 +139,6 @@ def classify_order_shape(
     if buy_count == 1 and sell_count == 1:
         pair_state = get_pair_state(
             orders,
-            usdc_offset,
             grid_step,
             buy_grid_factor,
             sell_grid_factor,
