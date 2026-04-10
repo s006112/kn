@@ -9,7 +9,7 @@
 - 动作 -> 提交 -> 分类 -> 状态 -> 监控
 
 不变式
-- 模块在所有决策路径中都使用已配置的交易对、价格间距、容差和模式常量。
+- 模块在所有决策路径中都使用已配置的交易对、价格间距和模式常量。
 - 只有当 `PAIR`、`BUY_ONLY` 或 `SELL_ONLY` 模式下的下单成功时，重建才会返回可用状态；异常或失败的重建不会继续推进流程。
 - 主循环在执行 `keep` 或成功 `rebuild` 后继续运行，并在出现异常结果时立即退出。
 
@@ -40,7 +40,6 @@ BUDGET_USDC = 200.0
 GRID_STEP = 100.0
 BUY_GRID_FACTOR = 1.0
 SELL_GRID_FACTOR = 1.25
-PAIR_PRICE_TOLERANCE = 0.1
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True
 ALLOW_SELL_ONLY_WHEN_NO_USDC = True
 REANCHOR_BREAK = True
@@ -179,7 +178,10 @@ def build_pair(reference_price):
     reference_price: 正数价格锚点，用于推导买卖价格和共享下单数量。
 
     输出:
-    返回 `(buy_action, sell_action)` 元组，元素均为包含 `side`、`price` 和 `size` 的映射，其中 `size` 为 `round(BUDGET_USDC / xxx_price, 5)`。
+    返回 `(buy_action, sell_action)` 元组，元素均为包含 `side`、`price` 和 `size` 的映射。
+    其中 `buy_action["size"] = round(BUDGET_USDC / buy_price, 5)`，
+    `sell_action["size"] = round(BUDGET_USDC / sell_price, 5)`。
+    当 `reference_price` 非正或计算出的买价非正时抛出 `ValueError`。
     """
     if reference_price <= 0:
         raise ValueError("Invalid reference price")
@@ -449,7 +451,7 @@ def validate_keep_state(info, orders, state, order_shape):
     order_shape: `orders` 的当前形态分类结果。
 
     输出:
-    仅在 `PAIR` 状态下可能返回 `True`。仅当 `order_shape` 为 `PAIR`、`get_pair_state()` 成功且 `pair_matches_state()` 确认两侧价格均在容差内时返回 `True`。其余路径均返回 `False`。透传配对校验辅助函数因异常订单字段抛出的异常。
+    仅在 `PAIR` 状态下可能返回 `True`。仅当 `order_shape` 为 `PAIR`、`get_pair_state()` 成功且 `pair_matches_state()` 确认两侧价格与已保存状态完全一致时返回 `True`。其余路径均返回 `False`。透传配对校验辅助函数因异常订单字段抛出的异常。
     """
     if state["mode"] == PAIR_MODE:
         if order_shape != PAIR_MODE:
@@ -460,12 +462,11 @@ def validate_keep_state(info, orders, state, order_shape):
             GRID_STEP,
             BUY_GRID_FACTOR,
             SELL_GRID_FACTOR,
-            PAIR_PRICE_TOLERANCE,
             PAIR_MODE,
         )
         if current_pair is None:
             return False
-        if not pair_matches_state(current_pair, state, PAIR_PRICE_TOLERANCE):
+        if not pair_matches_state(current_pair, state):
             return False
         log_keep_state("pair", "contract: keep pair")
         return True
@@ -593,7 +594,6 @@ def get_loop_action(info, orders, state):
         GRID_STEP,
         BUY_GRID_FACTOR,
         SELL_GRID_FACTOR,
-        PAIR_PRICE_TOLERANCE,
         PAIR_MODE,
         BUY_ONLY_MODE,
         SELL_ONLY_MODE,
@@ -701,7 +701,6 @@ def main():
             GRID_STEP,
             BUY_GRID_FACTOR,
             SELL_GRID_FACTOR,
-            PAIR_PRICE_TOLERANCE,
             PAIR_MODE,
         )
         if state is not None:

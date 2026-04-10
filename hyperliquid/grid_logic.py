@@ -8,12 +8,12 @@ Used by:
 
 流程:
 - 订单 -> 计数 -> 配对状态 -> 形态
-- 状态 -> 价格 -> 容差 -> 匹配
+- 状态 -> 价格 -> 严格匹配
 - 模式 -> 中间价 -> 距离 -> 重锚
 
 不变式
 - `side == "B"` 始终按买单计数，其余 side 值一律按卖单计数。
-- 只有当恰好存在一个买价和一个卖价，且两个价格都为正、买价低于卖价、并且价差在配置的网格距离容差内时，才会返回成对状态。
+- 只有当恰好存在一个买价和一个卖价，且两个价格都为正、买价低于卖价、并且价差严格等于 `(buy_grid_factor + sell_grid_factor) * grid_step` 时，才会返回成对状态。
 - 当模式不是单边、重锚功能关闭、订单数不为一、或 BTC 中间价读取失败或非正时，残单重锚检查始终返回 `False`。
 
 范围外
@@ -49,7 +49,6 @@ def get_pair_state(
     grid_step,
     buy_grid_factor,
     sell_grid_factor,
-    pair_price_tolerance,
     pair_mode,
 ):
     """作用:
@@ -60,12 +59,11 @@ def get_pair_state(
     grid_step: 用于计算配对价格预期价差的价格步长。
     buy_grid_factor: 应用于 `grid_step` 的买侧倍数。
     sell_grid_factor: 应用于 `grid_step` 的卖侧倍数。
-    pair_price_tolerance: 相对预期价差允许的最大绝对偏差。
     pair_mode: 写入返回状态映射中的模式值。
 
     输出:
     当且仅当恰好存在一个买单、一个非买单、两边价格均有效，且观察到的价差与
-    `(buy_grid_factor + sell_grid_factor) * grid_step` 的偏差在容差内时，
+    `(buy_grid_factor + sell_grid_factor) * grid_step` 严格相等时，
     返回包含 `mode`、`buy_price`、`sell_price` 和 `pair_center_price` 的映射。
     其中 `pair_center_price` 仅表示基于当前这组已存在买卖挂单快照推导出的中点价格，
     不是市场锚点，不是重建参考价，也不是更新后的市场参考价；否则返回 `None`。
@@ -95,7 +93,7 @@ def get_pair_state(
         return None
 
     expected_gap = (buy_grid_factor + sell_grid_factor) * grid_step
-    if abs((sell_price - buy_price) - expected_gap) > pair_price_tolerance:
+    if (sell_price - buy_price) != expected_gap:
         return None
 
     # Snapshot midpoint from the existing pair, not a market/rebuild anchor.
@@ -111,7 +109,6 @@ def classify_order_shape(
     grid_step,
     buy_grid_factor,
     sell_grid_factor,
-    pair_price_tolerance,
     pair_mode,
     buy_only_mode,
     sell_only_mode,
@@ -125,7 +122,6 @@ def classify_order_shape(
     grid_step: 校验配对价差时使用的价格步长。
     buy_grid_factor: 应用于 `grid_step` 的买侧倍数。
     sell_grid_factor: 应用于 `grid_step` 的卖侧倍数。
-    pair_price_tolerance: 相对预期配对价差允许的最大绝对偏差。
     pair_mode: 有效配对形态对应的返回值。
     buy_only_mode: 恰好一个买单且没有卖单时的返回值。
     sell_only_mode: 恰好一个卖单且没有买单时的返回值。
@@ -142,7 +138,6 @@ def classify_order_shape(
             grid_step,
             buy_grid_factor,
             sell_grid_factor,
-            pair_price_tolerance,
             pair_mode,
         )
         if pair_state is not None:
@@ -158,21 +153,20 @@ def classify_order_shape(
     return abnormal_mode
 
 
-def pair_matches_state(current_pair, state, pair_price_tolerance):
+def pair_matches_state(current_pair, state):
     """作用:
-    检查当前配对的买卖价格是否仍在容差范围内匹配已保存状态。
+    检查当前配对的买卖价格是否与已保存状态严格一致。
 
     输入:
     current_pair: 包含 `buy_price` 和 `sell_price` 的映射。
     state: 包含 `buy_price` 和 `sell_price` 的映射。
-    pair_price_tolerance: 每一侧价格允许的最大绝对偏差。
 
     输出:
-    当买卖两侧的价格差都在容差范围内时返回 `True`；否则返回 `False`。
+    当买卖两侧价格都与已保存状态完全相等时返回 `True`；否则返回 `False`。
     """
-    if abs(current_pair["buy_price"] - state["buy_price"]) > pair_price_tolerance:
+    if current_pair["buy_price"] != state["buy_price"]:
         return False
-    if abs(current_pair["sell_price"] - state["sell_price"]) > pair_price_tolerance:
+    if current_pair["sell_price"] != state["sell_price"]:
         return False
     return True
 

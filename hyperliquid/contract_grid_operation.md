@@ -38,10 +38,16 @@
 
 当前 `open orders` 形态只按以下规则分类：
 
-- `PAIR`: 恰好 `1 BUY + 1 SELL`，且该 pair 通过当前 grid gap / tolerance 校验
+- `PAIR`: 恰好 `1 BUY + 1 SELL`，且该 pair 严格满足理论价差 `sell_price - buy_price == (buy_grid_factor + sell_grid_factor) * grid_step`
 - `BUY_ONLY`: 恰好 `1 BUY + 0 SELL`
 - `SELL_ONLY`: 恰好 `0 BUY + 1 SELL`
 - `ABNORMAL`: 其他所有情况
+
+当前版本故意采用严格不变式边界：
+
+- 只接受严格满足理论价差的 pair
+- 不接受近似匹配或接近理论价差的 pair
+- 不接受任何“差一点”的 live pair
 
 `ABNORMAL` 包括但不限于：
 
@@ -100,8 +106,8 @@ fill-driven rebuild 的优先级高于任何 keep 分支和任何单边专属分
 
 - 当前分类结果仍然是 `PAIR`
 - `get_pair_state(...)` 成功
-- 当前 buy price 与 saved `buy_price` 的偏差不超过 `PAIR_PRICE_TOLERANCE`
-- 当前 sell price 与 saved `sell_price` 的偏差不超过 `PAIR_PRICE_TOLERANCE`
+- 当前 `buy_price` 严格等于 saved `buy_price`
+- 当前 `sell_price` 严格等于 saved `sell_price`
 
 否则 `PAIR` 不得 `keep`。
 
@@ -141,7 +147,8 @@ fill-driven rebuild 的优先级高于任何 keep 分支和任何单边专属分
 - saved `BUY_ONLY`，但当前形态变成 `SELL_ONLY`
 - saved `SELL_ONLY`，但当前形态变成 `BUY_ONLY`
 - saved 单边模式，但当前 live orders 数量超过 `1`
-- 当前 pair 价格已不再匹配 saved pair tolerance
+- 当前 pair 不再严格满足理论价差
+- 当前 pair 的买卖价格与 saved pair 不再完全一致
 - fill / keep / 单边专属分支检查后，仍未命中已接受分支的其他形态
 
 当前实现不会尝试对这些情况做部分修复。
