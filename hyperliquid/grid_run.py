@@ -1,7 +1,7 @@
 """grid_run.py
 
 职责
-该模块运行 `UBTC/USDC` 的 Hyperliquid 现货网格流程：加载凭证，从当前挂单推导或恢复网格状态，在需要时重建成对或单边订单，并在出现连续异常状态或重建失败前持续循环。
+该模块运行 `UBTC/USDC` 的 Hyperliquid 现货网格流程：加载凭证，从当前挂单推导或恢复网格状态，在需要时重建成对或单边订单，并在出现异常状态或重建失败时退出。
 
 流程:
 - 启动 -> 凭证 -> 快照 -> 校验 -> 重建
@@ -11,7 +11,7 @@
 不变式
 - 模块在所有决策路径中都使用已配置的交易对、价格间距、容差和模式常量。
 - 只有当 `PAIR`、`BUY_ONLY` 或 `SELL_ONLY` 模式下的下单成功时，重建才会返回可用状态；异常或失败的重建不会继续推进流程。
-- 主循环在执行 `keep` 或成功 `rebuild` 后会重置异常计数，并在连续出现 `MAX_ABNORMAL_COUNT` 次异常结果后退出。
+- 主循环在执行 `keep` 或成功 `rebuild` 后继续运行，并在出现异常结果时立即退出。
 
 范围外
 - 不定义导入的辅助函数之外的配对校验或残单重锚规则。
@@ -52,7 +52,6 @@ PAIR_MODE = "PAIR"
 BUY_ONLY_MODE = "BUY_ONLY"
 SELL_ONLY_MODE = "SELL_ONLY"
 ABNORMAL_MODE = "ABNORMAL"
-MAX_ABNORMAL_COUNT = 3
 
 last_keep_log_type = None
 last_keep_log_ts = 0.0
@@ -614,7 +613,6 @@ def get_loop_action(info, orders, state):
     if single_sided_action is not None:
         return single_sided_action
 
-    log_msg("contract: abnormal")
     return "abnormal", None
 
 
@@ -630,9 +628,8 @@ def run_main_loop(info, exchange, state):
     这些字段表示不同语义，本循环不会把它们视为同一概念。
 
     输出:
-    返回 `None`。当动作持续解析为 `keep` 或成功的 `rebuild` 时无限循环；当重建失败、重建结果异常，或连续出现 `MAX_ABNORMAL_COUNT` 次异常循环动作时退出。过程中会记录异常摘要与退出条件。
+    返回 `None`。当动作持续解析为 `keep` 或成功的 `rebuild` 时无限循环；当重建失败、重建结果异常，或动作解析为 abnormal 时立即退出。过程中会记录异常摘要与退出条件。
     """
-    abnormal_count = 0
 
     while True:
         time.sleep(1.0)
@@ -640,7 +637,6 @@ def run_main_loop(info, exchange, state):
         action, reference_price = get_loop_action(info, orders, state)
 
         if action == "keep":
-            abnormal_count = 0
             continue
 
         if action == "rebuild":
@@ -648,18 +644,12 @@ def run_main_loop(info, exchange, state):
             if state is None or state["mode"] == ABNORMAL_MODE:
                 log_msg("rebuild failed or abnormal mode, exit")
                 return
-            abnormal_count = 0
             continue
 
-        abnormal_count += 1
         buy_count, sell_count = summarize_orders(orders)
-        log_msg(
-            f"abnormal state {abnormal_count}/{MAX_ABNORMAL_COUNT}: "
-            f"buy={buy_count} sell={sell_count}"
-        )
-        if abnormal_count >= MAX_ABNORMAL_COUNT:
-            log_msg("abnormal exit")
-            return
+        log_msg(f"abnormal state: buy={buy_count} sell={sell_count}")
+        log_msg("abnormal exit")
+        return
 
 
 def create_exchange():
