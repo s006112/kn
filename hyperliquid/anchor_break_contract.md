@@ -1,99 +1,194 @@
-# Anchor Break + Single-Sided Mode Contract v2.2 (Compact)
+# Anchor Break + Single-Sided Contract v3.0
 
-1. Purpose
-   Anchor Break 用於在合法單邊模式下，當唯一殘單偏離 mid grid 過大時，cancel 並以 mid grid 重建系統
-   不涉及策略優化、價格跟蹤或動態調整
+本文档与当前 `hyperliquid/grid.py`、`hyperliquid/grid_logic.py` 的简化实现保持一致。
 
-2. Modes
-   系統僅允許以下模式：
-   PAIR_MODE：1 BUY + 1 SELL，pair shape 有效
-   BUY_ONLY_MODE：僅 1 BUY
-   SELL_ONLY_MODE：僅 1 SELL
-   ABNORMAL：其他所有情況
+## 1. 目的
 
-   BUY_ONLY_MODE 與 SELL_ONLY_MODE 為嚴格鏡像、等價狀態
+Anchor Break 只是“合法单边 residual order”上的一种兜底分支。
 
-3. Residual 定義
-   Residual = 系統中唯一剩餘且未成交的掛單
-   僅在 BUY_ONLY_MODE 或 SELL_ONLY_MODE 下成立
+它的作用是：当系统当前仍处于有效的单边模式，但唯一 residual order 已经和当前 BTC mid 偏离过大时，不再继续 `keep`，而是改走 `rebuild`。
 
-4. Stale 定義
-   僅對 Residual 判斷
+它不是通用恢复机制，也不会尝试修复任意 abnormal 订单形态。
 
-   BUY_ONLY：mid - buy_price ≥ N × GRID_STEP
-   SELL_ONLY：sell_price - mid ≥ N × GRID_STEP
+## 2. 允许的模式
 
-   否則為 non-stale
+主循环中的 saved state 在运行过程中只允许为：
+- PAIR
+- BUY_ONLY
+- SELL_ONLY
 
-5. Rebuild 類型
-   fill-driven rebuild：因合法成交事件觸發
-   stale-driven rebuild（Anchor Break）：因 residual stale 觸發
+ABNORMAL 仅作为中间判定结果或错误返回值存在，不会作为有效状态进入主循环的下一轮。
 
-6. Priority
-   fill-driven rebuild > stale-driven rebuild
+当前 `open orders` 的形态分类规则如下：
 
-   Anchor Break 僅 override keep，不得覆蓋 fill-driven rebuild
+- `PAIR`：恰好 `1 BUY + 1 SELL`，且两边价差满足当前配置的 grid gap 与 tolerance
+- `BUY_ONLY`：恰好 `1 BUY + 0 SELL`
+- `SELL_ONLY`：恰好 `0 BUY + 1 SELL`
+- `ABNORMAL`：其他所有情况，包括无效的 `1 BUY + 1 SELL`、fill 逻辑之外的 `0 orders`、或任意多余残单
 
-7. Fill-Driven Rebuild
-   以下情況均屬合法 fill-driven rebuild：
+## 3. 决策顺序
 
-   A. PAIR_MODE 下任一邊成交
-   B. BUY_ONLY_MODE 下唯一 BUY residual 成交完成，open orders 變為 0
-   C. SELL_ONLY_MODE 下唯一 SELL residual 成交完成，open orders 變為 0
+每轮循环严格按以下顺序判定：
 
-   當發生合法 fill-driven rebuild 時，必須 rebuild
+1. 先对当前 orders 做 `classify_order_shape(...)`
+2. 优先检查 fill-driven rebuild
+3. 再检查 `PAIR` 是否满足 keep
+4. 再检查单边模式是否 keep，或是否触发 anchor break
+5. 以上都不满足则返回 `abnormal`
 
-   rebuild 結果必須明確為：
-   PAIR_MODE：BUY + SELL 均成功
-   BUY_ONLY_MODE：BUY 成功，SELL 因 BTC 不足失敗
-   SELL_ONLY_MODE：SELL 成功，BUY 因 USDC 不足失敗
-   ABNORMAL：其他
+因此：
 
-   BUY_ONLY_MODE 或 SELL_ONLY_MODE 的 residual 完成成交，不得視為 abnormal
-   不得在結果未確定前進入 Anchor Break
+- anchor break 永远不会覆盖 fill-driven rebuild
+- anchor break 永远不会早于 mode/shape 校验执行
 
-8. Anchor Break Trigger
-   僅在同時滿足時觸發：
-   REANCHOR_BREAK = True
-   mode 為 BUY_ONLY_MODE 或 SELL_ONLY_MODE
-   僅 1 個掛單（Residual）
-   Residual 滿足 stale
-   不在 fill-driven rebuild 階段
+## 4. Fill-Driven Rebuild
 
-9. Action
-   cancel 所有掛單
-   reference_price = 當前 mid grid
-   rebuild pair
+fill-driven rebuild 的优先级高于 keep 和 anchor break。
 
-   不得修改價格
-   不得部分修正
+### 4.1 从 saved `PAIR` 进入 fill-driven rebuild
 
-10. Keep
-    PAIR_MODE：keep
-    BUY_ONLY_MODE / SELL_ONLY_MODE 且 non-stale：keep
+当上一轮 saved `mode == PAIR` 时：
 
-11. Constraints
-    不得在 PAIR_MODE 或 ABNORMAL 下觸發 Anchor Break
-    不得把資產不足等同 stale
-    不得把單邊存在等同 stale
-    不得把合法 residual completion 視為 abnormal
-    必須先確定 mode，再允許 stale 判斷
-    必須保持對稱與確定性
+- 当前形态为 `SELL_ONLY`，表示之前的 buy 已成交
+- 当前形态为 `BUY_ONLY`，表示之前的 sell 已成交
 
-12. Logging
-    日誌層允許分為兩類：
-    contract branch 日誌：用於表達決策分支，例如 keep、anchor break、abnormal
-    event-style 日誌：用於表達成交事件，例如 fill detected、residual fill completed
+此时的 rebuild 行为是：
 
-    fill-driven rebuild 不強制要求固定字串
-    只要求日誌能明確表達：
-    發生了哪一類合法成交事件
-    rebuild 因 fill 觸發
-    BUY filled 與 SELL filled 必須可區分
-    BUY_ONLY residual completed 與 SELL_ONLY residual completed 必須可區分
+- 使用“已成交那一侧”的保存价格作为 `reference_price`
+- 先取消当前剩余订单
+- 再用这个显式的 `reference_price` 执行 rebuild
 
-    keep 類日誌可做 rate limit
-    anchor break、abnormal、cleanup failure、rebuild failure 不應被 keep rate limit 抑制
+这里不是 mid-grid rebuild。
 
-13. One Sentence
-    Anchor Break = 在合法單邊模式下，當唯一殘單偏離過大時，用 mid grid 強制重建以替代 keep 的機制；而合法成交完成一律走 fill-driven rebuild，不得誤判為 abnormal
+### 4.2 从 saved `BUY_ONLY` 进入 fill-driven rebuild
+
+当上一轮 saved `mode == BUY_ONLY`，且当前 `open orders` 数量为 `0` 时：
+
+- 视为合法 residual completion
+- 使用保存的 `buy_price` 作为 `reference_price` 执行 rebuild
+
+### 4.3 从 saved `SELL_ONLY` 进入 fill-driven rebuild
+
+当上一轮 saved `mode == SELL_ONLY`，且当前 `open orders` 数量为 `0` 时：
+
+- 视为合法 residual completion
+- 使用保存的 `sell_price` 作为 `reference_price` 执行 rebuild
+
+只要命中以上路径，residual completion 就不能被视为 abnormal。
+
+## 5. Keep 规则
+
+### 5.1 `PAIR` keep
+
+只有同时满足以下条件时，`PAIR` 才会继续 `keep`：
+
+- 当前分类结果仍然是 `PAIR`
+- 对当前 orders 调用 `get_pair_state(...)` 成功
+- 当前 buy price 与 saved `buy_price` 的偏差不超过 `PAIR_PRICE_TOLERANCE`
+- 当前 sell price 与 saved `sell_price` 的偏差不超过 `PAIR_PRICE_TOLERANCE`
+
+否则 `PAIR` 不会 keep。
+
+### 5.2 `BUY_ONLY` keep
+
+只有同时满足以下条件时，`BUY_ONLY` 才会继续 `keep`：
+
+- saved `mode` 是 `BUY_ONLY`
+- 当前分类结果也是 `BUY_ONLY`
+- 当前恰好只有 `1` 笔订单
+- 该订单的 `side` 必须是买单
+- 没有触发 anchor break
+
+### 5.3 `SELL_ONLY` keep
+
+只有同时满足以下条件时，`SELL_ONLY` 才会继续 `keep`：
+
+- saved `mode` 是 `SELL_ONLY`
+- 当前分类结果也是 `SELL_ONLY`
+- 当前恰好只有 `1` 笔订单
+- 该订单的 `side` 必须是卖单
+- 没有触发 anchor break
+
+## 6. Anchor Break 触发条件
+
+只有同时满足以下条件时，anchor break 才会触发：
+
+- `REANCHOR_BREAK == True`
+- saved `mode` 是 `BUY_ONLY` 或 `SELL_ONLY`
+- 当前分类结果与 saved 单边模式完全一致
+- 当前 `open orders` 数量恰好为 `1`
+- BTC mid 可以读取，且大于 `0`
+- residual 与 BTC mid 的距离达到 `REANCHOR_BREAK_STEPS * GRID_STEP`
+
+距离判定规则：
+
+- buy residual：`btc_mid - order_price >= REANCHOR_BREAK_STEPS * GRID_STEP`
+- sell residual：`order_price - btc_mid >= REANCHOR_BREAK_STEPS * GRID_STEP`
+
+只要任一 guard 不满足，就不能触发 anchor break。
+
+## 7. Anchor Break 动作
+
+当 anchor break 触发时，循环返回 `("rebuild", None)`。
+
+这表示后续 `rebuild(...)` 会：
+
+- 取消当前订单
+- 通过 `get_mid_reference_price()` 从当前 BTC mid 推导新的 `reference_price`
+- 用这个新的 mid-grid anchor 重新下单
+
+也就是说，anchor break 之所以会走 fresh mid-grid rebuild，是因为它显式传入的是 `reference_price=None`。
+
+## 8. Rebuild 结果约定
+
+只有当 `place_pair(...)` 返回“非 abnormal mode”时，`rebuild(...)` 才算成功。
+
+成功结果只有三种：
+
+- `PAIR`：买卖两边都下单成功
+- `BUY_ONLY`：buy 下单成功，sell 因 `Insufficient spot balance` 失败，且 `ALLOW_BUY_ONLY_WHEN_NO_BTC == True`
+- `SELL_ONLY`：sell 下单成功，buy 因 `Insufficient spot balance` 失败，且 `ALLOW_SELL_ONLY_WHEN_NO_USDC == True`
+
+其他所有情况都视为 rebuild failure，包括：
+
+- `place_pair(...)` 返回 `ABNORMAL`
+- rebuild 前清理订单失败
+- 下单失败后的二次清理失败
+
+一旦 rebuild failure，主循环立即退出。
+
+## 9. 当前简化算法中的 `ABNORMAL`
+
+当前算法是故意收窄的。凡是不属于前面已接受分支的情况，都会落入 `abnormal`。
+
+例如：
+
+- saved `PAIR`，但当前形态是无效 pair 或多余残单
+- saved `BUY_ONLY`，但当前形态变成 `SELL_ONLY`
+- saved `SELL_ONLY`，但当前形态变成 `BUY_ONLY`
+- saved 单边模式，但当前 live orders 数量超过 `1`
+- 当前 pair 价格已不再与 saved pair 价格匹配 tolerance
+- fill / keep 检查之后，仍然无法归类到已接受分支的其他形态
+
+当前实现不会尝试对这些情况做部分修复，而是记录 abnormal 并退出。
+
+## 10. 日志约定
+
+当前分支日志大致包括：
+
+- `contract: keep pair`
+- `contract: keep buy-only`
+- `contract: keep sell-only`
+- `contract: anchor break`
+- `PAIR -> 单边` 的 fill 日志
+- `单边 -> 0 orders` 的 residual completion 日志
+- abnormal summary 与 abnormal exit 日志
+
+其中：
+
+- keep 类日志会做 rate limit
+- anchor break、cleanup failure、rebuild failure、abnormal exit 不属于 keep rate limit 路径
+
+## 11. 一句话
+
+当前代码里的 Anchor Break，本质上是“合法单边 residual order 的 stale override keep 机制”；而所有合法 fill completion 都必须优先进入 fill-driven rebuild，其他未被显式接受的形态则统一落入 `abnormal`。
