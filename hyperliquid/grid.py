@@ -1,11 +1,11 @@
-"""grid.py
+"""grid_run.py
 
 职责
 该模块运行 `UBTC/USDC` 的 Hyperliquid 现货网格流程：加载凭证，从当前挂单推导或恢复网格状态，在需要时重建成对或单边订单，并在出现异常状态或重建失败时退出。
 
 流程:
 - 启动 -> 凭证 -> 快照 -> 校验 -> 重建
-- 循环 -> 订单 -> strategy 判定 -> 重建
+- 循环 -> 订单 -> 分类 -> 决策 -> 重建
 - 动作 -> 提交 -> 分类 -> 状态 -> 监控
 
 不变式
@@ -14,7 +14,7 @@
 - 主循环在执行 `keep` 或成功 `rebuild` 后继续运行，并在出现异常结果时立即退出。
 
 范围外
-- 不定义导入的策略模块和辅助函数之外的配对校验或残单重锚规则。
+- 不定义导入的辅助函数之外的配对校验或残单重锚规则。
 - 不在进程内存之外持久化状态。
 - 不恢复交易所客户端创建、中间价读取或异常订单载荷触发的异常。
 """
@@ -22,15 +22,11 @@
 import os
 import time
 from datetime import datetime, timedelta, timezone
-
 from dotenv import load_dotenv
 from eth_account import Account
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
-
-from grid_logic import classify_order_shape, get_pair_state
-from grid_strategy_dispatch import get_loop_action
 
 load_dotenv()
 
@@ -54,12 +50,17 @@ PAIR_MODE = "PAIR"
 BUY_ONLY_MODE = "BUY_ONLY"
 SELL_ONLY_MODE = "SELL_ONLY"
 ABNORMAL_MODE = "ABNORMAL"
-STRATEGY_KIND = "pair"
 
 last_keep_log_type = None
 last_keep_log_ts = 0.0
 GMT_PLUS_8 = timezone(timedelta(hours=8))
 
+from grid_logic import (
+    classify_order_shape,
+    get_pair_state,
+    pair_matches_state,
+    should_reanchor_residual_order,
+)
 
 def get_open_orders(info):
     """作用:
@@ -76,10 +77,7 @@ def log_msg(message):
     print(f"[{timestamp}] {message}")
 
 
-def format_price(price):
-    """作用:
-    将价格格式化为整数显示字符串。
-    """
+def format_price(price): # 将价格格式化为整数显示字符串。
     return str(int(round(float(price))))
 
 
@@ -92,8 +90,7 @@ def log_keep_state(keep_type, message):
     message: 通过限流检查后要输出的日志文本。
 
     输出:
-    返回 `None`。仅当 `keep_type` 发生变化，或距离上次同类日志至少经过
-    `KEEP_LOG_INTERVAL_SEC` 秒时，才会更新模块级 keep 日志跟踪状态。
+    返回 `None`。仅当 `keep_type` 发生变化，或距离上次同类日志至少经过 `KEEP_LOG_INTERVAL_SEC` 秒时，才会更新模块级 keep 日志跟踪状态。
     """
     global last_keep_log_type
     global last_keep_log_ts
@@ -116,9 +113,7 @@ def summarize_orders(orders):
     orders: 可迭代的订单映射对象，包含 `side`、`limitPx`、`sz` 和 `oid` 字段。
 
     输出:
-    返回 `(buy_count, sell_count)` 元组。输入为空时记录 `"OPEN ORDERS: none"`；
-    否则记录以竖线分隔的订单摘要，其中 `side == "B"` 显示为 `BUY`，
-    其余值显示为 `SELL`。
+    返回 `(buy_count, sell_count)` 元组。输入为空时记录 `"OPEN ORDERS: none"`；否则记录以竖线分隔的订单摘要，其中 `side == "B"` 显示为 `BUY`，其余值显示为 `SELL`。
     """
     if not orders:
         log_msg("OPEN ORDERS: none")
@@ -129,7 +124,7 @@ def summarize_orders(orders):
     sell_count = 0
     for order in orders:
         side = "BUY" if order["side"] == "B" else "SELL"
-        parts.append(f"{side} - {format_price(order['limitPx'])}")
+        parts.append(f"{side} - {format_price(order['limitPx'])}")   #  size={order['sz']} oid={order['oid']}
         if order["side"] == "B":
             buy_count += 1
         else:
@@ -166,7 +161,7 @@ def get_mid_reference_price(info):
     if btc_mid <= 0:
         raise ValueError("Failed to get BTC mid price")
 
-    reference_price = float(int((btc_mid / GRID_STEP) + 0.5) * GRID_STEP)
+    reference_price = float(int((btc_mid / GRID_STEP) + 0.5) * GRID_STEP)   # round-half-up
     if reference_price <= 0:
         raise ValueError("Invalid reference price")
     if reference_price - (BUY_GRID_FACTOR * GRID_STEP) <= 0:
@@ -183,8 +178,7 @@ def build_pair(reference_price):
     reference_price: 正数价格锚点，用于推导买卖价格和共享下单数量。
 
     输出:
-    返回 `(buy_action, sell_action)` 元组，元素均为包含 `side`、`price` 和
-    `size` 的映射。
+    返回 `(buy_action, sell_action)` 元组，元素均为包含 `side`、`price` 和 `size` 的映射。
     其中 `buy_action["size"] = round(BUDGET_USDC / buy_price, 5)`，
     `sell_action["size"] = round(BUDGET_USDC / sell_price, 5)`。
     当 `reference_price` 非正或计算出的买价非正时抛出 `ValueError`。
@@ -214,10 +208,7 @@ def classify_order_result(result):
     result: 可能包含 `response.data.statuses` 的映射对象。
 
     输出:
-    当首个状态包含 `resting` 或 `filled` 时返回 `"ok"`；
-    当首个状态包含带有 `Insufficient spot balance` 的错误信息时返回
-    `"insufficient_spot_balance"`；缺少状态或其余所有状态形态均返回 `"error"`。
-    在返回非 `"ok"` 结果前会记录失败日志。
+    当首个状态包含 `resting` 或 `filled` 时返回 `"ok"`；当首个状态包含带有 `Insufficient spot balance` 的错误信息时返回 `"insufficient_spot_balance"`；缺少状态或其余所有状态形态均返回 `"error"`。在返回非 `"ok"` 结果前会记录失败日志。
     """
     statuses = result.get("response", {}).get("data", {}).get("statuses", [])
     if not statuses:
@@ -248,8 +239,7 @@ def place_limit_order(exchange, action):
     action: 包含 `side`、`size` 和 `price` 的映射，其中 `side == "BUY"` 时表示买单。
 
     输出:
-    返回 `classify_order_result()` 归一化后的状态字符串。
-    透传 `exchange.order()`、动作字段访问或类型转换抛出的异常。
+    返回 `classify_order_result()` 归一化后的状态字符串。透传 `exchange.order()`、动作字段访问或类型转换抛出的异常。
     """
     result = exchange.order(
         SYMBOL,
@@ -272,8 +262,7 @@ def wait_no_open_orders(info, max_tries=10, interval_sec=1.0):
     interval_sec: 每次轮询之间的睡眠秒数。
 
     输出:
-    当某次轮询观察到没有挂单时返回 `True`；否则在耗尽 `max_tries` 后返回 `False`。
-    透传 `get_open_orders()` 抛出的异常。
+    当某次轮询观察到没有挂单时返回 `True`；否则在耗尽 `max_tries` 后返回 `False`。透传 `get_open_orders()` 抛出的异常。
     """
     for _ in range(max_tries):
         if not get_open_orders(info):
@@ -292,9 +281,7 @@ def cleanup_orders(info, exchange, orders):
     orders: 包含 `oid` 字段的订单映射可迭代对象。
 
     输出:
-    当 `orders` 为空时立即返回 `True`；或在调用 `bulk_cancel()` 后通过
-    `wait_no_open_orders()` 确认成功时返回 `True`。
-    若等待后仍有挂单，则记录 cleanup failure 日志并返回 `False`。
+    当 `orders` 为空时立即返回 `True`；或在调用 `bulk_cancel()` 后通过 `wait_no_open_orders()` 确认成功时返回 `True`。若等待后仍有挂单，则记录 cleanup failure 日志并返回 `False`。透传 `bulk_cancel()`、订单字段访问或 `wait_no_open_orders()` 抛出的异常。
     """
     if not orders:
         return True
@@ -316,26 +303,24 @@ def place_pair(exchange, reference_price):
     reference_price: 本次下单/重建使用的价格锚点，用于构造新的买卖挂单价格。
 
     输出:
-    返回一个 `state` 字典，包含 `mode`、`buy_price`、`sell_price` 和
-    `reference_price`。
+    返回一个 `state` 字典，包含 `mode`、`buy_price`、`sell_price` 和 `reference_price`。
     其中 `reference_price` 表示本次构造新订单时使用的 placement / rebuild anchor；
     它不是 `get_pair_state()` 返回的 `pair_center_price`，两者字段名和语义都不相同。
 
     状态规则:
     若买卖订单均成功（`"ok"`），则 `mode = PAIR`；
-    若仅买单成功且卖单因余额不足失败，则 `mode = BUY_ONLY`
-    （需开启对应 fallback）；
-    若仅卖单成功且买单因余额不足失败，则 `mode = SELL_ONLY`
-    （需开启对应 fallback）；
+    若仅买单成功且卖单因余额不足失败，则 `mode = BUY_ONLY`（需开启对应 fallback）；
+    若仅卖单成功且买单因余额不足失败，则 `mode = SELL_ONLY`（需开启对应 fallback）；
     其他情况均视为 `ABNORMAL`。
+
+    异常:
+    不捕获 `build_pair()` 或 `place_limit_order()` 抛出的异常，调用方需自行处理。
     """
     buy_action, sell_action = build_pair(reference_price)
     log_msg(
-        f"REBUILD | SELL - {format_price(sell_action['price'])} | "
-        f"REF - {format_price(reference_price)} | "
-        f"BUY - {format_price(buy_action['price'])}"
+        
+        f"REBUILD | SELL - {format_price(sell_action['price'])} | REF - {format_price(reference_price)} | BUY - {format_price(buy_action['price'])}"
     )
-
     buy_status = place_limit_order(exchange, buy_action)
     sell_status = place_limit_order(exchange, sell_action)
 
@@ -383,18 +368,19 @@ def place_pair(exchange, reference_price):
 
 def rebuild(info, exchange, orders, reference_price=None):
     """作用:
-    清理当前挂单，并按给定或 fresh reference price 重建一组新订单。
+    撤销已有挂单，在需要时选择参考价，并尝试建立一个非异常状态。
 
     输入:
-    info: 用于读取当前挂单和推导 mid reference 的 Hyperliquid `Info` 客户端。
+    info: 用于查询订单以及可选中间价读取的 Hyperliquid `Info` 客户端。
     exchange: 用于撤单和下单的 Hyperliquid `Exchange` 客户端。
-    orders: 当前 live open orders。
-    reference_price: 可选的显式重建锚点；为 `None` 时会调用
-    `get_mid_reference_price(info)` 计算 fresh reference。
+    orders: 重建前需要撤销的当前挂单。
+    reference_price: 可选的显式参考价；当其为 `None` 时使用 `get_mid_reference_price()`。
 
     输出:
-    当 cleanup 成功且 `place_pair()` 返回非 `ABNORMAL` 模式时，返回新的状态映射；
-    否则返回 `None`。
+    当 `place_pair()` 返回的状态不是 `ABNORMAL` 时，返回该状态；该返回值沿用
+    `place_pair()` 的 schema，因此包含 `reference_price` 这一重建锚点字段，而不会改写成
+    `get_pair_state()` 使用的 `pair_center_price`。若前置或后置清理失败，或下单结果为
+    `ABNORMAL`，则返回 `None`。透传清理、参考价推导、订单查询或下单过程抛出的异常。
     """
     if orders and not cleanup_orders(info, exchange, orders):
         return None
@@ -413,6 +399,226 @@ def rebuild(info, exchange, orders, reference_price=None):
     return None
 
 
+def resolve_fill_rebuild_action(state, orders, order_shape):
+    """作用:
+    判断是否发生了成交驱动的重建条件，并返回对应动作。
+
+    输入:
+    state: 至少包含 `mode`、`buy_price` 和 `sell_price` 的状态映射。该状态可能来自
+    `get_pair_state()`（包含 `pair_center_price`）或 `place_pair()`（包含 `reference_price`），
+    但本函数不要求这两个字段存在，也不将它们视为同一概念。
+    orders: 当前挂单集合，用于检查残单是否已经完成。
+    order_shape: `orders` 的当前形态分类结果。
+
+    输出:
+    当先前状态为 `PAIR` 且当前变为单边残单时，返回 `("rebuild", reference_price)`，并使用已成交那一侧此前的价格作为重建参考价。对于 `BUY_ONLY` 或 `SELL_ONLY` 状态，当当前已无挂单时，也返回 `("rebuild", reference_price)`，并使用该残单侧保存的价格。其余情况返回 `None`。
+    """
+    previous_mode = state["mode"]
+
+    if previous_mode == PAIR_MODE:
+        if order_shape == SELL_ONLY_MODE:
+            log_msg(f"🔥 BUY filled - {format_price(state['buy_price'])}")
+            return "rebuild", state["buy_price"]
+
+        if order_shape == BUY_ONLY_MODE:
+            log_msg(f"✅ SELL filled - {format_price(state['sell_price'])}")
+            return "rebuild", state["sell_price"]
+
+        return None
+
+    if previous_mode == BUY_ONLY_MODE and len(orders) == 0:
+        log_msg("🔥 residual fill completed: BUY_ONLY -> rebuild")
+        return "rebuild", state["buy_price"]
+
+    if previous_mode == SELL_ONLY_MODE and len(orders) == 0:
+        log_msg("✅ residual fill completed: SELL_ONLY -> rebuild")
+        return "rebuild", state["sell_price"]
+
+    return None
+
+
+def validate_keep_state(info, orders, state, order_shape):
+    """作用:
+    判断当前订单是否仍满足成对状态的 keep 条件。
+
+    输入:
+    info: 调用链保留但当前未使用的参数。
+    orders: 当前挂单集合。
+    state: 至少包含 `mode`、`buy_price` 和 `sell_price` 的已保存状态映射。该状态可能来自
+    `get_pair_state()` 并带有 `pair_center_price`，也可能来自 `place_pair()` 并带有
+    `reference_price`；本函数只校验保存的买卖价格，不假定这两个字段等价。
+    order_shape: `orders` 的当前形态分类结果。
+
+    输出:
+    仅在 `PAIR` 状态下可能返回 `True`。仅当 `order_shape` 为 `PAIR`、`get_pair_state()` 成功且 `pair_matches_state()` 确认两侧价格与已保存状态完全一致时返回 `True`。其余路径均返回 `False`。透传配对校验辅助函数因异常订单字段抛出的异常。
+    """
+    if state["mode"] == PAIR_MODE:
+        if order_shape != PAIR_MODE:
+            return False
+
+        current_pair = get_pair_state(
+            orders,
+            GRID_STEP,
+            BUY_GRID_FACTOR,
+            SELL_GRID_FACTOR,
+            PAIR_MODE,
+        )
+        if current_pair is None:
+            return False
+        if not pair_matches_state(current_pair, state):
+            return False
+        log_keep_state("pair", "contract: keep pair")
+        return True
+
+    return False
+
+
+def detect_anchor_break(info, orders, state, order_shape):
+    """作用:
+    检测单边残单是否已经偏离 BTC 中间价到必须重建的程度。
+
+    输入:
+    info: 被残单重锚辅助函数使用的 Hyperliquid `Info` 客户端。
+    orders: 当前挂单集合。
+    state: 至少包含 `mode` 的已保存状态映射。该状态可以带有 `pair_center_price` 或
+    `reference_price`，但本函数只根据 `mode` 和当前订单检查单边重锚，不把两者混为同一字段。
+    order_shape: `orders` 的当前形态分类结果。
+
+    输出:
+    仅当重锚功能开启、保存的模式为单边、当前形态与该模式一致、当前恰好只有一笔订单且 `should_reanchor_residual_order()` 返回 `True` 时，返回 `("rebuild", None)`。其余路径返回 `None`。在辅助函数完成自身保护性检查之后，透传其因异常订单字段抛出的异常。
+    """
+    if not REANCHOR_BREAK:
+        return None
+
+    if state["mode"] not in (BUY_ONLY_MODE, SELL_ONLY_MODE):
+        return None
+
+    if order_shape != state["mode"]:
+        return None
+
+    if len(orders) != 1:
+        return None
+
+    if not should_reanchor_residual_order(
+        info,
+        orders,
+        state["mode"],
+        BUY_ONLY_MODE,
+        SELL_ONLY_MODE,
+        BTC_MID_KEY,
+        GRID_STEP,
+        REANCHOR_BREAK,
+        REANCHOR_BREAK_STEPS,
+    ):
+        return None
+
+    log_msg("🪝 contract: anchor break")
+    return "rebuild", None
+
+
+def detect_single_sided_action(info, orders, state, order_shape):
+    """作用:
+    决定单边状态应继续保持还是触发重建。
+
+    输入:
+    info: 用于评估 anchor break 的 Hyperliquid `Info` 客户端。
+    orders: 当前挂单集合。
+    state: 至少包含 `mode` 的已保存状态映射，可能来自 `get_pair_state()` 的
+        `pair_center_price` schema，也可能来自 `place_pair()` 的 `reference_price` schema；
+        本函数不要求也不推断这两个字段等价。
+    order_shape: `orders` 的当前形态分类结果。
+
+    输出:
+    - 对于 `BUY_ONLY` 模式：
+    - 若未触发 anchor break，返回 `("keep", None)`
+    - 若 `detect_anchor_break()` 请求重建，返回其结果
+    - 对于 `SELL_ONLY` 模式：
+    - 始终返回 `("keep", None)`（不执行 anchor break 检查）
+
+    当保存模式不是单边、当前形态与保存模式不一致，或残单方向与预期方向不一致时，返回 `None`。
+
+    边界说明:
+    当前实现中，anchor break 仅适用于 `BUY_ONLY` 残单；
+    `SELL_ONLY` 残单不会触发 anchor break。
+    """
+    if state["mode"] == BUY_ONLY_MODE:
+        if order_shape != BUY_ONLY_MODE:
+            return None
+        if len(orders) != 1 or orders[0]["side"] != "B":
+            return None
+
+        anchor_break_action = detect_anchor_break(info, orders, state, order_shape)
+        if anchor_break_action is not None:
+            return anchor_break_action
+
+        log_keep_state("buy-only", "contract: keep buy-only")
+        return "keep", None
+
+    if state["mode"] == SELL_ONLY_MODE:
+        if order_shape != SELL_ONLY_MODE:
+            return None
+        if len(orders) != 1 or orders[0]["side"] == "B":
+            return None
+
+        log_keep_state("sell-only", "contract: keep sell-only")
+        return "keep", None
+
+    return None
+
+
+def get_loop_action(info, orders, state):
+    """
+    作用:
+    根据当前 open orders 与上一轮已接受的 state，
+    判定这一轮主循环应执行的唯一动作。
+
+    输入:
+    info: 用于订单状态判断和潜在重建决策的 Hyperliquid `Info` 客户端。
+    orders: 当前挂单集合。
+    state: 上一轮已接受的状态映射，可能来自 `get_pair_state()` 并包含
+    `pair_center_price`，也可能来自 `place_pair()` 并包含 `reference_price`；
+    本函数及其调用链不会将这两个字段名或语义统一。
+
+    判定顺序:
+    1. 先分类当前订单形状
+    2. 优先检查是否命中 fill-driven rebuild
+    3. 再检查 PAIR_MODE 是否满足 keep 条件
+    4. 再检查 BUY_ONLY / SELL_ONLY 是否应 keep 或触发 anchor break
+    5. 若以上都不满足，则判定为 abnormal
+
+    返回:
+    - ("keep", None)
+    - ("rebuild", reference_price 或 None)
+    - ("abnormal", None)
+
+    边界:
+    本函数只负责决策，不负责下单、撤单或实际 rebuild 执行。
+    """
+    order_shape = classify_order_shape(
+        orders,
+        GRID_STEP,
+        BUY_GRID_FACTOR,
+        SELL_GRID_FACTOR,
+        PAIR_MODE,
+        BUY_ONLY_MODE,
+        SELL_ONLY_MODE,
+        ABNORMAL_MODE,
+    )
+
+    fill_driven_action = resolve_fill_rebuild_action(state, orders, order_shape)
+    if fill_driven_action is not None:
+        return fill_driven_action
+
+    if validate_keep_state(info, orders, state, order_shape):
+        return "keep", None
+
+    single_sided_action = detect_single_sided_action(info, orders, state, order_shape)
+    if single_sided_action is not None:
+        return single_sided_action
+
+    return "abnormal", None
+
+
 def run_main_loop(info, exchange, state):
     """作用:
     持续轮询挂单，并在退出前执行 keep、rebuild 或 abnormal 处理。
@@ -420,37 +626,18 @@ def run_main_loop(info, exchange, state):
     输入:
     info: 用于轮询与重建决策的 Hyperliquid `Info` 客户端。
     exchange: 需要执行重建时使用的 Hyperliquid `Exchange` 客户端。
-    state: 运行中合约的初始已接受状态映射；若来自 `get_pair_state()`，
-    可包含 `pair_center_price`，若来自 `place_pair()`/`rebuild()`，
-    则包含 `reference_price`。这些字段表示不同语义，本循环不会把它们视为同一概念。
+    state: 运行中合约的初始已接受状态映射；若来自 `get_pair_state()`，可包含
+    `pair_center_price`，若来自 `place_pair()`/`rebuild()`，则包含 `reference_price`。
+    这些字段表示不同语义，本循环不会把它们视为同一概念。
 
     输出:
-    返回 `None`。当动作持续解析为 `keep` 或成功的 `rebuild` 时无限循环；
-    当重建失败、重建结果异常，或动作解析为 abnormal 时立即退出。
+    返回 `None`。当动作持续解析为 `keep` 或成功的 `rebuild` 时无限循环；当重建失败、重建结果异常，或动作解析为 abnormal 时立即退出。过程中会记录异常摘要与退出条件。
     """
+
     while True:
         time.sleep(1.0)
         orders = get_open_orders(info)
-
-        action, reference_price = get_loop_action(
-            info,
-            orders,
-            state,
-            strategy_kind=STRATEGY_KIND,
-            grid_step=GRID_STEP,
-            buy_grid_factor=BUY_GRID_FACTOR,
-            sell_grid_factor=SELL_GRID_FACTOR,
-            pair_mode=PAIR_MODE,
-            buy_only_mode=BUY_ONLY_MODE,
-            sell_only_mode=SELL_ONLY_MODE,
-            abnormal_mode=ABNORMAL_MODE,
-            reanchor_break=REANCHOR_BREAK,
-            btc_mid_key=BTC_MID_KEY,
-            reanchor_break_steps=REANCHOR_BREAK_STEPS,
-            log_msg=log_msg,
-            log_keep_state=log_keep_state,
-            format_price=format_price,
-        )
+        action, reference_price = get_loop_action(info, orders, state)
 
         if action == "keep":
             continue
@@ -476,8 +663,7 @@ def create_exchange():
     无。
 
     输出:
-    返回绑定到 `constants.MAINNET_API_URL` 和 `ACCOUNT_ADDRESS` 的 `Exchange` 实例。
-    当 `API_KEY` 缺失时抛出 `ValueError`。
+    返回绑定到 `constants.MAINNET_API_URL` 和 `ACCOUNT_ADDRESS` 的 `Exchange` 实例。当 `API_KEY` 缺失时抛出 `ValueError`。透传 `Account.from_key()` 或 `Exchange` 抛出的异常。
     """
     if not API_KEY:
         raise ValueError("Missing HYPERLIQUID_API_KEY")
@@ -497,10 +683,11 @@ def main():
     无。
 
     输出:
-    返回 `None`。当 `ACCOUNT_ADDRESS` 缺失时立即记录日志并退出。
-    否则创建客户端、拉取并记录当前挂单摘要，尝试把当前 snapshot 接受为初始
-    `PAIR` state；若不能接受，则回退到 `rebuild()` 获取新的非异常状态，
-    并仅在建立了有效初始状态后进入 `run_main_loop()`。
+    返回 `None`。当 `ACCOUNT_ADDRESS` 缺失时立即记录日志并退出。否则创建客户端、
+    汇总当前挂单、在存在有效配对时直接接受 `get_pair_state()` 返回的状态
+    （其中包含 `pair_center_price` 这一配对快照中点），必要时回退到 `rebuild()`
+    获取包含 `reference_price` 的下单锚点状态，并仅在建立了非异常初始状态后进入
+    `run_main_loop()`。透传客户端创建、状态推导和循环执行过程抛出的异常。
     """
     if not ACCOUNT_ADDRESS:
         log_msg("Missing HYPERLIQUID_ACCOUNT_ADDRESS")
@@ -510,21 +697,10 @@ def main():
     exchange = create_exchange()
 
     orders = get_open_orders(info)
-    summarize_orders(orders)
+    buy_count, sell_count = summarize_orders(orders)
 
     state = None
-    order_shape = classify_order_shape(
-        orders,
-        GRID_STEP,
-        BUY_GRID_FACTOR,
-        SELL_GRID_FACTOR,
-        PAIR_MODE,
-        BUY_ONLY_MODE,
-        SELL_ONLY_MODE,
-        ABNORMAL_MODE,
-    )
-
-    if order_shape == PAIR_MODE:
+    if buy_count == 1 and sell_count == 1:
         state = get_pair_state(
             orders,
             GRID_STEP,

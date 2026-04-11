@@ -176,60 +176,50 @@ def should_reanchor_residual_order(
     orders,
     mode,
     buy_only_mode,
-    sell_only_mode, # 保留该参数仅为兼容当前调用签名；当前实现不会接受 SELL_ONLY。
+    sell_only_mode,
     btc_mid_key,
     grid_step,
     reanchor_break,
     reanchor_break_steps,
 ):
     """作用:
-    判断在 BTC 中间价远离合法 BUY_ONLY 残单后，该订单是否需要重锚。
+    判断在 BTC 中间价远离单边残单后，该订单是否需要重锚。
 
     输入:
     info: 暴露 `all_mids()` 方法、用于读取 BTC 中间价的对象。
     orders: 序列类型的订单映射对象，预期包含 `side` 和 `limitPx` 字段。
     mode: 当前策略模式值。
     buy_only_mode: 表示买侧残单的模式值。
-    sell_only_mode: 保留该参数仅为兼容当前调用签名；当前实现不会接受 SELL_ONLY。
+    sell_only_mode: 表示卖侧残单的模式值。
     btc_mid_key: 从 `info.all_mids()` 中读取 BTC 中间价使用的键。
     grid_step: 与 `reanchor_break_steps` 相乘后形成阈值距离的价格步长。
     reanchor_break: 是否启用残单重锚检查的开关。
     reanchor_break_steps: 触发重锚所需的网格步数。
 
     输出:
-    仅当以下条件全部成立时返回 `True`：
-    - 重锚功能开启
-    - `mode == buy_only_mode`
-    - 当前恰好存在一笔订单
-    - 该订单必须是买单
-    - BTC 中间价读取成功且大于 `0`
-    - `btc_mid - order_price >= reanchor_break_steps * grid_step`
-
-    其余所有情况返回 `False`。
-    当前实现中，anchor break 仅适用于合法 `BUY_ONLY` residual；
-    `SELL_ONLY` 不在本函数的接受范围内。
+    仅当重锚功能开启、`mode` 为单边模式、恰好存在一笔订单、BTC 中间价读取成功且为正，并且中间价与残单价格的距离至少达到 `reanchor_break_steps * grid_step` 时返回 `True`。对于不允许的模式、关闭的检查、非法订单数量、中间价读取失败或非正中间价，返回 `False`。在通过中间价保护性检查后，透传异常订单字段导致的取值和浮点转换异常。
     """
+    if mode not in (buy_only_mode, sell_only_mode):
+        return False
+
     if not reanchor_break:
         return False
 
-    if mode != buy_only_mode:
-        return False
-
     if len(orders) != 1:
-        return False
-
-    order = orders[0]
-    if order["side"] != "B":
         return False
 
     try:
         btc_mid = float(info.all_mids().get(btc_mid_key, 0))
     except Exception:
         return False
-
     if btc_mid <= 0:
         return False
 
     threshold_distance = reanchor_break_steps * grid_step
+    order = orders[0]
     order_price = float(order["limitPx"])
-    return btc_mid - order_price >= threshold_distance
+
+    if order["side"] == "B":
+        return btc_mid - order_price >= threshold_distance
+
+    return order_price - btc_mid >= threshold_distance

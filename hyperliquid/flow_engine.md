@@ -5,7 +5,6 @@
 它依赖：
 - `contract_grid_engine.md`
 - `contract_strategy_pair.md`
-- `contract_strategy_anchor.md`
 
 ## 1. Purpose
 
@@ -46,11 +45,6 @@
 
 若成立：
 - 初始 saved state = 当前 pair snapshot
-- 该 snapshot state 包含：
-  - `mode`
-  - `buy_price`
-  - `sell_price`
-  - `pair_center_price`
 - 进入主循环
 
 #### B. 初始 rebuild
@@ -64,13 +58,7 @@
 5. 否则调用 `get_mid_reference_price()` 推导 fresh reference
 6. 调用 `place_pair(...)`
 7. 若返回 `PAIR` / `BUY_ONLY` / `SELL_ONLY`，则接受为新 saved state 并进入主循环
-8. 该 placement / rebuild state 包含：
-   - `mode`
-   - `buy_price`
-   - `sell_price`
-   - `reference_price`
-9. engine shell 不把 `pair_center_price` 与 `reference_price` 视为同一字段语义
-10. 若返回 `ABNORMAL` 或 rebuild failure，则退出
+8. 若返回 `ABNORMAL` 或 rebuild failure，则退出
 
 ## 3. Main Loop Shell Flow
 
@@ -78,19 +66,13 @@
 
 1. sleep
 2. 拉取当前 `open orders`
-3. 调用 strategy decision layer
-4. 读取 strategy 返回动作：
+3. 记录当前订单摘要
+4. 调用 strategy decision layer
+5. 读取 strategy 返回动作：
    - `("keep", None)`
    - `("rebuild", reference_price)`
    - `("rebuild", None)`
    - `("abnormal", None)`
-
-说明：
-
-- 当前实现为了减少高频日志，不会在每轮主循环固定记录订单摘要
-- 当前实现只在 abnormal path 中记录 abnormal summary
-- keep path 仅依赖 strategy / contract 自己的限流日志
-- startup 仍会记录一次初始 open-order 摘要
 
 ### 3.1 Keep Path
 
@@ -109,15 +91,14 @@
 4. 若传入显式 `reference_price`，则沿用该值
 5. 若传入 `None`，则调用 `get_mid_reference_price()` 推导 fresh reference
 6. 调用 `place_pair(...)`
-7. 若返回 `PAIR` / `BUY_ONLY` / `SELL_ONLY`，则接受为新的 placement / rebuild state，并进入下一轮循环
-8. 该状态使用 `reference_price` 作为 rebuild anchor 语义
-9. 若返回 `ABNORMAL` 或 rebuild failure，则退出
+7. 若返回 `PAIR` / `BUY_ONLY` / `SELL_ONLY`，则接受为新 saved state，并进入下一轮循环
+8. 若返回 `ABNORMAL` 或 rebuild failure，则退出
 
 ### 3.3 Abnormal Path
 
 若 strategy 返回 `("abnormal", None)`：
 
-1. 记录当前 abnormal summary
+1. 记录 abnormal summary
 2. 记录 abnormal exit
 3. 退出
 
@@ -142,29 +123,14 @@ engine shell 对 strategy layer 只要求：
 - strategy 不得绕过 abnormal exit contract
 
 当前 engine 不关心 strategy 内部到底是：
-
 - fill-driven rebuild
 - pair keep
 - buy-only stale rebuild
 - sell-only keep
 
-其中单边 residual stale / anchor break 的触发条件与动作语义，属于
-`contract_strategy_anchor.md` 的范围，不由 engine shell 定义。
-
 这些都属于 strategy 自己的内部语义。
 
-## 6. Logging Boundary
-
-当前 engine shell 的日志边界如下：
-
-- startup 阶段会记录一次当前 open-order 摘要
-- keep path 不要求 engine 每轮重复打印 open-order 摘要
-- rebuild path 由 `rebuild(...)` / `place_pair(...)` 记录重建相关日志
-- abnormal path 会先记录 abnormal summary，再记录 abnormal exit
-
-因此，日志是否出现以及出现频率，不应被误解为策略动作语义本身。
-
-## 7. Out Of Scope
+## 6. Out Of Scope
 
 本文档不定义：
 
