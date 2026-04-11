@@ -1,14 +1,14 @@
 # Anchor Break Contract
 
-本文档只描述当前实现中的 anchor break / 单边 residual 子合同。
+本文档只描述当前 pair strategy 中的 anchor break / 单边 residual 子合同。
 
-它依赖父合同 `contract_grid_operation.md` 已定义的 state model、order shape model、主循环顺序、fill-driven rebuild contract、rebuild contract 与 abnormal contract。
+它依赖父合同 `contract_grid_engine.md` 已定义的 state model、order shape model、主循环顺序、fill-driven rebuild contract、rebuild contract 与 abnormal contract，并作为 `contract_strategy_pair.md` 的子合同存在。
 
 ## 1. Purpose
 
 Anchor Break 是“合法单边 residual order”上的兜底分支。
 
-它的作用是：当系统当前仍处于有效单边模式，但唯一 residual order 与当前 BTC mid 的偏离已经足够大时，不再继续 `keep`，而是改走 `rebuild`。
+它的作用是：当系统当前仍处于有效 `BUY_ONLY` 单边模式，且唯一 residual buy order 与当前 BTC mid 的偏离已经足够大时，不再继续 `keep`，而是改走 `rebuild`。
 
 它不是通用恢复机制，也不处理任意 abnormal 订单形态。
 
@@ -16,9 +16,12 @@ Anchor Break 是“合法单边 residual order”上的兜底分支。
 
 Anchor Break 只对以下对象有效：
 
-- saved `mode` 为 `BUY_ONLY` 或 `SELL_ONLY`
+- saved `mode` 为 `BUY_ONLY`
 - 当前 `order_shape` 与 saved 单边模式完全一致
 - 当前恰好只有 `1` 笔 residual order
+- 该 residual order 必须是买单
+
+对于 `SELL_ONLY`，anchor break 不生效；`SELL_ONLY` 只允许走自身 keep / fill completion / abnormal 的父合同路径。
 
 除此之外，anchor break 不生效。
 
@@ -42,8 +45,9 @@ Anchor Break 只对以下对象有效：
 - 当前分类结果也是 `SELL_ONLY`
 - 当前恰好只有 `1` 笔订单
 - 该订单的 `side` 必须是卖单
-- 没有触发 anchor break
 
+`SELL_ONLY` 当前实现中不执行 anchor break 检查。
+只要上述条件成立，即返回 `keep`。
 若上述条件不成立，单边分支不得 `keep`。
 
 ## 4. Trigger Conditions
@@ -51,17 +55,18 @@ Anchor Break 只对以下对象有效：
 只有同时满足以下条件时，anchor break 才会触发：
 
 - `REANCHOR_BREAK == True`
-- saved `mode` 是 `BUY_ONLY` 或 `SELL_ONLY`
+- saved `mode` 是 `BUY_ONLY`
 - 当前分类结果与 saved 单边模式完全一致
 - 当前 `open orders` 数量恰好为 `1`
+- 该 residual order 是买单
 - BTC mid 可以读取，且大于 `0`
 - residual 与 BTC mid 的距离达到 `REANCHOR_BREAK_STEPS * GRID_STEP`
 
 距离判定规则：
 
 - buy residual: `btc_mid - order_price >= REANCHOR_BREAK_STEPS * GRID_STEP`
-- sell residual: `order_price - btc_mid >= REANCHOR_BREAK_STEPS * GRID_STEP`
 
+当前实现中不存在 `SELL_ONLY` anchor break trigger。
 只要任一 guard 不满足，就不能触发 anchor break。
 
 ## 5. Action Semantics
@@ -83,7 +88,7 @@ Anchor Break 的优先级关系必须满足：
 - 它只在单边分支内部评估
 - 它永远晚于 fill-driven rebuild
 - 它永远晚于 order shape 校验
-- 一旦触发，它覆盖单边 `keep`
+- 一旦触发，它覆盖当前实现中的 `BUY_ONLY` keep
 
 ## 7. Non-Goals
 

@@ -10,7 +10,7 @@
 - 在 `keep`、fill-driven `rebuild`、`abnormal exit` 三类结果之间做唯一决策
 - 只在成功得到非 `ABNORMAL` 新状态后继续主循环
 
-策略特定的单边 residual stale 处理不属于本文档，见子合同 `contract_anchor_break.md`。
+策略特定的单边 residual stale 处理不属于本文档，见子合同 `contract_strategy_anchor.md`。
 - residual stale = “一个单边残单，而且它已经不再符合当前 grid / anchor / contract，因此必须触发 rebuild”
 
 ## 2. Accepted State Model
@@ -113,7 +113,7 @@ fill-driven rebuild 的优先级高于任何 keep 分支和任何单边专属分
 
 ### 6.2 Single-Sided Keep
 
-`BUY_ONLY` / `SELL_ONLY` 是否允许继续 `keep`，由子合同定义；engine 只保证：
+`BUY_ONLY` / `SELL_ONLY` 是否允许继续 `keep`，由策略子合同定义；engine 只保证：
 
 - 该判定发生在 fill-driven rebuild 之后
 - 该判定发生在 `PAIR` keep 之后
@@ -167,7 +167,7 @@ fill-driven rebuild 的优先级高于任何 keep 分支和任何单边专属分
 - keep 类日志走 rate limit
 - 非 keep 退出类日志不走 keep rate limit
 
-具体的单边专属分支日志由子合同定义。
+具体的单边专属分支日志由策略子合同定义。
 
 ## 10. Out Of Scope
 
