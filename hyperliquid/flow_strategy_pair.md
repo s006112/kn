@@ -119,6 +119,12 @@ fill-driven rebuild 拥有当前 strategy 的最高优先级。
 - `SELL_ONLY` 只允许 `keep`
 - `SELL_ONLY` 不执行 anchor break 检查
 
+设计约束说明：
+
+- anchor break 仅适用于 `BUY_ONLY` residual
+- 当前 strategy 不允许对 `SELL_ONLY` residual 做 re-anchor
+- 因此 `SELL_ONLY` branch 不存在 stale rebuild 分支
+
 若成立：
 - 返回 `("keep", None)`
 

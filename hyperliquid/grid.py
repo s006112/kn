@@ -475,28 +475,44 @@ def validate_keep_state(info, orders, state, order_shape):
 
 def detect_anchor_break(info, orders, state, order_shape):
     """作用:
-    检测单边残单是否已经偏离 BTC 中间价到必须重建的程度。
+    检测合法 BUY_ONLY 残单是否已经偏离 BTC 中间价到必须重建的程度。
 
     输入:
     info: 被残单重锚辅助函数使用的 Hyperliquid `Info` 客户端。
     orders: 当前挂单集合。
     state: 至少包含 `mode` 的已保存状态映射。该状态可以带有 `pair_center_price` 或
-    `reference_price`，但本函数只根据 `mode` 和当前订单检查单边重锚，不把两者混为同一字段。
+    `reference_price`，但本函数只根据 `BUY_ONLY` 模式和当前订单检查单边重锚，
+    不把两者混为同一字段。
     order_shape: `orders` 的当前形态分类结果。
 
     输出:
-    仅当重锚功能开启、保存的模式为单边、当前形态与该模式一致、当前恰好只有一笔订单且 `should_reanchor_residual_order()` 返回 `True` 时，返回 `("rebuild", None)`。其余路径返回 `None`。在辅助函数完成自身保护性检查之后，透传其因异常订单字段抛出的异常。
+    仅当以下条件全部成立时，返回 `("rebuild", None)`：
+    - `REANCHOR_BREAK` 已开启
+    - `state["mode"] == BUY_ONLY_MODE`
+    - `order_shape == BUY_ONLY_MODE`
+    - 当前恰好只有一笔订单
+    - 该订单必须是买单
+    - `should_reanchor_residual_order()` 返回 `True`
+
+    其余路径返回 `None`。
+
+    边界说明:
+    当前实现中，anchor break 仅适用于 `BUY_ONLY` 残单；
+    `SELL_ONLY` 残单永远不会在本函数中触发 anchor break。
     """
     if not REANCHOR_BREAK:
         return None
 
-    if state["mode"] not in (BUY_ONLY_MODE, SELL_ONLY_MODE):
+    if state["mode"] != BUY_ONLY_MODE:
         return None
 
-    if order_shape != state["mode"]:
+    if order_shape != BUY_ONLY_MODE:
         return None
 
     if len(orders) != 1:
+        return None
+
+    if orders[0]["side"] != "B":
         return None
 
     if not should_reanchor_residual_order(
@@ -514,7 +530,6 @@ def detect_anchor_break(info, orders, state, order_shape):
 
     log_msg("🪝 contract: anchor break")
     return "rebuild", None
-
 
 def detect_single_sided_action(info, orders, state, order_shape):
     """作用:
@@ -674,7 +689,6 @@ def create_exchange():
         account_address=ACCOUNT_ADDRESS,
     )
 
-
 def main():
     """作用:
     从当前挂单启动网格流程，并持续运行直到满足退出条件。
@@ -684,10 +698,9 @@ def main():
 
     输出:
     返回 `None`。当 `ACCOUNT_ADDRESS` 缺失时立即记录日志并退出。否则创建客户端、
-    汇总当前挂单、在存在有效配对时直接接受 `get_pair_state()` 返回的状态
-    （其中包含 `pair_center_price` 这一配对快照中点），必要时回退到 `rebuild()`
-    获取包含 `reference_price` 的下单锚点状态，并仅在建立了非异常初始状态后进入
-    `run_main_loop()`。透传客户端创建、状态推导和循环执行过程抛出的异常。
+    拉取并记录当前挂单摘要，尝试把当前 snapshot 接受为初始 `PAIR` state；
+    若不能接受，则回退到 `rebuild()` 获取新的非异常状态，并仅在建立了有效初始状态后
+    进入 `run_main_loop()`。
     """
     if not ACCOUNT_ADDRESS:
         log_msg("Missing HYPERLIQUID_ACCOUNT_ADDRESS")
@@ -697,10 +710,21 @@ def main():
     exchange = create_exchange()
 
     orders = get_open_orders(info)
-    buy_count, sell_count = summarize_orders(orders)
+    summarize_orders(orders)
 
     state = None
-    if buy_count == 1 and sell_count == 1:
+    order_shape = classify_order_shape(
+        orders,
+        GRID_STEP,
+        BUY_GRID_FACTOR,
+        SELL_GRID_FACTOR,
+        PAIR_MODE,
+        BUY_ONLY_MODE,
+        SELL_ONLY_MODE,
+        ABNORMAL_MODE,
+    )
+
+    if order_shape == PAIR_MODE:
         state = get_pair_state(
             orders,
             GRID_STEP,
@@ -718,7 +742,6 @@ def main():
             return
 
     run_main_loop(info, exchange, state)
-
 
 if __name__ == "__main__":
     main()

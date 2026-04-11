@@ -66,13 +66,19 @@
 
 1. sleep
 2. 拉取当前 `open orders`
-3. 记录当前订单摘要
-4. 调用 strategy decision layer
-5. 读取 strategy 返回动作：
+3. 调用 strategy decision layer
+4. 读取 strategy 返回动作：
    - `("keep", None)`
    - `("rebuild", reference_price)`
    - `("rebuild", None)`
    - `("abnormal", None)`
+
+说明：
+
+- 当前实现为了减少高频日志，不会在每轮主循环固定记录订单摘要
+- 当前实现只在 abnormal path 中记录 abnormal summary
+- keep path 仅依赖 strategy / contract 自己的限流日志
+- startup 仍会记录一次初始 open-order 摘要
 
 ### 3.1 Keep Path
 
@@ -98,7 +104,7 @@
 
 若 strategy 返回 `("abnormal", None)`：
 
-1. 记录 abnormal summary
+1. 记录当前 abnormal summary
 2. 记录 abnormal exit
 3. 退出
 
@@ -123,6 +129,7 @@ engine shell 对 strategy layer 只要求：
 - strategy 不得绕过 abnormal exit contract
 
 当前 engine 不关心 strategy 内部到底是：
+
 - fill-driven rebuild
 - pair keep
 - buy-only stale rebuild
@@ -130,7 +137,18 @@ engine shell 对 strategy layer 只要求：
 
 这些都属于 strategy 自己的内部语义。
 
-## 6. Out Of Scope
+## 6. Logging Boundary
+
+当前 engine shell 的日志边界如下：
+
+- startup 阶段会记录一次当前 open-order 摘要
+- keep path 不要求 engine 每轮重复打印 open-order 摘要
+- rebuild path 由 `rebuild(...)` / `place_pair(...)` 记录重建相关日志
+- abnormal path 会先记录 abnormal summary，再记录 abnormal exit
+
+因此，日志是否出现以及出现频率，不应被误解为策略动作语义本身。
+
+## 7. Out Of Scope
 
 本文档不定义：
 
