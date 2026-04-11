@@ -114,6 +114,15 @@ ladder.expected_structure 完整等价于 pair 的 price structure
 
 current pair strategy 隐含以下 compare 结果：
 
+在当前 Step 2 polish 之后，这些 case 应优先被理解为：
+
+- parse 当前 live structure
+- compare live structure 与 saved expected pair state
+- 再从 compare result 决定最终动作
+
+这里的 compare 仍然是 pair-local compare，
+不是“ladder `M = 1` 已经完成吸收”的证明本身。
+
 #### A. PAIR keep
 
 * 当前 live orders 仍为同一组 pair

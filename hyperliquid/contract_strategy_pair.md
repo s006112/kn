@@ -86,6 +86,19 @@
 3. 再检查单边 residual 分支
 4. 以上都不满足则返回 `abnormal`
 
+为了降低与 ladder-first schema language 的认知错位，
+当前 pair contract 在内部可按以下三层阅读：
+
+1. parse 当前 live structure
+2. compare live structure 与 saved expected pair state
+3. decide 唯一动作
+
+这里的 parse / compare / decide 只是当前 pair contract 的内部解释骨架：
+
+- 它不改变当前 pair contract 本身的接受边界
+- 它不改变 engine shell 或 action protocol
+- 它不表示 ladder `M = 1` 吸收已经完成
+
 其中：
 
 - 单边 residual 分支只在 saved `mode` 为 `BUY_ONLY` 或 `SELL_ONLY` 时评估
