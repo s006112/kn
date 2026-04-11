@@ -7,7 +7,10 @@
 本文档位于 engine contract 与 anchor 子合同之间：
 
 - 父合同：`contract_grid_engine.md`
-- 子合同：`contract_strategy_anchor.md`
+- 并列子合同：
+  - `contract_strategy_pair.md`
+  - `contract_strategy_ladder.md`
+  - `contract_strategy_anchor.md`
 
 ## 1. Purpose
 

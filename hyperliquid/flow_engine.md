@@ -5,6 +5,7 @@
 它依赖：
 - `contract_grid_engine.md`
 - `contract_strategy_pair.md`
+- `contract_strategy_anchor.md`
 
 ## 1. Purpose
 
@@ -45,6 +46,11 @@
 
 若成立：
 - 初始 saved state = 当前 pair snapshot
+- 该 snapshot state 包含：
+  - `mode`
+  - `buy_price`
+  - `sell_price`
+  - `pair_center_price`
 - 进入主循环
 
 #### B. 初始 rebuild
@@ -58,7 +64,13 @@
 5. 否则调用 `get_mid_reference_price()` 推导 fresh reference
 6. 调用 `place_pair(...)`
 7. 若返回 `PAIR` / `BUY_ONLY` / `SELL_ONLY`，则接受为新 saved state 并进入主循环
-8. 若返回 `ABNORMAL` 或 rebuild failure，则退出
+8. 该 placement / rebuild state 包含：
+   - `mode`
+   - `buy_price`
+   - `sell_price`
+   - `reference_price`
+9. engine shell 不把 `pair_center_price` 与 `reference_price` 视为同一字段语义
+10. 若返回 `ABNORMAL` 或 rebuild failure，则退出
 
 ## 3. Main Loop Shell Flow
 
@@ -97,8 +109,9 @@
 4. 若传入显式 `reference_price`，则沿用该值
 5. 若传入 `None`，则调用 `get_mid_reference_price()` 推导 fresh reference
 6. 调用 `place_pair(...)`
-7. 若返回 `PAIR` / `BUY_ONLY` / `SELL_ONLY`，则接受为新 saved state，并进入下一轮循环
-8. 若返回 `ABNORMAL` 或 rebuild failure，则退出
+7. 若返回 `PAIR` / `BUY_ONLY` / `SELL_ONLY`，则接受为新的 placement / rebuild state，并进入下一轮循环
+8. 该状态使用 `reference_price` 作为 rebuild anchor 语义
+9. 若返回 `ABNORMAL` 或 rebuild failure，则退出
 
 ### 3.3 Abnormal Path
 
@@ -134,6 +147,9 @@ engine shell 对 strategy layer 只要求：
 - pair keep
 - buy-only stale rebuild
 - sell-only keep
+
+其中单边 residual stale / anchor break 的触发条件与动作语义，属于
+`contract_strategy_anchor.md` 的范围，不由 engine shell 定义。
 
 这些都属于 strategy 自己的内部语义。
 
