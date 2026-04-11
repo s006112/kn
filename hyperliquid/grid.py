@@ -30,7 +30,7 @@ from hyperliquid.info import Info
 from hyperliquid.utils import constants
 
 from grid_logic import classify_order_shape, get_pair_state
-from grid_strategy import get_loop_action
+from grid_strategy_dispatch import get_loop_action
 
 load_dotenv()
 
@@ -54,6 +54,7 @@ PAIR_MODE = "PAIR"
 BUY_ONLY_MODE = "BUY_ONLY"
 SELL_ONLY_MODE = "SELL_ONLY"
 ABNORMAL_MODE = "ABNORMAL"
+STRATEGY_KIND = "pair"
 
 last_keep_log_type = None
 last_keep_log_ts = 0.0
@@ -435,6 +436,7 @@ def run_main_loop(info, exchange, state):
             info,
             orders,
             state,
+            strategy_kind=STRATEGY_KIND,
             grid_step=GRID_STEP,
             buy_grid_factor=BUY_GRID_FACTOR,
             sell_grid_factor=SELL_GRID_FACTOR,
