@@ -73,7 +73,7 @@
 - `contract_strategy_anchor.md`
 - `flow_engine.md`
 - `flow_strategy_pair.md`
-- `grid_run.py`
+- `grid.py`
 - `grid_logic.py`
 - `grid_strategy.py` 中当前 single-pair decision kernel
 
@@ -238,7 +238,7 @@ engine shell 应被视为当前 frozen shell。
 
 ### Do Not
 
-- 不改 `grid_run.py` 主循环
+- 不改 `grid.py` 主循环
 - 不改当前 tuple action protocol
 - 不直接实现 ladder levels
 - 不改交易所执行
@@ -489,6 +489,42 @@ engine shell 应被视为当前 frozen shell。
 在 `M = 1` degeneration proof 成立，
 且 ladder runtime 已稳定后，
 再逐步让 pair strategy 从“独立实现”变成“ladder 的特殊 case wrapper”。
+若 compare / reference 规则仍未 fully proven，则保留保守的 pair-specific fallback。
+
+### Current Status
+
+当前 Stage 6 处于 `PARTIALLY COMPLETED / IN PROGRESS` 状态。
+
+当前仓库已经完成的部分是：
+
+- exact `PAIR` keep 已经开始复用 ladder `M = 1`
+- `PAIR -> BUY_ONLY` fill-driven transition 已经开始复用 ladder `M = 1`
+- `PAIR -> SELL_ONLY` fill-driven transition 已经开始复用 ladder `M = 1`
+- 可安全表示的 saved `PAIR` abnormal path 已经开始复用 ladder `M = 1`
+- pair strategy 已不再是这些 path 的唯一事实执行来源
+
+当前仓库仍然明确保留为 pair-specific fallback 的部分是：
+
+- `BUY_ONLY -> no orders`
+- `SELL_ONLY -> no orders`
+- `BUY_ONLY keep`
+- `BUY_ONLY stale / anchor break`
+- `SELL_ONLY keep`
+
+保留这些 fallback 的原因仍然与 Stage 3 证明边界一致：
+
+- compare equivalence 只达到 `PARTIALLY PROVEN`
+- reference rule equivalence 只达到 `PARTIALLY PROVEN`
+- residual completion side inference 仍依赖 saved `mode`
+- `BUY_ONLY keep` 与 stale split 仍依赖外部 anchor logic
+
+因此，当前 Stage 6 不能被描述为“pair 已 fully absorbed”。
+它更准确地表示为：
+
+- saved `PAIR` 的 proven-safe path 已经 ladder-M=1-backed
+- residual semantics 仍保留 pair-specific fallback
+- Step 6 只有在这些 fallback 被后续明确吸收，或被项目明确决定长期冻结时，
+  才能视为最终完成
 
 ### Do
 
@@ -507,13 +543,21 @@ engine shell 应被视为当前 frozen shell。
 - pair 成为 ladder `M = 1` 的 special path
 - 或 pair 只剩下 compatibility wrapper
 
+当前仓库中的更精确输出状态是：
+
+- pair 已经成为“部分 ladder-M=1-backed、部分 pair-specific fallback”的兼容 wrapper
+
 ### Exit Criteria
 
 满足以下条件时，Stage 6 完成：
 
-- pair 与 ladder `M = 1` 在结构、比较、决策、reference 规则上完全等价
-- current runtime 已不再依赖 pair-only internal implementation
+- pair 在已 proven-safe 的 path 上已经复用 ladder `M = 1`
+- compare / reference 尚未 fully proven 的 path 仍保留明确的 pair-specific fallback
+- current runtime 已不再只依赖 pair-only internal implementation 作为唯一事实来源
 - pair-specific code 已经不是事实上的唯一执行来源
+
+在当前状态下，这些条件只达到了“部分完成”的程度，
+还不能被误读为 Step 6 已经彻底收口。
 
 ---
 

@@ -1,4 +1,4 @@
-"""Thin Stage 5 dispatch layer for pair and ladder strategy kernels.
+"""Thin dispatch layer for pair and ladder strategy kernels.
 
 This module keeps the engine-facing action protocol unchanged:
 - ("keep", None)
@@ -6,8 +6,9 @@ This module keeps the engine-facing action protocol unchanged:
 - ("rebuild", None)
 - ("abnormal", None)
 
-The default runtime path remains the current pair strategy. Ladder dispatch is
-decision-only and only calls the Stage 4 pure ladder functions.
+The default runtime path remains the explicit `pair` strategy surface.
+In Stage 6, that pair surface may internally reuse ladder `M = 1` on proven
+safe paths, but dispatch itself stays decision-only and thin.
 """
 
 from grid_strategy import get_loop_action as get_pair_loop_action

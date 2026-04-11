@@ -105,6 +105,48 @@
 - 单边 residual 分支永远不能覆盖 fill-driven rebuild
 - 单边 residual 分支永远晚于 `PAIR` keep
 
+## 4.1 Stage 6 Absorption Boundary
+
+当前仓库处于 Step 6 的“部分吸收、保守保留 fallback”状态。
+
+这意味着：
+
+- pair strategy 仍然是一个显式命名的策略表面
+- parse / compare / decide 的 pair flow 仍然保留
+- 但在 saved `PAIR` 的已证明安全路径上，当前实现可以通过 ladder `M = 1`
+  compatibility 来评估 pair 语义
+
+当前已 absorbed into ladder `M = 1` 的 proven-safe path 至少包括：
+
+- exact `PAIR` keep
+- `PAIR -> BUY_ONLY` fill-driven transition
+- `PAIR -> SELL_ONLY` fill-driven transition
+- 可被安全表示为 ladder `M = 1` compatibility abnormal 的 saved `PAIR` path
+
+这些吸收只改变内部 compare / compatibility 的实现来源，
+不改变 pair contract 对外的动作语义，也不改变 engine action protocol。
+
+当前尚未 fully absorbed、并继续保留 pair-specific fallback 的路径至少包括：
+
+- `BUY_ONLY` completion
+- `SELL_ONLY` completion
+- `BUY_ONLY` keep
+- `BUY_ONLY` stale / anchor break
+- `SELL_ONLY` keep
+
+保留这些 fallback 的原因是当前 Stage 3 证明边界仍然存在：
+
+- compare equivalence 尚未 fully proven
+- reference rule equivalence 尚未 fully proven
+- residual completion 的完成侧推断仍依赖 saved `mode`
+- `BUY_ONLY keep` 与 `BUY_ONLY stale` 的分裂仍依赖外部 anchor / BTC mid 逻辑
+
+因此，当前 Step 6 不能被理解为：
+
+- pair 所有 path 都已经 ladder-backed
+- residual 语义已经全部并入 ladder contract
+- pair contract 已经可以删除
+
 ## 5. Fill-Driven Rebuild Semantics
 
 当前 pair strategy 接受以下 fill-driven rebuild 路径：
@@ -130,12 +172,20 @@
 - 视为合法 residual completion
 - 必须返回 `("rebuild", state["buy_price"])`
 
+当前 Step 6 中，这条 completion 语义仍保留 pair-specific fallback。
+原因是 live `EMPTY` 时，compare summary 仍不足以单独恢复“完成的是哪一侧 residual”，
+该 completion side inference 仍依赖 saved `mode`。
+
 ### 5.3 Saved `SELL_ONLY`
 
 当 saved `mode == SELL_ONLY` 且当前 `open orders == 0` 时：
 
 - 视为合法 residual completion
 - 必须返回 `("rebuild", state["sell_price"])`
+
+当前 Step 6 中，这条 completion 语义仍保留 pair-specific fallback。
+原因同上：completion side inference 仍依赖 saved `mode`，尚未从 ladder `M = 1`
+compare object 中独立收敛出来。
 
 只要命中以上路径，就不得落入 keep，也不得落入 abnormal。
 
@@ -167,6 +217,14 @@
 - 若未触发 anchor 子合同，则返回 `("keep", None)`
 - 若触发 anchor 子合同，则返回其定义的 rebuild 结果
 
+当前 Step 6 中，`BUY_ONLY keep` 与 `BUY_ONLY stale / anchor break`
+仍明确保留 pair-specific fallback。原因是：
+
+- compare layer 还不能单独把 keep 与 stale 完全拆开
+- stale 的最终分裂仍依赖外部 anchor 子合同与 BTC mid
+- stale rebuild 的 reference 语义也尚未 fully proven 为 ladder `M = 1`
+  可直接吸收的固定规则
+
 ### 7.2 `SELL_ONLY` branch
 
 只有同时满足以下条件时，当前 strategy 才接受 `SELL_ONLY` 分支：
@@ -180,6 +238,12 @@
 
 - `SELL_ONLY` 只允许 `keep`
 - `SELL_ONLY` 不执行 anchor break 检查
+
+当前 Step 6 中，`SELL_ONLY keep` 仍保留 pair-specific fallback，
+因为这条 residual continuation 虽然在 family / action 上已可被 `M = 1`
+表示，
+但当前 runtime 仍保守地把它作为 pair residual branch 处理，而不是把整条 residual
+语义视为已经 fully absorbed。
 
 若上述条件不成立，则 `SELL_ONLY` 分支不得被接受。
 

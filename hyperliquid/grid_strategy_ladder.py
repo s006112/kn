@@ -1,4 +1,4 @@
-"""Pure Stage 4 ladder strategy skeleton.
+"""Pure ladder strategy functions plus conservative M=1 compatibility helpers.
 
 This module intentionally stays inside the Stage 4 boundary:
 - pure functions only
@@ -320,6 +320,65 @@ def compare_live_ladder_to_expected(saved_ladder_state, live_ladder_snapshot):
             "net_shift": len(missing_sell_levels) - len(missing_buy_levels),
         },
     }
+
+
+def describe_m1_pair_compatibility(
+    saved_ladder_state,
+    live_ladder_snapshot,
+    compare_result=None,
+):
+    """Describe conservative M=1 live families that a pair wrapper can reuse.
+
+    This helper stays intentionally narrow:
+    - it only applies to `depth_per_side = 1`
+    - it does not infer rebuild references
+    - it does not split BUY_ONLY keep vs stale
+    - it does not infer completion side from EMPTY alone
+    """
+    if compare_result is None:
+        compare_result = compare_live_ladder_to_expected(
+            saved_ladder_state,
+            live_ladder_snapshot,
+        )
+
+    expected = _extract_expected(saved_ladder_state)
+    if expected["depth_per_side"] != 1:
+        return {"is_supported": False, "path": None}
+
+    if compare_result["relation"]["is_exact_keep_candidate"]:
+        return {"is_supported": True, "path": "exact_keep"}
+
+    if compare_result["extra"]["buy_levels"] or compare_result["extra"]["sell_levels"]:
+        return {"is_supported": False, "path": None}
+
+    expected_buy_levels = list(expected["buy_levels"])
+    expected_sell_levels = list(expected["sell_levels"])
+    missing_buy_levels = compare_result["missing"]["buy_levels"]
+    missing_sell_levels = compare_result["missing"]["sell_levels"]
+    live_shape = live_ladder_snapshot["shape_hint"]
+
+    if (
+        live_shape == "BUY_ONLY"
+        and not missing_buy_levels
+        and missing_sell_levels == expected_sell_levels
+    ):
+        return {"is_supported": True, "path": "buy_only_live"}
+
+    if (
+        live_shape == "SELL_ONLY"
+        and missing_buy_levels == expected_buy_levels
+        and not missing_sell_levels
+    ):
+        return {"is_supported": True, "path": "sell_only_live"}
+
+    if (
+        live_shape == "EMPTY"
+        and missing_buy_levels == expected_buy_levels
+        and missing_sell_levels == expected_sell_levels
+    ):
+        return {"is_supported": True, "path": "empty_live"}
+
+    return {"is_supported": False, "path": None}
 
 
 def decide_ladder_action(compare_result, saved_ladder_state):
