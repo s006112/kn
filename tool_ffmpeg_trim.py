@@ -12,13 +12,14 @@ from watchdog.events import FileSystemEventHandler
 # Configuration
 WATCH_FOLDER = Path("/desktop")
 SUPPORTED_EXTENSIONS = {".mp4", ".mp3", ".ts", ".mpeg", ".mkv", ".mov", ".avi"}
-# Pattern: base_name + space + start(2-6 digits)-end(2-6 digits) + extension
-FILENAME_PATTERN = re.compile(r"^(.*)\s(\d{2,6})-(\d{2,6})$")
+# Pattern: base_name + space + start(1-6 digits)-end(1-6 digits) + extension
+FILENAME_PATTERN = re.compile(r"^(.*)\s(\d{1,6})-(\d{1,6})$")
 
 def format_time(token):
     """
-    Converts numeric tokens (2-6 digits) to HH:MM:SS format.
+    Converts numeric tokens (1-6 digits) to HH:MM:SS format.
     Rules:
+    1 digit: S -> 00:00:0S
     2 digits: SS -> 00:00:SS
     3 digits: MSS -> 00:0M:SS
     4 digits: MMSS -> 00:MM:SS
@@ -79,19 +80,22 @@ def process_file(file_path):
 
     # Use a size-focused re-encode: CRF plus a slower preset compresses better
     # than a simple bitrate target for most real-world clips.
-    cmd = [
-        "ffmpeg", "-y", "-i", str(file_path),
-        "-ss", start_time,
-        "-to", end_time,
+    cmd = ["ffmpeg", "-y", "-i", str(file_path)]
+    if start_token != "0":
+        cmd.extend(["-ss", start_time])
+    if end_token != "0":
+        cmd.extend(["-to", end_time])
+    cmd.extend([
+        #"-vf", "transpose=2",  # Rotate video 90 degrees counterclockwise (useful for vertical videos).
         #"-vf", "scale=640:360",  # Resize video to 640x360.
         "-c:v", "libx264",  # Encode video with H.264.
         #"-crf", "24",  # CRF quality range is typically 18-32; smaller means better quality and larger files.
-        "-preset", "slow",  # Spend more CPU time for better compression.
+        #"-preset", "slow",  # Spend more CPU time for better compression.
         #"-c:a", "aac",  # Encode audio as AAC for MP4 compatibility.
         #"-b:a", "96K",  # Limit audio bitrate to keep audio smaller.
         "-movflags", "+faststart",  # Move MP4 metadata to the front for faster playback start.
         str(output_path)
-    ]
+    ])
 
     try:
         print(
