@@ -220,9 +220,6 @@ if (isset($_POST["webPageInput"])) {
                             if ($trimmedLine === '---') {
                                 return $blankLinePlaceholder;
                             }
-                            if (preg_match('/^(#{1,6})\s+(.+)$/', $trimmedLine, $matches) && $matches[1] !== '###') {
-                                return '### ' . $matches[2];
-                            }
                             return $line;
                         }, $lines);
                         $lines = array_filter($lines, function($line) {
@@ -240,32 +237,38 @@ if (isset($_POST["webPageInput"])) {
             </form>
         </div>
 
-
-        <!-- Fourth Form: Remove dotted list -->
+        <!-- Remove Empty Lines, Reset ### -->
         <div class="form-container">
             <form method="post" action="">
-                <textarea id="dottedListInput" name="dottedListInput" rows="5" cols="80" placeholder="Input text..."><?php 
-                    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["dottedListInput"])) {
-                        $text = $_POST["dottedListInput"];
+                <textarea id="lineInput" name="lineInput" rows="5" cols="80" placeholder="Input text..."><?php 
+                    if (isset($_POST["lineInput"])) {
+                        $text = $_POST["lineInput"];
+                        
+                        // Split text into lines, keep markdown separator lines as blanks, remove other empty ones, and rejoin
                         $lines = explode("\n", $text);
-                        $result = array_map(function($line) {
-                            $line = preg_replace('/^[\t ]*- /', '', $line);
-                            return trim($line);
+                        $blankLinePlaceholder = '__KEEP_BLANK_LINE__';
+                        $lines = array_map(function($line) use ($blankLinePlaceholder) {
+                            $trimmedLine = trim($line);
+                            if ($trimmedLine === '---') {
+                                return $blankLinePlaceholder;
+                            }
+                            if (preg_match('/^(#{1,6})\s+(.+)$/', $trimmedLine, $matches) && $matches[1] !== '###') {
+                                return '### ' . $matches[2];
+                            }
+                            return $line;
                         }, $lines);
-                        $result = array_filter($result, function($line) {
-                            return !empty($line);
+                        $lines = array_filter($lines, function($line) {
+                            return trim($line) !== '';
                         });
-                        $result = implode("\n", $result);
-                        $_SESSION['results']['dottedListInput'] = $result;
-                        header('Location: ' . $_SERVER['PHP_SELF'] . '#dottedListInput');
-                        exit;
-                    }
-                    if (isset($_SESSION['results']['dottedListInput'])) {
-                        echo htmlspecialchars($_SESSION['results']['dottedListInput'], ENT_QUOTES, 'UTF-8');
-                        unset($_SESSION['results']['dottedListInput']);
+                        $lines = array_map(function($line) use ($blankLinePlaceholder) {
+                            return $line === $blankLinePlaceholder ? '' : $line;
+                        }, $lines);
+                        $result = implode("\n", $lines);
+                        
+                        echo htmlspecialchars($result, ENT_QUOTES, 'UTF-8');
                     }
                 ?></textarea>
-                <button type="submit">Remove dotted list</button>
+                <button type="submit">Remove Empty Lines, Reset ### </button>
             </form>
         </div>
 
@@ -364,73 +367,33 @@ if (isset($_POST["webPageInput"])) {
         </div>
 
         
-        <!-- XML to Raw Text Form -->
+        <!-- Remove dotted list -->
         <div class="form-container">
             <form method="post" action="">
-                <textarea id="xmlInput" name="xmlInput" rows="5" cols="80" placeholder="Input XML text..."><?php 
-                    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["xmlInput"])) {
-                        $text = $_POST["xmlInput"];
-                        
-                        // Load XML string
-                        libxml_use_internal_errors(true); // Suppress XML errors
-                        $dom = new DOMDocument();
-                        $dom->loadXML($text);
-                        
-                        // Function to extract text from XML nodes
-                        function extractText(DOMNode $node) {
-                            $result = '';
-                            if ($node->nodeType === XML_TEXT_NODE) {
-                                $text = trim($node->nodeValue);
-                                if (!empty($text)) {
-                                    $result .= $text . "\n";
-                                }
-                            }
-                            if ($node->hasChildNodes()) {
-                                foreach ($node->childNodes as $child) {
-                                    $result .= extractText($child);
-                                }
-                            }
-                            return $result;
-                        }
-                        
-                        // Function to process text based on language
-                        function processText($text) {
-                            // Check if text contains Chinese characters
-                            if (preg_match('/[\x{4e00}-\x{9fa5}]/u', $text)) {
-                                // For Chinese text, remove all spaces
-                                return preg_replace('/\s+/u', '', $text);
-                            } else {
-                                // For English text, ensure single spaces between words
-                                return preg_replace('/\s+/u', ' ', trim($text));
-                            }
-                        }
-                        
-                        // Extract text and clean up
-                        if ($dom->documentElement) {
-                            $result = extractText($dom->documentElement);
-                            // Split into lines and process each line
-                            $lines = explode("\n", trim($result));
-                            $processed_lines = array_map('processText', $lines);
-                            // Filter empty lines and join
-                            $processed_lines = array_filter($processed_lines);
-                            $result = implode(' ', $processed_lines);
-                        } else {
-                            // If XML parsing failed, return original text
-                            $result = $text;
-                        }
-                        $_SESSION['results']['xmlInput'] = $result;
-                        header('Location: ' . $_SERVER['PHP_SELF'] . '#xmlInput');
+                <textarea id="dottedListInput" name="dottedListInput" rows="5" cols="80" placeholder="Input text..."><?php 
+                    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["dottedListInput"])) {
+                        $text = $_POST["dottedListInput"];
+                        $lines = explode("\n", $text);
+                        $result = array_map(function($line) {
+                            $line = preg_replace('/^[\t ]*- /', '', $line);
+                            return trim($line);
+                        }, $lines);
+                        $result = array_filter($result, function($line) {
+                            return !empty($line);
+                        });
+                        $result = implode("\n", $result);
+                        $_SESSION['results']['dottedListInput'] = $result;
+                        header('Location: ' . $_SERVER['PHP_SELF'] . '#dottedListInput');
                         exit;
                     }
-                    if (isset($_SESSION['results']['xmlInput'])) {
-                        echo htmlspecialchars($_SESSION['results']['xmlInput'], ENT_QUOTES, 'UTF-8');
-                        unset($_SESSION['results']['xmlInput']);
+                    if (isset($_SESSION['results']['dottedListInput'])) {
+                        echo htmlspecialchars($_SESSION['results']['dottedListInput'], ENT_QUOTES, 'UTF-8');
+                        unset($_SESSION['results']['dottedListInput']);
                     }
                 ?></textarea>
-                <button type="submit">Convert XML to Raw Text</button>
+                <button type="submit">Remove dotted list</button>
             </form>
         </div>
-
 
 
     </div>
