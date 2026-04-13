@@ -4,7 +4,7 @@
 该辅助模块负责为 Hyperliquid 网格循环分类当前挂单形态，从已有订单推导经过校验的成对订单状态，将当前成对价格与已保存状态进行比较，并基于调用方提供的 BTC 中间价判断单边残单是否已偏离到需要重锚的程度。
 
 Used by:
-* hyperliquid/grid_decision.py
+* hyper_ws/grid_decision.py
 
 流程:
 - 订单 -> 计数 -> 配对状态 -> 形态
