@@ -1,0 +1,16 @@
+[Unit]
+Description=Hyperliquid spot grid engine
+After=network-online.target
+Wants=network-online.target
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Type=simple
+WorkingDirectory=/home/youruser/kn/hyperliquid
+ExecStart=/usr/bin/env python3 /home/youruser/kn/hyperliquid/grid.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
