@@ -11,10 +11,15 @@
 当前 engine shell 的职责是：
 
 - 启动系统并加载运行依赖
-- 获取当前 open orders snapshot
+- 获取当前 REST open orders snapshot
 - 把 snapshot 交给 strategy decision layer
 - 根据 strategy 返回结果执行 keep / rebuild / abnormal
 - 只在成功得到非 `ABNORMAL` 新状态后继续主循环
+
+当前实现故意保持固定的 REST snapshot 轮询：
+
+- 主循环固定 sleep `1.5` 秒（`MAIN_LOOP_POLL_INTERVAL_SEC`）
+- `wait_no_open_orders()` 固定按 `1.5` 秒间隔轮询确认清理结果（`WAIT_NO_OPEN_ORDERS_INTERVAL_SEC`）
 
 本文档不定义 pair strategy 的内部判定细节，也不定义未来 rolling ladder strategy。
 
@@ -54,7 +59,7 @@
 1. 进入 `rebuild(...)`
 2. 若当前存在 live orders，则先尝试清理
 3. 若清理失败，则直接退出
-4. 清理后的无挂单确认仍通过 `open orders` 轮询完成，但使用较保守的固定间隔
+4. 清理后的无挂单确认仍通过 `open orders` 轮询完成，固定间隔 `1.5` 秒（`WAIT_NO_OPEN_ORDERS_INTERVAL_SEC`）
 5. 若调用方提供显式 `reference_price`，则沿用该值
 6. 否则调用 `get_mid_reference_price()` 推导 fresh reference；其中 BTC mid 读取对短暂性 API / 网络失败做轻量有限重试
 7. 调用 `place_pair(...)`
@@ -65,17 +70,18 @@
 
 每轮循环固定按以下顺序运行：
 
-1. 固定 sleep `3.0` 秒
+1. 固定 sleep `1.5` 秒
 2. 拉取当前 `open orders`（对短暂性 API / 网络失败做有限重试）
-3. 记录当前订单摘要
-4. 调用 strategy decision layer
-5. 读取 strategy 返回动作：
+3. 把当前 `open orders` snapshot 交给 strategy decision layer
+4. 读取 strategy 返回动作：
    - `("keep", None)`
    - `("rebuild", reference_price)`
    - `("rebuild", None)`
    - `("abnormal", None)`
 
 其中第 2 步的有限重试只用于基础设施层的短暂失败；它不会把读取失败转换为空订单，也不会改变 strategy decision layer 的判定语义。若重试预算耗尽，则异常继续上抛并结束当前进程。
+
+当前主循环不会在每一轮都记录 `OPEN ORDERS` 摘要；订单摘要日志只发生在 startup，以及落入 abnormal path 时。
 
 ### 3.1 Keep Path
 
@@ -91,7 +97,7 @@
 1. 调用 `rebuild(...)`
 2. 若当前存在 live orders，则先尝试清理
 3. 若清理失败，则退出
-4. 清理后的无挂单确认仍通过 `open orders` 轮询完成，但使用较保守的固定间隔
+4. 清理后的无挂单确认仍通过 `open orders` 轮询完成，固定间隔 `1.5` 秒（`WAIT_NO_OPEN_ORDERS_INTERVAL_SEC`）
 5. 若传入显式 `reference_price`，则沿用该值
 6. 若传入 `None`，则调用 `get_mid_reference_price()` 推导 fresh reference；其中 BTC mid 读取对短暂性 API / 网络失败做轻量有限重试
 7. 调用 `place_pair(...)`

@@ -10,6 +10,8 @@ Anchor Break 是“合法单边 residual order”上的兜底分支。
 
 它的作用是：当系统当前仍处于有效 `BUY_ONLY` 单边模式，且唯一 residual buy order 与当前 BTC mid 的偏离已经足够大时，不再继续 `keep`，而是改走 `rebuild`。
 
+它只约束“当前 BTC mid 值满足什么条件时触发 stale rebuild”，不规定 BTC mid snapshot 由哪个 engine-side infra helper 读取。
+
 它不是通用恢复机制，也不处理任意 abnormal 订单形态。
 
 ## 2. Scope Limit

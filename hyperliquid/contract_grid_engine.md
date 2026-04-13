@@ -1,6 +1,6 @@
 # Grid Engine Contract
 
-本文档只描述当前 `hyperliquid/grid.py`、`hyperliquid/grid_logic.py` 中对整个 grid engine 都成立的规则。
+本文档只描述当前 `hyperliquid/grid.py`、`hyperliquid/grid_infra.py`、`hyperliquid/grid_execution.py`、`hyperliquid/grid_decision.py` 与 `hyperliquid/grid_logic.py` 中对整个 grid engine 都成立的规则。
 
 ## 1. Purpose
 
@@ -9,6 +9,11 @@
 - 从当前 `open orders` 推导或承接一个已接受的运行态
 - 在 `keep`、fill-driven `rebuild`、`abnormal exit` 三类结果之间做唯一决策
 - 只在成功得到非 `ABNORMAL` 新状态后继续主循环
+
+当前实现故意保持固定的 REST snapshot 边界：
+
+- 主循环继续通过 REST `open orders` snapshot 轮询驱动，固定间隔 `1.5` 秒（`MAIN_LOOP_POLL_INTERVAL_SEC`）
+- `wait_no_open_orders()` 继续通过 REST `open orders` 轮询确认清理结果，固定间隔 `1.5` 秒（`WAIT_NO_OPEN_ORDERS_INTERVAL_SEC`）
 
 策略特定的单边 residual stale 处理不属于本文档，见子合同 `contract_strategy_anchor.md`。
 - residual stale = “一个单边残单，而且它已经不再符合当前 grid / anchor / contract，因此必须触发 rebuild”

@@ -1,6 +1,7 @@
 # flow_strategy_pair.md
 
 本文档只描述当前 single-pair strategy 的内部判定顺序，不描述 engine shell 的执行细节。
+它也不描述 live orders 或 BTC mid snapshot 的 infra 获取方式。
 
 它依赖：
 - `contract_strategy_pair.md`

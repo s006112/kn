@@ -1,20 +1,20 @@
 """grid_logic.py
 
 职责
-该辅助模块负责为 Hyperliquid 网格循环分类当前挂单形态，从已有订单推导经过校验的成对订单状态，将当前成对价格与已保存状态进行比较，并判断单边残单是否已偏离 BTC 中间价到需要重锚的程度。
+该辅助模块负责为 Hyperliquid 网格循环分类当前挂单形态，从已有订单推导经过校验的成对订单状态，将当前成对价格与已保存状态进行比较，并基于调用方提供的 BTC 中间价判断单边残单是否已偏离到需要重锚的程度。
 
 Used by:
-* hyperliquid/grid_run.py
+* hyperliquid/grid_decision.py
 
 流程:
 - 订单 -> 计数 -> 配对状态 -> 形态
 - 状态 -> 价格 -> 严格匹配
-- 模式 -> 中间价 -> 距离 -> 重锚
+- 模式 -> 传入中间价 -> 距离 -> 重锚
 
 不变式
 - `side == "B"` 始终按买单计数，其余 side 值一律按卖单计数。
 - 只有当恰好存在一个买价和一个卖价，且两个价格都为正、买价低于卖价、并且价差严格等于 `(buy_grid_factor + sell_grid_factor) * grid_step` 时，才会返回成对状态。
-- 当模式不是单边、重锚功能关闭、订单数不为一、或 BTC 中间价读取失败或非正时，残单重锚检查始终返回 `False`。
+- 当模式不是单边、重锚功能关闭、订单数不为一、或传入 BTC 中间价非正时，残单重锚检查始终返回 `False`。
 
 范围外
 - 不负责下单、撤单或修改订单。
@@ -172,12 +172,11 @@ def pair_matches_state(current_pair, state):
 
 
 def should_reanchor_residual_order(
-    info,
     orders,
     mode,
     buy_only_mode,
     sell_only_mode,
-    btc_mid_key,
+    btc_mid,
     grid_step,
     reanchor_break,
     reanchor_break_steps,
@@ -186,18 +185,17 @@ def should_reanchor_residual_order(
     判断在 BTC 中间价远离单边残单后，该订单是否需要重锚。
 
     输入:
-    info: 暴露 `all_mids()` 方法、用于读取 BTC 中间价的对象。
     orders: 序列类型的订单映射对象，预期包含 `side` 和 `limitPx` 字段。
     mode: 当前策略模式值。
     buy_only_mode: 表示买侧残单的模式值。
     sell_only_mode: 表示卖侧残单的模式值。
-    btc_mid_key: 从 `info.all_mids()` 中读取 BTC 中间价使用的键。
+    btc_mid: 调用方已读取并解析的 BTC 中间价。
     grid_step: 与 `reanchor_break_steps` 相乘后形成阈值距离的价格步长。
     reanchor_break: 是否启用残单重锚检查的开关。
     reanchor_break_steps: 触发重锚所需的网格步数。
 
     输出:
-    仅当重锚功能开启、`mode` 为单边模式、恰好存在一笔订单、BTC 中间价读取成功且为正，并且中间价与残单价格的距离至少达到 `reanchor_break_steps * grid_step` 时返回 `True`。对于不允许的模式、关闭的检查、非法订单数量、中间价读取失败或非正中间价，返回 `False`。在通过中间价保护性检查后，透传异常订单字段导致的取值和浮点转换异常。
+    仅当重锚功能开启、`mode` 为单边模式、恰好存在一笔订单、传入的 BTC 中间价为正，并且中间价与残单价格的距离至少达到 `reanchor_break_steps * grid_step` 时返回 `True`。对于不允许的模式、关闭的检查、非法订单数量或非正中间价，返回 `False`。在通过中间价保护性检查后，透传异常订单字段导致的取值和浮点转换异常。
     """
     if mode not in (buy_only_mode, sell_only_mode):
         return False
@@ -208,11 +206,7 @@ def should_reanchor_residual_order(
     if len(orders) != 1:
         return False
 
-    try:
-        btc_mid = float(info.all_mids().get(btc_mid_key, 0))
-    except Exception:
-        return False
-    if btc_mid <= 0:
+    if btc_mid is None or btc_mid <= 0:
         return False
 
     threshold_distance = reanchor_break_steps * grid_step
