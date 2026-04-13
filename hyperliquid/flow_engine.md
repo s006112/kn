@@ -27,7 +27,7 @@
 3. 校验 `ACCOUNT_ADDRESS`
 4. 创建 `Info` client
 5. 创建 `Exchange` client
-6. 拉取当前 `open orders`
+6. 拉取当前 `open orders`（对短暂性 API / 网络失败做有限重试）
 7. 记录当前订单摘要
 8. 尝试接受初始 saved state，或进入初始 rebuild
 
@@ -64,8 +64,8 @@
 
 每轮循环固定按以下顺序运行：
 
-1. sleep
-2. 拉取当前 `open orders`
+1. 固定 sleep `3.0` 秒
+2. 拉取当前 `open orders`（对短暂性 API / 网络失败做有限重试）
 3. 记录当前订单摘要
 4. 调用 strategy decision layer
 5. 读取 strategy 返回动作：
@@ -73,6 +73,8 @@
    - `("rebuild", reference_price)`
    - `("rebuild", None)`
    - `("abnormal", None)`
+
+其中第 2 步的有限重试只用于基础设施层的短暂失败；它不会把读取失败转换为空订单，也不会改变 strategy decision layer 的判定语义。若重试预算耗尽，则异常继续上抛并结束当前进程。
 
 ### 3.1 Keep Path
 

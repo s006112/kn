@@ -20,13 +20,17 @@
 """
 
 import os
+import random
+import socket
 import time
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from eth_account import Account
+from requests import exceptions as requests_exceptions
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
+from hyperliquid.utils.error import ClientError, ServerError
 
 load_dotenv()
 
@@ -45,6 +49,12 @@ ALLOW_SELL_ONLY_WHEN_NO_USDC = True
 REANCHOR_BREAK = True
 REANCHOR_BREAK_STEPS = 2
 KEEP_LOG_INTERVAL_SEC = 300
+MAIN_LOOP_POLL_INTERVAL_SEC = 1.5
+OPEN_ORDERS_MAX_RETRIES = 4
+OPEN_ORDERS_RETRY_BASE_SEC = 0.5
+OPEN_ORDERS_RETRY_MAX_SEC = 4.0
+OPEN_ORDERS_RETRY_JITTER_MAX_SEC = 0.3
+OPEN_ORDERS_RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
 
 PAIR_MODE = "PAIR"
 BUY_ONLY_MODE = "BUY_ONLY"
@@ -64,9 +74,83 @@ from grid_logic import (
 
 def get_open_orders(info):
     """作用:
-    获取当前配置账户地址的未完成订单。
+    获取当前配置账户地址的未完成订单，并对短暂性 API/网络失败做有限重试。
     """
-    return info.open_orders(ACCOUNT_ADDRESS)
+    for attempt in range(OPEN_ORDERS_MAX_RETRIES + 1):
+        try:
+            return info.open_orders(ACCOUNT_ADDRESS)
+        except Exception as exc:
+            if not is_retryable_open_orders_error(exc):
+                raise
+
+            if attempt >= OPEN_ORDERS_MAX_RETRIES:
+                log_msg(
+                    "infra: open-orders read failed after retries "
+                    f"({format_retryable_exception(exc)})"
+                )
+                raise
+
+            retry_number = attempt + 1
+            delay_sec = min(
+                OPEN_ORDERS_RETRY_BASE_SEC * (2 ** attempt),
+                OPEN_ORDERS_RETRY_MAX_SEC,
+            ) + random.uniform(0.0, OPEN_ORDERS_RETRY_JITTER_MAX_SEC)
+            log_msg(
+                "infra: open-orders transient failure, "
+                f"retry {retry_number}/{OPEN_ORDERS_MAX_RETRIES} "
+                f"in {delay_sec:.2f}s ({format_retryable_exception(exc)})"
+            )
+            time.sleep(delay_sec)
+
+
+def is_retryable_open_orders_error(exc):
+    """作用:
+    判断 open-orders 读取异常是否属于可重试的短暂性基础设施失败。
+    """
+    status_code = getattr(exc, "status_code", None)
+    if status_code in OPEN_ORDERS_RETRYABLE_STATUS_CODES:
+        return True
+
+    if isinstance(
+        exc,
+        (
+            requests_exceptions.Timeout,
+            requests_exceptions.ConnectionError,
+            TimeoutError,
+            ConnectionResetError,
+            socket.timeout,
+        ),
+    ):
+        return True
+
+    if isinstance(exc, OSError):
+        message = str(exc).lower()
+        transient_markers = (
+            "timeout",
+            "timed out",
+            "connection reset",
+            "connection aborted",
+            "temporary failure",
+            "temporarily unavailable",
+        )
+        return any(marker in message for marker in transient_markers)
+
+    return False
+
+
+def format_retryable_exception(exc):
+    """作用:
+    将基础设施异常格式化为紧凑日志文本。
+    """
+    status_code = getattr(exc, "status_code", None)
+    if status_code is not None:
+        if isinstance(exc, ClientError):
+            return f"{type(exc).__name__} status={status_code} code={exc.error_code}"
+        if isinstance(exc, ServerError):
+            return f"{type(exc).__name__} status={status_code}"
+        return f"{type(exc).__name__} status={status_code}"
+
+    return f"{type(exc).__name__}: {exc}"
 
 
 def log_msg(message):
@@ -635,7 +719,7 @@ def run_main_loop(info, exchange, state):
     """
 
     while True:
-        time.sleep(1.0)
+        time.sleep(MAIN_LOOP_POLL_INTERVAL_SEC)
         orders = get_open_orders(info)
         action, reference_price = get_loop_action(info, orders, state)
 
