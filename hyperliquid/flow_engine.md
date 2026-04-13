@@ -1,6 +1,10 @@
 # flow_engine.md
 
-本文档只描述当前 grid engine shell 的流程顺序，不描述 single-pair strategy 的内部细节。
+### Document Status
+
+本文档定义 grid engine shell 的 WebSocket-first migration baseline flow。它描述目标 engine worldview，未必与当前生产代码实现或当前运行时行为完全一致；当前生产运行时仍可能保留 REST 轮询边界。策略语义、决策顺序与交易规则保持不变，strategy 继续消费 engine 提供的 live state，而不是依赖 transport 形式。
+
+本文档只描述 grid engine shell migration baseline 的流程顺序，不描述 single-pair strategy 的内部细节。
 
 它依赖：
 - `contract_grid_engine.md`
@@ -8,18 +12,21 @@
 
 ## 1. Purpose
 
-当前 engine shell 的职责是：
+本 migration baseline 中，engine shell 的职责是：
 
 - 启动系统并加载运行依赖
-- 获取当前 REST open orders snapshot
-- 把 snapshot 交给 strategy decision layer
+- 建立初始 accepted state 与初始 live state
+- 启动 WebSocket / user-event intake
+- 在每次事件更新后把当前 live state 交给 strategy decision layer
 - 根据 strategy 返回结果执行 keep / rebuild / abnormal
-- 只在成功得到非 `ABNORMAL` 新状态后继续主循环
+- 只在成功得到非 `ABNORMAL` 新状态后继续运行
 
-当前实现故意保持固定的 REST snapshot 轮询：
+本文档采用 WebSocket-first 的 shell flow：
 
-- 主循环固定 sleep `1.5` 秒（`MAIN_LOOP_POLL_INTERVAL_SEC`）
-- `wait_no_open_orders()` 固定按 `1.5` 秒间隔轮询确认清理结果（`WAIT_NO_OPEN_ORDERS_INTERVAL_SEC`）
+- event intake 是 engine 的顶层驱动
+- “收到事件 -> 更新状态 -> 调用决策 -> 执行动作” 是主流程原语
+- 固定 sleep loop 不是当前 flow contract 的组成部分
+- REST `open orders` polling 不是当前 flow contract 的定义性主步骤
 
 本文档不定义 pair strategy 的内部判定细节，也不定义未来 rolling ladder strategy。
 
@@ -30,65 +37,70 @@
 1. 启动 engine
 2. 加载环境变量与常量
 3. 校验 `ACCOUNT_ADDRESS`
-4. 创建 `Info` client
-5. 创建 `Exchange` client
-6. 拉取当前 `open orders`（对短暂性 API / 网络失败做有限重试）
-7. 记录当前订单摘要
-8. 尝试接受初始 saved state，或进入初始 rebuild
+4. 创建运行时依赖与 client
+5. 建立初始 live state
+6. 记录初始订单摘要
+7. 尝试接受初始 saved state，或进入初始 rebuild
+8. 启动 WebSocket / user-event intake
+9. 进入事件驱动运行阶段
 
 ### 2.2 Initial State Acceptance Flow
 
-当前 startup 只接受以下两类起点：
+本 migration baseline 的 startup 只接受以下两类起点：
 
-#### A. 接受已有 `PAIR` snapshot
+#### A. 接受已有 `PAIR` live state
 
-只有同时满足以下条件时，engine 才直接进入主循环：
+只有同时满足以下条件时，engine 才直接进入事件驱动运行阶段：
 
-- 当前 open-order shape 可被分类为 `PAIR`
+- 当前 live-order shape 可被分类为 `PAIR`
 - `get_pair_state(...)` 成功
-- 该 pair snapshot 被接受为初始 saved state
+- 该 pair state 被接受为初始 saved state
 
 若成立：
-- 初始 saved state = 当前 pair snapshot
-- 进入主循环
+- 初始 saved state = 当前 pair state
+- 进入事件驱动运行阶段
 
 #### B. 初始 rebuild
 
-若当前 snapshot 不能被接受为初始 `PAIR` state，则：
+若当前 live state 不能被接受为初始 `PAIR` state，则：
 
 1. 进入 `rebuild(...)`
 2. 若当前存在 live orders，则先尝试清理
 3. 若清理失败，则直接退出
-4. 清理后的无挂单确认仍通过 `open orders` 轮询完成，固定间隔 `1.5` 秒（`WAIT_NO_OPEN_ORDERS_INTERVAL_SEC`）
-5. 若调用方提供显式 `reference_price`，则沿用该值
-6. 否则调用 `get_mid_reference_price()` 推导 fresh reference；其中 BTC mid 读取对短暂性 API / 网络失败做轻量有限重试
-7. 调用 `place_pair(...)`
-8. 若返回 `PAIR` / `BUY_ONLY` / `SELL_ONLY`，则接受为新 saved state 并进入主循环
-9. 若返回 `ABNORMAL` 或 rebuild failure，则退出
+4. 若调用方提供显式 `reference_price`，则沿用该值
+5. 否则调用 `get_mid_reference_price()` 推导 fresh reference
+6. 调用 `place_pair(...)`
+7. 若返回 `PAIR` / `BUY_ONLY` / `SELL_ONLY`，则接受为新 saved state，并进入事件驱动运行阶段
+8. 若返回 `ABNORMAL` 或 rebuild failure，则退出
 
-## 3. Main Loop Shell Flow
+## 3. Event-Driven Shell Flow
 
-每轮循环固定按以下顺序运行：
+事件驱动运行阶段固定按以下顺序处理：
 
-1. 固定 sleep `1.5` 秒
-2. 拉取当前 `open orders`（对短暂性 API / 网络失败做有限重试）
-3. 把当前 `open orders` snapshot 交给 strategy decision layer
-4. 读取 strategy 返回动作：
+1. 等待 user event
+2. 收到 event
+3. 用该 event 更新当前 live state
+4. 把当前 saved state 与更新后的 live state 交给 strategy decision layer
+5. 读取 strategy 返回动作：
    - `("keep", None)`
    - `("rebuild", reference_price)`
    - `("rebuild", None)`
    - `("abnormal", None)`
+6. 按返回动作执行 keep / rebuild / abnormal
 
-其中第 2 步的有限重试只用于基础设施层的短暂失败；它不会把读取失败转换为空订单，也不会改变 strategy decision layer 的判定语义。若重试预算耗尽，则异常继续上抛并结束当前进程。
+其中：
 
-当前主循环不会在每一轮都记录 `OPEN ORDERS` 摘要；订单摘要日志只发生在 startup，以及落入 abnormal path 时。
+- engine 维护 authoritative in-memory live state；该 state 是决策层的单一事实来源，决策不得直接读取 raw events
+- fill / order-update 风格事件都可以推动 state 更新并进入后续判定
+- fill event 是 rebuild path 的主要触发来源；其他 order-update 事件可以更新 state，但不会由事件类型本身重定义 rebuild 语义
+- 本 flow 只要求“先更新 state，再基于更新后的 live state 做决策”，不规定具体 WebSocket library 细节
 
 ### 3.1 Keep Path
 
 若 strategy 返回 `("keep", None)`：
 
 - engine 不做下单或撤单
-- 直接进入下一轮循环
+- 继续等待下一次 event
 
 ### 3.2 Rebuild Path
 
@@ -97,12 +109,11 @@
 1. 调用 `rebuild(...)`
 2. 若当前存在 live orders，则先尝试清理
 3. 若清理失败，则退出
-4. 清理后的无挂单确认仍通过 `open orders` 轮询完成，固定间隔 `1.5` 秒（`WAIT_NO_OPEN_ORDERS_INTERVAL_SEC`）
-5. 若传入显式 `reference_price`，则沿用该值
-6. 若传入 `None`，则调用 `get_mid_reference_price()` 推导 fresh reference；其中 BTC mid 读取对短暂性 API / 网络失败做轻量有限重试
-7. 调用 `place_pair(...)`
-8. 若返回 `PAIR` / `BUY_ONLY` / `SELL_ONLY`，则接受为新 saved state，并进入下一轮循环
-9. 若返回 `ABNORMAL` 或 rebuild failure，则退出
+4. 若传入显式 `reference_price`，则沿用该值
+5. 若传入 `None`，则调用 `get_mid_reference_price()` 推导 fresh reference
+6. 调用 `place_pair(...)`
+7. 若返回 `PAIR` / `BUY_ONLY` / `SELL_ONLY`，则接受为新 saved state，并继续等待下一次 event
+8. 若返回 `ABNORMAL` 或 rebuild failure，则退出
 
 ### 3.3 Abnormal Path
 
@@ -128,11 +139,12 @@ engine shell 不负责决定“为什么 rebuild”，该语义由 strategy cont
 engine shell 对 strategy layer 只要求：
 
 - strategy 必须返回唯一动作结果
+- strategy 消费的是 engine 提供的当前 live state
 - strategy 不得跳过 engine rebuild pipeline
 - strategy 不得直接修改 live orders
 - strategy 不得绕过 abnormal exit contract
 
-当前 engine 不关心 strategy 内部到底是：
+在本 migration baseline 中，engine 不关心 strategy 内部到底是：
 - fill-driven rebuild
 - pair keep
 - buy-only stale rebuild
@@ -147,4 +159,5 @@ engine shell 对 strategy layer 只要求：
 - `PAIR` keep 的内部条件
 - `BUY_ONLY` / `SELL_ONLY` 分支条件
 - anchor stale 触发条件
+- WebSocket transport 的具体实现细节
 - future rolling ladder / moving window strategy

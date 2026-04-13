@@ -1,7 +1,7 @@
 # flow_strategy_pair.md
 
 本文档只描述当前 single-pair strategy 的内部判定顺序，不描述 engine shell 的执行细节。
-它也不描述 live orders 或 BTC mid snapshot 的 infra 获取方式。
+它也不描述 engine 通过何种 transport / infra 提供 current live orders 或 BTC mid。
 
 它依赖：
 - `contract_strategy_pair.md`
@@ -11,7 +11,7 @@
 
 当前 pair strategy 的职责是：
 
-- 读取 engine 传入的 saved state 与当前 live orders
+- 读取 engine 传入的 saved state 与当前 live state / live orders
 - 解释当前 live orders 属于哪一种 single-pair strategy 情况
 - 返回唯一动作结果：
   - `("keep", None)`

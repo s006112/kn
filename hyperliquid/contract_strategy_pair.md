@@ -2,7 +2,7 @@
 
 本文档只描述当前 single-pair strategy 中成立的策略规则。
 
-它依赖父合同 `contract_grid_engine.md` 已定义的 engine state model、open-order shape model、主循环判定顺序、rebuild success / failure 与 abnormal / exit contract。
+它依赖父合同 `contract_grid_engine.md` 已定义的 engine state model、live-state input boundary、open-order shape model、主循环判定顺序、rebuild success / failure 与 abnormal / exit contract。
 
 本文档位于 engine contract 与 anchor 子合同之间：
 
@@ -15,6 +15,7 @@
 
 - 在 engine 已接受的 `PAIR` / `BUY_ONLY` / `SELL_ONLY` saved state 之上
   定义 single-pair strategy 自己的 keep / rebuild / abnormal 接受规则
+- 消费 engine 提供的当前 live state / live orders
 - 把当前 live orders 解释为：
   - 合法 pair continuation
   - fill-driven residual transition
@@ -26,6 +27,8 @@
   - `("rebuild", reference_price)`
   - `("rebuild", None)`
   - `("abnormal", None)`
+
+这些语义不依赖当前 live state 来自启动时的初始接受，还是来自后续 WebSocket / user-event 更新。
 
 本文档不定义 engine 通用循环，也不定义未来 rolling ladder 或 multi-level strategy。
 
