@@ -50,11 +50,16 @@ REANCHOR_BREAK = True
 REANCHOR_BREAK_STEPS = 2
 KEEP_LOG_INTERVAL_SEC = 300
 MAIN_LOOP_POLL_INTERVAL_SEC = 1.5
+WAIT_NO_OPEN_ORDERS_INTERVAL_SEC = 1.5
 OPEN_ORDERS_MAX_RETRIES = 4
 OPEN_ORDERS_RETRY_BASE_SEC = 0.5
 OPEN_ORDERS_RETRY_MAX_SEC = 4.0
 OPEN_ORDERS_RETRY_JITTER_MAX_SEC = 0.3
+OPEN_ORDERS_RETRY_COOLDOWN_SEC = 0.2
 OPEN_ORDERS_RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
+BTC_MID_MAX_RETRIES = 2
+BTC_MID_RETRY_BASE_SEC = 0.3
+BTC_MID_RETRY_MAX_SEC = 0.6
 
 PAIR_MODE = "PAIR"
 BUY_ONLY_MODE = "BUY_ONLY"
@@ -101,6 +106,7 @@ def get_open_orders(info):
                 f"in {delay_sec:.2f}s ({format_retryable_exception(exc)})"
             )
             time.sleep(delay_sec)
+            time.sleep(OPEN_ORDERS_RETRY_COOLDOWN_SEC)
 
 
 def is_retryable_open_orders_error(exc):
@@ -239,9 +245,9 @@ def get_mid_reference_price(info):
     - 当中间价缺失或非正时，抛出 `ValueError`
     - 当推导出的参考价非正时，抛出 `ValueError`
     - 当根据参考价计算出的买价非正时，抛出 `ValueError`
-    - 透传 `info.all_mids()` 或浮点转换抛出的异常
+    - 透传有限重试后最后一次 `info.all_mids()` 或浮点转换抛出的异常
     """
-    btc_mid = float(info.all_mids().get(BTC_MID_KEY, 0))
+    btc_mid = float(get_all_mids_with_retry(info).get(BTC_MID_KEY, 0))
     if btc_mid <= 0:
         raise ValueError("Failed to get BTC mid price")
 
@@ -252,6 +258,37 @@ def get_mid_reference_price(info):
         raise ValueError("Invalid buy price")
 
     return reference_price
+
+
+def get_all_mids_with_retry(info):
+    """作用:
+    读取 BTC 中间价所需的 mids 快照，并对短暂性基础设施失败做轻量重试。
+    """
+    for attempt in range(BTC_MID_MAX_RETRIES + 1):
+        try:
+            return info.all_mids()
+        except Exception as exc:
+            if not is_retryable_open_orders_error(exc):
+                raise
+
+            if attempt >= BTC_MID_MAX_RETRIES:
+                log_msg(
+                    "infra: btc-mid read failed after retries "
+                    f"({format_retryable_exception(exc)})"
+                )
+                raise
+
+            retry_number = attempt + 1
+            delay_sec = min(
+                BTC_MID_RETRY_BASE_SEC * (2 ** attempt),
+                BTC_MID_RETRY_MAX_SEC,
+            )
+            log_msg(
+                "infra: btc-mid transient failure, "
+                f"retry {retry_number}/{BTC_MID_MAX_RETRIES} "
+                f"in {delay_sec:.2f}s ({format_retryable_exception(exc)})"
+            )
+            time.sleep(delay_sec)
 
 
 def build_pair(reference_price):
@@ -336,7 +373,11 @@ def place_limit_order(exchange, action):
     return classify_order_result(result)
 
 
-def wait_no_open_orders(info, max_tries=10, interval_sec=1.0):
+def wait_no_open_orders(
+    info,
+    max_tries=10,
+    interval_sec=WAIT_NO_OPEN_ORDERS_INTERVAL_SEC,
+):
     """作用:
     轮询直到配置账户没有挂单，或达到重试上限。
 

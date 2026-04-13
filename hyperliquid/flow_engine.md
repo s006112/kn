@@ -54,11 +54,12 @@
 1. 进入 `rebuild(...)`
 2. 若当前存在 live orders，则先尝试清理
 3. 若清理失败，则直接退出
-4. 若调用方提供显式 `reference_price`，则沿用该值
-5. 否则调用 `get_mid_reference_price()` 推导 fresh reference
-6. 调用 `place_pair(...)`
-7. 若返回 `PAIR` / `BUY_ONLY` / `SELL_ONLY`，则接受为新 saved state 并进入主循环
-8. 若返回 `ABNORMAL` 或 rebuild failure，则退出
+4. 清理后的无挂单确认仍通过 `open orders` 轮询完成，但使用较保守的固定间隔
+5. 若调用方提供显式 `reference_price`，则沿用该值
+6. 否则调用 `get_mid_reference_price()` 推导 fresh reference；其中 BTC mid 读取对短暂性 API / 网络失败做轻量有限重试
+7. 调用 `place_pair(...)`
+8. 若返回 `PAIR` / `BUY_ONLY` / `SELL_ONLY`，则接受为新 saved state 并进入主循环
+9. 若返回 `ABNORMAL` 或 rebuild failure，则退出
 
 ## 3. Main Loop Shell Flow
 
@@ -90,11 +91,12 @@
 1. 调用 `rebuild(...)`
 2. 若当前存在 live orders，则先尝试清理
 3. 若清理失败，则退出
-4. 若传入显式 `reference_price`，则沿用该值
-5. 若传入 `None`，则调用 `get_mid_reference_price()` 推导 fresh reference
-6. 调用 `place_pair(...)`
-7. 若返回 `PAIR` / `BUY_ONLY` / `SELL_ONLY`，则接受为新 saved state，并进入下一轮循环
-8. 若返回 `ABNORMAL` 或 rebuild failure，则退出
+4. 清理后的无挂单确认仍通过 `open orders` 轮询完成，但使用较保守的固定间隔
+5. 若传入显式 `reference_price`，则沿用该值
+6. 若传入 `None`，则调用 `get_mid_reference_price()` 推导 fresh reference；其中 BTC mid 读取对短暂性 API / 网络失败做轻量有限重试
+7. 调用 `place_pair(...)`
+8. 若返回 `PAIR` / `BUY_ONLY` / `SELL_ONLY`，则接受为新 saved state，并进入下一轮循环
+9. 若返回 `ABNORMAL` 或 rebuild failure，则退出
 
 ### 3.3 Abnormal Path
 
