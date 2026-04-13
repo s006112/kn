@@ -7,8 +7,8 @@ StartLimitIntervalSec=60
 
 [Service]
 Type=simple
-WorkingDirectory=/home/youruser/kn/hyperliquid
-ExecStart=/usr/bin/env python3 /home/youruser/kn/hyperliquid/grid.py
+WorkingDirectory=/home/youruser/kn/hyper_rest
+ExecStart=/usr/bin/env python3 /home/youruser/kn/hyper_rest/grid.py
 Restart=always
 RestartSec=5
 
