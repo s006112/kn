@@ -12,6 +12,10 @@ from grid_config import (
     format_price,
     log_keep_state,
     log_msg,
+    normalize_price,
+    price_distance_at_least,
+    price_gap_matches,
+    prices_equal,
 )
 
 
@@ -51,21 +55,21 @@ def get_pair_state(
     if buy_price is None or sell_price is None:
         return None
 
-    pair_center_price = (buy_price + sell_price) / 2.0
+    pair_center_price = normalize_price((buy_price + sell_price) / 2.0)
 
     if pair_center_price <= 0:
         return None
-    if buy_price <= 0 or buy_price >= sell_price:
+    if buy_price <= 0 or not (buy_price < sell_price):
         return None
 
     expected_gap = (buy_grid_factor + sell_grid_factor) * grid_step
-    if (sell_price - buy_price) != expected_gap:
+    if not price_gap_matches(buy_price, sell_price, expected_gap):
         return None
 
     return {
         "mode": pair_mode,
-        "buy_price": buy_price,
-        "sell_price": sell_price,
+        "buy_price": normalize_price(buy_price),
+        "sell_price": normalize_price(sell_price),
         "pair_center_price": pair_center_price,
     }
 
@@ -103,8 +107,8 @@ def classify_order_shape(
 
 def pair_matches_state(current_pair, state):
     return (
-        current_pair["buy_price"] == state["buy_price"]
-        and current_pair["sell_price"] == state["sell_price"]
+        prices_equal(current_pair["buy_price"], state["buy_price"])
+        and prices_equal(current_pair["sell_price"], state["sell_price"])
     )
 
 
@@ -129,7 +133,7 @@ def should_reanchor_residual_order(
         return False
 
     threshold_distance = reanchor_break_steps * grid_step
-    return btc_mid - order["price"] >= threshold_distance
+    return price_distance_at_least(btc_mid, order["price"], threshold_distance)
 
 
 def get_current_pair_state(orders):

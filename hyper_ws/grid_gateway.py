@@ -22,6 +22,7 @@ from grid_config import (
     OPEN_ORDERS_RETRY_JITTER_MAX_SEC,
     OPEN_ORDERS_RETRY_MAX_SEC,
     OPEN_ORDERS_RETRYABLE_STATUS_CODES,
+    normalize_price,
     log_msg,
 )
 
@@ -30,7 +31,7 @@ def normalize_order(order):
     """将交易所原始订单映射为 engine 内部统一 shape。"""
     raw_side = order["side"]
     side = "BUY" if raw_side == "B" else "SELL"
-    price = float(order["limitPx"])
+    price = normalize_price(order["limitPx"])
 
     normalized = dict(order)
     normalized["side"] = side
@@ -149,7 +150,7 @@ def get_mid_reference_price(info):
     if btc_mid <= 0:
         raise ValueError("Failed to get BTC mid price")
 
-    reference_price = float(int((btc_mid / GRID_STEP) + 0.5) * GRID_STEP)
+    reference_price = normalize_price(int((btc_mid / GRID_STEP) + 0.5) * GRID_STEP)
     if reference_price <= 0:
         raise ValueError("Invalid reference price")
     if reference_price - (BUY_GRID_FACTOR * GRID_STEP) <= 0:
@@ -172,6 +173,6 @@ def get_all_mids_with_retry(info):
 def read_current_btc_mid(info):
     """读取当前 BTC 中间价；读取或解析失败时返回 None。"""
     try:
-        return float(info.all_mids().get(BTC_MID_KEY, 0))
+        return normalize_price(info.all_mids().get(BTC_MID_KEY, 0))
     except Exception:
         return None

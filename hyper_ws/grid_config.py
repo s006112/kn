@@ -40,6 +40,10 @@ BUY_ONLY_MODE = "BUY_ONLY"
 SELL_ONLY_MODE = "SELL_ONLY"
 ABNORMAL_MODE = "ABNORMAL"
 
+# 价格离散化精度：
+# 当前策略 price 本质上按整数价位工作；这里统一收口所有比较与 gap 判定。
+PRICE_TICK = 1.0
+
 last_keep_log_type = None
 last_keep_log_ts = 0.0
 GMT_PLUS_8 = timezone(timedelta(hours=8))
@@ -52,6 +56,36 @@ def log_msg(message):
 
 def format_price(price):
     return str(int(round(float(price))))
+
+
+def normalize_price(price):
+    return price_ticks_to_value(price_to_ticks(price))
+
+
+def price_to_ticks(price):
+    return int(round(float(price) / PRICE_TICK))
+
+
+def price_ticks_to_value(ticks):
+    return float(ticks) * PRICE_TICK
+
+
+def prices_equal(price_a, price_b):
+    return price_to_ticks(price_a) == price_to_ticks(price_b)
+
+
+def price_gap_matches(buy_price, sell_price, expected_gap):
+    buy_ticks = price_to_ticks(buy_price)
+    sell_ticks = price_to_ticks(sell_price)
+    expected_gap_ticks = price_to_ticks(expected_gap)
+    return (sell_ticks - buy_ticks) == expected_gap_ticks
+
+
+def price_distance_at_least(high_price, low_price, distance):
+    high_ticks = price_to_ticks(high_price)
+    low_ticks = price_to_ticks(low_price)
+    distance_ticks = price_to_ticks(distance)
+    return (high_ticks - low_ticks) >= distance_ticks
 
 
 def log_keep_state(keep_type, message):

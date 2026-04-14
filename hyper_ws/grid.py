@@ -1,6 +1,7 @@
 """Engine shell and entrypoint for the Hyperliquid spot grid."""
 
 import time
+import traceback
 
 from eth_account import Account
 
@@ -116,10 +117,35 @@ def step_engine(info, exchange, runtime_state):
     return "abnormal"
 
 
+def log_exception_summary(stage, exc):
+    log_msg(f"abnormal exception at {stage}: {type(exc).__name__}: {exc}")
+    last_line = traceback.format_exc().strip().splitlines()[-1]
+    if last_line:
+        log_msg(f"exception summary: {last_line}")
+
+
+def safe_bootstrap_saved_state(info, exchange):
+    try:
+        return bootstrap_saved_state(info, exchange)
+    except Exception as exc:
+        log_exception_summary("bootstrap", exc)
+        log_msg("abnormal exit")
+        return None, []
+
+
+def safe_step_engine(info, exchange, runtime_state):
+    try:
+        return step_engine(info, exchange, runtime_state)
+    except Exception as exc:
+        log_exception_summary("main-loop", exc)
+        log_msg("abnormal exit")
+        return "abnormal"
+
+
 def run_main_loop(info, exchange, runtime_state):
     while True:
         time.sleep(MAIN_LOOP_POLL_INTERVAL_SEC)
-        if step_engine(info, exchange, runtime_state) == "abnormal":
+        if safe_step_engine(info, exchange, runtime_state) == "abnormal":
             return
 
 
@@ -128,10 +154,15 @@ def main():
         log_msg("Missing HYPERLIQUID_ACCOUNT_ADDRESS")
         return
 
-    info = Info(constants.MAINNET_API_URL)
-    exchange = create_exchange()
+    try:
+        info = Info(constants.MAINNET_API_URL)
+        exchange = create_exchange()
+    except Exception as exc:
+        log_exception_summary("startup", exc)
+        log_msg("abnormal exit")
+        return
 
-    saved_state, live_orders = bootstrap_saved_state(info, exchange)
+    saved_state, live_orders = safe_bootstrap_saved_state(info, exchange)
     if saved_state is None:
         return
 
