@@ -24,6 +24,8 @@ from grid_config import (
     summarize_orders,
 )
 
+POLLING_VERIFY_INTERVAL_SEC = 60
+
 
 def create_exchange():
     if not API_KEY:
@@ -37,60 +39,50 @@ def create_exchange():
 
 
 def create_runtime_state(saved_state, live_orders, live_orders_feed=None):
+    now = time.time()
     return {
         "saved_state": saved_state,
         "live_orders": list(live_orders),
         "live_orders_feed": live_orders_feed,
         "live_orders_source": "bootstrap",
-        "live_orders_ts": time.time(),
+        "live_orders_ts": now,
+        "last_poll_verify_ts": now,
         "live_btc_mid": None,
-        "last_input_ts": time.time(),
+        "last_input_ts": now,
         "rebuild_in_flight": False,
     }
 
 
-def log_live_orders_source_if_changed(runtime_state, new_source, extra_text=""):
+def log_live_orders_source_if_changed(runtime_state, new_source):
     old_source = runtime_state.get("live_orders_source")
     if old_source != new_source:
-        suffix = f" | {extra_text}" if extra_text else ""
-        log_msg(f"input source: {new_source}{suffix}")
+        log_msg(f"input source: {new_source}")
     runtime_state["live_orders_source"] = new_source
+
+
+def should_poll_verify(runtime_state):
+    return (time.time() - runtime_state["last_poll_verify_ts"]) >= POLLING_VERIFY_INTERVAL_SEC
 
 
 def refresh_runtime_inputs(info, runtime_state):
     saved_state = runtime_state["saved_state"]
     live_orders_feed = runtime_state.get("live_orders_feed")
-    feed_status = live_orders_feed.get_status() if live_orders_feed else None
 
     live_orders = live_orders_feed.get_orders() if live_orders_feed else None
     if live_orders is None:
         live_orders = get_open_orders(info)
         if live_orders_feed is not None:
             live_orders_feed.seed(live_orders)
-
-        extra_text = ""
-        if feed_status is not None:
-            extra_text = (
-                f"ws_has_snapshot={feed_status['has_snapshot']} "
-                f"ws_is_fresh={feed_status['is_fresh']}"
-            )
-        log_live_orders_source_if_changed(
-            runtime_state,
-            "polling-fallback",
-            extra_text,
-        )
+        log_live_orders_source_if_changed(runtime_state, "polling-fallback")
+        runtime_state["last_poll_verify_ts"] = time.time()
+    elif should_poll_verify(runtime_state):
+        live_orders = get_open_orders(info)
+        if live_orders_feed is not None:
+            live_orders_feed.seed(live_orders)
+        log_live_orders_source_if_changed(runtime_state, "polling-verify")
+        runtime_state["last_poll_verify_ts"] = time.time()
     else:
-        extra_text = ""
-        if feed_status is not None:
-            extra_text = (
-                f"ws_has_snapshot={feed_status['has_snapshot']} "
-                f"ws_is_fresh={feed_status['is_fresh']}"
-            )
-        log_live_orders_source_if_changed(
-            runtime_state,
-            "ws-cache",
-            extra_text,
-        )
+        log_live_orders_source_if_changed(runtime_state, "ws-cache")
 
     runtime_state["live_orders"] = live_orders
     runtime_state["live_orders_ts"] = time.time()

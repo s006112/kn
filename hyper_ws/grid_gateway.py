@@ -17,7 +17,6 @@ from grid_config import (
     BTC_MID_RETRY_MAX_SEC,
     BUY_GRID_FACTOR,
     GRID_STEP,
-    MAIN_LOOP_POLL_INTERVAL_SEC,
     OPEN_ORDERS_MAX_RETRIES,
     OPEN_ORDERS_RETRY_BASE_SEC,
     OPEN_ORDERS_RETRY_COOLDOWN_SEC,
@@ -36,7 +35,6 @@ class LiveOrdersFeed:
         self._orders = None
         self._last_update_ts = 0.0
         self._last_event_ts = 0.0
-        self._fresh_ttl_sec = MAIN_LOOP_POLL_INTERVAL_SEC * 2.0
 
     def start(self):
         subscribe = getattr(self.info, "subscribe", None)
@@ -67,26 +65,12 @@ class LiveOrdersFeed:
         with self._lock:
             if self._orders is None:
                 return None
-
-            if time.time() - self._last_update_ts > self._fresh_ttl_sec:
-                return None
-
             return list(self._orders)
 
     def get_status(self):
         with self._lock:
-            if self._orders is None:
-                return {
-                    "has_snapshot": False,
-                    "is_fresh": False,
-                    "last_event_ts": self._last_event_ts,
-                    "last_update_ts": self._last_update_ts,
-                }
-
-            is_fresh = (time.time() - self._last_update_ts) <= self._fresh_ttl_sec
             return {
-                "has_snapshot": True,
-                "is_fresh": is_fresh,
+                "has_snapshot": self._orders is not None,
                 "last_event_ts": self._last_event_ts,
                 "last_update_ts": self._last_update_ts,
             }
