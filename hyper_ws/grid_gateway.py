@@ -30,7 +30,13 @@ from grid_config import (
 def normalize_order(order):
     """将交易所原始订单映射为 engine 内部统一 shape。"""
     raw_side = order["side"]
-    side = "BUY" if raw_side == "B" else "SELL"
+    if raw_side == "B":
+        side = "BUY"
+    elif raw_side == "A":
+        side = "SELL"
+    else:
+        raise ValueError(f"Unknown order side: {raw_side!r}")
+
     price = normalize_price(order["limitPx"])
 
     normalized = dict(order)
@@ -171,8 +177,15 @@ def get_all_mids_with_retry(info):
 
 
 def read_current_btc_mid(info):
-    """读取当前 BTC 中间价；读取或解析失败时返回 None。"""
+    """读取当前 BTC 中间价；读取或解析失败时记录日志并返回 None。"""
     try:
-        return normalize_price(info.all_mids().get(BTC_MID_KEY, 0))
-    except Exception:
+        btc_mid = float(get_all_mids_with_retry(info).get(BTC_MID_KEY, 0))
+    except Exception as exc:
+        log_msg(f"infra: btc-mid unavailable ({type(exc).__name__}: {exc})")
         return None
+
+    if btc_mid <= 0:
+        log_msg(f"infra: btc-mid invalid ({btc_mid})")
+        return None
+
+    return normalize_price(btc_mid)

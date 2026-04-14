@@ -9,7 +9,7 @@ from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
 
-from grid_decision import get_current_pair_state, get_loop_action
+from grid_decision import get_bootstrap_live_state, get_loop_action
 from grid_execution import rebuild
 from grid_gateway import get_open_orders, read_current_btc_mid
 from grid_config import (
@@ -18,11 +18,11 @@ from grid_config import (
     API_KEY,
     BUY_ONLY_MODE,
     MAIN_LOOP_POLL_INTERVAL_SEC,
+    PAIR_MODE,
     SELL_ONLY_MODE,
     log_msg,
     summarize_orders,
 )
-
 
 def create_exchange():
     if not API_KEY:
@@ -56,38 +56,22 @@ def refresh_runtime_inputs(info, runtime_state):
 
 def bootstrap_saved_state(info, exchange):
     orders = get_open_orders(info)
-    buy_count, sell_count = summarize_orders(orders)
+    summarize_orders(orders)
 
-    state = None
-
-    if buy_count == 1 and sell_count == 1:
-        state = get_current_pair_state(orders)
-        if state is not None:
+    state = get_bootstrap_live_state(orders)
+    if state is not None:
+        if state["mode"] == PAIR_MODE:
             log_msg("pair valid")
+        elif state["mode"] == BUY_ONLY_MODE:
+            log_msg("bootstrap accept buy-only residual")
+        elif state["mode"] == SELL_ONLY_MODE:
+            log_msg("bootstrap accept sell-only residual")
+        return state, orders
 
-    elif buy_count == 1 and sell_count == 0:
-        state = {
-            "mode": BUY_ONLY_MODE,
-            "buy_price": orders[0]["price"],
-            "sell_price": None,
-            "reference_price": None,
-        }
-        log_msg("bootstrap accept buy-only residual")
-
-    elif buy_count == 0 and sell_count == 1:
-        state = {
-            "mode": SELL_ONLY_MODE,
-            "buy_price": None,
-            "sell_price": orders[0]["price"],
-            "reference_price": None,
-        }
-        log_msg("bootstrap accept sell-only residual")
-
-    if state is None:
-        state = rebuild(info, exchange, orders)
-        if state is None or state["mode"] == ABNORMAL_MODE:
-            log_msg("initial rebuild failed or abnormal mode")
-            return None, orders
+    state = rebuild(info, exchange, orders)
+    if state is None or state["mode"] == ABNORMAL_MODE:
+        log_msg("initial rebuild failed or abnormal mode")
+        return None, orders
 
     return state, orders
 
