@@ -11,7 +11,7 @@ from hyperliquid.utils import constants
 
 from grid_decision import get_bootstrap_live_state, get_loop_action
 from grid_execution import rebuild
-from grid_gateway import get_open_orders, read_current_btc_mid
+from grid_gateway import LiveOrdersFeed, get_open_orders, read_current_btc_mid
 from grid_config import (
     ABNORMAL_MODE,
     ACCOUNT_ADDRESS,
@@ -24,6 +24,7 @@ from grid_config import (
     summarize_orders,
 )
 
+
 def create_exchange():
     if not API_KEY:
         raise ValueError("Missing HYPERLIQUID_API_KEY")
@@ -35,10 +36,11 @@ def create_exchange():
     )
 
 
-def create_runtime_state(saved_state, live_orders):
+def create_runtime_state(saved_state, live_orders, live_orders_feed=None):
     return {
         "saved_state": saved_state,
         "live_orders": list(live_orders),
+        "live_orders_feed": live_orders_feed,
         "live_btc_mid": None,
         "last_input_ts": time.time(),
         "rebuild_in_flight": False,
@@ -47,7 +49,14 @@ def create_runtime_state(saved_state, live_orders):
 
 def refresh_runtime_inputs(info, runtime_state):
     saved_state = runtime_state["saved_state"]
-    runtime_state["live_orders"] = get_open_orders(info)
+    live_orders_feed = runtime_state.get("live_orders_feed")
+    live_orders = live_orders_feed.get_orders() if live_orders_feed else None
+    if live_orders is None:
+        live_orders = get_open_orders(info)
+        if live_orders_feed is not None:
+            live_orders_feed.seed(live_orders)
+
+    runtime_state["live_orders"] = live_orders
     runtime_state["live_btc_mid"] = (
         read_current_btc_mid(info) if saved_state["mode"] == BUY_ONLY_MODE else None
     )
@@ -73,7 +82,10 @@ def bootstrap_saved_state(info, exchange):
         log_msg("initial rebuild failed or abnormal mode")
         return None, orders
 
+    orders = get_open_orders(info)
+    summarize_orders(orders)
     return state, orders
+
 
 def execute_rebuild(info, exchange, runtime_state, reference_price):
     if runtime_state["rebuild_in_flight"]:
@@ -169,7 +181,11 @@ def main():
     if saved_state is None:
         return
 
-    runtime_state = create_runtime_state(saved_state, live_orders)
+    live_orders_feed = LiveOrdersFeed(info)
+    live_orders_feed.seed(live_orders)
+    live_orders_feed.start()
+
+    runtime_state = create_runtime_state(saved_state, live_orders, live_orders_feed)
     run_main_loop(info, exchange, runtime_state)
 
 

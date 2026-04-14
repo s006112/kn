@@ -2,6 +2,7 @@
 
 import random
 import socket
+import threading
 import time
 
 from requests import exceptions as requests_exceptions
@@ -16,6 +17,7 @@ from grid_config import (
     BTC_MID_RETRY_MAX_SEC,
     BUY_GRID_FACTOR,
     GRID_STEP,
+    MAIN_LOOP_POLL_INTERVAL_SEC,
     OPEN_ORDERS_MAX_RETRIES,
     OPEN_ORDERS_RETRY_BASE_SEC,
     OPEN_ORDERS_RETRY_COOLDOWN_SEC,
@@ -25,6 +27,57 @@ from grid_config import (
     normalize_price,
     log_msg,
 )
+
+
+class LiveOrdersFeed:
+    def __init__(self, info):
+        self.info = info
+        self._lock = threading.Lock()
+        self._orders = None
+        self._last_update_ts = 0.0
+
+    def start(self):
+        subscribe = getattr(self.info, "subscribe", None)
+        if subscribe is None:
+            log_msg("ws: subscribe unavailable, polling only")
+            return False
+
+        try:
+            subscribe(
+                {"type": "userEvents", "user": ACCOUNT_ADDRESS},
+                self._on_user_events,
+            )
+            log_msg("ws: userEvents subscribed")
+            return True
+        except Exception as exc:
+            log_msg(
+                f"ws: subscribe failed ({type(exc).__name__}: {exc}), polling only"
+            )
+            return False
+
+    def seed(self, orders):
+        with self._lock:
+            self._orders = list(orders)
+            self._last_update_ts = time.time()
+
+    def get_orders(self):
+        with self._lock:
+            if self._orders is None:
+                return None
+            if time.time() - self._last_update_ts > (
+                MAIN_LOOP_POLL_INTERVAL_SEC * 2.0
+            ):
+                return None
+            return list(self._orders)
+
+    def _on_user_events(self, _msg):
+        try:
+            orders = get_open_orders(self.info)
+        except Exception as exc:
+            log_msg(f"ws: open-orders refresh failed ({type(exc).__name__}: {exc})")
+            return
+
+        self.seed(orders)
 
 
 def normalize_order(order):
