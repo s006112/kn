@@ -2,7 +2,6 @@
 
 import random
 import socket
-import threading
 import time
 
 from requests import exceptions as requests_exceptions
@@ -26,81 +25,6 @@ from grid_config import (
     normalize_price,
     log_msg,
 )
-
-
-class SnapshotFeed:
-    def __init__(self, info, subscription, read_func, read_name):
-        self.info = info
-        self.subscription = subscription
-        self.read_func = read_func
-        self.read_name = read_name
-        self._lock = threading.Lock()
-        self._snapshot = None
-        self._last_update_ts = 0.0
-        self._last_event_ts = 0.0
-
-    def start(self):
-        subscribe = getattr(self.info, "subscribe", None)
-        if subscribe is None:
-            log_msg(f"ws: {self.read_name} subscribe unavailable, polling only")
-            return False
-
-        try:
-            subscribe(self.subscription, self._on_message)
-            log_msg(f"ws: {self.read_name} subscribed")
-            return True
-        except Exception as exc:
-            log_msg(
-                f"ws: {self.read_name} subscribe failed "
-                f"({type(exc).__name__}: {exc}), polling only"
-            )
-            return False
-
-    def seed(self, snapshot):
-        with self._lock:
-            self._snapshot = snapshot
-            self._last_update_ts = time.time()
-
-    def get_snapshot(self):
-        with self._lock:
-            return self._snapshot
-
-    def refresh_from_poll(self):
-        snapshot = self.read_func(self.info)
-        self.seed(snapshot)
-        return snapshot
-
-    def _on_message(self, _msg):
-        with self._lock:
-            self._last_event_ts = time.time()
-
-        try:
-            self.refresh_from_poll()
-        except Exception as exc:
-            log_msg(
-                f"ws: {self.read_name} refresh failed "
-                f"({type(exc).__name__}: {exc})"
-            )
-
-
-class LiveOrdersFeed(SnapshotFeed):
-    def __init__(self, info):
-        super().__init__(
-            info=info,
-            subscription={"type": "userEvents", "user": ACCOUNT_ADDRESS},
-            read_func=get_open_orders,
-            read_name="userEvents",
-        )
-
-
-class BtcMidFeed(SnapshotFeed):
-    def __init__(self, info):
-        super().__init__(
-            info=info,
-            subscription={"type": "allMids"},
-            read_func=read_current_btc_mid,
-            read_name="allMids",
-        )
 
 
 def normalize_order(order):

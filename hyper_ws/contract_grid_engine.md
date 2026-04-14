@@ -53,38 +53,34 @@ saved state 只接受：
 
 ### Bootstrap residual state
 
-engine startup 时允许直接接受合法单边 residual。
-
-当前实现中，bootstrap residual state 使用与 placement / rebuild state 对齐的 shape：
+仅适用于 engine startup 时接受合法单边 residual：
 
 #### BUY_ONLY residual
 
 - `mode`
 - `buy_price`
-- `sell_price`
-- `reference_price`
 
 #### SELL_ONLY residual
 
 - `mode`
-- `buy_price`
 - `sell_price`
-- `reference_price`
 
 用途：
 
 - 表示启动时 live orders 已经是合法单边 residual
-- 其 canonical residual side price 必须与当前 live residual 一致
-- 其余价格字段允许作为 placement-compatible state 一并保存，供后续统一 decision / rebuild 路径使用
+- 仅保存该 residual side 后续决策所需的 canonical price
+- 不要求补齐另一侧 price
+- 不要求构造 `pair_center_price`
+- 不要求构造 `reference_price`
 
 约束：
 
 - `pair_center_price` 表示当前 live pair 中点
 - `reference_price` 表示 placement / rebuild anchor
 - 两者不可混用，不可互相替代
-- bootstrap residual state 不得被解释为 pair-derived state
-- 对于 `BUY_ONLY`，`buy_price` 必须与 live residual BUY 一致
-- 对于 `SELL_ONLY`，`sell_price` 必须与 live residual SELL 一致
+- `BUY_ONLY` state 不得依赖 `sell_price`
+- `SELL_ONLY` state 不得依赖 `buy_price`
+
 ## 3. Live Input Boundary
 
 engine 必须基于当前 live input 做决策。
@@ -193,31 +189,9 @@ engine 启动时必须：
 当 decision 返回 `("abnormal", None)` 时：
 
 - 记录异常摘要
-- 当前 engine 进程立即 abnormal exit
-- 不允许在同一进程内继续主循环
-- 不做进程内自动修复
+- 立即退出
+- 不做自动修复
 
-说明：
-
-- abnormal exit 表示当前 engine instance 失效并退出
-- 进程退出后的 restart / backoff / supervision policy 属于 deployment responsibility
-- supervisor 可以根据部署策略决定是否自动重启
-- 该外部重启行为不改变本合同中的 strategy / decision / state 语义
-
-### Unified Exception Handling
-
-运行期异常必须统一收口为：
-
-- 记录 stage
-- 记录异常摘要
-- 输出 `abnormal exit`
-- 当前 engine 进程退出
-
-约束：
-
-- engine 不得在未知输入或异常状态下继续主循环
-- engine 不提供进程内 self-healing
-- 外部 supervisor 是否拉起新进程，不属于本合同定义范围
 ### Unified Exception Handling
 
 运行期异常必须统一收口为：
