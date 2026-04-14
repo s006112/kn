@@ -193,9 +193,31 @@ engine 启动时必须：
 当 decision 返回 `("abnormal", None)` 时：
 
 - 记录异常摘要
-- 立即退出
-- 不做自动修复
+- 当前 engine 进程立即 abnormal exit
+- 不允许在同一进程内继续主循环
+- 不做进程内自动修复
 
+说明：
+
+- abnormal exit 表示当前 engine instance 失效并退出
+- 进程退出后的 restart / backoff / supervision policy 属于 deployment responsibility
+- supervisor 可以根据部署策略决定是否自动重启
+- 该外部重启行为不改变本合同中的 strategy / decision / state 语义
+
+### Unified Exception Handling
+
+运行期异常必须统一收口为：
+
+- 记录 stage
+- 记录异常摘要
+- 输出 `abnormal exit`
+- 当前 engine 进程退出
+
+约束：
+
+- engine 不得在未知输入或异常状态下继续主循环
+- engine 不提供进程内 self-healing
+- 外部 supervisor 是否拉起新进程，不属于本合同定义范围
 ### Unified Exception Handling
 
 运行期异常必须统一收口为：

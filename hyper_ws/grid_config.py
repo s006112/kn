@@ -3,9 +3,7 @@
 import os
 import time
 from datetime import datetime, timedelta, timezone
-
 from dotenv import load_dotenv
-
 load_dotenv()
 
 ACCOUNT_ADDRESS = os.getenv("HYPERLIQUID_ACCOUNT_ADDRESS")
