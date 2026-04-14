@@ -149,6 +149,25 @@ def cleanup_orders(info, exchange, orders):
     return False
 
 
+def try_cleanup_after_place_failure(info, exchange):
+    try:
+        orders = get_open_orders(info)
+    except Exception as exc:
+        log_msg(
+            f"cleanup attempt failed while reading open orders: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return
+
+    if not orders:
+        return
+
+    try:
+        cleanup_orders(info, exchange, orders)
+    except Exception as exc:
+        log_msg(f"cleanup attempt raised: {type(exc).__name__}: {exc}")
+
+
 def place_pair(exchange, reference_price):
     """作用:
     执行一次网格重建的下单动作（同时提交买单与卖单），并根据下单结果生成新的策略状态。
@@ -235,6 +254,11 @@ def rebuild(info, exchange, orders, reference_price=None):
     `place_pair()` 的 schema，因此包含 `reference_price` 这一重建锚点字段，而不会改写成
     `get_pair_state()` 使用的 `pair_center_price`。若前置或后置清理失败，或下单结果为
     `ABNORMAL`，则返回 `None`。透传清理、参考价推导、订单查询或下单过程抛出的异常。
+    
+    异常:
+    若 `place_pair()` 过程中抛出异常，函数会先 best-effort 读取当前 open orders，
+    并在发现残单时尝试 cleanup，然后再继续向上抛出原异常。    
+    
     """
     if orders and not cleanup_orders(info, exchange, orders):
         return None
@@ -242,7 +266,12 @@ def rebuild(info, exchange, orders, reference_price=None):
     if reference_price is None:
         reference_price = get_mid_reference_price(info)
 
-    state = place_pair(exchange, reference_price)
+    try:
+        state = place_pair(exchange, reference_price)
+    except Exception:
+        try_cleanup_after_place_failure(info, exchange)
+        raise
+
     if state is not None and state["mode"] != ABNORMAL_MODE:
         return state
 
