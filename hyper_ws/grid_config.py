@@ -46,28 +46,15 @@ GMT_PLUS_8 = timezone(timedelta(hours=8))
 
 
 def log_msg(message):
-    """作用:
-    打印带时间戳的日志行。
-    """
     timestamp = datetime.now(GMT_PLUS_8).strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] {message}")
 
 
-def format_price(price):  # 将价格格式化为整数显示字符串。
+def format_price(price):
     return str(int(round(float(price))))
 
 
 def log_keep_state(keep_type, message):
-    """作用:
-    按类型和时间间隔限制重复的 keep 状态日志输出。
-
-    输入:
-    keep_type: 用于抑制同类重复日志的标签。
-    message: 通过限流检查后要输出的日志文本。
-
-    输出:
-    返回 `None`。仅当 `keep_type` 发生变化，或距离上次同类日志至少经过 `KEEP_LOG_INTERVAL_SEC` 秒时，才会更新模块级 keep 日志跟踪状态。
-    """
     global last_keep_log_type
     global last_keep_log_ts
 
@@ -82,15 +69,6 @@ def log_keep_state(keep_type, message):
 
 
 def summarize_orders(orders):
-    """作用:
-    记录当前挂单摘要并统计买卖两侧数量。
-
-    输入:
-    orders: 可迭代的订单映射对象，包含 `side`、`limitPx`、`sz` 和 `oid` 字段。
-
-    输出:
-    返回 `(buy_count, sell_count)` 元组。输入为空时记录 `"OPEN ORDERS: none"`；否则记录以竖线分隔的订单摘要，其中 `side == "B"` 显示为 `BUY`，其余值显示为 `SELL`。
-    """
     if not orders:
         log_msg("OPEN ORDERS: none")
         return 0, 0
@@ -98,10 +76,11 @@ def summarize_orders(orders):
     parts = []
     buy_count = 0
     sell_count = 0
+
     for order in orders:
-        side = "BUY" if order["side"] == "B" else "SELL"
-        parts.append(f"{side} - {format_price(order['limitPx'])}")  #  size={order['sz']} oid={order['oid']}
-        if order["side"] == "B":
+        side = order["side"]
+        parts.append(f"{side} - {format_price(order['price'])}")
+        if side == "BUY":
             buy_count += 1
         else:
             sell_count += 1
