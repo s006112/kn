@@ -28,67 +28,79 @@ from grid_config import (
 )
 
 
-class LiveOrdersFeed:
-    def __init__(self, info):
+class SnapshotFeed:
+    def __init__(self, info, subscription, read_func, read_name):
         self.info = info
+        self.subscription = subscription
+        self.read_func = read_func
+        self.read_name = read_name
         self._lock = threading.Lock()
-        self._orders = None
+        self._snapshot = None
         self._last_update_ts = 0.0
         self._last_event_ts = 0.0
 
     def start(self):
         subscribe = getattr(self.info, "subscribe", None)
         if subscribe is None:
-            log_msg("ws: subscribe unavailable, polling only")
+            log_msg(f"ws: {self.read_name} subscribe unavailable, polling only")
             return False
 
         try:
-            subscribe(
-                {"type": "userEvents", "user": ACCOUNT_ADDRESS},
-                self._on_user_events,
-            )
-            log_msg("ws: userEvents subscribed")
+            subscribe(self.subscription, self._on_message)
+            log_msg(f"ws: {self.read_name} subscribed")
             return True
         except Exception as exc:
             log_msg(
-                f"ws: subscribe failed ({type(exc).__name__}: {exc}), polling only"
+                f"ws: {self.read_name} subscribe failed "
+                f"({type(exc).__name__}: {exc}), polling only"
             )
             return False
 
-    def seed(self, orders):
-        now = time.time()
+    def seed(self, snapshot):
         with self._lock:
-            self._orders = list(orders)
-            self._last_update_ts = now
+            self._snapshot = snapshot
+            self._last_update_ts = time.time()
 
-    def get_orders(self):
+    def get_snapshot(self):
         with self._lock:
-            if self._orders is None:
-                return None
-            return list(self._orders)
+            return self._snapshot
 
-    def get_status(self):
-        with self._lock:
-            return {
-                "has_snapshot": self._orders is not None,
-                "last_event_ts": self._last_event_ts,
-                "last_update_ts": self._last_update_ts,
-            }
+    def refresh_from_poll(self):
+        snapshot = self.read_func(self.info)
+        self.seed(snapshot)
+        return snapshot
 
-    def _on_user_events(self, _msg):
-        now = time.time()
+    def _on_message(self, _msg):
         with self._lock:
-            self._last_event_ts = now
+            self._last_event_ts = time.time()
 
         try:
-            orders = get_open_orders(self.info)
+            self.refresh_from_poll()
         except Exception as exc:
-            log_msg(f"ws: open-orders refresh failed ({type(exc).__name__}: {exc})")
-            return
+            log_msg(
+                f"ws: {self.read_name} refresh failed "
+                f"({type(exc).__name__}: {exc})"
+            )
 
-        with self._lock:
-            self._orders = list(orders)
-            self._last_update_ts = time.time()
+
+class LiveOrdersFeed(SnapshotFeed):
+    def __init__(self, info):
+        super().__init__(
+            info=info,
+            subscription={"type": "userEvents", "user": ACCOUNT_ADDRESS},
+            read_func=get_open_orders,
+            read_name="userEvents",
+        )
+
+
+class BtcMidFeed(SnapshotFeed):
+    def __init__(self, info):
+        super().__init__(
+            info=info,
+            subscription={"type": "allMids"},
+            read_func=read_current_btc_mid,
+            read_name="allMids",
+        )
 
 
 def normalize_order(order):

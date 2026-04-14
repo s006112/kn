@@ -18,8 +18,8 @@ from grid_config import (
     WAIT_NO_OPEN_ORDERS_INTERVAL_SEC,
     format_price,
     log_msg,
+    summarize_orders,
 )
-
 
 def build_pair(reference_price):
     """作用:
@@ -145,9 +145,10 @@ def cleanup_orders(info, exchange, orders):
     if wait_no_open_orders(info):
         return True
 
+    remaining_orders = get_open_orders(info)
+    summarize_orders(remaining_orders)
     log_msg("cleanup failure: open orders still remain")
     return False
-
 
 def try_cleanup_after_place_failure(info, exchange):
     try:
