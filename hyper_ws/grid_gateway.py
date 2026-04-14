@@ -35,6 +35,8 @@ class LiveOrdersFeed:
         self._lock = threading.Lock()
         self._orders = None
         self._last_update_ts = 0.0
+        self._last_event_ts = 0.0
+        self._fresh_ttl_sec = MAIN_LOOP_POLL_INTERVAL_SEC * 2.0
 
     def start(self):
         subscribe = getattr(self.info, "subscribe", None)
@@ -56,28 +58,53 @@ class LiveOrdersFeed:
             return False
 
     def seed(self, orders):
+        now = time.time()
         with self._lock:
             self._orders = list(orders)
-            self._last_update_ts = time.time()
+            self._last_update_ts = now
 
     def get_orders(self):
         with self._lock:
             if self._orders is None:
                 return None
-            if time.time() - self._last_update_ts > (
-                MAIN_LOOP_POLL_INTERVAL_SEC * 2.0
-            ):
+
+            if time.time() - self._last_update_ts > self._fresh_ttl_sec:
                 return None
+
             return list(self._orders)
 
+    def get_status(self):
+        with self._lock:
+            if self._orders is None:
+                return {
+                    "has_snapshot": False,
+                    "is_fresh": False,
+                    "last_event_ts": self._last_event_ts,
+                    "last_update_ts": self._last_update_ts,
+                }
+
+            is_fresh = (time.time() - self._last_update_ts) <= self._fresh_ttl_sec
+            return {
+                "has_snapshot": True,
+                "is_fresh": is_fresh,
+                "last_event_ts": self._last_event_ts,
+                "last_update_ts": self._last_update_ts,
+            }
+
     def _on_user_events(self, _msg):
+        now = time.time()
+        with self._lock:
+            self._last_event_ts = now
+
         try:
             orders = get_open_orders(self.info)
         except Exception as exc:
             log_msg(f"ws: open-orders refresh failed ({type(exc).__name__}: {exc})")
             return
 
-        self.seed(orders)
+        with self._lock:
+            self._orders = list(orders)
+            self._last_update_ts = time.time()
 
 
 def normalize_order(order):

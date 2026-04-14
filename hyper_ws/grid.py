@@ -41,22 +41,59 @@ def create_runtime_state(saved_state, live_orders, live_orders_feed=None):
         "saved_state": saved_state,
         "live_orders": list(live_orders),
         "live_orders_feed": live_orders_feed,
+        "live_orders_source": "bootstrap",
+        "live_orders_ts": time.time(),
         "live_btc_mid": None,
         "last_input_ts": time.time(),
         "rebuild_in_flight": False,
     }
 
 
+def log_live_orders_source_if_changed(runtime_state, new_source, extra_text=""):
+    old_source = runtime_state.get("live_orders_source")
+    if old_source != new_source:
+        suffix = f" | {extra_text}" if extra_text else ""
+        log_msg(f"input source: {new_source}{suffix}")
+    runtime_state["live_orders_source"] = new_source
+
+
 def refresh_runtime_inputs(info, runtime_state):
     saved_state = runtime_state["saved_state"]
     live_orders_feed = runtime_state.get("live_orders_feed")
+    feed_status = live_orders_feed.get_status() if live_orders_feed else None
+
     live_orders = live_orders_feed.get_orders() if live_orders_feed else None
     if live_orders is None:
         live_orders = get_open_orders(info)
         if live_orders_feed is not None:
             live_orders_feed.seed(live_orders)
 
+        extra_text = ""
+        if feed_status is not None:
+            extra_text = (
+                f"ws_has_snapshot={feed_status['has_snapshot']} "
+                f"ws_is_fresh={feed_status['is_fresh']}"
+            )
+        log_live_orders_source_if_changed(
+            runtime_state,
+            "polling-fallback",
+            extra_text,
+        )
+    else:
+        extra_text = ""
+        if feed_status is not None:
+            extra_text = (
+                f"ws_has_snapshot={feed_status['has_snapshot']} "
+                f"ws_is_fresh={feed_status['is_fresh']}"
+            )
+        log_live_orders_source_if_changed(
+            runtime_state,
+            "ws-cache",
+            extra_text,
+        )
+
     runtime_state["live_orders"] = live_orders
+    runtime_state["live_orders_ts"] = time.time()
     runtime_state["live_btc_mid"] = (
         read_current_btc_mid(info) if saved_state["mode"] == BUY_ONLY_MODE else None
     )
@@ -127,7 +164,10 @@ def step_engine(info, exchange, runtime_state):
         return execute_rebuild(info, exchange, runtime_state, reference_price)
 
     buy_count, sell_count = summarize_orders(orders)
-    log_msg(f"abnormal state: buy={buy_count} sell={sell_count}")
+    log_msg(
+        f"abnormal state: buy={buy_count} sell={sell_count} "
+        f"source={runtime_state.get('live_orders_source')}"
+    )
     log_msg("abnormal exit")
     return "abnormal"
 
