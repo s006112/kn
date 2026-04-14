@@ -1,6 +1,4 @@
 """Engine-side decision orchestration helpers for the grid engine."""
-
-from grid_infra import read_current_btc_mid
 from grid_logic import (
     classify_order_shape,
     get_pair_state,
@@ -119,12 +117,12 @@ def validate_keep_state(orders, state, order_shape):
     return False
 
 
-def detect_anchor_break(info, orders, state, order_shape):
+def detect_anchor_break(current_btc_mid, orders, state, order_shape):
     """作用:
     检测单边残单是否已经偏离 BTC 中间价到必须重建的程度。
 
     输入:
-    info: 被残单重锚辅助函数使用的 Hyperliquid `Info` 客户端。
+    current_btc_mid: 由 gateway 预先读取并传入的当前 BTC 中间价；读取失败时可为 `None`。
     orders: 当前挂单集合。
     state: 至少包含 `mode` 的已保存状态映射。该状态可以带有 `pair_center_price` 或
     `reference_price`，但本函数只根据 `mode` 和当前订单检查单边重锚，不把两者混为同一字段。
@@ -150,7 +148,7 @@ def detect_anchor_break(info, orders, state, order_shape):
         state["mode"],
         BUY_ONLY_MODE,
         SELL_ONLY_MODE,
-        read_current_btc_mid(info),
+        current_btc_mid,
         GRID_STEP,
         REANCHOR_BREAK,
         REANCHOR_BREAK_STEPS,
@@ -161,12 +159,12 @@ def detect_anchor_break(info, orders, state, order_shape):
     return "rebuild", None
 
 
-def detect_single_sided_action(info, orders, state, order_shape):
+def detect_single_sided_action(current_btc_mid, orders, state, order_shape):
     """作用:
     决定单边状态应继续保持还是触发重建。
 
     输入:
-    info: 用于评估 anchor break 的 Hyperliquid `Info` 客户端。
+    current_btc_mid: 由 gateway 预先读取并传入、供 anchor break 评估使用的 BTC 中间价。
     orders: 当前挂单集合。
     state: 至少包含 `mode` 的已保存状态映射，可能来自 `get_pair_state()` 的
         `pair_center_price` schema，也可能来自 `place_pair()` 的 `reference_price` schema；
@@ -192,7 +190,12 @@ def detect_single_sided_action(info, orders, state, order_shape):
         if len(orders) != 1 or orders[0]["side"] != "B":
             return None
 
-        anchor_break_action = detect_anchor_break(info, orders, state, order_shape)
+        anchor_break_action = detect_anchor_break(
+            current_btc_mid,
+            orders,
+            state,
+            order_shape,
+        )
         if anchor_break_action is not None:
             return anchor_break_action
 
@@ -211,18 +214,19 @@ def detect_single_sided_action(info, orders, state, order_shape):
     return None
 
 
-def get_loop_action(info, orders, state):
+def get_loop_action(orders, state, current_btc_mid=None):
     """
     作用:
     根据当前 open orders 与上一轮已接受的 state，
     判定这一轮主循环应执行的唯一动作。
 
     输入:
-    info: 用于订单状态判断和潜在重建决策的 Hyperliquid `Info` 客户端。
     orders: 当前挂单集合。
     state: 上一轮已接受的状态映射，可能来自 `get_pair_state()` 并包含
     `pair_center_price`，也可能来自 `place_pair()` 并包含 `reference_price`；
     本函数及其调用链不会将这两个字段名或语义统一。
+    current_btc_mid: 由 gateway 预先提供的 BTC 中间价，仅在单边 anchor break 判定时使用；
+    若读取失败或当前路径不需要，可为 `None`。
 
     判定顺序:
     1. 先分类当前订单形状
@@ -248,7 +252,12 @@ def get_loop_action(info, orders, state):
     if validate_keep_state(orders, state, order_shape):
         return "keep", None
 
-    single_sided_action = detect_single_sided_action(info, orders, state, order_shape)
+    single_sided_action = detect_single_sided_action(
+        current_btc_mid,
+        orders,
+        state,
+        order_shape,
+    )
     if single_sided_action is not None:
         return single_sided_action
 

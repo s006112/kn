@@ -2,7 +2,7 @@
 
 import time
 
-from grid_infra import get_mid_reference_price, get_open_orders
+from grid_gateway import get_mid_reference_price, get_open_orders
 from grid_config import (
     ABNORMAL_MODE,
     ALLOW_BUY_ONLY_WHEN_NO_BTC,

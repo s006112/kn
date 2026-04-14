@@ -4,7 +4,7 @@
 
 本文档定义 grid engine 的 WebSocket-first migration baseline。它描述目标 engine worldview，未必与当前生产代码实现完全一致；当前生产运行时仍可能保留 REST 轮询边界。策略语义、决策顺序与交易规则保持不变，strategy 继续消费 engine 提供的 live state，而不是依赖 transport 形式。
 
-本文档只描述以 `hyper_ws/grid.py`、`hyper_ws/grid_infra.py`、`hyper_ws/grid_execution.py`、`hyper_ws/grid_decision.py` 与 `hyper_ws/grid_logic.py` 为边界的 grid engine migration baseline contract。
+本文档只描述以 `hyper_ws/grid.py`、`hyper_ws/grid_gateway.py`、`hyper_ws/grid_execution.py`、`hyper_ws/grid_decision.py` 与 `hyper_ws/grid_logic.py` 为边界的 grid engine migration baseline contract。
 
 ## 1. Purpose
 
@@ -13,6 +13,12 @@
 - 维护一个已接受的运行态，以及一个供决策层消费的当前 live state
 - 以事件驱动方式更新当前 live state，并在 `keep`、fill-driven `rebuild`、`abnormal exit` 三类结果之间做唯一决策
 - 只在成功得到非 `ABNORMAL` 新状态后继续运行
+
+其中 `grid_gateway.py` 表示 engine 访问外部交易所 / transport 边界的 gateway：
+
+- 封装 open-order / mid-price 等外部读取
+- 吸收短暂性 API / 网络失败的有限重试
+- 向 engine 暴露稳定的读取接口，而不是把底层 client 细节扩散到决策合同
 
 本 migration baseline 采用 WebSocket-first 的 engine 输入边界：
 
@@ -63,6 +69,8 @@ engine 的 saved state 只接受以下 `mode`：
 - 用固定 cadence 轮询 REST `open orders`
 - 用固定 sleep 作为 engine 的定义性驱动方式
 - 把 transport 细节、订阅格式、重连策略或可靠性承诺写入策略语义
+
+但若存在 REST snapshot read 或其他外部读取，它们应通过 `grid_gateway.py` 这一 gateway boundary 进入 engine，而不是直接成为决策合同的一部分。
 
 ## 4. Open-Order Shape Model
 

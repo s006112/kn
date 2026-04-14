@@ -10,11 +10,12 @@ from hyperliquid.utils import constants
 
 from grid_decision import get_current_pair_state, get_loop_action
 from grid_execution import rebuild
-from grid_infra import get_open_orders
+from grid_gateway import get_open_orders, read_current_btc_mid
 from grid_config import (
     ABNORMAL_MODE,
     ACCOUNT_ADDRESS,
     API_KEY,
+    BUY_ONLY_MODE,
     MAIN_LOOP_POLL_INTERVAL_SEC,
     log_msg,
     summarize_orders,
@@ -38,7 +39,10 @@ def run_main_loop(info, exchange, state):
     while True:
         time.sleep(MAIN_LOOP_POLL_INTERVAL_SEC)
         orders = get_open_orders(info)
-        action, reference_price = get_loop_action(info, orders, state)
+        current_btc_mid = None
+        if state["mode"] == BUY_ONLY_MODE:
+            current_btc_mid = read_current_btc_mid(info)
+        action, reference_price = get_loop_action(orders, state, current_btc_mid)
 
         if action == "keep":
             continue

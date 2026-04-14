@@ -1,4 +1,4 @@
-"""Infra snapshot reads and retry helpers for the grid engine."""
+"""Gateway reads and retry helpers for the grid engine."""
 
 import random
 import socket
@@ -28,7 +28,7 @@ from grid_config import (
 
 def get_open_orders(info):
     """作用:
-    获取当前配置账户地址的未完成订单，并对短暂性 API/网络失败做有限重试。
+    通过 engine gateway 获取当前配置账户地址的未完成订单，并对短暂性 API/网络失败做有限重试。
     """
     return read_infra_with_retry(
         lambda: info.open_orders(ACCOUNT_ADDRESS),
@@ -43,7 +43,7 @@ def get_open_orders(info):
 
 def is_retryable_infra_read_error(exc):
     """作用:
-    判断基础设施读取异常是否属于可重试的短暂性失败。
+    判断 gateway 外部读取异常是否属于可重试的短暂性失败。
     """
     status_code = getattr(exc, "status_code", None)
     if status_code in OPEN_ORDERS_RETRYABLE_STATUS_CODES:
@@ -78,7 +78,7 @@ def is_retryable_infra_read_error(exc):
 
 def format_retryable_exception(exc):
     """作用:
-    将基础设施异常格式化为紧凑日志文本。
+    将 gateway 外部读取异常格式化为紧凑日志文本。
     """
     status_code = getattr(exc, "status_code", None)
     if status_code is not None:
@@ -101,7 +101,7 @@ def read_infra_with_retry(
     cooldown_sec=0.0,
 ):
     """作用:
-    执行一次基础设施快照读取，并对短暂性失败做有限重试。
+    执行一次 gateway 外部快照读取，并对短暂性失败做有限重试。
     """
     for attempt in range(max_retries + 1):
         try:
@@ -170,7 +170,7 @@ def get_mid_reference_price(info):
 
 def get_all_mids_with_retry(info):
     """作用:
-    读取 BTC 中间价所需的 mids 快照，并对短暂性基础设施失败做轻量重试。
+    读取 BTC 中间价所需的 mids 快照，并对短暂性 gateway 读取失败做轻量重试。
     """
     return read_infra_with_retry(
         info.all_mids,

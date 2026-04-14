@@ -21,12 +21,20 @@
 - 根据 strategy 返回结果执行 keep / rebuild / abnormal
 - 只在成功得到非 `ABNORMAL` 新状态后继续运行
 
+其中外部交易所读取边界由 `grid_gateway.py` 承担：
+
+- shell / execution 通过 gateway 读取 open orders 与 mid reference 所需数据
+- gateway 负责吸收短暂性 API / 网络失败的有限重试
+- flow 只依赖 gateway 提供的读取结果，不把底层 transport client 细节写进主流程
+
 本文档采用 WebSocket-first 的 shell flow：
 
 - event intake 是 engine 的顶层驱动
 - “收到事件 -> 更新状态 -> 调用决策 -> 执行动作” 是主流程原语
 - 固定 sleep loop 不是当前 flow contract 的组成部分
 - REST `open orders` polling 不是当前 flow contract 的定义性主步骤
+
+若存在启动阶段或 rebuild 阶段的 snapshot read，它们通过 `grid_gateway.py` 进入 shell flow，属于 gateway implementation detail，而不是 flow contract 的顶层驱动原语。
 
 本文档不定义 pair strategy 的内部判定细节，也不定义未来 rolling ladder strategy。
 
