@@ -18,6 +18,7 @@ from grid_config import (
     API_KEY,
     BUY_ONLY_MODE,
     MAIN_LOOP_POLL_INTERVAL_SEC,
+    SELL_ONLY_MODE,
     log_msg,
     summarize_orders,
 )
@@ -58,10 +59,29 @@ def bootstrap_saved_state(info, exchange):
     buy_count, sell_count = summarize_orders(orders)
 
     state = None
+
     if buy_count == 1 and sell_count == 1:
         state = get_current_pair_state(orders)
         if state is not None:
             log_msg("pair valid")
+
+    elif buy_count == 1 and sell_count == 0:
+        state = {
+            "mode": BUY_ONLY_MODE,
+            "buy_price": orders[0]["price"],
+            "sell_price": None,
+            "reference_price": None,
+        }
+        log_msg("bootstrap accept buy-only residual")
+
+    elif buy_count == 0 and sell_count == 1:
+        state = {
+            "mode": SELL_ONLY_MODE,
+            "buy_price": None,
+            "sell_price": orders[0]["price"],
+            "reference_price": None,
+        }
+        log_msg("bootstrap accept sell-only residual")
 
     if state is None:
         state = rebuild(info, exchange, orders)
@@ -70,7 +90,6 @@ def bootstrap_saved_state(info, exchange):
             return None, orders
 
     return state, orders
-
 
 def execute_rebuild(info, exchange, runtime_state, reference_price):
     if runtime_state["rebuild_in_flight"]:

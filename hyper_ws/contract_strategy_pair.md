@@ -69,9 +69,11 @@ strategy 不关心：
 
 - 恰好 1 BUY + 1 SELL
 - buy < sell
-- price > 0
+- buy_price > 0
+- sell_price > 0
+- pair_center_price > 0
 - gap 匹配 expected gap
-- 所有价格比较必须使用离散化比较
+- 所有关键价格判定必须使用离散化比较
 
 返回：
 
@@ -79,6 +81,8 @@ strategy 不关心：
 - `buy_price`
 - `sell_price`
 - `pair_center_price`
+
+其中返回价格应视为 strategy 内部使用的 canonical normalized price。
 
 ## 5. Fill-Driven Rebuild
 

@@ -158,6 +158,68 @@ def classify_current_order_shape(orders):
         ABNORMAL_MODE,
     )
 
+def get_bootstrap_live_state(orders):
+    """根据当前 live orders 推导启动时可接受的 saved state。
+
+    允许：
+    - 合法 PAIR
+    - 合法 BUY_ONLY residual
+    - 合法 SELL_ONLY residual
+
+    返回:
+    - 合法 state dict
+    - 或 None（表示当前 live orders 不能直接作为启动 state）
+    """
+    order_shape = classify_current_order_shape(orders)
+
+    if order_shape == PAIR_MODE:
+        return get_current_pair_state(orders)
+
+    if order_shape == BUY_ONLY_MODE:
+        if len(orders) != 1 or orders[0]["side"] != "BUY":
+            return None
+
+        buy_price = normalize_price(orders[0]["price"])
+        reference_price = normalize_price(
+            buy_price + (BUY_GRID_FACTOR * GRID_STEP)
+        )
+        sell_price = normalize_price(
+            reference_price + (SELL_GRID_FACTOR * GRID_STEP)
+        )
+
+        if buy_price <= 0 or reference_price <= 0 or sell_price <= 0:
+            return None
+
+        return {
+            "mode": BUY_ONLY_MODE,
+            "buy_price": buy_price,
+            "sell_price": sell_price,
+            "reference_price": reference_price,
+        }
+
+    if order_shape == SELL_ONLY_MODE:
+        if len(orders) != 1 or orders[0]["side"] != "SELL":
+            return None
+
+        sell_price = normalize_price(orders[0]["price"])
+        reference_price = normalize_price(
+            sell_price - (SELL_GRID_FACTOR * GRID_STEP)
+        )
+        buy_price = normalize_price(
+            reference_price - (BUY_GRID_FACTOR * GRID_STEP)
+        )
+
+        if buy_price <= 0 or reference_price <= 0 or sell_price <= 0:
+            return None
+
+        return {
+            "mode": SELL_ONLY_MODE,
+            "buy_price": buy_price,
+            "sell_price": sell_price,
+            "reference_price": reference_price,
+        }
+
+    return None
 
 def resolve_fill_rebuild_action(state, orders, order_shape):
     previous_mode = state["mode"]

@@ -25,7 +25,7 @@ saved state 只接受：
 
 `ABNORMAL` 只允许作为失败结果或退出结果，不允许作为继续运行的 saved state。
 
-允许两种 state schema：
+允许以下 accepted state shape：
 
 ### Pair-derived state
 
@@ -34,6 +34,11 @@ saved state 只接受：
 - `sell_price`
 - `pair_center_price`
 
+用途：
+
+- 表示当前 live orders 已被识别为合法 `PAIR`
+- `pair_center_price` 表示当前 live pair 的 canonical center
+
 ### Placement / rebuild state
 
 - `mode`
@@ -41,11 +46,40 @@ saved state 只接受：
 - `sell_price`
 - `reference_price`
 
+用途：
+
+- 表示一次 placement / rebuild 成功后的 saved state
+- `reference_price` 表示该次 placement / rebuild 使用的 anchor
+
+### Bootstrap residual state
+
+仅适用于 engine startup 时接受合法单边 residual：
+
+#### BUY_ONLY residual
+
+- `mode`
+- `buy_price`
+
+#### SELL_ONLY residual
+
+- `mode`
+- `sell_price`
+
+用途：
+
+- 表示启动时 live orders 已经是合法单边 residual
+- 仅保存该 residual side 后续决策所需的 canonical price
+- 不要求补齐另一侧 price
+- 不要求构造 `pair_center_price`
+- 不要求构造 `reference_price`
+
 约束：
 
 - `pair_center_price` 表示当前 live pair 中点
 - `reference_price` 表示 placement / rebuild anchor
 - 两者不可混用，不可互相替代
+- `BUY_ONLY` state 不得依赖 `sell_price`
+- `SELL_ONLY` state 不得依赖 `buy_price`
 
 ## 3. Live Input Boundary
 
