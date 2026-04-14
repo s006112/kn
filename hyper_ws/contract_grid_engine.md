@@ -4,7 +4,7 @@
 
 本文档定义 grid engine 的 WebSocket-first migration baseline。它描述目标 engine worldview，未必与当前生产代码实现完全一致；当前生产运行时仍可能保留 REST 轮询边界。策略语义、决策顺序与交易规则保持不变，strategy 继续消费 engine 提供的 live state，而不是依赖 transport 形式。
 
-本文档只描述以 `hyper_ws/grid.py`、`hyper_ws/grid_gateway.py`、`hyper_ws/grid_execution.py`、`hyper_ws/grid_decision.py` 与 `hyper_ws/grid_logic.py` 为边界的 grid engine migration baseline contract。
+本文档只描述以 `hyper_ws/grid.py`、`hyper_ws/grid_gateway.py`、`hyper_ws/grid_execution.py` 与 `hyper_ws/grid_decision.py` 为边界的 grid engine migration baseline contract。
 
 ## 1. Purpose
 
