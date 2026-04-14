@@ -22,54 +22,7 @@ from grid_config import (
 )
 
 
-def run_main_loop(info, exchange, state):
-    """作用:
-    持续轮询挂单，并在退出前执行 keep、rebuild 或 abnormal 处理。
-
-    输入:
-    info: 用于轮询与重建决策的 Hyperliquid `Info` 客户端。
-    exchange: 需要执行重建时使用的 Hyperliquid `Exchange` 客户端。
-    state: 运行中合约的初始已接受状态映射；若来自 `get_pair_state()`，可包含
-    `pair_center_price`，若来自 `place_pair()`/`rebuild()`，则包含 `reference_price`。
-    这些字段表示不同语义，本循环不会把它们视为同一概念。
-
-    输出:
-    返回 `None`。当动作持续解析为 `keep` 或成功的 `rebuild` 时无限循环；当重建失败、重建结果异常，或动作解析为 abnormal 时立即退出。过程中会记录异常摘要与退出条件。
-    """
-    while True:
-        time.sleep(MAIN_LOOP_POLL_INTERVAL_SEC)
-        orders = get_open_orders(info)
-        current_btc_mid = None
-        if state["mode"] == BUY_ONLY_MODE:
-            current_btc_mid = read_current_btc_mid(info)
-        action, reference_price = get_loop_action(orders, state, current_btc_mid)
-
-        if action == "keep":
-            continue
-
-        if action == "rebuild":
-            state = rebuild(info, exchange, orders, reference_price)
-            if state is None or state["mode"] == ABNORMAL_MODE:
-                log_msg("rebuild failed or abnormal mode, exit")
-                return
-            continue
-
-        buy_count, sell_count = summarize_orders(orders)
-        log_msg(f"abnormal state: buy={buy_count} sell={sell_count}")
-        log_msg("abnormal exit")
-        return
-
-
 def create_exchange():
-    """作用:
-    为当前配置的 API key 和账户地址构造 Hyperliquid 交易客户端。
-
-    输入:
-    无。
-
-    输出:
-    返回绑定到 `constants.MAINNET_API_URL` 和 `ACCOUNT_ADDRESS` 的 `Exchange` 实例。当 `API_KEY` 缺失时抛出 `ValueError`。透传 `Account.from_key()` 或 `Exchange` 抛出的异常。
-    """
     if not API_KEY:
         raise ValueError("Missing HYPERLIQUID_API_KEY")
 
@@ -80,27 +33,26 @@ def create_exchange():
     )
 
 
-def main():
-    """作用:
-    从当前挂单启动网格流程，并持续运行直到满足退出条件。
+def create_runtime_state(saved_state, live_orders):
+    return {
+        "saved_state": saved_state,
+        "live_orders": list(live_orders),
+        "live_btc_mid": None,
+        "last_input_ts": time.time(),
+        "rebuild_in_flight": False,
+    }
 
-    输入:
-    无。
 
-    输出:
-    返回 `None`。当 `ACCOUNT_ADDRESS` 缺失时立即记录日志并退出。否则创建客户端、
-    汇总当前挂单、在存在有效配对时直接接受 `get_pair_state()` 返回的状态
-    （其中包含 `pair_center_price` 这一配对快照中点），必要时回退到 `rebuild()`
-    获取包含 `reference_price` 的下单锚点状态，并仅在建立了非异常初始状态后进入
-    `run_main_loop()`。透传客户端创建、状态推导和循环执行过程抛出的异常。
-    """
-    if not ACCOUNT_ADDRESS:
-        log_msg("Missing HYPERLIQUID_ACCOUNT_ADDRESS")
-        return
+def refresh_runtime_inputs(info, runtime_state):
+    saved_state = runtime_state["saved_state"]
+    runtime_state["live_orders"] = get_open_orders(info)
+    runtime_state["live_btc_mid"] = (
+        read_current_btc_mid(info) if saved_state["mode"] == BUY_ONLY_MODE else None
+    )
+    runtime_state["last_input_ts"] = time.time()
 
-    info = Info(constants.MAINNET_API_URL)
-    exchange = create_exchange()
 
+def bootstrap_saved_state(info, exchange):
     orders = get_open_orders(info)
     buy_count, sell_count = summarize_orders(orders)
 
@@ -114,9 +66,77 @@ def main():
         state = rebuild(info, exchange, orders)
         if state is None or state["mode"] == ABNORMAL_MODE:
             log_msg("initial rebuild failed or abnormal mode")
+            return None, orders
+
+    return state, orders
+
+
+def execute_rebuild(info, exchange, runtime_state, reference_price):
+    if runtime_state["rebuild_in_flight"]:
+        log_msg("rebuild skipped: rebuild already in flight")
+        return "keep"
+
+    runtime_state["rebuild_in_flight"] = True
+    try:
+        new_state = rebuild(
+            info,
+            exchange,
+            runtime_state["live_orders"],
+            reference_price,
+        )
+    finally:
+        runtime_state["rebuild_in_flight"] = False
+
+    if new_state is None or new_state["mode"] == ABNORMAL_MODE:
+        log_msg("rebuild failed or abnormal mode, exit")
+        return "abnormal"
+
+    runtime_state["saved_state"] = new_state
+    return "rebuild"
+
+
+def step_engine(info, exchange, runtime_state):
+    refresh_runtime_inputs(info, runtime_state)
+
+    orders = runtime_state["live_orders"]
+    state = runtime_state["saved_state"]
+    btc_mid = runtime_state["live_btc_mid"]
+
+    action, reference_price = get_loop_action(orders, state, btc_mid)
+
+    if action == "keep":
+        return "keep"
+
+    if action == "rebuild":
+        return execute_rebuild(info, exchange, runtime_state, reference_price)
+
+    buy_count, sell_count = summarize_orders(orders)
+    log_msg(f"abnormal state: buy={buy_count} sell={sell_count}")
+    log_msg("abnormal exit")
+    return "abnormal"
+
+
+def run_main_loop(info, exchange, runtime_state):
+    while True:
+        time.sleep(MAIN_LOOP_POLL_INTERVAL_SEC)
+        if step_engine(info, exchange, runtime_state) == "abnormal":
             return
 
-    run_main_loop(info, exchange, state)
+
+def main():
+    if not ACCOUNT_ADDRESS:
+        log_msg("Missing HYPERLIQUID_ACCOUNT_ADDRESS")
+        return
+
+    info = Info(constants.MAINNET_API_URL)
+    exchange = create_exchange()
+
+    saved_state, live_orders = bootstrap_saved_state(info, exchange)
+    if saved_state is None:
+        return
+
+    runtime_state = create_runtime_state(saved_state, live_orders)
+    run_main_loop(info, exchange, runtime_state)
 
 
 if __name__ == "__main__":

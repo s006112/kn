@@ -16,13 +16,13 @@ import p_orchestrator  # type: ignore[reportMissingImports]
 # gpt-5.4 $15, gpt-5.2 $14, gpt-5.1 $10, gpt-4.1 $8, gpt-4o, o1 $60, o3 $8,
 # grok-4-1-fast-reasoning $0.2, grok-4-1-fast-non-reasoning $0.2, grok-4.20-0309-non-reasoning $2.0
 MODEL_PRETEXT = "gpt-4.1-mini"
-MODEL_DISTILL = "grok-4-1-fast-reasoning"
-#MODEL_DISTILL = "o3"
+#MODEL_DISTILL = "grok-4-1-fast-reasoning"
+MODEL_DISTILL = "o3"
 MODEL_EXTRACT_MATRIX = {
     "EXTRACT_WATCH_FOLDER": [
         #"sonar-reasoning-pro",
         "grok-4.20-0309-non-reasoning",
-        "gemini-3.1-flash-lite-preview",
+        "gemini-3-pro-preview",
         "gpt-5.4-mini",
         #"gpt-5.4"
     ],
