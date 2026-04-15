@@ -239,45 +239,49 @@ def place_pair(exchange, reference_price):
         "reference_price": reference_price,
     }
 
+# grid_execution.py 中的 rebuild 函數 (完整替換)
 
 def rebuild(info, exchange, orders, reference_price=None):
-    """作用:
-    撤销已有挂单，在需要时选择参考价，并尝试建立一个非异常状态。
-
-    输入:
-    info: 用于查询订单以及可选中间价读取的 Hyperliquid `Info` 客户端。
-    exchange: 用于撤单和下单的 Hyperliquid `Exchange` 客户端。
-    orders: 重建前需要撤销的当前挂单。
-    reference_price: 可选的显式参考价；当其为 `None` 时使用 `get_mid_reference_price()`。
-
-    输出:
-    当 `place_pair()` 返回的状态不是 `ABNORMAL` 时，返回该状态；该返回值沿用
-    `place_pair()` 的 schema，因此包含 `reference_price` 这一重建锚点字段，而不会改写成
-    `get_pair_state()` 使用的 `pair_center_price`。若前置或后置清理失败，或下单结果为
-    `ABNORMAL`，则返回 `None`。透传清理、参考价推导、订单查询或下单过程抛出的异常。
-    
-    异常:
-    若 `place_pair()` 过程中抛出异常，函数会先 best-effort 读取当前 open orders，
-    并在发现残单时尝试 cleanup，然后再继续向上抛出原异常。    
-    
     """
-    if orders and not cleanup_orders(info, exchange, orders):
-        return None
+    優化後的 rebuild：具備 API 延遲容錯性，不因殘單而崩潰。
+    """
+    log_msg(f"Initiating rebuild. Reference: {reference_price}")
 
+    # 1. 盡力清理 (Best-effort Cleanup)
+    if orders:
+        for o in orders:
+            try:
+                exchange.cancel(o["coin"], o["oid"])
+            except Exception as e:
+                log_msg(f"Cancel order {o['oid']} failed (might already be filled): {e}")
+
+    # 2. 移除硬性的 "wait_no_open_orders" 檢查
+    # 交易所撤單是異步的，不要在這裡死等 get_open_orders 為空。
+    # 如果舊單還在，下新單時交易所會報衝突，到時再處理比直接崩潰好。
+
+    # 3. 獲取參考價並計算新訂單
     if reference_price is None:
-        reference_price = get_mid_reference_price(info)
+        try:
+            reference_price = get_mid_reference_price(info)
+        except Exception as e:
+            log_msg(f"Failed to derive reference price: {e}")
+            return None
 
+    # 4. 直接嘗試下單
     try:
-        state = place_pair(exchange, reference_price)
-    except Exception:
-        try_cleanup_after_place_failure(info, exchange)
-        raise
+        # 下單前稍微緩衝 0.2 秒，給交易所後端一點點同步時間，但不阻塞
+        time.sleep(0.2) 
+        
+        # 執行下單操作
+        new_state = place_pair(exchange, reference_price)
+        
+        if new_state["mode"] == ABNORMAL_MODE:
+            log_msg("Placement resulted in ABNORMAL state.")
+            return None
+            
+        return new_state
 
-    if state is not None and state["mode"] != ABNORMAL_MODE:
-        return state
-
-    orders = get_open_orders(info)
-    if orders and not cleanup_orders(info, exchange, orders):
-        return None
-
-    return None
+    except Exception as exc:
+        log_msg(f"Critical error during placement: {exc}")
+        # 這裡不直接 return None，因為可能下了一半單，讓外部 safe_step_engine 捕捉並退出
+        raise exc
