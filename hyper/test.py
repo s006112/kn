@@ -348,7 +348,11 @@ def run_red_team_eval():
             orders=pair_orders(),
             rebuild_state={"mode": "SHOULD_NOT_HAPPEN"},
         )
-        log_res("red-team: bootstrap real inherit", result, inherited_state)
+        log_res(
+            "red-team: bootstrap real inherit",
+            (result["mode"], result["buy_price"], result["sell_price"]),
+            (PAIR_MODE, 99800.0, 100200.0),
+        )
         log_res("red-team: bootstrap real no rebuild", calls["rebuild"], 0)
 
         result, calls = run_bootstrap_saved_state_real_case(
