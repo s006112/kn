@@ -3,12 +3,23 @@
 import time
 import traceback
 
-from eth_account import Account
 
+from grid_config import apply_runtime_overrides
+
+apply_runtime_overrides({
+    "GRID_STEP": 200.0,
+    "BUDGET_USDC": 200.0,
+    "BUY_GRID_FACTOR": 1.0,
+    "SELL_GRID_FACTOR": 1.0
+})
+
+from eth_account import Account
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
-
+from grid_decision import get_bootstrap_live_state, get_loop_action
+from grid_execution import rebuild
+from grid_gateway import get_open_orders, read_btc_mid
 from grid_config import (
     ACCOUNT_ADDRESS,
     API_KEY,
@@ -19,9 +30,6 @@ from grid_config import (
     log_msg,
     summarize_orders,
 )
-from grid_decision import get_bootstrap_live_state, get_loop_action
-from grid_execution import rebuild
-from grid_gateway import get_open_orders, read_btc_mid
 
 
 def create_exchange():
@@ -49,16 +57,16 @@ def bootstrap_saved_state(info, exchange):
     state = get_bootstrap_live_state(orders)
     if state is not None:
         if state["mode"] == PAIR_MODE:
-            log_msg("bootstrap pair")
+            log_msg("Bootstrap Pair")
         elif state["mode"] == BUY_ONLY_MODE:
-            log_msg("bootstrap buy-only")
+            log_msg("Bootstrap Buy-only")
         elif state["mode"] == SELL_ONLY_MODE:
-            log_msg("bootstrap sell-only")
+            log_msg("Bootstrap Sell-only")
         return state
 
     state = rebuild(info, exchange, orders)
     if state is None:
-        log_msg("bootstrap rebuild failed")
+        log_msg("Bootstrap Rebuild Failed")
         return None
 
     return state
@@ -99,7 +107,7 @@ def main():
     try:
         saved_state = bootstrap_saved_state(info, exchange)
     except Exception as exc:
-        log_exception_summary("bootstrap", exc)
+        log_exception_summary("Bootstrap", exc)
         log_msg("abnormal")
         return
 

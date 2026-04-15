@@ -8,20 +8,41 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+# ============================================================================
+# env / account config
+# ============================================================================
+
 ACCOUNT_ADDRESS = os.getenv("HYPERLIQUID_ACCOUNT_ADDRESS")
 API_KEY = os.getenv("HYPERLIQUID_API_KEY")
 
 SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
-BUDGET_USDC = 100.0  # 每侧订单按 100 USDC 名义金额下单，用它反推买卖数量
-GRID_STEP = 100.0  # 参考价每上下偏移 100 美元挂一格，是网格的基础间距
+# ============================================================================
+# strategy params
+# ============================================================================
+
+BUDGET_USDC = 200.0  # 每侧订单按 100 USDC 名义金额下单，用它反推买卖数量
+GRID_STEP = 200.0  # 参考价每上下偏移 100 美元挂一格，是网格的基础间距
 BUY_GRID_FACTOR = 1.00  # 买单距离 = 1.00 x GRID_STEP，1.00 表示向下 1 格挂买单
 SELL_GRID_FACTOR = 1.00  # 卖单距离 = 1.00 x GRID_STEP，1.00 表示向上 1 格挂卖单
+
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True  # 卖单因 BTC 不足下不出时，允许退化成仅挂买单
 ALLOW_SELL_ONLY_WHEN_NO_USDC = True  # 买单因 USDC 不足下不出时，允许退化成仅挂卖单
+
 REANCHOR_BREAK = True  # 启用 BUY_ONLY 模式下的重锚检测，偏离太远时整组重建
 REANCHOR_BREAK_STEPS = 2  # 与 BTC 中间价相差达到 2 格时，触发 anchor break 重挂
+
+def apply_runtime_overrides(overrides: dict):
+    globals_ = globals()
+    for k, v in overrides.items():
+        if k in globals_:
+            globals_[k] = v
+
+# ============================================================================
+# timing / retry
+# ============================================================================
 
 KEEP_LOG_INTERVAL_SEC = 300  # keep 状态同类日志至少每 300 秒打印一次，避免刷屏
 MAIN_LOOP_POLL_INTERVAL_SEC = 1.5  # 主循环每 1.5 秒跑一轮，检查挂单和状态是否变化
@@ -38,21 +59,22 @@ BTC_MID_MAX_RETRIES = 2  # 拉取 BTC 中间价最多重试 2 次，失败就放
 BTC_MID_RETRY_BASE_SEC = 0.3  # BTC 中间价重试的基础等待时间
 BTC_MID_RETRY_MAX_SEC = 0.6  # BTC 中间价单次重试等待上限，保持重建响应够快
 
+
+# ============================================================================
+# state / mode constants
+# ============================================================================
+
 PAIR_MODE = "PAIR"  # 正常双边模式，同时有 1 买 1 卖且价差符合网格规则
 BUY_ONLY_MODE = "BUY_ONLY"  # 仅剩买单的残边模式，常见于卖侧因余额不足未成功挂出
 SELL_ONLY_MODE = "SELL_ONLY"  # 仅剩卖单的残边模式，常见于买侧因余额不足未成功挂出
 ABNORMAL_MODE = "ABNORMAL"  # 非预期状态，占位用于拒绝继续执行并等待人工介入
 
+
+# ============================================================================
+# price helpers
+# ============================================================================
+
 PRICE_TICK = 1.0
-
-_last_keep_type = None
-_last_keep_ts = 0.0
-GMT_PLUS_8 = timezone(timedelta(hours=8))
-
-
-def log_msg(message):
-    timestamp = datetime.now(GMT_PLUS_8).strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] {message}")
 
 
 def format_price(price):
@@ -77,6 +99,20 @@ def price_gap_matches(buy_price, sell_price, expected_gap):
 
 def price_distance_at_least(high_price, low_price, distance):
     return price_to_ticks(high_price) - price_to_ticks(low_price) >= price_to_ticks(distance)
+
+
+# ============================================================================
+# logging helpers
+# ============================================================================
+
+_last_keep_type = None
+_last_keep_ts = 0.0
+GMT_PLUS_8 = timezone(timedelta(hours=8))
+
+
+def log_msg(message):
+    timestamp = datetime.now(GMT_PLUS_8).strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] {message}")
 
 
 def log_keep_state(keep_type, message):

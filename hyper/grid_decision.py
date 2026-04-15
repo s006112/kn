@@ -129,7 +129,7 @@ def get_loop_action(orders, state, current_btc_mid=None):
             and prices_equal(pair_state["buy_price"], state["buy_price"])
             and prices_equal(pair_state["sell_price"], state["sell_price"])
         ):
-            log_keep_state("pair", "keep")
+            log_keep_state("pair", "Keep State")
             return "keep", None
 
         return "abnormal", None
@@ -149,7 +149,7 @@ def get_loop_action(orders, state, current_btc_mid=None):
                 log_msg("🪝 contract: anchor break")
                 return "rebuild", None
 
-        log_keep_state("buy-only", "keep")
+        log_keep_state("buy-only", "Keep State")
         return "keep", None
 
     if mode == SELL_ONLY_MODE:
@@ -161,7 +161,7 @@ def get_loop_action(orders, state, current_btc_mid=None):
         if sell_order is None:
             return "abnormal", None
 
-        log_keep_state("sell-only", "keep")
+        log_keep_state("sell-only", "Keep State")
         return "keep", None
 
     return "abnormal", None
