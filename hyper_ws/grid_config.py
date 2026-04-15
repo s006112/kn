@@ -1,4 +1,4 @@
-"""Shared runtime config and lightweight logging helpers for the grid engine."""
+"""Shared config, price helpers, and logging for the grid engine."""
 
 import os
 import time
@@ -26,7 +26,6 @@ REANCHOR_BREAK_STEPS = 2
 KEEP_LOG_INTERVAL_SEC = 300
 MAIN_LOOP_POLL_INTERVAL_SEC = 1.5
 WAIT_NO_OPEN_ORDERS_INTERVAL_SEC = 1.5
-POLLING_VERIFY_INTERVAL_SEC = 60.0
 
 OPEN_ORDERS_MAX_RETRIES = 4
 OPEN_ORDERS_RETRY_BASE_SEC = 0.5
@@ -44,8 +43,6 @@ BUY_ONLY_MODE = "BUY_ONLY"
 SELL_ONLY_MODE = "SELL_ONLY"
 ABNORMAL_MODE = "ABNORMAL"
 
-# 价格离散化精度：
-# 当前策略 price 本质上按整数价位工作；这里统一收口所有比较与 gap 判定。
 PRICE_TICK = 1.0
 
 last_keep_log_type = None
@@ -62,16 +59,16 @@ def format_price(price):
     return str(int(round(float(price))))
 
 
-def normalize_price(price):
-    return price_ticks_to_value(price_to_ticks(price))
-
-
 def price_to_ticks(price):
     return int(round(float(price) / PRICE_TICK))
 
 
 def price_ticks_to_value(ticks):
     return float(ticks) * PRICE_TICK
+
+
+def normalize_price(price):
+    return price_ticks_to_value(price_to_ticks(price))
 
 
 def prices_equal(price_a, price_b):
@@ -97,10 +94,7 @@ def log_keep_state(keep_type, message):
     global last_keep_log_ts
 
     now = time.time()
-    if (
-        keep_type != last_keep_log_type
-        or now - last_keep_log_ts >= KEEP_LOG_INTERVAL_SEC
-    ):
+    if keep_type != last_keep_log_type or now - last_keep_log_ts >= KEEP_LOG_INTERVAL_SEC:
         log_msg(message)
         last_keep_log_type = keep_type
         last_keep_log_ts = now

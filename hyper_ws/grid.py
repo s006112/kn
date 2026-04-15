@@ -1,7 +1,7 @@
 """Engine shell and entrypoint for the REST polling grid."""
 
-import traceback
 import time
+import traceback
 
 from eth_account import Account
 

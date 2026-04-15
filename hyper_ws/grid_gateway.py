@@ -22,13 +22,12 @@ from grid_config import (
     OPEN_ORDERS_RETRY_JITTER_MAX_SEC,
     OPEN_ORDERS_RETRY_MAX_SEC,
     OPEN_ORDERS_RETRYABLE_STATUS_CODES,
-    normalize_price,
     log_msg,
+    normalize_price,
 )
 
 
 def normalize_order(order):
-    """将交易所原始订单映射为 engine 内部统一 shape。"""
     raw_side = order["side"]
     if raw_side == "B":
         side = "BUY"
@@ -37,22 +36,14 @@ def normalize_order(order):
     else:
         raise ValueError(f"Unknown order side: {raw_side!r}")
 
-    price = normalize_price(order["limitPx"])
-
     normalized = dict(order)
     normalized["side"] = side
-    normalized["price"] = price
+    normalized["price"] = normalize_price(order["limitPx"])
     normalized["raw_side"] = raw_side
     return normalized
 
 
-def normalize_orders(orders):
-    """将 open orders 列表标准化为统一 shape。"""
-    return [normalize_order(order) for order in orders]
-
-
 def get_open_orders(info):
-    """通过 engine gateway 获取当前配置账户地址的未完成订单，并做有限重试与标准化。"""
     orders = read_infra_with_retry(
         lambda: info.open_orders(ACCOUNT_ADDRESS),
         read_name="open-orders",
@@ -62,11 +53,10 @@ def get_open_orders(info):
         jitter_max_sec=OPEN_ORDERS_RETRY_JITTER_MAX_SEC,
         cooldown_sec=OPEN_ORDERS_RETRY_COOLDOWN_SEC,
     )
-    return normalize_orders(orders)
+    return [normalize_order(order) for order in orders]
 
 
 def is_retryable_infra_read_error(exc):
-    """判断 gateway 外部读取异常是否属于可重试的短暂性失败。"""
     status_code = getattr(exc, "status_code", None)
     if status_code in OPEN_ORDERS_RETRYABLE_STATUS_CODES:
         return True
@@ -99,7 +89,6 @@ def is_retryable_infra_read_error(exc):
 
 
 def format_retryable_exception(exc):
-    """将 gateway 外部读取异常格式化为紧凑日志文本。"""
     status_code = getattr(exc, "status_code", None)
     if status_code is not None:
         if isinstance(exc, ClientError):
@@ -120,7 +109,6 @@ def read_infra_with_retry(
     jitter_max_sec=0.0,
     cooldown_sec=0.0,
 ):
-    """执行一次 gateway 外部快照读取，并对短暂性失败做有限重试。"""
     for attempt in range(max_retries + 1):
         try:
             return read_func()
@@ -130,7 +118,7 @@ def read_infra_with_retry(
 
             if attempt >= max_retries:
                 log_msg(
-                    f"infra: {read_name} read failed after retries "
+                    f"infra failure: {read_name} after retries "
                     f"({format_retryable_exception(exc)})"
                 )
                 raise
@@ -141,8 +129,7 @@ def read_infra_with_retry(
                 delay_sec += random.uniform(0.0, jitter_max_sec)
 
             log_msg(
-                f"infra: {read_name} transient failure, "
-                f"retry {retry_number}/{max_retries} "
+                f"infra retry: {read_name} {retry_number}/{max_retries} "
                 f"in {delay_sec:.2f}s ({format_retryable_exception(exc)})"
             )
             time.sleep(delay_sec)
@@ -150,9 +137,18 @@ def read_infra_with_retry(
                 time.sleep(cooldown_sec)
 
 
+def get_all_mids(info):
+    return read_infra_with_retry(
+        info.all_mids,
+        read_name="btc-mid",
+        max_retries=BTC_MID_MAX_RETRIES,
+        base_delay_sec=BTC_MID_RETRY_BASE_SEC,
+        max_delay_sec=BTC_MID_RETRY_MAX_SEC,
+    )
+
+
 def get_mid_reference_price(info):
-    """根据当前 BTC 中间价和配置的网格步长推导参考价（对齐到最近网格）。"""
-    btc_mid = float(get_all_mids_with_retry(info).get(BTC_MID_KEY, 0))
+    btc_mid = float(get_all_mids(info).get(BTC_MID_KEY, 0))
     if btc_mid <= 0:
         raise ValueError("Failed to get BTC mid price")
 
@@ -165,27 +161,15 @@ def get_mid_reference_price(info):
     return reference_price
 
 
-def get_all_mids_with_retry(info):
-    """读取 BTC 中间价所需的 mids 快照，并对短暂性 gateway 读取失败做轻量重试。"""
-    return read_infra_with_retry(
-        info.all_mids,
-        read_name="btc-mid",
-        max_retries=BTC_MID_MAX_RETRIES,
-        base_delay_sec=BTC_MID_RETRY_BASE_SEC,
-        max_delay_sec=BTC_MID_RETRY_MAX_SEC,
-    )
-
-
 def read_current_btc_mid(info):
-    """读取当前 BTC 中间价；读取或解析失败时记录日志并返回 None。"""
     try:
-        btc_mid = float(get_all_mids_with_retry(info).get(BTC_MID_KEY, 0))
+        btc_mid = float(get_all_mids(info).get(BTC_MID_KEY, 0))
     except Exception as exc:
-        log_msg(f"infra: btc-mid unavailable ({type(exc).__name__}: {exc})")
+        log_msg(f"infra failure: btc-mid unavailable ({type(exc).__name__}: {exc})")
         return None
 
     if btc_mid <= 0:
-        log_msg(f"infra: btc-mid invalid ({btc_mid})")
+        log_msg(f"infra failure: btc-mid invalid ({btc_mid})")
         return None
 
     return normalize_price(btc_mid)
