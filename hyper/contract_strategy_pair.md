@@ -137,36 +137,13 @@ live orders 只允许处理：
 
 ## 6. Bootstrap Acceptance Contract
 
-bootstrap 阶段允许 strategy 直接接受以下 live state：
+bootstrap 阶段 strategy 识别规则：
 
-### `PAIR`
+- 仅当 live orders 为合法 `PAIR` 时返回有效 state。
+- 严禁在 bootstrap 阶段接受 `BUY_ONLY` 或 `SELL_ONLY`。
 
-返回：
-
-- `mode`
-- `buy_price`
-- `sell_price`
-- `pair_center_price`
-
-### `BUY_ONLY`
-
-返回：
-
-- `mode`
-- `buy_price`
-
-### `SELL_ONLY`
-
-返回：
-
-- `mode`
-- `sell_price`
-
-约束：
-
-- bootstrap 接受单边 residual 是合法路径
-- bootstrap 单边 residual 不要求构造另一侧价格
-- bootstrap 单边 residual 不要求构造 `reference_price`
+语义：
+- 启动时的单边残余不再被视为可继承状态，必须通过 engine 执行 rebuild 以恢复双边网格。
 
 ## 7. Fill-Driven Rebuild Contract
 

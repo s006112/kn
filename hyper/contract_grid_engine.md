@@ -173,21 +173,17 @@ engine 启动时必须：
 2. 读取当前 open orders
 3. 输出当前 open orders 摘要
 4. 尝试从 live orders 识别合法 bootstrap state
-5. 若识别失败，则执行 rebuild
+5. 若识别失败（包括识别到单边挂单），则执行 rebuild
 
 bootstrap 只允许接受：
 
 - 合法 `PAIR`
-- 合法 `BUY_ONLY`
-- 合法 `SELL_ONLY`
-
-若无法得到有效 state，则必须退出。
 
 约束：
 
-- bootstrap 不允许继续持有无效 state
-- bootstrap rebuild 失败必须退出
-- bootstrap 时接受单边 residual 是合法路径，不属于 abnormal
+- bootstrap 不再接受单边 residual 为合法路径。
+- 若启动时为单边挂单，必须进入 rebuild 流程进行清理并重挂。
+- 若无法得到有效 state 且 rebuild 失败，则必须退出。
 
 ## 7. Decision Contract
 
