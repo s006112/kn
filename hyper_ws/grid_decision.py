@@ -1,4 +1,4 @@
-"""Engine-side decision orchestration helpers for the grid engine."""
+"""Decision helpers for the REST polling grid engine."""
 
 from grid_config import (
     ABNORMAL_MODE,
@@ -20,35 +20,16 @@ from grid_config import (
 )
 
 
-def count_order_sides(orders):
-    buy_count = 0
-    sell_count = 0
-
-    for order in orders:
-        if order["side"] == "BUY":
-            buy_count += 1
-        else:
-            sell_count += 1
-
-    return buy_count, sell_count
-
-
 def get_single_order(orders, side):
-    if len(orders) != 1:
+    if len(orders) != 1 or orders[0]["side"] != side:
         return None
-    order = orders[0]
-    if order["side"] != side:
-        return None
-    return order
+    return orders[0]
 
 
-def get_pair_state(
-    orders,
-    grid_step,
-    buy_grid_factor,
-    sell_grid_factor,
-    pair_mode,
-):
+def get_pair_state(orders):
+    if len(orders) != 2:
+        return None
+
     buy_price = None
     sell_price = None
 
@@ -56,119 +37,60 @@ def get_pair_state(
         if order["side"] == "BUY":
             if buy_price is not None:
                 return None
-            buy_price = order["price"]
-        else:
+            buy_price = normalize_price(order["price"])
+            continue
+
+        if order["side"] == "SELL":
             if sell_price is not None:
                 return None
-            sell_price = order["price"]
+            sell_price = normalize_price(order["price"])
+            continue
+
+        return None
 
     if buy_price is None or sell_price is None:
+        return None
+    if buy_price <= 0 or not buy_price < sell_price:
+        return None
+
+    expected_gap = (BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP
+    if not price_gap_matches(buy_price, sell_price, expected_gap):
         return None
 
     pair_center_price = normalize_price((buy_price + sell_price) / 2.0)
     if pair_center_price <= 0:
         return None
-    if buy_price <= 0 or not (buy_price < sell_price):
-        return None
-
-    expected_gap = (buy_grid_factor + sell_grid_factor) * grid_step
-    if not price_gap_matches(buy_price, sell_price, expected_gap):
-        return None
 
     return {
-        "mode": pair_mode,
-        "buy_price": normalize_price(buy_price),
-        "sell_price": normalize_price(sell_price),
+        "mode": PAIR_MODE,
+        "buy_price": buy_price,
+        "sell_price": sell_price,
         "pair_center_price": pair_center_price,
     }
 
 
-def classify_order_shape(
-    orders,
-    grid_step,
-    buy_grid_factor,
-    sell_grid_factor,
-    pair_mode,
-    buy_only_mode,
-    sell_only_mode,
-    abnormal_mode,
-):
-    buy_count, sell_count = count_order_sides(orders)
+def get_order_shape(orders):
+    if len(orders) == 2:
+        return PAIR_MODE if get_pair_state(orders) is not None else ABNORMAL_MODE
 
-    if buy_count == 1 and sell_count == 1:
-        pair_state = get_pair_state(
-            orders,
-            grid_step,
-            buy_grid_factor,
-            sell_grid_factor,
-            pair_mode,
-        )
-        return pair_mode if pair_state is not None else abnormal_mode
+    if len(orders) == 1:
+        side = orders[0]["side"]
+        if side == "BUY":
+            return BUY_ONLY_MODE
+        if side == "SELL":
+            return SELL_ONLY_MODE
 
-    if buy_count == 1 and sell_count == 0:
-        return buy_only_mode
-
-    if buy_count == 0 and sell_count == 1:
-        return sell_only_mode
-
-    return abnormal_mode
-
-
-def pair_matches_state(current_pair, state):
-    return (
-        prices_equal(current_pair["buy_price"], state["buy_price"])
-        and prices_equal(current_pair["sell_price"], state["sell_price"])
-    )
-
-
-def should_reanchor_buy_order(
-    buy_order,
-    btc_mid,
-    grid_step,
-    reanchor_break,
-    reanchor_break_steps,
-):
-    if not reanchor_break:
-        return False
-    if btc_mid is None or btc_mid <= 0:
-        return False
-
-    threshold_distance = reanchor_break_steps * grid_step
-    return price_distance_at_least(btc_mid, buy_order["price"], threshold_distance)
-
-
-def get_current_pair_state(orders):
-    return get_pair_state(
-        orders,
-        GRID_STEP,
-        BUY_GRID_FACTOR,
-        SELL_GRID_FACTOR,
-        PAIR_MODE,
-    )
-
-
-def classify_current_order_shape(orders):
-    return classify_order_shape(
-        orders,
-        GRID_STEP,
-        BUY_GRID_FACTOR,
-        SELL_GRID_FACTOR,
-        PAIR_MODE,
-        BUY_ONLY_MODE,
-        SELL_ONLY_MODE,
-        ABNORMAL_MODE,
-    )
+    return ABNORMAL_MODE
 
 
 def get_bootstrap_live_state(orders):
-    order_shape = classify_current_order_shape(orders)
+    shape = get_order_shape(orders)
 
-    if order_shape == PAIR_MODE:
-        return get_current_pair_state(orders)
+    if shape == PAIR_MODE:
+        return get_pair_state(orders)
 
-    buy_order = get_single_order(orders, "BUY")
-    if order_shape == BUY_ONLY_MODE and buy_order is not None:
-        buy_price = normalize_price(buy_order["price"])
+    if shape == BUY_ONLY_MODE:
+        buy_price = normalize_price(orders[0]["price"])
         if buy_price <= 0:
             return None
         return {
@@ -176,9 +98,8 @@ def get_bootstrap_live_state(orders):
             "buy_price": buy_price,
         }
 
-    sell_order = get_single_order(orders, "SELL")
-    if order_shape == SELL_ONLY_MODE and sell_order is not None:
-        sell_price = normalize_price(sell_order["price"])
+    if shape == SELL_ONLY_MODE:
+        sell_price = normalize_price(orders[0]["price"])
         if sell_price <= 0:
             return None
         return {
@@ -189,111 +110,58 @@ def get_bootstrap_live_state(orders):
     return None
 
 
-def resolve_fill_rebuild_action(state, orders, order_shape):
-    previous_mode = state["mode"]
+def get_loop_action(orders, state, current_btc_mid=None):
+    shape = get_order_shape(orders)
+    mode = state["mode"]
 
-    if previous_mode == PAIR_MODE:
-        if order_shape == SELL_ONLY_MODE:
+    if mode == PAIR_MODE:
+        if shape == SELL_ONLY_MODE:
             log_msg(f"🔥 BUY filled - {format_price(state['buy_price'])}")
             return "rebuild", state["buy_price"]
 
-        if order_shape == BUY_ONLY_MODE:
+        if shape == BUY_ONLY_MODE:
             log_msg(f"✅ SELL filled - {format_price(state['sell_price'])}")
             return "rebuild", state["sell_price"]
 
-        return None
+        pair_state = get_pair_state(orders)
+        if (
+            pair_state is not None
+            and prices_equal(pair_state["buy_price"], state["buy_price"])
+            and prices_equal(pair_state["sell_price"], state["sell_price"])
+        ):
+            log_keep_state("pair", "keep")
+            return "keep", None
 
-    if previous_mode == BUY_ONLY_MODE and len(orders) == 0:
-        log_msg("🔥 residual fill completed: BUY_ONLY -> rebuild")
-        return "rebuild", state["buy_price"]
+        return "abnormal", None
 
-    if previous_mode == SELL_ONLY_MODE and len(orders) == 0:
-        log_msg("✅ residual fill completed: SELL_ONLY -> rebuild")
-        return "rebuild", state["sell_price"]
-
-    return None
-
-
-def validate_keep_state(orders, state, order_shape):
-    if state["mode"] != PAIR_MODE:
-        return False
-    if order_shape != PAIR_MODE:
-        return False
-
-    current_pair = get_current_pair_state(orders)
-    if current_pair is None:
-        return False
-    if not pair_matches_state(current_pair, state):
-        return False
-
-    log_keep_state("pair", "keep")
-    return True
-
-
-def detect_anchor_break(current_btc_mid, buy_order):
-    if buy_order is None:
-        return None
-
-    if not should_reanchor_buy_order(
-        buy_order,
-        current_btc_mid,
-        GRID_STEP,
-        REANCHOR_BREAK,
-        REANCHOR_BREAK_STEPS,
-    ):
-        return None
-
-    log_msg("🪝 contract: anchor break")
-    return "rebuild", None
-
-
-def detect_single_sided_action(current_btc_mid, orders, state, order_shape):
-    if state["mode"] == BUY_ONLY_MODE:
-        if order_shape != BUY_ONLY_MODE:
-            return None
+    if mode == BUY_ONLY_MODE:
+        if not orders:
+            log_msg("🔥 residual fill completed: BUY_ONLY -> rebuild")
+            return "rebuild", state["buy_price"]
 
         buy_order = get_single_order(orders, "BUY")
         if buy_order is None:
-            return None
+            return "abnormal", None
 
-        anchor_break_action = detect_anchor_break(current_btc_mid, buy_order)
-        if anchor_break_action is not None:
-            return anchor_break_action
+        if REANCHOR_BREAK and current_btc_mid is not None and current_btc_mid > 0:
+            distance = REANCHOR_BREAK_STEPS * GRID_STEP
+            if price_distance_at_least(current_btc_mid, buy_order["price"], distance):
+                log_msg("🪝 contract: anchor break")
+                return "rebuild", None
 
         log_keep_state("buy-only", "keep")
         return "keep", None
 
-    if state["mode"] == SELL_ONLY_MODE:
-        if order_shape != SELL_ONLY_MODE:
-            return None
+    if mode == SELL_ONLY_MODE:
+        if not orders:
+            log_msg("✅ residual fill completed: SELL_ONLY -> rebuild")
+            return "rebuild", state["sell_price"]
 
         sell_order = get_single_order(orders, "SELL")
         if sell_order is None:
-            return None
+            return "abnormal", None
 
         log_keep_state("sell-only", "keep")
         return "keep", None
-
-    return None
-
-
-def get_loop_action(orders, state, current_btc_mid=None):
-    order_shape = classify_current_order_shape(orders)
-
-    fill_driven_action = resolve_fill_rebuild_action(state, orders, order_shape)
-    if fill_driven_action is not None:
-        return fill_driven_action
-
-    if validate_keep_state(orders, state, order_shape):
-        return "keep", None
-
-    single_sided_action = detect_single_sided_action(
-        current_btc_mid,
-        orders,
-        state,
-        order_shape,
-    )
-    if single_sided_action is not None:
-        return single_sided_action
 
     return "abnormal", None

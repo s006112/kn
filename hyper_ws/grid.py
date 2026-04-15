@@ -10,7 +10,6 @@ from hyperliquid.info import Info
 from hyperliquid.utils import constants
 
 from grid_config import (
-    ABNORMAL_MODE,
     ACCOUNT_ADDRESS,
     API_KEY,
     BUY_ONLY_MODE,
@@ -22,7 +21,7 @@ from grid_config import (
 )
 from grid_decision import get_bootstrap_live_state, get_loop_action
 from grid_execution import rebuild
-from grid_gateway import get_open_orders, read_current_btc_mid
+from grid_gateway import get_open_orders, read_btc_mid
 
 
 def create_exchange():
@@ -36,21 +35,11 @@ def create_exchange():
     )
 
 
-def create_runtime_state(saved_state, live_orders):
-    return {
-        "saved_state": saved_state,
-        "live_orders": list(live_orders),
-        "live_btc_mid": None,
-        "rebuild_in_flight": False,
-    }
-
-
-def refresh_runtime_inputs(info, runtime_state):
-    saved_state = runtime_state["saved_state"]
-    runtime_state["live_orders"] = get_open_orders(info)
-    runtime_state["live_btc_mid"] = (
-        read_current_btc_mid(info) if saved_state["mode"] == BUY_ONLY_MODE else None
-    )
+def log_exception_summary(stage, exc):
+    log_msg(f"infra failure at {stage}: {type(exc).__name__}: {exc}")
+    last_line = traceback.format_exc().strip().splitlines()[-1]
+    if last_line:
+        log_msg(f"exception summary: {last_line}")
 
 
 def bootstrap_saved_state(info, exchange):
@@ -65,89 +54,33 @@ def bootstrap_saved_state(info, exchange):
             log_msg("bootstrap buy-only")
         elif state["mode"] == SELL_ONLY_MODE:
             log_msg("bootstrap sell-only")
-        return state, orders
+        return state
 
     state = rebuild(info, exchange, orders)
-    if state is None or state["mode"] == ABNORMAL_MODE:
+    if state is None:
         log_msg("bootstrap rebuild failed")
-        return None, orders
+        return None
 
-    return state, orders
-
-
-def execute_rebuild(info, exchange, runtime_state, reference_price):
-    if runtime_state["rebuild_in_flight"]:
-        return "keep"
-
-    runtime_state["rebuild_in_flight"] = True
-    try:
-        new_state = rebuild(
-            info,
-            exchange,
-            runtime_state["live_orders"],
-            reference_price,
-        )
-    finally:
-        runtime_state["rebuild_in_flight"] = False
-
-    if new_state is None or new_state["mode"] == ABNORMAL_MODE:
-        log_msg("rebuild failed")
-        return "abnormal"
-
-    runtime_state["saved_state"] = new_state
-    return "rebuild"
+    return state
 
 
-def step_engine(info, exchange, runtime_state):
-    refresh_runtime_inputs(info, runtime_state)
-
-    orders = runtime_state["live_orders"]
-    state = runtime_state["saved_state"]
-    btc_mid = runtime_state["live_btc_mid"]
-
-    action, reference_price = get_loop_action(orders, state, btc_mid)
+def step_engine(info, exchange, saved_state):
+    orders = get_open_orders(info)
+    btc_mid = read_btc_mid(info) if saved_state["mode"] == BUY_ONLY_MODE else None
+    action, reference_price = get_loop_action(orders, saved_state, btc_mid)
 
     if action == "keep":
-        return "keep"
+        return saved_state
 
     if action == "rebuild":
-        return execute_rebuild(info, exchange, runtime_state, reference_price)
+        new_state = rebuild(info, exchange, orders, reference_price)
+        if new_state is None:
+            log_msg("rebuild failed")
+        return new_state
 
     summarize_orders(orders)
     log_msg("abnormal")
-    return "abnormal"
-
-
-def log_exception_summary(stage, exc):
-    log_msg(f"infra failure at {stage}: {type(exc).__name__}: {exc}")
-    last_line = traceback.format_exc().strip().splitlines()[-1]
-    if last_line:
-        log_msg(f"exception summary: {last_line}")
-
-
-def safe_bootstrap_saved_state(info, exchange):
-    try:
-        return bootstrap_saved_state(info, exchange)
-    except Exception as exc:
-        log_exception_summary("bootstrap", exc)
-        log_msg("abnormal")
-        return None, []
-
-
-def safe_step_engine(info, exchange, runtime_state):
-    try:
-        return step_engine(info, exchange, runtime_state)
-    except Exception as exc:
-        log_exception_summary("main-loop", exc)
-        log_msg("abnormal")
-        return "abnormal"
-
-
-def run_main_loop(info, exchange, runtime_state):
-    while True:
-        time.sleep(MAIN_LOOP_POLL_INTERVAL_SEC)
-        if safe_step_engine(info, exchange, runtime_state) == "abnormal":
-            return
+    return None
 
 
 def main():
@@ -163,12 +96,27 @@ def main():
         log_msg("abnormal")
         return
 
-    saved_state, live_orders = safe_bootstrap_saved_state(info, exchange)
+    try:
+        saved_state = bootstrap_saved_state(info, exchange)
+    except Exception as exc:
+        log_exception_summary("bootstrap", exc)
+        log_msg("abnormal")
+        return
+
     if saved_state is None:
         return
 
-    runtime_state = create_runtime_state(saved_state, live_orders)
-    run_main_loop(info, exchange, runtime_state)
+    while True:
+        time.sleep(MAIN_LOOP_POLL_INTERVAL_SEC)
+        try:
+            saved_state = step_engine(info, exchange, saved_state)
+        except Exception as exc:
+            log_exception_summary("main-loop", exc)
+            log_msg("abnormal")
+            return
+
+        if saved_state is None:
+            return
 
 
 if __name__ == "__main__":

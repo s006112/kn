@@ -45,8 +45,8 @@ ABNORMAL_MODE = "ABNORMAL"  # 非预期状态，占位用于拒绝继续执行�
 
 PRICE_TICK = 1.0
 
-last_keep_log_type = None
-last_keep_log_ts = 0.0
+_last_keep_type = None
+_last_keep_ts = 0.0
 GMT_PLUS_8 = timezone(timedelta(hours=8))
 
 
@@ -63,12 +63,8 @@ def price_to_ticks(price):
     return int(round(float(price) / PRICE_TICK))
 
 
-def price_ticks_to_value(ticks):
-    return float(ticks) * PRICE_TICK
-
-
 def normalize_price(price):
-    return price_ticks_to_value(price_to_ticks(price))
+    return float(price_to_ticks(price)) * PRICE_TICK
 
 
 def prices_equal(price_a, price_b):
@@ -76,28 +72,22 @@ def prices_equal(price_a, price_b):
 
 
 def price_gap_matches(buy_price, sell_price, expected_gap):
-    buy_ticks = price_to_ticks(buy_price)
-    sell_ticks = price_to_ticks(sell_price)
-    expected_gap_ticks = price_to_ticks(expected_gap)
-    return (sell_ticks - buy_ticks) == expected_gap_ticks
+    return price_to_ticks(sell_price) - price_to_ticks(buy_price) == price_to_ticks(expected_gap)
 
 
 def price_distance_at_least(high_price, low_price, distance):
-    high_ticks = price_to_ticks(high_price)
-    low_ticks = price_to_ticks(low_price)
-    distance_ticks = price_to_ticks(distance)
-    return (high_ticks - low_ticks) >= distance_ticks
+    return price_to_ticks(high_price) - price_to_ticks(low_price) >= price_to_ticks(distance)
 
 
 def log_keep_state(keep_type, message):
-    global last_keep_log_type
-    global last_keep_log_ts
+    global _last_keep_type
+    global _last_keep_ts
 
     now = time.time()
-    if keep_type != last_keep_log_type or now - last_keep_log_ts >= KEEP_LOG_INTERVAL_SEC:
+    if keep_type != _last_keep_type or now - _last_keep_ts >= KEEP_LOG_INTERVAL_SEC:
         log_msg(message)
-        last_keep_log_type = keep_type
-        last_keep_log_ts = now
+        _last_keep_type = keep_type
+        _last_keep_ts = now
 
 
 def summarize_orders(orders):
@@ -110,9 +100,8 @@ def summarize_orders(orders):
     sell_count = 0
 
     for order in orders:
-        side = order["side"]
-        parts.append(f"{side} - {format_price(order['price'])}")
-        if side == "BUY":
+        parts.append(f"{order['side']} - {format_price(order['price'])}")
+        if order["side"] == "BUY":
             buy_count += 1
         else:
             sell_count += 1

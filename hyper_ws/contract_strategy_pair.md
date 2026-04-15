@@ -2,11 +2,13 @@
 
 ## 1. Purpose
 
-定义当前 single-pair strategy 的唯一决策语义。
+本合同定义当前 single-pair strategy 的唯一决策语义。
 
 strategy 的职责是：
 
-- 基于 engine 提供的 live orders 与 saved state
+- 基于 engine 提供的当前 `saved_state`
+- 基于当前 `live orders`
+- 在 `BUY_ONLY` 分支按需消费当前 `BTC mid`
 - 输出唯一决策：
 
   - `("keep", None)`
@@ -16,9 +18,10 @@ strategy 的职责是：
 
 strategy 不关心：
 
-- transport
+- REST client 细节
 - gateway retry
 - engine lifecycle
+- 异常统一收口
 
 ## 2. Scope
 
@@ -27,53 +30,116 @@ strategy 不关心：
 - 单组 pair
 - 或其合法单边 residual
 
-约束：
+live orders 只允许处理：
 
-- live orders 只允许：
-  - `1 BUY + 1 SELL`
-  - `1 BUY`
-  - `1 SELL`
-- 不处理：
-  - 多层 grid
-  - 多单
-  - 部分修复 abnormal
+- `1 BUY + 1 SELL`
+- `1 BUY`
+- `1 SELL`
+- `0 order` 仅在 saved 为单边 residual 时作为 fill-complete 路径处理
+
+不处理：
+
+- 多层 grid
+- 多组 pair
+- 多单并存
+- abnormal 自动修复
 
 ## 3. Decision Contract
 
-决策顺序固定为：
+每轮决策只允许返回：
 
-1. classify shape  
-2. fill-driven rebuild  
-3. `PAIR` keep  
-4. single-sided branch  
-5. abnormal  
+- `("keep", None)`
+- `("rebuild", reference_price)`
+- `("rebuild", None)`
+- `("abnormal", None)`
 
 约束：
 
 - 每轮只返回一个 action
 - decision 只依赖当前输入
 - 顺序不可改变
+- 同一输入必须产生同一输出
 
-## 4. Shape & Pair Validity
+固定顺序为：
 
-### Shape 分类
+1. classify shape
+2. fill-driven rebuild
+3. `PAIR` keep
+4. single-sided branch
+5. abnormal
 
-- `PAIR` → 1 BUY + 1 SELL 且为合法 pair
-- `BUY_ONLY` → 仅 1 BUY
-- `SELL_ONLY` → 仅 1 SELL
-- 其他 → `ABNORMAL`
+## 4. Shape Contract
 
-### Valid Pair 条件
+当前 live orders 的 shape 只允许分类为：
+
+- `PAIR`
+- `BUY_ONLY`
+- `SELL_ONLY`
+- `ABNORMAL`
+
+分类规则：
+
+### `PAIR`
 
 必须满足：
 
+- 恰好 2 张单
+- 其中 1 BUY + 1 SELL
+- 可被识别为合法 pair
+
+### `BUY_ONLY`
+
+必须满足：
+
+- 恰好 1 张单
+- 且该单为 BUY
+
+### `SELL_ONLY`
+
+必须满足：
+
+- 恰好 1 张单
+- 且该单为 SELL
+
+### `ABNORMAL`
+
+其他一切情况都必须视为 abnormal，包括但不限于：
+
+- 0 张单且 saved 不是单边 residual fill-complete 路径
+- 2 张单但不是合法 pair
+- 超过 2 张单
+- 非法 side
+- 任意未命中 accepted path 的 shape
+
+## 5. Pair Validity Contract
+
+合法 pair 必须满足：
+
 - 恰好 1 BUY + 1 SELL
-- buy < sell
-- buy_price > 0
-- sell_price > 0
-- pair_center_price > 0
-- gap 匹配 expected gap
+- `buy_price > 0`
+- `sell_price > 0`
+- `buy_price < sell_price`
+- `pair_center_price > 0`
+- `gap == (BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP`
 - 所有关键价格判定必须使用离散化比较
+
+返回的 canonical pair state 必须包括：
+
+- `mode`
+- `buy_price`
+- `sell_price`
+- `pair_center_price`
+
+其中：
+
+- `buy_price` 与 `sell_price` 必须是 normalized canonical price
+- `pair_center_price` 必须是两侧价格中点的 normalized canonical price
+
+## 6. Bootstrap Acceptance Contract
+
+bootstrap 阶段允许 strategy 直接接受以下 live state：
+
+### `PAIR`
 
 返回：
 
@@ -82,126 +148,200 @@ strategy 不关心：
 - `sell_price`
 - `pair_center_price`
 
-其中返回价格应视为 strategy 内部使用的 canonical normalized price。
+### `BUY_ONLY`
 
-## 5. Fill-Driven Rebuild
+返回：
 
-优先级最高。
+- `mode`
+- `buy_price`
 
-### saved = PAIR
+### `SELL_ONLY`
 
-- SELL_ONLY → `rebuild(state.buy_price)`
-- BUY_ONLY → `rebuild(state.sell_price)`
+返回：
 
-### saved = BUY_ONLY / SELL_ONLY
-
-- orders == 0 → `rebuild(saved price)`
+- `mode`
+- `sell_price`
 
 约束：
 
-- 必须使用“已成交那一侧”的 price
-- 不允许改用 mid 或其他 anchor
+- bootstrap 接受单边 residual 是合法路径
+- bootstrap 单边 residual 不要求构造另一侧价格
+- bootstrap 单边 residual 不要求构造 `reference_price`
 
-## 6. Keep Contract
+## 7. Fill-Driven Rebuild Contract
 
-### PAIR keep
+fill-driven rebuild 的优先级最高。
 
-必须同时满足：
+### 当 saved = `PAIR`
 
-- saved = PAIR
-- shape = PAIR
-- pair 有效
-- buy / sell 与 saved 相等（离散化比较）
+若当前 shape 为：
 
-→ `keep`
+- `SELL_ONLY`  
+  → 视为 BUY filled  
+  → `("rebuild", saved.buy_price)`
 
-否则不得 keep
+- `BUY_ONLY`  
+  → 视为 SELL filled  
+  → `("rebuild", saved.sell_price)`
 
-## 7. Single-Sided Branch
+语义：
 
-### BUY_ONLY
+- 必须使用刚成交那一侧的已知 price 作为 rebuild anchor
+- 不允许改用 mid
+- 不允许改用 fresh reference price
 
-必须：
+### 当 saved = `BUY_ONLY`
 
-- saved = BUY_ONLY
-- shape = BUY_ONLY
-- 仅 1 BUY
+若当前 `orders == 0`：
 
-行为：
+- 视为 residual BUY fill complete
+- `("rebuild", saved.buy_price)`
 
-- 若未触发 Anchor Break → `keep`
-- 若触发 → `rebuild(None)`
+### 当 saved = `SELL_ONLY`
 
-### SELL_ONLY
+若当前 `orders == 0`：
 
-必须：
+- 视为 residual SELL fill complete
+- `("rebuild", saved.sell_price)`
 
-- saved = SELL_ONLY
-- shape = SELL_ONLY
-- 仅 1 SELL
+约束：
 
-行为：
+- fill-driven rebuild 必须先于 keep 判定
+- fill-driven rebuild 必须先于 anchor break 判定
+- fill-driven rebuild 必须使用 saved canonical price
 
-- 只允许 `keep`
+## 8. Keep Contract
 
-## 8. Anchor Break
+### `PAIR` keep
 
-只适用于 BUY_ONLY。
+只有在以下条件全部成立时才允许 `keep`：
+
+- `saved.mode == PAIR`
+- `shape == PAIR`
+- 当前 live orders 可识别为合法 pair
+- 当前 `buy_price == saved.buy_price`（离散化比较）
+- 当前 `sell_price == saved.sell_price`（离散化比较）
+
+满足时：
+
+- `("keep", None)`
+
+否则：
+
+- 不得 `keep`
+
+### `BUY_ONLY` keep
+
+只有在以下条件全部成立时才允许 `keep`：
+
+- `saved.mode == BUY_ONLY`
+- `shape == BUY_ONLY`
+- 当前恰好 1 张 BUY
+- 未触发 anchor break
+
+满足时：
+
+- `("keep", None)`
+
+### `SELL_ONLY` keep
+
+只有在以下条件全部成立时才允许 `keep`：
+
+- `saved.mode == SELL_ONLY`
+- `shape == SELL_ONLY`
+- 当前恰好 1 张 SELL
+
+满足时：
+
+- `("keep", None)`
+
+## 9. Anchor Break Contract
+
+anchor break 只适用于 `BUY_ONLY`。
 
 ### Trigger
 
 必须同时满足：
 
+- `saved.mode == BUY_ONLY`
+- `shape == BUY_ONLY`
+- 当前恰好 1 张 BUY
 - `REANCHOR_BREAK == True`
-- saved = BUY_ONLY
-- shape = BUY_ONLY
-- 仅 1 BUY
-- BTC mid 可用
-- distance ≥ `REANCHOR_BREAK_STEPS * GRID_STEP`
+- `BTC mid` 可用且大于 0
+- `distance >= REANCHOR_BREAK_STEPS * GRID_STEP`
 
-distance 使用离散化比较。
+其中：
+
+- `distance` 必须使用离散化比较
+- `distance` 比较的是 `BTC mid` 与当前 BUY order price
 
 ### Action
 
-→ `("rebuild", None)`
+满足时：
+
+- `("rebuild", None)`
 
 语义：
 
-- 放弃旧 residual
-- 使用 fresh anchor rebuild
+- 放弃旧 residual anchor
+- 改为使用 fresh reference price rebuild
 
 ### Priority
 
+anchor break 的优先级：
+
 - 晚于 fill-driven rebuild
-- 覆盖 BUY_ONLY keep
+- 高于 `BUY_ONLY keep`
 
-## 9. Abnormal Boundary
+## 10. Abnormal Boundary
 
-以下情况必须 abnormal：
+以下情况必须返回 abnormal：
 
-- shape 不合法
-- saved 与 shape 不一致
-- 单边数量 ≠ 1
-- 出现错误方向 residual
-- 任意未命中 accepted path
+- shape 非法
+- saved 与当前 shape 不匹配且未命中 accepted transition
+- `PAIR` 下当前 orders 不是合法 pair 且未命中 fill-driven rebuild
+- `BUY_ONLY` 下当前不是单一 BUY 且未命中 fill-complete
+- `SELL_ONLY` 下当前不是单一 SELL 且未命中 fill-complete
+- 任意未命中 accepted path 的输入
 
-strategy 不做修复。
+strategy 不做自动修复。
 
-## 10. Invariants
+## 11. Price Comparison Contract
 
-必须满足：
+以下关键判断必须使用离散化比较：
+
+- `buy_price == saved.buy_price`
+- `sell_price == saved.sell_price`
+- pair gap 是否匹配 expected gap
+- anchor break threshold distance
+
+不允许：
+
+- 关键 pair 判定直接依赖 float equality
+- gap 判定直接依赖未离散化浮点减法
+- anchor break 直接比较原始浮点距离
+
+## 12. Invariants
+
+strategy 必须满足：
 
 - decision 顺序固定
 - fill-driven rebuild 优先级最高
-- 关键价格比较必须离散化
 - 每轮仅一个 action
+- decision 只依赖当前输入
+- 关键价格比较必须离散化
+- `PAIR` keep 必须同时比较 buy / sell 两侧
+- `BUY_ONLY` 不得依赖 `sell_price`
+- `SELL_ONLY` 不得依赖 `buy_price`
 
-### Sizing
+### Sizing Invariant
 
-- invariant = **same notional**
-- 非 same base size
+当前 sizing invariant 为：
+
+- **same notional**
+- 不是 same base size
 
 即：
 
-- buy / sell size 可不同
-- 不参与 pair validity 判断
+- buy / sell size 可以不同
+- size 不参与 pair validity 判断

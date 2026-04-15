@@ -1,4 +1,4 @@
-"""Gateway reads, normalization, and retry helpers for the grid engine."""
+"""Gateway reads and retry helpers for the grid engine."""
 
 import random
 import socket
@@ -39,24 +39,10 @@ def normalize_order(order):
     normalized = dict(order)
     normalized["side"] = side
     normalized["price"] = normalize_price(order["limitPx"])
-    normalized["raw_side"] = raw_side
     return normalized
 
 
-def get_open_orders(info):
-    orders = read_infra_with_retry(
-        lambda: info.open_orders(ACCOUNT_ADDRESS),
-        read_name="open-orders",
-        max_retries=OPEN_ORDERS_MAX_RETRIES,
-        base_delay_sec=OPEN_ORDERS_RETRY_BASE_SEC,
-        max_delay_sec=OPEN_ORDERS_RETRY_MAX_SEC,
-        jitter_max_sec=OPEN_ORDERS_RETRY_JITTER_MAX_SEC,
-        cooldown_sec=OPEN_ORDERS_RETRY_COOLDOWN_SEC,
-    )
-    return [normalize_order(order) for order in orders]
-
-
-def is_retryable_infra_read_error(exc):
+def is_retryable_read_error(exc):
     status_code = getattr(exc, "status_code", None)
     if status_code in OPEN_ORDERS_RETRYABLE_STATUS_CODES:
         return True
@@ -75,32 +61,32 @@ def is_retryable_infra_read_error(exc):
 
     if isinstance(exc, OSError):
         message = str(exc).lower()
-        transient_markers = (
-            "timeout",
-            "timed out",
-            "connection reset",
-            "connection aborted",
-            "temporary failure",
-            "temporarily unavailable",
+        return any(
+            marker in message
+            for marker in (
+                "timeout",
+                "timed out",
+                "connection reset",
+                "connection aborted",
+                "temporary failure",
+                "temporarily unavailable",
+            )
         )
-        return any(marker in message for marker in transient_markers)
 
     return False
 
 
-def format_retryable_exception(exc):
+def format_read_error(exc):
     status_code = getattr(exc, "status_code", None)
-    if status_code is not None:
-        if isinstance(exc, ClientError):
-            return f"{type(exc).__name__} status={status_code} code={exc.error_code}"
-        if isinstance(exc, ServerError):
-            return f"{type(exc).__name__} status={status_code}"
-        return f"{type(exc).__name__} status={status_code}"
+    if status_code is None:
+        return f"{type(exc).__name__}: {exc}"
 
-    return f"{type(exc).__name__}: {exc}"
+    if isinstance(exc, ClientError):
+        return f"{type(exc).__name__} status={status_code} code={exc.error_code}"
+    return f"{type(exc).__name__} status={status_code}"
 
 
-def read_infra_with_retry(
+def read_with_retry(
     read_func,
     read_name,
     max_retries,
@@ -113,32 +99,41 @@ def read_infra_with_retry(
         try:
             return read_func()
         except Exception as exc:
-            if not is_retryable_infra_read_error(exc):
+            if not is_retryable_read_error(exc):
                 raise
 
             if attempt >= max_retries:
-                log_msg(
-                    f"infra failure: {read_name} after retries "
-                    f"({format_retryable_exception(exc)})"
-                )
+                log_msg(f"infra failure: {read_name} after retries ({format_read_error(exc)})")
                 raise
 
-            retry_number = attempt + 1
             delay_sec = min(base_delay_sec * (2 ** attempt), max_delay_sec)
             if jitter_max_sec > 0:
                 delay_sec += random.uniform(0.0, jitter_max_sec)
 
             log_msg(
-                f"infra retry: {read_name} {retry_number}/{max_retries} "
-                f"in {delay_sec:.2f}s ({format_retryable_exception(exc)})"
+                f"infra retry: {read_name} {attempt + 1}/{max_retries} "
+                f"in {delay_sec:.2f}s ({format_read_error(exc)})"
             )
             time.sleep(delay_sec)
             if cooldown_sec > 0:
                 time.sleep(cooldown_sec)
 
 
-def get_all_mids(info):
-    return read_infra_with_retry(
+def get_open_orders(info):
+    orders = read_with_retry(
+        lambda: info.open_orders(ACCOUNT_ADDRESS),
+        read_name="open-orders",
+        max_retries=OPEN_ORDERS_MAX_RETRIES,
+        base_delay_sec=OPEN_ORDERS_RETRY_BASE_SEC,
+        max_delay_sec=OPEN_ORDERS_RETRY_MAX_SEC,
+        jitter_max_sec=OPEN_ORDERS_RETRY_JITTER_MAX_SEC,
+        cooldown_sec=OPEN_ORDERS_RETRY_COOLDOWN_SEC,
+    )
+    return [normalize_order(order) for order in orders]
+
+
+def read_all_mids(info):
+    return read_with_retry(
         info.all_mids,
         read_name="btc-mid",
         max_retries=BTC_MID_MAX_RETRIES,
@@ -147,8 +142,8 @@ def get_all_mids(info):
     )
 
 
-def get_mid_reference_price(info):
-    btc_mid = float(get_all_mids(info).get(BTC_MID_KEY, 0))
+def get_reference_price(info):
+    btc_mid = float(read_all_mids(info).get(BTC_MID_KEY, 0))
     if btc_mid <= 0:
         raise ValueError("Failed to get BTC mid price")
 
@@ -161,9 +156,9 @@ def get_mid_reference_price(info):
     return reference_price
 
 
-def read_current_btc_mid(info):
+def read_btc_mid(info):
     try:
-        btc_mid = float(get_all_mids(info).get(BTC_MID_KEY, 0))
+        btc_mid = float(read_all_mids(info).get(BTC_MID_KEY, 0))
     except Exception as exc:
         log_msg(f"infra failure: btc-mid unavailable ({type(exc).__name__}: {exc})")
         return None

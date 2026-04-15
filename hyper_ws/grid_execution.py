@@ -2,9 +2,7 @@
 
 import time
 
-from grid_gateway import get_mid_reference_price, get_open_orders
 from grid_config import (
-    ABNORMAL_MODE,
     ALLOW_BUY_ONLY_WHEN_NO_BTC,
     ALLOW_SELL_ONLY_WHEN_NO_USDC,
     BUDGET_USDC,
@@ -20,6 +18,7 @@ from grid_config import (
     log_msg,
     summarize_orders,
 )
+from grid_gateway import get_open_orders, get_reference_price
 
 
 def build_pair(reference_price):
@@ -134,7 +133,6 @@ def place_pair(exchange, reference_price):
         return {
             "mode": BUY_ONLY_MODE,
             "buy_price": buy_action["price"],
-            "sell_price": sell_action["price"],
             "reference_price": reference_price,
         }
 
@@ -146,17 +144,11 @@ def place_pair(exchange, reference_price):
         log_msg("rebuild -> sell-only")
         return {
             "mode": SELL_ONLY_MODE,
-            "buy_price": buy_action["price"],
             "sell_price": sell_action["price"],
             "reference_price": reference_price,
         }
 
-    return {
-        "mode": ABNORMAL_MODE,
-        "buy_price": buy_action["price"],
-        "sell_price": sell_action["price"],
-        "reference_price": reference_price,
-    }
+    return None
 
 
 def rebuild(info, exchange, orders, reference_price=None):
@@ -164,10 +156,6 @@ def rebuild(info, exchange, orders, reference_price=None):
         return None
 
     if reference_price is None:
-        reference_price = get_mid_reference_price(info)
+        reference_price = get_reference_price(info)
 
-    new_state = place_pair(exchange, reference_price)
-    if new_state["mode"] == ABNORMAL_MODE:
-        return None
-
-    return new_state
+    return place_pair(exchange, reference_price)
