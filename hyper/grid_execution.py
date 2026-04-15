@@ -105,7 +105,22 @@ def cleanup_orders(info, exchange, orders):
     return False
 
 
-def place_pair(exchange, reference_price):
+def cleanup_after_partial_place_failure(info, exchange):
+    remaining_orders = get_open_orders(info)
+    if not remaining_orders:
+        return True
+
+    summarize_orders(remaining_orders)
+    log_msg("partial placement failure: cleanup remaining orders")
+
+    if cleanup_orders(info, exchange, remaining_orders):
+        return True
+
+    log_msg("fatal: partial placement cleanup failed")
+    return False
+
+
+def place_pair(info, exchange, reference_price):
     buy_action, sell_action = build_pair(reference_price)
     log_msg(
         f"rebuild | SELL - {format_price(sell_action['price'])} | "
@@ -148,6 +163,7 @@ def place_pair(exchange, reference_price):
             "reference_price": reference_price,
         }
 
+    cleanup_after_partial_place_failure(info, exchange)
     return None
 
 
@@ -158,4 +174,4 @@ def rebuild(info, exchange, orders, reference_price=None):
     if reference_price is None:
         reference_price = get_reference_price(info)
 
-    return place_pair(exchange, reference_price)
+    return place_pair(info, exchange, reference_price)
