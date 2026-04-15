@@ -11,7 +11,7 @@ from hyperliquid.utils import constants
 
 from grid_decision import get_bootstrap_live_state, get_loop_action
 from grid_execution import rebuild
-from grid_gateway import get_open_orders, read_current_btc_mid
+from grid_gateway import BtcMidFeed, LiveOrdersFeed, get_open_orders, read_current_btc_mid
 from grid_config import (
     ABNORMAL_MODE,
     ACCOUNT_ADDRESS,
@@ -19,10 +19,12 @@ from grid_config import (
     BUY_ONLY_MODE,
     MAIN_LOOP_POLL_INTERVAL_SEC,
     PAIR_MODE,
+    POLLING_VERIFY_INTERVAL_SEC,
     SELL_ONLY_MODE,
     log_msg,
     summarize_orders,
 )
+
 
 def create_exchange():
     if not API_KEY:
@@ -35,22 +37,87 @@ def create_exchange():
     )
 
 
-def create_runtime_state(saved_state, live_orders):
+def create_runtime_state(
+    saved_state,
+    live_orders,
+    live_orders_feed=None,
+    btc_mid_feed=None,
+):
+    now = time.time()
     return {
         "saved_state": saved_state,
         "live_orders": list(live_orders),
+        "live_orders_feed": live_orders_feed,
+        "live_orders_source": "bootstrap",
+        "live_orders_ts": now,
+        "last_orders_verify_ts": now,
         "live_btc_mid": None,
-        "last_input_ts": time.time(),
+        "btc_mid_feed": btc_mid_feed,
+        "last_btc_mid_verify_ts": now,
+        "last_input_ts": now,
         "rebuild_in_flight": False,
     }
 
 
+def log_live_orders_source_if_changed(runtime_state, new_source):
+    old_source = runtime_state.get("live_orders_source")
+    if old_source != new_source:
+        log_msg(f"input source: {new_source}")
+    runtime_state["live_orders_source"] = new_source
+
+
+def should_poll_verify(runtime_state, key):
+    return (time.time() - runtime_state[key]) >= POLLING_VERIFY_INTERVAL_SEC
+
+
+def read_preferred_snapshot(feed, poll_read_func, runtime_state, verify_ts_key):
+    """
+    獲取當前訂單快照。
+    優先級：WS 緩存 > 定時 REST 校驗 > REST Fallback
+    """
+    snapshot = feed.get_snapshot() if feed else None
+
+    # 1. Fallback 模式：當 WS 完全沒資料時，執行初始化同步並 Seed 緩存
+    if snapshot is None:
+        snapshot = poll_read_func()
+        if feed:
+            feed.seed(snapshot)
+        runtime_state[verify_ts_key] = time.time()
+        return snapshot, "polling-fallback"
+
+    # 2. Verify 模式：定時對帳，直接返回 REST 結果供當次循環使用，但不污染 feed 緩存池
+    if should_poll_verify(runtime_state, verify_ts_key):
+        runtime_state[verify_ts_key] = time.time()
+        return poll_read_func(), "polling-verify"
+
+    # 3. 正常模式：直接使用熱緩存
+    return snapshot, "ws-cache"
+
+
 def refresh_runtime_inputs(info, runtime_state):
     saved_state = runtime_state["saved_state"]
-    runtime_state["live_orders"] = get_open_orders(info)
-    runtime_state["live_btc_mid"] = (
-        read_current_btc_mid(info) if saved_state["mode"] == BUY_ONLY_MODE else None
+
+    live_orders, live_orders_source = read_preferred_snapshot(
+        runtime_state.get("live_orders_feed"),
+        lambda: get_open_orders(info),
+        runtime_state,
+        "last_orders_verify_ts",
     )
+    log_live_orders_source_if_changed(runtime_state, live_orders_source)
+    runtime_state["live_orders"] = live_orders
+    runtime_state["live_orders_ts"] = time.time()
+
+    if saved_state["mode"] == BUY_ONLY_MODE:
+        btc_mid, _ = read_preferred_snapshot(
+            runtime_state.get("btc_mid_feed"),
+            lambda: read_current_btc_mid(info),
+            runtime_state,
+            "last_btc_mid_verify_ts",
+        )
+        runtime_state["live_btc_mid"] = btc_mid
+    else:
+        runtime_state["live_btc_mid"] = None
+
     runtime_state["last_input_ts"] = time.time()
 
 
@@ -59,21 +126,22 @@ def bootstrap_saved_state(info, exchange):
     summarize_orders(orders)
 
     state = get_bootstrap_live_state(orders)
-    if state is not None:
-        if state["mode"] == PAIR_MODE:
-            log_msg("pair valid")
-        elif state["mode"] == BUY_ONLY_MODE:
-            log_msg("bootstrap accept buy-only residual")
-        elif state["mode"] == SELL_ONLY_MODE:
-            log_msg("bootstrap accept sell-only residual")
+    if state is not None and state["mode"] == PAIR_MODE:
+        log_msg("pair valid")
         return state, orders
+
+    if state is not None:
+        log_msg("bootstrap single-sided residual detected, rebuild required")
 
     state = rebuild(info, exchange, orders)
     if state is None or state["mode"] == ABNORMAL_MODE:
         log_msg("initial rebuild failed or abnormal mode")
         return None, orders
 
+    orders = get_open_orders(info)
+    summarize_orders(orders)
     return state, orders
+
 
 def execute_rebuild(info, exchange, runtime_state, reference_price):
     if runtime_state["rebuild_in_flight"]:
@@ -115,7 +183,10 @@ def step_engine(info, exchange, runtime_state):
         return execute_rebuild(info, exchange, runtime_state, reference_price)
 
     buy_count, sell_count = summarize_orders(orders)
-    log_msg(f"abnormal state: buy={buy_count} sell={sell_count}")
+    log_msg(
+        f"abnormal state: buy={buy_count} sell={sell_count} "
+        f"source={runtime_state.get('live_orders_source')}"
+    )
     log_msg("abnormal exit")
     return "abnormal"
 
@@ -169,7 +240,19 @@ def main():
     if saved_state is None:
         return
 
-    runtime_state = create_runtime_state(saved_state, live_orders)
+    live_orders_feed = LiveOrdersFeed(info)
+    live_orders_feed.seed(live_orders)
+    live_orders_feed.start()
+
+    btc_mid_feed = BtcMidFeed(info)
+    btc_mid_feed.start()
+
+    runtime_state = create_runtime_state(
+        saved_state,
+        live_orders,
+        live_orders_feed,
+        btc_mid_feed,
+    )
     run_main_loop(info, exchange, runtime_state)
 
 
