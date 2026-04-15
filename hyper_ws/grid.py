@@ -1,7 +1,7 @@
-"""Engine shell and entrypoint for the Hyperliquid spot grid."""
+"""Engine shell and entrypoint for the REST polling grid."""
 
-import time
 import traceback
+import time
 
 from eth_account import Account
 
@@ -9,9 +9,6 @@ from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
 
-from grid_decision import get_bootstrap_live_state, get_loop_action
-from grid_execution import rebuild
-from grid_gateway import get_open_orders, read_current_btc_mid
 from grid_config import (
     ABNORMAL_MODE,
     ACCOUNT_ADDRESS,
@@ -23,6 +20,10 @@ from grid_config import (
     log_msg,
     summarize_orders,
 )
+from grid_decision import get_bootstrap_live_state, get_loop_action
+from grid_execution import rebuild
+from grid_gateway import get_open_orders, read_current_btc_mid
+
 
 def create_exchange():
     if not API_KEY:
@@ -40,7 +41,6 @@ def create_runtime_state(saved_state, live_orders):
         "saved_state": saved_state,
         "live_orders": list(live_orders),
         "live_btc_mid": None,
-        "last_input_ts": time.time(),
         "rebuild_in_flight": False,
     }
 
@@ -51,7 +51,6 @@ def refresh_runtime_inputs(info, runtime_state):
     runtime_state["live_btc_mid"] = (
         read_current_btc_mid(info) if saved_state["mode"] == BUY_ONLY_MODE else None
     )
-    runtime_state["last_input_ts"] = time.time()
 
 
 def bootstrap_saved_state(info, exchange):
@@ -61,23 +60,23 @@ def bootstrap_saved_state(info, exchange):
     state = get_bootstrap_live_state(orders)
     if state is not None:
         if state["mode"] == PAIR_MODE:
-            log_msg("pair valid")
+            log_msg("bootstrap pair")
         elif state["mode"] == BUY_ONLY_MODE:
-            log_msg("bootstrap accept buy-only residual")
+            log_msg("bootstrap buy-only")
         elif state["mode"] == SELL_ONLY_MODE:
-            log_msg("bootstrap accept sell-only residual")
+            log_msg("bootstrap sell-only")
         return state, orders
 
     state = rebuild(info, exchange, orders)
     if state is None or state["mode"] == ABNORMAL_MODE:
-        log_msg("initial rebuild failed or abnormal mode")
+        log_msg("bootstrap rebuild failed")
         return None, orders
 
     return state, orders
 
+
 def execute_rebuild(info, exchange, runtime_state, reference_price):
     if runtime_state["rebuild_in_flight"]:
-        log_msg("rebuild skipped: rebuild already in flight")
         return "keep"
 
     runtime_state["rebuild_in_flight"] = True
@@ -92,7 +91,7 @@ def execute_rebuild(info, exchange, runtime_state, reference_price):
         runtime_state["rebuild_in_flight"] = False
 
     if new_state is None or new_state["mode"] == ABNORMAL_MODE:
-        log_msg("rebuild failed or abnormal mode, exit")
+        log_msg("rebuild failed")
         return "abnormal"
 
     runtime_state["saved_state"] = new_state
@@ -114,14 +113,13 @@ def step_engine(info, exchange, runtime_state):
     if action == "rebuild":
         return execute_rebuild(info, exchange, runtime_state, reference_price)
 
-    buy_count, sell_count = summarize_orders(orders)
-    log_msg(f"abnormal state: buy={buy_count} sell={sell_count}")
-    log_msg("abnormal exit")
+    summarize_orders(orders)
+    log_msg("abnormal")
     return "abnormal"
 
 
 def log_exception_summary(stage, exc):
-    log_msg(f"abnormal exception at {stage}: {type(exc).__name__}: {exc}")
+    log_msg(f"infra failure at {stage}: {type(exc).__name__}: {exc}")
     last_line = traceback.format_exc().strip().splitlines()[-1]
     if last_line:
         log_msg(f"exception summary: {last_line}")
@@ -132,7 +130,7 @@ def safe_bootstrap_saved_state(info, exchange):
         return bootstrap_saved_state(info, exchange)
     except Exception as exc:
         log_exception_summary("bootstrap", exc)
-        log_msg("abnormal exit")
+        log_msg("abnormal")
         return None, []
 
 
@@ -141,7 +139,7 @@ def safe_step_engine(info, exchange, runtime_state):
         return step_engine(info, exchange, runtime_state)
     except Exception as exc:
         log_exception_summary("main-loop", exc)
-        log_msg("abnormal exit")
+        log_msg("abnormal")
         return "abnormal"
 
 
@@ -162,7 +160,7 @@ def main():
         exchange = create_exchange()
     except Exception as exc:
         log_exception_summary("startup", exc)
-        log_msg("abnormal exit")
+        log_msg("abnormal")
         return
 
     saved_state, live_orders = safe_bootstrap_saved_state(info, exchange)

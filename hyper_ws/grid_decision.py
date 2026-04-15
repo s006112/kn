@@ -1,5 +1,7 @@
 """Engine-side decision orchestration helpers for the grid engine."""
+
 from grid_config import (
+    ABNORMAL_MODE,
     BUY_GRID_FACTOR,
     BUY_ONLY_MODE,
     GRID_STEP,
@@ -8,7 +10,6 @@ from grid_config import (
     REANCHOR_BREAK_STEPS,
     SELL_GRID_FACTOR,
     SELL_ONLY_MODE,
-    ABNORMAL_MODE,
     format_price,
     log_keep_state,
     log_msg,
@@ -30,6 +31,15 @@ def count_order_sides(orders):
             sell_count += 1
 
     return buy_count, sell_count
+
+
+def get_single_order(orders, side):
+    if len(orders) != 1:
+        return None
+    order = orders[0]
+    if order["side"] != side:
+        return None
+    return order
 
 
 def get_pair_state(
@@ -56,7 +66,6 @@ def get_pair_state(
         return None
 
     pair_center_price = normalize_price((buy_price + sell_price) / 2.0)
-
     if pair_center_price <= 0:
         return None
     if buy_price <= 0 or not (buy_price < sell_price):
@@ -112,8 +121,8 @@ def pair_matches_state(current_pair, state):
     )
 
 
-def should_reanchor_residual_order(
-    orders,
+def should_reanchor_buy_order(
+    buy_order,
     btc_mid,
     grid_step,
     reanchor_break,
@@ -121,19 +130,11 @@ def should_reanchor_residual_order(
 ):
     if not reanchor_break:
         return False
-
-    if len(orders) != 1:
-        return False
-
     if btc_mid is None or btc_mid <= 0:
         return False
 
-    order = orders[0]
-    if order["side"] != "BUY":
-        return False
-
     threshold_distance = reanchor_break_steps * grid_step
-    return price_distance_at_least(btc_mid, order["price"], threshold_distance)
+    return price_distance_at_least(btc_mid, buy_order["price"], threshold_distance)
 
 
 def get_current_pair_state(orders):
@@ -158,68 +159,35 @@ def classify_current_order_shape(orders):
         ABNORMAL_MODE,
     )
 
+
 def get_bootstrap_live_state(orders):
-    """根据当前 live orders 推导启动时可接受的 saved state。
-
-    允许：
-    - 合法 PAIR
-    - 合法 BUY_ONLY residual
-    - 合法 SELL_ONLY residual
-
-    返回:
-    - 合法 state dict
-    - 或 None（表示当前 live orders 不能直接作为启动 state）
-    """
     order_shape = classify_current_order_shape(orders)
 
     if order_shape == PAIR_MODE:
         return get_current_pair_state(orders)
 
-    if order_shape == BUY_ONLY_MODE:
-        if len(orders) != 1 or orders[0]["side"] != "BUY":
+    buy_order = get_single_order(orders, "BUY")
+    if order_shape == BUY_ONLY_MODE and buy_order is not None:
+        buy_price = normalize_price(buy_order["price"])
+        if buy_price <= 0:
             return None
-
-        buy_price = normalize_price(orders[0]["price"])
-        reference_price = normalize_price(
-            buy_price + (BUY_GRID_FACTOR * GRID_STEP)
-        )
-        sell_price = normalize_price(
-            reference_price + (SELL_GRID_FACTOR * GRID_STEP)
-        )
-
-        if buy_price <= 0 or reference_price <= 0 or sell_price <= 0:
-            return None
-
         return {
             "mode": BUY_ONLY_MODE,
             "buy_price": buy_price,
-            "sell_price": sell_price,
-            "reference_price": reference_price,
         }
 
-    if order_shape == SELL_ONLY_MODE:
-        if len(orders) != 1 or orders[0]["side"] != "SELL":
+    sell_order = get_single_order(orders, "SELL")
+    if order_shape == SELL_ONLY_MODE and sell_order is not None:
+        sell_price = normalize_price(sell_order["price"])
+        if sell_price <= 0:
             return None
-
-        sell_price = normalize_price(orders[0]["price"])
-        reference_price = normalize_price(
-            sell_price - (SELL_GRID_FACTOR * GRID_STEP)
-        )
-        buy_price = normalize_price(
-            reference_price - (BUY_GRID_FACTOR * GRID_STEP)
-        )
-
-        if buy_price <= 0 or reference_price <= 0 or sell_price <= 0:
-            return None
-
         return {
             "mode": SELL_ONLY_MODE,
-            "buy_price": buy_price,
             "sell_price": sell_price,
-            "reference_price": reference_price,
         }
 
     return None
+
 
 def resolve_fill_rebuild_action(state, orders, order_shape):
     previous_mode = state["mode"]
@@ -258,22 +226,16 @@ def validate_keep_state(orders, state, order_shape):
     if not pair_matches_state(current_pair, state):
         return False
 
-    log_keep_state("pair", "contract: keep pair")
+    log_keep_state("pair", "keep")
     return True
 
 
-def detect_anchor_break(current_btc_mid, orders, state, order_shape):
-    if not REANCHOR_BREAK:
-        return None
-    if state["mode"] != BUY_ONLY_MODE:
-        return None
-    if order_shape != BUY_ONLY_MODE:
-        return None
-    if len(orders) != 1:
+def detect_anchor_break(current_btc_mid, buy_order):
+    if buy_order is None:
         return None
 
-    if not should_reanchor_residual_order(
-        orders,
+    if not should_reanchor_buy_order(
+        buy_order,
         current_btc_mid,
         GRID_STEP,
         REANCHOR_BREAK,
@@ -289,28 +251,27 @@ def detect_single_sided_action(current_btc_mid, orders, state, order_shape):
     if state["mode"] == BUY_ONLY_MODE:
         if order_shape != BUY_ONLY_MODE:
             return None
-        if len(orders) != 1 or orders[0]["side"] != "BUY":
+
+        buy_order = get_single_order(orders, "BUY")
+        if buy_order is None:
             return None
 
-        anchor_break_action = detect_anchor_break(
-            current_btc_mid,
-            orders,
-            state,
-            order_shape,
-        )
+        anchor_break_action = detect_anchor_break(current_btc_mid, buy_order)
         if anchor_break_action is not None:
             return anchor_break_action
 
-        log_keep_state("buy-only", "contract: keep buy-only")
+        log_keep_state("buy-only", "keep")
         return "keep", None
 
     if state["mode"] == SELL_ONLY_MODE:
         if order_shape != SELL_ONLY_MODE:
             return None
-        if len(orders) != 1 or orders[0]["side"] != "SELL":
+
+        sell_order = get_single_order(orders, "SELL")
+        if sell_order is None:
             return None
 
-        log_keep_state("sell-only", "contract: keep sell-only")
+        log_keep_state("sell-only", "keep")
         return "keep", None
 
     return None
