@@ -82,8 +82,10 @@ def get_loop_action(orders, state, current_btc_mid=None):
         if shape == BUY_ONLY_MODE:
             buy_order = orders[0]
             # 重锚点检测 (Anchor Break)
+            # 语义：当前 BTC mid 相对生成该 residual BUY 的原 reference_price
+            # 已漂移至少 REANCHOR_BREAK_STEPS * GRID_STEP
             if REANCHOR_BREAK and current_btc_mid and current_btc_mid > 0:
-                distance = REANCHOR_BREAK_STEPS * GRID_STEP
+                distance = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP
                 if price_distance_at_least(current_btc_mid, buy_order["price"], distance):
                     log_msg("🪝 contract: anchor break")
                     return "rebuild", None

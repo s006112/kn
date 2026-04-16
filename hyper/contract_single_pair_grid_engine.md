@@ -363,12 +363,21 @@ anchor break 只适用于 `BUY_ONLY`，且必须同时满足：
 - 当前恰好 1 张 BUY
 - `REANCHOR_BREAK == True`
 - `BTC mid` 可用且大于 0
-- `distance >= REANCHOR_BREAK_STEPS * GRID_STEP`
+- 当前 `BTC mid` 相对生成该 residual BUY 的原 `reference_price`，
+  已漂移至少 `REANCHOR_BREAK_STEPS * GRID_STEP`
+
+实现约束：
+
+- 当前实现的直接比较对象是 `BTC mid` 与当前 BUY order price
+- 因 `buy_price = reference_price - BUY_GRID_FACTOR * GRID_STEP`
+- 所以阈值必须按以下等价形式计算：
+
+  `distance >= (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP`
 
 约束：
 
 - `distance` 必须使用离散化比较
-- 比较对象是 `BTC mid` 与当前 BUY order price
+- 不得把 anchor break 解释为“mid 相对当前 BUY order price 漂移 N 格”
 - 触发时返回 `("rebuild", None)`
 - 语义是放弃旧 residual anchor，改用 fresh reference price rebuild
 - 优先级晚于 fill-driven rebuild，高于 `BUY_ONLY keep`
