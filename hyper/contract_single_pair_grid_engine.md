@@ -248,22 +248,27 @@ engine 启动时必须：
 2. 读取当前 open orders
 3. 输出当前 open orders 摘要
 4. 尝试识别合法 bootstrap state
-5. 识别失败则执行 rebuild
+5. engine 仅接受合法 `PAIR`
+6. 识别失败则执行 rebuild
 
 bootstrap 只允许接受：
 
 - 合法 `PAIR`
 
+不允许接受：
+
+- `BUY_ONLY`
+- `SELL_ONLY`
+- `ABNORMAL`
+- 任意其他未定义 shape
+
 约束：
 
-- bootstrap 不接受 `BUY_ONLY` / `SELL_ONLY`
+- bootstrap 是否接受某个 live state，最终由 engine 决定
+- strategy 只负责识别当前 live orders 是否为合法 `PAIR`
+- 即使 strategy 将来返回其他 shape，engine 仍不得接受为 bootstrap saved state
 - 启动时单边 residual 必须通过 rebuild 清理并重建
 - 若无法得到有效 state 且 rebuild 失败，则必须退出
-
-语义分工：
-
-- strategy 只负责识别当前 live orders 是否为合法 `PAIR`
-- engine 负责决定 bootstrap 是否接受该结果
 
 ## 8. Decision Contract
 

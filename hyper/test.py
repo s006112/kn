@@ -5,6 +5,7 @@ from grid_config import (
     BUY_ONLY_MODE,
     SELL_ONLY_MODE,
     REANCHOR_BREAK_STEPS,
+    BUY_GRID_FACTOR,
     WAIT_NO_OPEN_ORDERS_INTERVAL_SEC,
     API_KEY,
 )
@@ -398,7 +399,11 @@ def run_red_team_eval():
         # 这个更像“逻辑风险暴露”，不是 mismatch
         state_b = buy_only_state(99800.0)
         live_buy_drift = buy_only_orders(90000.0)
-        result = get_loop_action(live_buy_drift, state_b, 90000.0 + REANCHOR_BREAK_STEPS * GRID_STEP - 1)
+        result = get_loop_action(
+            live_buy_drift,
+            state_b,
+            90000.0 + (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP - 1,
+        )
         log_note("red-team: BUY_ONLY drift still keep", result, "saved_state drift remains silent if anchor-break not triggered")
 
 def run_bootstrap_eval():
@@ -459,7 +464,7 @@ def run_buy_only_eval():
         "no price validation",
     )
 
-    distance = REANCHOR_BREAK_STEPS * GRID_STEP
+    distance = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP
     log_res("BUY_ONLY: break < threshold", get_loop_action(live_buy, state_b, 99800.0 + distance - 1.0), ("keep", None))
     log_res("BUY_ONLY: break == threshold", get_loop_action(live_buy, state_b, 99800.0 + distance), ("rebuild", None))
     log_res("BUY_ONLY: break > threshold", get_loop_action(live_buy, state_b, 99800.0 + distance + 1.0), ("rebuild", None))

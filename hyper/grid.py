@@ -55,13 +55,8 @@ def bootstrap_saved_state(info, exchange):
     summarize_orders(orders)
 
     state = get_bootstrap_live_state(orders)
-    if state is not None:
-        if state["mode"] == PAIR_MODE:
-            log_msg("Bootstrap Pair")
-        elif state["mode"] == BUY_ONLY_MODE:
-            log_msg("Bootstrap Buy-only")
-        elif state["mode"] == SELL_ONLY_MODE:
-            log_msg("Bootstrap Sell-only")
+    if state is not None and state.get("mode") == PAIR_MODE:
+        log_msg("Bootstrap Pair")
         return state
 
     state = rebuild(info, exchange, orders)
