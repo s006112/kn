@@ -720,7 +720,7 @@ def run_exec_partial_cleanup_case(remaining_orders, cleanup_result):
     return result, calls
 
 
-def run_place_pair_case(buy_status, sell_status, allow_buy_only, allow_sell_only, cleanup_result=True, reference_price=100000.0):
+def run_place_pair_case(buy_status, sell_status, allow_buy_only, allow_sell_only, cleanup_result=True, reference_price=10000.0):
     if grid_exec is None:
         return None, None
 
@@ -737,8 +737,8 @@ def run_place_pair_case(buy_status, sell_status, allow_buy_only, allow_sell_only
     old_allow_buy_only = grid_exec.ALLOW_BUY_ONLY_WHEN_NO_BTC
     old_allow_sell_only = grid_exec.ALLOW_SELL_ONLY_WHEN_NO_USDC
 
-    buy_action = {"side": "BUY", "price": 99800.0, "size": 0.001}
-    sell_action = {"side": "SELL", "price": 100200.0, "size": 0.001}
+    buy_action = {"side": "BUY", "price": 9800.0, "size": 0.001}
+    sell_action = {"side": "SELL", "price": 10200.0, "size": 0.001}
 
     statuses = [buy_status, sell_status]
 
@@ -849,11 +849,11 @@ def run_execution_eval():
         log_note("execution: import grid_execution", "SKIPPED", "grid_execution import failed")
         return
 
-    buy_action, sell_action = grid_exec.build_pair(100000.0)
-    log_res("build_pair: buy price", buy_action["price"], 100000.0 - grid_exec.BUY_GRID_FACTOR * GRID_STEP)
-    log_res("build_pair: sell price", sell_action["price"], 100000.0 + grid_exec.SELL_GRID_FACTOR * GRID_STEP)
-    log_res("build_pair: buy size", buy_action["size"], round(BUDGET_USDC / buy_action["price"], 5))
-    log_res("build_pair: sell size", sell_action["size"], round(BUDGET_USDC / sell_action["price"], 5))
+    buy_action, sell_action = grid_exec.build_pair(10000.0)
+    log_res("build_pair: buy price", buy_action["price"], 10000.0 - grid_exec.BUY_GRID_FACTOR * GRID_STEP)
+    log_res("build_pair: sell price", sell_action["price"], 10000.0 + grid_exec.SELL_GRID_FACTOR * GRID_STEP)
+    log_res("build_pair: buy size", buy_action["size"], round(grid_exec.BUDGET_USDC / buy_action["price"], 5))
+    log_res("build_pair: sell size", sell_action["size"], round(grid_exec.BUDGET_USDC / sell_action["price"], 5))
 
     try:
         grid_exec.build_pair(0.0)
@@ -887,25 +887,25 @@ def run_execution_eval():
     log_res("cleanup_orders: remain get_open_orders", calls["get_open_orders"], 1)
     log_res("cleanup_orders: remain summarize", calls["summarize_orders"], 1)
 
-    placed_state = {"mode": PAIR_MODE, "buy_price": 99800.0, "sell_price": 100200.0, "reference_price": 100000.0}
+    placed_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10000.0}
 
-    result, calls = run_rebuild_case([], cleanup_result=True, reference_price_input=100000.0, computed_reference_price=99999.0, place_pair_result=placed_state)
+    result, calls = run_rebuild_case([], cleanup_result=True, reference_price_input=10000.0, computed_reference_price=9999.0, place_pair_result=placed_state)
     log_res("rebuild: explicit ref return", result, placed_state)
     log_res("rebuild: explicit ref no cleanup", calls["cleanup_orders"], 0)
     log_res("rebuild: explicit ref no get_ref", calls["get_reference_price"], 0)
-    log_res("rebuild: explicit ref place arg", calls["place_pair_args"], 100000.0)
+    log_res("rebuild: explicit ref place arg", calls["place_pair_args"], 10000.0)
 
-    result, calls = run_rebuild_case([], cleanup_result=True, reference_price_input=None, computed_reference_price=100400.0, place_pair_result=placed_state)
+    result, calls = run_rebuild_case([], cleanup_result=True, reference_price_input=None, computed_reference_price=10400.0, place_pair_result=placed_state)
     log_res("rebuild: implicit ref return", result, placed_state)
     log_res("rebuild: implicit ref get_ref", calls["get_reference_price"], 1)
-    log_res("rebuild: implicit ref place arg", calls["place_pair_args"], 100400.0)
+    log_res("rebuild: implicit ref place arg", calls["place_pair_args"], 10400.0)
 
-    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=True, reference_price_input=100000.0, computed_reference_price=99999.0, place_pair_result=placed_state)
+    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=True, reference_price_input=10000.0, computed_reference_price=9999.0, place_pair_result=placed_state)
     log_res("rebuild: with old orders cleanup", result, placed_state)
     log_res("rebuild: with old orders cleanup count", calls["cleanup_orders"], 1)
     log_res("rebuild: with old orders cleanup args", calls["cleanup_orders_args"], orders_with_oid)
 
-    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=False, reference_price_input=100000.0, computed_reference_price=99999.0, place_pair_result=placed_state)
+    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=False, reference_price_input=10000.0, computed_reference_price=9999.0, place_pair_result=placed_state)
     log_res("rebuild: cleanup fail -> None", result, None)
     log_res("rebuild: cleanup fail no place", calls["place_pair"], 0)
     log_res("rebuild: cleanup fail no get_ref", calls["get_reference_price"], 0)
@@ -971,12 +971,12 @@ def run_execution_step4_eval():
         sell_status="ok",
         allow_buy_only=True,
         allow_sell_only=True,
-        reference_price=100000.0,
+        reference_price=10000.0,
     )
     log_res(
         "place_pair: both ok -> PAIR",
         result,
-        {"mode": PAIR_MODE, "buy_price": 99800.0, "sell_price": 100200.0, "reference_price": 100000.0},
+        {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10000.0},
     )
     log_res("place_pair: both ok no cleanup", calls["cleanup_after_partial_place_failure"], 0)
     log_res("place_pair: both ok call order", calls["place_limit_order_args"], ["BUY", "SELL"])
@@ -986,12 +986,12 @@ def run_execution_step4_eval():
         sell_status="insufficient_spot_balance",
         allow_buy_only=True,
         allow_sell_only=True,
-        reference_price=100000.0,
+        reference_price=10000.0,
     )
     log_res(
         "place_pair: buy ok -> BUY_ONLY",
         result,
-        {"mode": BUY_ONLY_MODE, "buy_price": 99800.0, "reference_price": 100000.0},
+        {"mode": BUY_ONLY_MODE, "buy_price": 9800.0, "reference_price": 10000.0},
     )
     log_res("place_pair: BUY_ONLY no cleanup", calls["cleanup_after_partial_place_failure"], 0)
 
@@ -1000,12 +1000,12 @@ def run_execution_step4_eval():
         sell_status="ok",
         allow_buy_only=True,
         allow_sell_only=True,
-        reference_price=100000.0,
+        reference_price=10000.0,
     )
     log_res(
         "place_pair: sell ok -> SELL_ONLY",
         result,
-        {"mode": SELL_ONLY_MODE, "sell_price": 100200.0, "reference_price": 100000.0},
+        {"mode": SELL_ONLY_MODE, "sell_price": 10200.0, "reference_price": 10000.0},
     )
     log_res("place_pair: SELL_ONLY no cleanup", calls["cleanup_after_partial_place_failure"], 0)
 
@@ -1014,7 +1014,7 @@ def run_execution_step4_eval():
         sell_status="insufficient_spot_balance",
         allow_buy_only=False,
         allow_sell_only=True,
-        reference_price=100000.0,
+        reference_price=10000.0,
     )
     log_res("place_pair: BUY_ONLY disallowed -> None", result, None)
     log_res("place_pair: BUY_ONLY disallowed cleanup", calls["cleanup_after_partial_place_failure"], 1)
@@ -1024,7 +1024,7 @@ def run_execution_step4_eval():
         sell_status="ok",
         allow_buy_only=True,
         allow_sell_only=False,
-        reference_price=100000.0,
+        reference_price=10000.0,
     )
     log_res("place_pair: SELL_ONLY disallowed -> None", result, None)
     log_res("place_pair: SELL_ONLY disallowed cleanup", calls["cleanup_after_partial_place_failure"], 1)
@@ -1034,7 +1034,7 @@ def run_execution_step4_eval():
         sell_status="ok",
         allow_buy_only=True,
         allow_sell_only=True,
-        reference_price=100000.0,
+        reference_price=10000.0,
     )
     log_res("place_pair: buy error -> None", result, None)
     log_res("place_pair: buy error cleanup", calls["cleanup_after_partial_place_failure"], 1)
@@ -1044,7 +1044,7 @@ def run_execution_step4_eval():
         sell_status="error",
         allow_buy_only=True,
         allow_sell_only=True,
-        reference_price=100000.0,
+        reference_price=10000.0,
     )
     log_res("place_pair: sell error -> None", result, None)
     log_res("place_pair: sell error cleanup", calls["cleanup_after_partial_place_failure"], 1)
@@ -1054,7 +1054,7 @@ def run_execution_step4_eval():
         sell_status="error",
         allow_buy_only=True,
         allow_sell_only=True,
-        reference_price=100000.0,
+        reference_price=10000.0,
     )
     log_res("place_pair: both error -> None", result, None)
     log_res("place_pair: both error cleanup", calls["cleanup_after_partial_place_failure"], 1)
