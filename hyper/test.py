@@ -855,6 +855,18 @@ def run_execution_eval():
     log_res("build_pair: buy size", buy_action["size"], round(grid_exec.BUDGET_USDC / buy_action["price"], 5))
     log_res("build_pair: sell size", sell_action["size"], round(grid_exec.BUDGET_USDC / sell_action["price"], 5))
 
+    old_buy_grid_factor = grid_exec.BUY_GRID_FACTOR
+    old_sell_grid_factor = grid_exec.SELL_GRID_FACTOR
+    try:
+        grid_exec.BUY_GRID_FACTOR = 1.5
+        grid_exec.SELL_GRID_FACTOR = 2.0
+        buy_action, sell_action = grid_exec.build_pair(10000.0)
+        log_res("build_pair: grid step buy factor", buy_action["price"], 10000.0 - 1.5 * GRID_STEP)
+        log_res("build_pair: grid step sell factor", sell_action["price"], 10000.0 + 2.0 * GRID_STEP)
+    finally:
+        grid_exec.BUY_GRID_FACTOR = old_buy_grid_factor
+        grid_exec.SELL_GRID_FACTOR = old_sell_grid_factor
+
     try:
         grid_exec.build_pair(0.0)
         log_res("build_pair: invalid ref <=0", "NO_ERROR", "ValueError")
