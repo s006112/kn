@@ -22,10 +22,10 @@ MODEL_EXTRACT_MATRIX = {
     "EXTRACT_WATCH_FOLDER": [
         #"sonar-reasoning-pro",
         "grok-4.20-0309-non-reasoning",
-        "gemini-3-pro-preview",
-        #"gemini-3.1-flash-lite-preview"
-        #"gpt-5.4-mini",
-        "gpt-5.4"
+        #"gemini-3-pro-preview",
+        "gemini-3.1-flash-lite-preview"
+        "gpt-5.4-mini",
+        #"gpt-5.4"
     ],
     "PREMIUM_WATCH_FOLDER": [
         "gpt-5.4",   # gpt-5.2, gpt-5.4
