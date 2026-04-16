@@ -417,11 +417,43 @@ anchor break 只适用于 `BUY_ONLY`，且必须同时满足：
 当 decision 返回 `("rebuild", reference_price)` 或 `("rebuild", None)` 时：
 
 - 使用当前 live orders 进入 rebuild
+- rebuild 只允许走以下两种 execution path：
+
+#### Full Rebuild Path
+
+适用于除 `PAIR` fill-driven rebuild 之外的所有 rebuild：
+
 - 如有旧挂单，先 cleanup
 - cleanup 成功后才允许 placement
 - 若 `reference_price is None`，则读取 fresh reference price
 - placement 成功后仅在得到有效 state 时更新 saved state
 - rebuild 失败则退出
+
+#### Fill-Replace Path
+
+只适用于以下条件同时成立时：
+
+- 当前 rebuild 来自 `saved = PAIR` 的 fill-driven rebuild
+- 当前 live orders 恰好只剩 1 张单
+- `reference_price` 已由 decision 明确提供
+- 当前剩余单可提供 cancel 所需 oid
+
+执行顺序必须为：
+
+1. 基于给定 `reference_price` 计算新 pair
+2. 先 place fill side 对应的新 order
+3. 再 cancel 当前剩余旧 order 的 oid
+4. 验证该旧 oid 已不存在
+5. 再 place 另一侧新 order
+
+约束：
+
+- Fill-Replace Path 不得用于 bootstrap rebuild
+- Fill-Replace Path 不得用于 anchor break rebuild
+- Fill-Replace Path 不得用于 `BUY_ONLY` / `SELL_ONLY` 的 fill-complete rebuild
+- Fill-Replace Path 中的 verify 目标是“指定旧 oid 已消失”，不是“zero open orders”
+- 若任一步失败，则 rebuild 失败；不得伪装为 keep
+- 仅在得到有效新 state 时才允许更新 saved state
 
 ### Abnormal
 
@@ -457,17 +489,24 @@ gateway 是 engine 的唯一读取边界。
 
 execution 负责：
 
+- 根据 rebuild 类型选择 execution path
 - cleanup 现有挂单
-- wait until no open orders
 - 构造 pair order actions
 - 提交 buy / sell limit orders
+- 对旧 oid 执行定向 cancel 与 verify
 - 根据 placement result 分类返回新 state 或失败
 
-### Cleanup
+### Execution Paths
 
-cleanup 语义必须为：
+execution 只允许以下两种路径：
 
-- 无 open orders 则直接成功
+#### Full Rebuild Path
+
+适用于一般 rebuild。
+
+语义必须为：
+
+- 无 open orders 则直接进入 placement
 - 有 open orders 则先 bulk cancel
 - 之后轮询确认 no open orders
 - 若确认失败，则 rebuild 失败
@@ -477,6 +516,27 @@ cleanup 语义必须为：
 - cleanup 输入订单必须可用于 cancel
 - 若缺少 cancel 所需字段，则视为 cleanup failure
 - cleanup failure 不得伪装为成功
+
+#### Fill-Replace Path
+
+只适用于 `saved = PAIR` 的 fill-driven rebuild，且当前 live orders 恰好剩 1 张单。
+
+语义必须为：
+
+- 先根据给定 `reference_price` 构造新 pair
+- 先提交 fill side 对应的新 order
+- 若第一张新单失败，则不得继续 cancel 旧 oid
+- 第一张新单成功后，才允许 cancel 当前剩余旧 oid
+- cancel 后必须验证该 oid 已不存在
+- verify 失败时，不得继续提交另一侧新 order
+- verify 成功后，才允许提交另一侧新 order
+
+约束：
+
+- Fill-Replace Path 不得要求先达到 zero open orders
+- Fill-Replace Path 不得使用 bulk cancel 代替定向 oid cancel
+- Fill-Replace Path 不得在旧 oid 未确认消失前提交另一侧新 order
+- Fill-Replace Path 不得制造同方向双单同时暴露的 accepted path
 
 ### Placement Result Classification
 
@@ -497,7 +557,6 @@ rebuild 后新状态只允许是：
 
 - rebuild 失败不得返回 `ABNORMAL` saved state
 - rebuild 失败后不得继续主循环
-- cleanup -> wait no open orders -> rebuild 的顺序不可改变
 
 ### Placement Semantics
 

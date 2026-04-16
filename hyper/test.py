@@ -295,7 +295,7 @@ def run_cleanup_orders_missing_oid_case(orders):
         return None
 
     class FakeExchange:
-        def bulk_cancel(self, payload):
+        def cancel(self, symbol, oid):
             return None
 
     try:
@@ -595,8 +595,8 @@ def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
         return None, None
 
     calls = {
-        "bulk_cancel": 0,
-        "bulk_cancel_args": None,
+        "cancel": 0,
+        "cancel_args": [],
         "wait_no_open_orders": 0,
         "get_open_orders": 0,
         "summarize_orders": 0,
@@ -607,9 +607,9 @@ def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
     old_summarize_orders = grid_exec.summarize_orders
 
     class FakeExchange:
-        def bulk_cancel(self, payload):
-            calls["bulk_cancel"] += 1
-            calls["bulk_cancel_args"] = payload
+        def cancel(self, symbol, oid):
+            calls["cancel"] += 1
+            calls["cancel_args"].append((symbol, oid))
 
     def fake_wait_no_open_orders(info, max_tries=10, interval_sec=WAIT_NO_OPEN_ORDERS_INTERVAL_SEC):
         calls["wait_no_open_orders"] += 1
@@ -888,15 +888,15 @@ def run_execution_eval():
 
     result, calls = run_exec_cleanup_case([], wait_result=True, remaining_orders=[])
     log_res("cleanup_orders: empty -> True", result, True)
-    log_res("cleanup_orders: empty no cancel", calls["bulk_cancel"], 0)
+    log_res("cleanup_orders: empty no cancel", calls["cancel"], 0)
 
     result, calls = run_exec_cleanup_case(orders_with_oid, wait_result=True, remaining_orders=[])
     log_res("cleanup_orders: success -> True", result, True)
-    log_res("cleanup_orders: success cancel count", calls["bulk_cancel"], 1)
+    log_res("cleanup_orders: success cancel count", calls["cancel"], 2)
     log_res(
         "cleanup_orders: success cancel payload",
-        calls["bulk_cancel_args"],
-        [{"coin": grid_exec.SYMBOL, "oid": 11}, {"coin": grid_exec.SYMBOL, "oid": 22}],
+        calls["cancel_args"],
+        [(grid_exec.SYMBOL, 11), (grid_exec.SYMBOL, 22)],
     )
 
     result, calls = run_exec_cleanup_case(orders_with_oid, wait_result=False, remaining_orders=orders_with_oid[:1])
