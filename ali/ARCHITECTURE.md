@@ -56,7 +56,7 @@ The active runtime is a **two-phase polling loop**:
 `pipeline_run()` in `ali/ali_email.py`
 
 1. **Phase 1: New forwarded emails**
-   - scan unread messages, bypass `ADMIN_USERNAME` when `DEBUG_MODE=False`
+   - scan unread messages, bypass `ADMIN_USERNAME` when `ALI_DEBUG_MODE=False`
    - skip non-allowlisted senders and reserved review-thread subjects
    - keep up to the configured number of valid messages after fetch-layer filtering
    - generate version 1 internal review
@@ -65,7 +65,7 @@ The active runtime is a **two-phase polling loop**:
 
 2. **Phase 2: Reviewer replies on existing ALI threads**
    - fetch unread messages whose subject matches `[ALI:v`
-   - bypass `ADMIN_USERNAME` when `DEBUG_MODE=False`
+   - bypass `ADMIN_USERNAME` when `ALI_DEBUG_MODE=False`
    - keep only internal allowlisted replies
    - if reply body is empty: treat as REJECT and mark SEEN
    - else parse last review state, extract override instructions, generate next version
@@ -283,7 +283,7 @@ Owned by:
 
 Rules for Phase 1:
 - fetch unread messages only
-- bypass `ADMIN_USERNAME` when `DEBUG_MODE=False`
+- bypass `ADMIN_USERNAME` when `ALI_DEBUG_MODE=False`
 - skip reserved ALI review-thread subjects
 - allow only internal allowlisted senders
 - apply processing cap after fetch-layer filtering
@@ -291,7 +291,7 @@ Rules for Phase 1:
 Rules for Phase 2:
 - fetch unread messages only
 - subject must match the reserved ALI review-thread namespace
-- bypass `ADMIN_USERNAME` when `DEBUG_MODE=False`
+- bypass `ADMIN_USERNAME` when `ALI_DEBUG_MODE=False`
 - allow only internal allowlisted senders
 
 Fetch layer may:

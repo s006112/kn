@@ -24,7 +24,7 @@ CALL FLOW (AUTHORITATIVE EXECUTION PATH)
 pipeline_run()
   ├─ Phase 1: New Incoming Messages
   │    ├─ fetch_new_messages(max_messages=2)
-  │    ├─ scan UNSEEN mail, bypass ADMIN_USERNAME when DEBUG_MODE=False
+  │    ├─ scan UNSEEN mail, bypass ADMIN_USERNAME when ALI_DEBUG_MODE=False
   │    ├─ skip non-allowlisted senders and review-thread subjects
   │    ├─ keep up to 2 valid messages after fetch-layer filtering
   │    ├─ generate_review_package() → render_review()
@@ -33,7 +33,7 @@ pipeline_run()
   │
   └─ Phase 2: Reviewer Replies
        ├─ fetch_sender_replies()
-       ├─ bypass ADMIN_USERNAME when DEBUG_MODE=False
+       ├─ bypass ADMIN_USERNAME when ALI_DEBUG_MODE=False
        ├─ keep only allowlisted review-thread replies
        ├─ empty reply → REJECT, mark seen
        ├─ extract_last_review_state()

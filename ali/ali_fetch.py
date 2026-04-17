@@ -76,12 +76,12 @@ def _should_bypass_admin(from_addr: str) -> bool:
     """
     Return True when admin-originated mail should be skipped.
 
-    In this module, DEBUG_MODE means:
+    In this module, ALI_DEBUG_MODE means:
     - True: process mail from ADMIN_USERNAME normally.
     - False: bypass mail whose sender matches ADMIN_USERNAME.
 
     This check reads .env live so a running ali_email.py poller sees
-    DEBUG_MODE/ADMIN_USERNAME changes without a process restart.
+    ALI_DEBUG_MODE/ADMIN_USERNAME changes without a process restart.
     """
     env_values = dotenv_values(_DOTENV_PATH)
 
@@ -89,7 +89,7 @@ def _should_bypass_admin(from_addr: str) -> bool:
     if not admin_addr:
         return False
 
-    debug_raw = str(env_values.get("DEBUG_MODE", "")).strip()
+    debug_raw = str(env_values.get("ALI_DEBUG_MODE", "")).strip()
     debug_mode = True if debug_raw == "" else debug_raw.lower() == "true"
 
     return not debug_mode and (from_addr or "").lower() == admin_addr
@@ -211,11 +211,11 @@ def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
         for rec in records:
             email = _raw_to_email_message(rec)
 
-            # If DEBUG_MODE is explicitly disabled, bypass messages from the
+            # If ALI_DEBUG_MODE is explicitly disabled, bypass messages from the
             # configured IMAP user (commonly the internal IT account).
             if _should_bypass_admin(email.from_addr):
                 logger.info(
-                    "Bypassing message from %s uid=%s due to DEBUG_MODE=FALSE",
+                    "Bypassing message from %s uid=%s due to ALI_DEBUG_MODE=FALSE",
                     email.from_addr,
                     rec.uid,
                 )
@@ -280,10 +280,10 @@ def fetch_sender_replies() -> List[EmailMessage]:
 
         for rec in records:
             email = _raw_to_email_message(rec)
-            # Skip internal IT/IMAP user when DEBUG_MODE is disabled
+            # Skip internal IT/IMAP user when ALI_DEBUG_MODE is disabled
             if _should_bypass_admin(email.from_addr):
                 logger.info(
-                    "Bypassing reply from %s uid=%s due to DEBUG_MODE=FALSE",
+                    "Bypassing reply from %s uid=%s due to ALI_DEBUG_MODE=FALSE",
                     email.from_addr,
                     rec.uid,
                 )
