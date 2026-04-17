@@ -45,8 +45,8 @@ def apply_runtime_overrides(overrides: dict):
 # ============================================================================
 
 KEEP_LOG_INTERVAL_SEC = 300  # keep 状态同类日志至少每 300 秒打印一次，避免刷屏
-MAIN_LOOP_POLL_INTERVAL_SEC = 1.2  # 主循环，检查挂单和状态是否变化
-WAIT_NO_OPEN_ORDERS_INTERVAL_SEC = 1.0  # 撤单后检查一次是否已无遗留挂单
+MAIN_LOOP_POLL_INTERVAL_SEC = 1.5  # 主循环，检查挂单和状态是否变化
+WAIT_NO_OPEN_ORDERS_INTERVAL_SEC = 0.5  # 撤单后检查一次是否已无遗留挂单
 
 OPEN_ORDERS_MAX_RETRIES = 4  # 查询挂单列表最多重试 4 次，容忍短暂接口抖动
 OPEN_ORDERS_RETRY_BASE_SEC = 0.5  # 查询挂单重试的基础退避时间，从 0.5 秒开始
