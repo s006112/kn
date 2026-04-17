@@ -205,7 +205,7 @@ def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
     client, folder = _build_client(logger, require_credentials=True)
 
     try:
-        records = _fetch_records(client, folder, ["UNSEEN"], limit=max_messages)
+        records = _fetch_records(client, folder, ["UNSEEN"])
         messages: List[EmailMessage] = []
 
         for rec in records:

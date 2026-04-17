@@ -24,13 +24,17 @@ CALL FLOW (AUTHORITATIVE EXECUTION PATH)
 pipeline_run()
   ├─ Phase 1: New Incoming Messages
   │    ├─ fetch_new_messages(max_messages=2)
-  │    ├─ skip review-thread subjects (REVIEW_SUBJECT_PATTERN)
+  │    ├─ scan UNSEEN mail, bypass ADMIN_USERNAME when DEBUG_MODE=False
+  │    ├─ skip non-allowlisted senders and review-thread subjects
+  │    ├─ keep up to 2 valid messages after fetch-layer filtering
   │    ├─ generate_review_package() → render_review()
   │    ├─ _send_internal_review() → send_reply()
   │    └─ mark_imap_message_seen()
   │
   └─ Phase 2: Reviewer Replies
        ├─ fetch_sender_replies()
+       ├─ bypass ADMIN_USERNAME when DEBUG_MODE=False
+       ├─ keep only allowlisted review-thread replies
        ├─ empty reply → REJECT, mark seen
        ├─ extract_last_review_state()
        ├─ generate_review_package(previous_draft, edit_version) → render_review()

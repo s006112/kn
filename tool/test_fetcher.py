@@ -9,7 +9,7 @@ if str(ROOT) not in sys.path:
 from ali.ali_fetch import fetch_new_messages
 
 # case 1：无 state_store，仅抓 UNSEEN
-msgs = fetch_new_messages(max_messages=5)
+msgs = fetch_new_messages(max_messages=20)
 
 print("="*50)
 print(f"Total fetched: {len(msgs)}")
