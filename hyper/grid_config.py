@@ -111,7 +111,7 @@ GMT_PLUS_8 = timezone(timedelta(hours=8))
 
 
 def log_msg(message):
-    timestamp = datetime.now(GMT_PLUS_8).strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = datetime.now(GMT_PLUS_8).strftime("%H:%M:%S")
     print(f"[{timestamp}] {message}")
 
 
