@@ -81,6 +81,8 @@ from zoneinfo import ZoneInfo
 from helper.helper_config import configure_logging, get_env_int  # type: ignore
 from helper.utils_imap_types import EmailMessage, SendResult
 from helper.utils_imap_ops import mark_imap_message_seen  # type: ignore
+from helper.utils_imap_client import ImapClient  # type: ignore
+from helper.utils_imap_config import load_imap_config  # type: ignore
 
 from ali.ali_fetch import fetch_new_messages, fetch_sender_replies  # type: ignore
 from ali.ali_llm import generate_review_package, render_review  # type: ignore
@@ -101,13 +103,39 @@ SYSTEM_PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompt" / "prompt_al
 _HKT_ZONE = ZoneInfo("Asia/Hong_Kong")
 _DAY_START = dt_time(9, 0)
 _DAY_END = dt_time(18, 0)
-
+_FAILED_FOLDER = "Ali_failed"
 
 def _default_poll_interval_minutes(now: datetime | None = None) -> float:
     current = now or datetime.now(tz=_HKT_ZONE)
     local_time = current.timetz().replace(tzinfo=None)
     return 1 if _DAY_START <= local_time < _DAY_END else 2
 
+def _is_deterministic_failure(exc: Exception) -> bool:
+    return isinstance(exc, (ValueError, FileNotFoundError))
+
+def _move_imap_message_to_failed(uid: int, *, logger) -> None:
+    cfg = load_imap_config(
+        "IMAP_FOLDER",
+        "INBOX",
+        require_credentials=True,
+    )
+    if cfg is None:
+        raise RuntimeError("IMAP configuration missing.")
+
+    client = ImapClient(
+        server=cfg.host,
+        port=cfg.port,
+        user=cfg.user,
+        password=cfg.password,
+        verify_ssl=cfg.verify_ssl,
+        timeout=cfg.timeout,
+        logger=logger,
+    )
+    client.connect()
+    try:
+        client.move_message(cfg.folder, uid, _FAILED_FOLDER)
+    finally:
+        client.disconnect()
 
 # -----------------------------------------------------------------------------
 # Guarded execution (核心收敛点)
@@ -124,11 +152,12 @@ def _run_guarded(
     """
     Execute fn() with standardized exception handling.
     - Includes full traceback
-    - Swallows exception to preserve pipeline semantics
+    - Deterministic failures are quarantined to Ali_failed
+    - Transient failures remain UNSEEN for retry
     """
     try:
         fn()
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "%s failed (uid=%s subject=%s)",
             ctx,
@@ -136,6 +165,27 @@ def _run_guarded(
             subject,
         )
 
+        if uid is None or not _is_deterministic_failure(exc):
+            return
+
+        try:
+            _move_imap_message_to_failed(uid, logger=logger)
+            logger.error(
+                "%s quarantined to %s (uid=%s subject=%s reason=%s)",
+                ctx,
+                _FAILED_FOLDER,
+                uid,
+                subject,
+                type(exc).__name__,
+            )
+        except Exception:
+            logger.exception(
+                "%s failed to move message to %s (uid=%s subject=%s)",
+                ctx,
+                _FAILED_FOLDER,
+                uid,
+                subject,
+            )
 
 # -----------------------------------------------------------------------------
 # Helpers
