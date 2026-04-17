@@ -7,8 +7,8 @@ import traceback
 from grid_config import apply_runtime_overrides
 
 apply_runtime_overrides({
-    "GRID_STEP": 100.0,
-    "BUDGET_USDC": 100.0,
+    "GRID_STEP": 200.0,
+    "BUDGET_USDC": 250.0,
     "BUY_GRID_FACTOR": 1.0,
     "SELL_GRID_FACTOR": 1.0
 })
