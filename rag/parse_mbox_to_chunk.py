@@ -7,11 +7,23 @@ optionally from parsed attachments.
 
 Pipelines:
 - mbox_iterate -> message_parse -> metadata_build -> body_parse -> block_enrich -> jsonl_write -> attachment_save -> attachment_parse
+- then `build_chunks_jsonl` post-processes blocks into final chunks and optional audit sidecar files
 
 Invariants:
 - Overwrites `data/mbox/jsonl/<mbox_stem>_blocks.jsonl` for each mbox file processed.
 - Skips any message that lacks a `Message-ID` header.
 - Saves each attachment payload to disk before attempting any attachment parsing.
+
+Output files in `data/mbox/jsonl/`:
+- `<mbox_stem>_blocks.jsonl`: canonical block-level records parsed directly from email bodies and supported attachments.
+- `<mbox_stem>_chunks.jsonl`: retrieval/indexing-ready records after dropping very short blocks and splitting oversized blocks. This is the only file type from this pipeline intended to feed the next JSONL-to-FAISS stage.
+- `<mbox_stem>_drop.jsonl`: optional audit log of blocks excluded from `_chunks.jsonl`, currently for `hard_min_words`.
+- `<mbox_stem>_split_added.jsonl`: optional audit log for chunk splitting, including the original oversized parent block and each emitted child chunk.
+
+Downstream handoff:
+- Only `*_chunks.jsonl` is a FAISS input candidate.
+- `*_blocks.jsonl`, `*_drop.jsonl`, and `*_split_added.jsonl` are inspection/audit artifacts and are not direct FAISS inputs.
+- In the current repo, `rag/faiss_build.py` reads the specific path `data/mbox/jsonl/mbox_chunks.jsonl`, so per-mbox files such as `<mbox_stem>_chunks.jsonl` would need to be merged or renamed before using that exact entrypoint.
 
 Out of scope:
 - IMAP fetching or mailbox synchronization.
@@ -44,7 +56,7 @@ RAW_MBOX_DIR = ROOT_DIR / "data" / "mbox" / "raw"
 OUTPUT_DIR = ROOT_DIR / "data" / "mbox" / "jsonl"
 
 ATTACHMENT_PARSERS = {
-    #".pdf":  parse_pdf_bytes_to_canonical_blocks,
+    ".pdf":  parse_pdf_bytes_to_canonical_blocks,
     #**{ext: parse_doc_bytes_to_canonical_blocks for ext in (".doc", ".docx")},
     #**{ext: parse_xls_bytes_to_canonical_blocks for ext in (".xls", ".xlsx")},
 }
@@ -84,6 +96,25 @@ def write_block(out, block: dict):
         block["text"] = text_value
     out.write(json.dumps(block, ensure_ascii=False) + "\n")
 
+
+def print_status(current: int, total: int, label: str):
+    """
+    Purpose:
+    Print a minimal single-line terminal progress status for the current mbox file.
+
+    Inputs:
+    - current: Number of messages processed so far.
+    - total: Total number of messages in the mbox file.
+    - label: Human-readable label for the current mbox file.
+
+    Outputs:
+    - None. Writes a carriage-returned status line to stdout.
+    """
+    total = max(total, 1)
+    percent = int(current * 100 / total)
+    end = "\n" if current >= total else ""
+    print(f"\r[INFO] {label}: {current}/{total} ({percent}%)", end=end, flush=True)
+
 def main():
     """
     Purpose:
@@ -93,8 +124,11 @@ def main():
     - None.
 
     Outputs:
-    - None. Writes JSONL to `data/mbox/jsonl/<mbox_stem>_blocks.jsonl` and saves attachment payloads under
-      `data/mbox/raw/<ext>/`.
+    - None. Writes `data/mbox/jsonl/<mbox_stem>_blocks.jsonl`, then calls `build_chunks_jsonl(...)` to produce
+      `data/mbox/jsonl/<mbox_stem>_chunks.jsonl` plus optional sidecar logs
+      `data/mbox/jsonl/<mbox_stem>_drop.jsonl` and `data/mbox/jsonl/<mbox_stem>_split_added.jsonl`, and saves
+      attachment payloads under `data/mbox/raw/<ext>/`. Of these outputs, only `<mbox_stem>_chunks.jsonl` is intended
+      for the downstream FAISS-building stage.
     """
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -113,9 +147,11 @@ def main():
 
         print(f"[INFO] Processing {mbox_file}")
         mbox = mailbox.mbox(str(mbox_file))
+        total_messages = len(mbox)
 
         with output_jsonl.open("w", encoding="utf-8") as out:
-            for raw in mbox:
+            for index, raw in enumerate(mbox, start=1):
+                print_status(index, total_messages, mbox_file.name)
                 email = BytesParser(policy=policy.default).parsebytes(raw.as_bytes())
 
                 email_id = email.get("Message-ID", "").strip()
