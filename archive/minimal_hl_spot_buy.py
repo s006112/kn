@@ -13,15 +13,15 @@ load_dotenv()
 grid_step = 500.0
 budget_usdc = 10.0
 
-API_KEY = os.getenv("HYPERLIQUID_API_KEY")
+API_WALLET_KEY = os.getenv("HYPERLIQUID_API_WALLET_KEY")
 ACCOUNT_ADDRESS = os.getenv("HYPERLIQUID_ACCOUNT_ADDRESS")
 
 def main():
-    if not API_KEY or not ACCOUNT_ADDRESS:
-        print("Missing HYPERLIQUID_API_KEY or HYPERLIQUID_ACCOUNT_ADDRESS in .env")
+    if not API_WALLET_KEY or not ACCOUNT_ADDRESS:
+        print("Missing HYPERLIQUID_API_WALLET_KEY or HYPERLIQUID_ACCOUNT_ADDRESS in .env")
         return
 
-    agent = Account.from_key(API_KEY)
+    agent = Account.from_key(API_WALLET_KEY)
     info = Info(constants.MAINNET_API_URL)
     exchange = Exchange(
         agent,

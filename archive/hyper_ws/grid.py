@@ -11,7 +11,7 @@ from hyperliquid.utils import constants
 
 from grid_config import (
     ACCOUNT_ADDRESS,
-    API_KEY,
+    API_WALLET_KEY,
     BUY_ONLY_MODE,
     MAIN_LOOP_POLL_INTERVAL_SEC,
     PAIR_MODE,
@@ -25,11 +25,11 @@ from grid_gateway import get_open_orders, read_btc_mid
 
 
 def create_exchange():
-    if not API_KEY:
-        raise ValueError("Missing HYPERLIQUID_API_KEY")
+    if not API_WALLET_KEY:
+        raise ValueError("Missing HYPERLIQUID_API_WALLET_KEY")
 
     return Exchange(
-        Account.from_key(API_KEY),
+        Account.from_key(API_WALLET_KEY),
         constants.MAINNET_API_URL,
         account_address=ACCOUNT_ADDRESS,
     )

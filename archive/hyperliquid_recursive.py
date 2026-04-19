@@ -13,7 +13,7 @@ from eth_account import Account
 load_dotenv()
 
 # --- 1. 配置加载与初始化 ---
-API_KEY = os.getenv("HYPERLIQUID_API_KEY")
+API_WALLET_KEY = os.getenv("HYPERLIQUID_API_WALLET_KEY")
 ACCOUNT_ADDRESS = os.getenv("HYPERLIQUID_ACCOUNT_ADDRESS")
 
 def mask_key(key):
@@ -21,12 +21,12 @@ def mask_key(key):
     return f"{key[:6]}...{key[-4:]}"
 
 def run_spot_limit_buy():
-    if not API_KEY or not ACCOUNT_ADDRESS:
+    if not API_WALLET_KEY or not ACCOUNT_ADDRESS:
         print("错误: 请确保 .env 文件配置正确")
         return
 
     # 初始化 Agent
-    agent_account = Account.from_key(API_KEY)
+    agent_account = Account.from_key(API_WALLET_KEY)
     
     # 初始化接口
     info = Info(constants.MAINNET_API_URL)

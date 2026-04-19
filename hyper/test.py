@@ -7,7 +7,7 @@ from grid_config import (
     REANCHOR_BREAK_STEPS,
     BUY_GRID_FACTOR,
     WAIT_NO_OPEN_ORDERS_INTERVAL_SEC,
-    API_KEY,
+    API_WALLET_KEY,
 )
 from grid_decision import get_bootstrap_live_state, get_loop_action
 
@@ -430,7 +430,7 @@ def run_bootstrap_eval():
         "no size validation",
     )
 
-    log_res("Bootstrap: API Key", "Exists" if API_KEY else "Missing", "Exists")
+    log_res("Bootstrap: API Wallet Key", "Exists" if API_WALLET_KEY else "Missing", "Exists")
 
 
 def run_pair_mode_eval():

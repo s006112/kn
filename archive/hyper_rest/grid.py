@@ -14,7 +14,7 @@ from grid_infra import get_open_orders
 from grid_config import (
     ABNORMAL_MODE,
     ACCOUNT_ADDRESS,
-    API_KEY,
+    API_WALLET_KEY,
     MAIN_LOOP_POLL_INTERVAL_SEC,
     log_msg,
     summarize_orders,
@@ -58,19 +58,19 @@ def run_main_loop(info, exchange, state):
 
 def create_exchange():
     """作用:
-    为当前配置的 API key 和账户地址构造 Hyperliquid 交易客户端。
+    为当前配置的 API wallet key 和账户地址构造 Hyperliquid 交易客户端。
 
     输入:
     无。
 
     输出:
-    返回绑定到 `constants.MAINNET_API_URL` 和 `ACCOUNT_ADDRESS` 的 `Exchange` 实例。当 `API_KEY` 缺失时抛出 `ValueError`。透传 `Account.from_key()` 或 `Exchange` 抛出的异常。
+    返回绑定到 `constants.MAINNET_API_URL` 和 `ACCOUNT_ADDRESS` 的 `Exchange` 实例。当 `API_WALLET_KEY` 缺失时抛出 `ValueError`。透传 `Account.from_key()` 或 `Exchange` 抛出的异常。
     """
-    if not API_KEY:
-        raise ValueError("Missing HYPERLIQUID_API_KEY")
+    if not API_WALLET_KEY:
+        raise ValueError("Missing HYPERLIQUID_API_WALLET_KEY")
 
     return Exchange(
-        Account.from_key(API_KEY),
+        Account.from_key(API_WALLET_KEY),
         constants.MAINNET_API_URL,
         account_address=ACCOUNT_ADDRESS,
     )

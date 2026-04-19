@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ACCOUNT_ADDRESS = os.getenv("HYPERLIQUID_ACCOUNT_ADDRESS")
-API_KEY = os.getenv("HYPERLIQUID_API_KEY")
+API_WALLET_KEY = os.getenv("HYPERLIQUID_API_WALLET_KEY")
 
 SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
