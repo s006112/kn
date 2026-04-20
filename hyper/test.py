@@ -147,6 +147,20 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
     old_summarize_orders = grid_engine.summarize_orders
     old_get_bootstrap_live_state = grid_engine.get_bootstrap_live_state
     old_rebuild = grid_engine.rebuild
+    old_info = grid_engine.Info
+    old_exchange = grid_engine.Exchange
+    old_account = grid_engine.Account
+
+    class FakeAccount:
+        @staticmethod
+        def from_key(key):
+            return object()
+
+    def fake_info(api_url):
+        return object()
+
+    def fake_exchange(account, api_url, account_address=None):
+        return object()
 
     def fake_get_open_orders(info):
         calls["get_open_orders"] += 1
@@ -170,12 +184,18 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
         grid_engine.summarize_orders = fake_summarize_orders
         grid_engine.get_bootstrap_live_state = fake_get_bootstrap_live_state
         grid_engine.rebuild = fake_rebuild
-        result = grid_engine.bootstrap_saved_state(info=object(), trader=object())
+        grid_engine.Info = fake_info
+        grid_engine.Exchange = fake_exchange
+        grid_engine.Account = FakeAccount
+        result, _, _ = grid_engine.bootstrap()
     finally:
         grid_engine.get_open_orders = old_get_open_orders
         grid_engine.summarize_orders = old_summarize_orders
         grid_engine.get_bootstrap_live_state = old_get_bootstrap_live_state
         grid_engine.rebuild = old_rebuild
+        grid_engine.Info = old_info
+        grid_engine.Exchange = old_exchange
+        grid_engine.Account = old_account
 
     return result, calls
 
@@ -263,6 +283,20 @@ def run_bootstrap_saved_state_real_case(orders, rebuild_state):
     old_get_open_orders = grid_engine.get_open_orders
     old_summarize_orders = grid_engine.summarize_orders
     old_rebuild = grid_engine.rebuild
+    old_info = grid_engine.Info
+    old_exchange = grid_engine.Exchange
+    old_account = grid_engine.Account
+
+    class FakeAccount:
+        @staticmethod
+        def from_key(key):
+            return object()
+
+    def fake_info(api_url):
+        return object()
+
+    def fake_exchange(account, api_url, account_address=None):
+        return object()
 
     def fake_get_open_orders(info):
         calls["get_open_orders"] += 1
@@ -281,11 +315,17 @@ def run_bootstrap_saved_state_real_case(orders, rebuild_state):
         grid_engine.get_open_orders = fake_get_open_orders
         grid_engine.summarize_orders = fake_summarize_orders
         grid_engine.rebuild = fake_rebuild
-        result = grid_engine.bootstrap_saved_state(info=object(), trader=object())
+        grid_engine.Info = fake_info
+        grid_engine.Exchange = fake_exchange
+        grid_engine.Account = FakeAccount
+        result, _, _ = grid_engine.bootstrap()
     finally:
         grid_engine.get_open_orders = old_get_open_orders
         grid_engine.summarize_orders = old_summarize_orders
         grid_engine.rebuild = old_rebuild
+        grid_engine.Info = old_info
+        grid_engine.Exchange = old_exchange
+        grid_engine.Account = old_account
 
     return result, calls
 

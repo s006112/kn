@@ -27,34 +27,28 @@ from grid_config import (
 )
 
 
-def create_clients():
-    if not API_WALLET_KEY:
-        raise ValueError("Missing HYPERLIQUID_API_WALLET_KEY")
-
+def bootstrap():
     info = Info(constants.MAINNET_API_URL)
     trader = Exchange(
         Account.from_key(API_WALLET_KEY),
         constants.MAINNET_API_URL,
         account_address=ACCOUNT_ADDRESS,
     )
-    return info, trader
 
-
-def bootstrap_saved_state(info, trader):
     orders = get_open_orders(info)
     summarize_orders(orders)
 
     state = get_bootstrap_live_state(orders)
     if state is not None and state.get("mode") == PAIR_MODE:
         log_msg("Bootstrap Pair")
-        return state
+        return state, info, trader
 
     state = rebuild(info, trader, orders)
     if state is None:
         log_msg("Bootstrap Rebuild Failed")
-        return None
+        return None, info, trader
 
-    return state
+    return state, info, trader
 
 
 def step_engine(info, trader, saved_state):
@@ -77,9 +71,7 @@ def step_engine(info, trader, saved_state):
 
 
 def main():
-    info, trader = create_clients()
-    saved_state = bootstrap_saved_state(info, trader)
-
+    saved_state, info, trader = bootstrap()
     if saved_state is None:
         return
 
