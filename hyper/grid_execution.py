@@ -18,7 +18,7 @@ from grid_config import (
     log_msg,
     summarize_orders,
 )
-from grid_gateway import get_open_orders, get_reference_price
+from grid_gateway import read_orders, get_reference_price
 
 
 def build_pair(reference_price):
@@ -117,7 +117,7 @@ def wait_no_open_orders(
     interval_sec=WAIT_NO_OPEN_ORDERS_INTERVAL_SEC,
 ):
     for _ in range(max_tries):
-        if not get_open_orders(info):
+        if not read_orders(info):
             return True
         time.sleep(interval_sec)
     return False
@@ -130,7 +130,7 @@ def wait_order_absent(
     interval_sec=WAIT_NO_OPEN_ORDERS_INTERVAL_SEC,
 ):
     for _ in range(max_tries):
-        if all(order.get("oid") != oid for order in get_open_orders(info)):
+        if all(order.get("oid") != oid for order in read_orders(info)):
             return True
         time.sleep(interval_sec)
     return False
@@ -150,14 +150,14 @@ def cleanup_orders(info, exchange, orders):
     if wait_no_open_orders(info):
         return True
 
-    remaining_orders = get_open_orders(info)
+    remaining_orders = read_orders(info)
     summarize_orders(remaining_orders)
     log_msg("cleanup failure: open orders still remain")
     return False
 
 
 def cleanup_after_partial_place_failure(info, exchange):
-    remaining_orders = get_open_orders(info)
+    remaining_orders = read_orders(info)
     if not remaining_orders:
         return True
 

@@ -136,14 +136,14 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
         return None, None
 
     calls = {
-        "get_open_orders": 0,
+        "read_orders": 0,
         "summarize_orders": 0,
         "get_bootstrap_live_state": 0,
         "rebuild": 0,
         "rebuild_args": None,
     }
 
-    old_get_open_orders = grid_engine.get_open_orders
+    old_read_orders = grid_engine.read_orders
     old_summarize_orders = grid_engine.summarize_orders
     old_get_bootstrap_live_state = grid_engine.get_bootstrap_live_state
     old_rebuild = grid_engine.rebuild
@@ -162,8 +162,8 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
     def fake_exchange(account, api_url, account_address=None):
         return object()
 
-    def fake_get_open_orders(info):
-        calls["get_open_orders"] += 1
+    def fake_read_orders(info):
+        calls["read_orders"] += 1
         return orders
 
     def fake_summarize_orders(local_orders):
@@ -180,7 +180,7 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
         return rebuild_state
 
     try:
-        grid_engine.get_open_orders = fake_get_open_orders
+        grid_engine.read_orders = fake_read_orders
         grid_engine.summarize_orders = fake_summarize_orders
         grid_engine.get_bootstrap_live_state = fake_get_bootstrap_live_state
         grid_engine.rebuild = fake_rebuild
@@ -189,7 +189,7 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
         grid_engine.Account = FakeAccount
         result, _, _ = grid_engine.bootstrap()
     finally:
-        grid_engine.get_open_orders = old_get_open_orders
+        grid_engine.read_orders = old_read_orders
         grid_engine.summarize_orders = old_summarize_orders
         grid_engine.get_bootstrap_live_state = old_get_bootstrap_live_state
         grid_engine.rebuild = old_rebuild
@@ -274,13 +274,13 @@ def run_bootstrap_saved_state_real_case(orders, rebuild_state):
         return None, None
 
     calls = {
-        "get_open_orders": 0,
+        "read_orders": 0,
         "summarize_orders": 0,
         "rebuild": 0,
         "rebuild_args": None,
     }
 
-    old_get_open_orders = grid_engine.get_open_orders
+    old_read_orders = grid_engine.read_orders
     old_summarize_orders = grid_engine.summarize_orders
     old_rebuild = grid_engine.rebuild
     old_info = grid_engine.Info
@@ -298,8 +298,8 @@ def run_bootstrap_saved_state_real_case(orders, rebuild_state):
     def fake_exchange(account, api_url, account_address=None):
         return object()
 
-    def fake_get_open_orders(info):
-        calls["get_open_orders"] += 1
+    def fake_read_orders(info):
+        calls["read_orders"] += 1
         return orders
 
     def fake_summarize_orders(local_orders):
@@ -312,7 +312,7 @@ def run_bootstrap_saved_state_real_case(orders, rebuild_state):
         return rebuild_state
 
     try:
-        grid_engine.get_open_orders = fake_get_open_orders
+        grid_engine.read_orders = fake_read_orders
         grid_engine.summarize_orders = fake_summarize_orders
         grid_engine.rebuild = fake_rebuild
         grid_engine.Info = fake_info
@@ -320,7 +320,7 @@ def run_bootstrap_saved_state_real_case(orders, rebuild_state):
         grid_engine.Account = FakeAccount
         result, _, _ = grid_engine.bootstrap()
     finally:
-        grid_engine.get_open_orders = old_get_open_orders
+        grid_engine.read_orders = old_read_orders
         grid_engine.summarize_orders = old_summarize_orders
         grid_engine.rebuild = old_rebuild
         grid_engine.Info = old_info
@@ -542,7 +542,7 @@ def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, 
         return None, None
 
     calls = {
-        "get_open_orders": 0,
+        "read_orders": 0,
         "read_btc_mid": 0,
         "get_loop_action": 0,
         "rebuild": 0,
@@ -550,13 +550,13 @@ def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, 
         "btc_mid_seen": None,
     }
 
-    old_get_open_orders = grid_engine.get_open_orders
+    old_read_orders = grid_engine.read_orders
     old_read_btc_mid = grid_engine.read_btc_mid
     old_get_loop_action = grid_engine.get_loop_action
     old_rebuild = grid_engine.rebuild
 
-    def fake_get_open_orders(info):
-        calls["get_open_orders"] += 1
+    def fake_read_orders(info):
+        calls["read_orders"] += 1
         return orders
 
     def fake_read_btc_mid(info):
@@ -574,13 +574,13 @@ def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, 
         return rebuild_result
 
     try:
-        grid_engine.get_open_orders = fake_get_open_orders
+        grid_engine.read_orders = fake_read_orders
         grid_engine.read_btc_mid = fake_read_btc_mid
         grid_engine.get_loop_action = fake_get_loop_action
         grid_engine.rebuild = fake_rebuild
         result = grid_engine.run_cycle(info=object(), trader=object(), saved_state=saved_state)
     finally:
-        grid_engine.get_open_orders = old_get_open_orders
+        grid_engine.read_orders = old_read_orders
         grid_engine.read_btc_mid = old_read_btc_mid
         grid_engine.get_loop_action = old_get_loop_action
         grid_engine.rebuild = old_rebuild
@@ -638,12 +638,12 @@ def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
         "cancel": 0,
         "cancel_args": [],
         "wait_no_open_orders": 0,
-        "get_open_orders": 0,
+        "read_orders": 0,
         "summarize_orders": 0,
     }
 
     old_wait_no_open_orders = grid_exec.wait_no_open_orders
-    old_get_open_orders = grid_exec.get_open_orders
+    old_read_orders = grid_exec.read_orders
     old_summarize_orders = grid_exec.summarize_orders
 
     class FakeExchange:
@@ -655,8 +655,8 @@ def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
         calls["wait_no_open_orders"] += 1
         return wait_result
 
-    def fake_get_open_orders(info):
-        calls["get_open_orders"] += 1
+    def fake_read_orders(info):
+        calls["read_orders"] += 1
         return remaining_orders
 
     def fake_summarize_orders(orders):
@@ -665,12 +665,12 @@ def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
 
     try:
         grid_exec.wait_no_open_orders = fake_wait_no_open_orders
-        grid_exec.get_open_orders = fake_get_open_orders
+        grid_exec.read_orders = fake_read_orders
         grid_exec.summarize_orders = fake_summarize_orders
         result = grid_exec.cleanup_orders(info=object(), exchange=FakeExchange(), orders=initial_orders)
     finally:
         grid_exec.wait_no_open_orders = old_wait_no_open_orders
-        grid_exec.get_open_orders = old_get_open_orders
+        grid_exec.read_orders = old_read_orders
         grid_exec.summarize_orders = old_summarize_orders
 
     return result, calls
@@ -729,18 +729,18 @@ def run_exec_partial_cleanup_case(remaining_orders, cleanup_result):
         return None, None
 
     calls = {
-        "get_open_orders": 0,
+        "read_orders": 0,
         "cleanup_orders": 0,
         "cleanup_orders_args": None,
         "summarize_orders": 0,
     }
 
-    old_get_open_orders = grid_exec.get_open_orders
+    old_read_orders = grid_exec.read_orders
     old_cleanup_orders = grid_exec.cleanup_orders
     old_summarize_orders = grid_exec.summarize_orders
 
-    def fake_get_open_orders(info):
-        calls["get_open_orders"] += 1
+    def fake_read_orders(info):
+        calls["read_orders"] += 1
         return remaining_orders
 
     def fake_cleanup_orders(info, exchange, orders):
@@ -753,12 +753,12 @@ def run_exec_partial_cleanup_case(remaining_orders, cleanup_result):
         return 0, 0
 
     try:
-        grid_exec.get_open_orders = fake_get_open_orders
+        grid_exec.read_orders = fake_read_orders
         grid_exec.cleanup_orders = fake_cleanup_orders
         grid_exec.summarize_orders = fake_summarize_orders
         result = grid_exec.cleanup_after_partial_place_failure(info=object(), exchange=object())
     finally:
-        grid_exec.get_open_orders = old_get_open_orders
+        grid_exec.read_orders = old_read_orders
         grid_exec.cleanup_orders = old_cleanup_orders
         grid_exec.summarize_orders = old_summarize_orders
 
@@ -833,7 +833,7 @@ def run_gateway_open_orders_case(raw_orders):
 
     try:
         grid_gate.read_with_retry = fake_read_with_retry
-        result = grid_gate.get_open_orders(info=object())
+        result = grid_gate.read_orders(info=object())
     finally:
         grid_gate.read_with_retry = old_read_with_retry
 
@@ -941,7 +941,7 @@ def run_execution_eval():
 
     result, calls = run_exec_cleanup_case(orders_with_oid, wait_result=False, remaining_orders=orders_with_oid[:1])
     log_res("cleanup_orders: remain -> False", result, False)
-    log_res("cleanup_orders: remain get_open_orders", calls["get_open_orders"], 1)
+    log_res("cleanup_orders: remain read_orders", calls["read_orders"], 1)
     log_res("cleanup_orders: remain summarize", calls["summarize_orders"], 1)
 
     placed_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10000.0}
@@ -1145,14 +1145,14 @@ def run_gateway_eval():
     ]
     result, calls = run_gateway_open_orders_case(raw_orders)
     log_res(
-        "gateway: get_open_orders result",
+        "gateway: read_orders result",
         result,
         [
             {"side": "BUY", "price": grid_gate.normalize_price(99800.4), "oid": 11, "limitPx": 99800.4},
             {"side": "SELL", "price": grid_gate.normalize_price(100200.4), "oid": 22, "limitPx": 100200.4},
         ],
     )
-    log_res("gateway: get_open_orders retry call", calls["read_with_retry"], 1)
+    log_res("gateway: read_orders retry call", calls["read_with_retry"], 1)
 
     result = run_gateway_read_mid_case(mids_value={grid_gate.BTC_MID_KEY: 100123.4})
     log_res("gateway: read_btc_mid success", result, grid_gate.normalize_price(100123.4))

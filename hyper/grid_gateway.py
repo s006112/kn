@@ -119,7 +119,7 @@ def read_with_retry(
                 time.sleep(cooldown_sec)
 
 
-def get_open_orders(info):
+def read_orders(info):
     orders = read_with_retry(
         lambda: info.open_orders(ACCOUNT_ADDRESS),
         read_name="open-orders",

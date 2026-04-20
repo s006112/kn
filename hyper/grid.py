@@ -17,7 +17,7 @@ from hyperliquid.info import Info
 from hyperliquid.utils import constants
 from grid_decision import get_bootstrap_live_state, get_loop_action
 from grid_execution import rebuild
-from grid_gateway import get_open_orders, read_btc_mid
+from grid_gateway import read_orders, read_btc_mid
 from grid_config import (
     ACCOUNT_ADDRESS,
     API_WALLET_KEY,
@@ -30,14 +30,14 @@ from grid_config import (
 
 
 def bootstrap():
-    info = Info(constants.MAINNET_API_URL)
-    trader = Exchange(
+    info = Info(constants.MAINNET_API_URL)      # read SDK 内置的主网 API 地址常量
+    trader = Exchange(                          # execution client for placing/canceling orders
         Account.from_key(API_WALLET_KEY),
         constants.MAINNET_API_URL,
         account_address=ACCOUNT_ADDRESS,
     )
 
-    orders = get_open_orders(info)
+    orders = read_orders(info)
     summarize_orders(orders)
 
     state = get_bootstrap_live_state(orders)
@@ -54,7 +54,7 @@ def bootstrap():
 
 
 def run_cycle(info, trader, saved_state):
-    orders = get_open_orders(info)
+    orders = read_orders(info)
     btc_mid = read_btc_mid(info) if saved_state["mode"] == BUY_ONLY_MODE else None
     action, reference_price = get_loop_action(orders, saved_state, btc_mid)
 
