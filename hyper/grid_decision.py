@@ -2,14 +2,12 @@
 
 from grid_config import (
     ABNORMAL_MODE,
-    BUY_GRID_FACTOR,
     BUY_ONLY_MODE,
-    GRID_STEP,
+    SELL_ONLY_MODE,
+    GRID_GAP,
     PAIR_MODE,
     REANCHOR_BREAK,
     REANCHOR_DISTANCE,
-    SELL_GRID_FACTOR,
-    SELL_ONLY_MODE,
     format_price,
     log_keep_state,
     log_msg,
@@ -32,8 +30,7 @@ def classify_order_mode(orders):
         if buy_price is None or sell_price is None or buy_price >= sell_price:
             return {"mode": ABNORMAL_MODE}
 
-        expected_gap = (BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP
-        if not price_gap_matches(buy_price, sell_price, expected_gap):
+        if not price_gap_matches(buy_price, sell_price, GRID_GAP):
             return {"mode": ABNORMAL_MODE}
 
         return {
