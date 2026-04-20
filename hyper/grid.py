@@ -64,13 +64,13 @@ def run_cycle(info, trader, saved_state):
         **classify_order_mode(orders),  # mode: PAIR_MODE | BUY_ONLY_MODE | SELL_ONLY_MODE | ABNORMAL_MODE
     }
 
-    action, rebuild_price = decide_cycle_action(live_snapshot, saved_state)
+    action, strategy, rebuild_price = decide_cycle_action(live_snapshot, saved_state)
 
     if action == "keep":
         return saved_state
 
     if action == "rebuild":
-        new_state = rebuild(info, trader, live_snapshot["orders"], rebuild_price)
+        new_state = rebuild(info, trader, live_snapshot["orders"], strategy, rebuild_price)
         if new_state is None:
             log_msg("rebuild failed")
         return new_state

@@ -58,15 +58,17 @@ def decide_cycle_action(live_snapshot, saved_state):
     """
     Returns:
     - action: "keep" | "rebuild" | "abnormal"
-    - rebuild_price: float | None, 仅在 action="rebuild" 时有效，表示重建时参考的价格锚点，优先使用成交价，次选当前
+    - strategy: "done_deal" | "anchor_break" | "reset" | None
+    - rebuild_price: float | None
     """
-    if saved_state["mode"] == PAIR_MODE:    # 填充检测：任一侧被成交则触发 rebuild
+    if saved_state["mode"] == PAIR_MODE:
         if live_snapshot["mode"] == SELL_ONLY_MODE:
             log_msg(f"🔥 BUY filled - {format_price(saved_state['buy_price'])}")
-            return "rebuild", saved_state["buy_price"]
+            return "rebuild", "done_deal", saved_state["buy_price"]
+
         if live_snapshot["mode"] == BUY_ONLY_MODE:
             log_msg(f"✅ SELL filled - {format_price(saved_state['sell_price'])}")
-            return "rebuild", saved_state["sell_price"]
+            return "rebuild", "done_deal", saved_state["sell_price"]
 
         if (
             live_snapshot["mode"] == PAIR_MODE
@@ -74,27 +76,33 @@ def decide_cycle_action(live_snapshot, saved_state):
             and live_snapshot["sell_price"] == saved_state["sell_price"]
         ):
             log_keep_state("pair", "Keep")
-            return "keep", None
+            return "keep", None, None
 
     elif saved_state["mode"] == BUY_ONLY_MODE:
-        if not live_snapshot["orders"]:  # 残余买单成交
+        if not live_snapshot["orders"]:
             log_msg("🔥 residual fill completed: BUY_ONLY -> rebuild")
-            return "rebuild", saved_state["buy_price"]
+            return "rebuild", "done_deal", saved_state["buy_price"]
 
         if live_snapshot["mode"] == BUY_ONLY_MODE:
-            if REANCHOR_BREAK and live_snapshot["btc_mid"] and live_snapshot["btc_mid"] > 0:  # 重锚点检测 (Anchor Break)
-                if price_distance_at_least(live_snapshot["btc_mid"], live_snapshot["buy_price"], REANCHOR_DISTANCE):
+            if REANCHOR_BREAK and live_snapshot["btc_mid"] and live_snapshot["btc_mid"] > 0:
+                if price_distance_at_least(
+                    live_snapshot["btc_mid"],
+                    live_snapshot["buy_price"],
+                    REANCHOR_DISTANCE,
+                ):
                     log_msg("🪝 contract: anchor break")
-                    return "rebuild", None
+                    return "rebuild", "anchor_break", None
+
             log_keep_state("buy-only", "keep")
-            return "keep", None
+            return "keep", None, None
 
     elif saved_state["mode"] == SELL_ONLY_MODE:
-        if not live_snapshot["orders"]:  # 残余卖单成交
+        if not live_snapshot["orders"]:
             log_msg("✅ residual fill completed: SELL_ONLY -> rebuild")
-            return "rebuild", saved_state["sell_price"]
+            return "rebuild", "done_deal", saved_state["sell_price"]
+
         if live_snapshot["mode"] == SELL_ONLY_MODE:
             log_keep_state("sell-only", "keep")
-            return "keep", None
+            return "keep", None, None
 
-    return "abnormal", None
+    return "abnormal", None, None

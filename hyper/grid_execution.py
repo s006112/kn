@@ -158,7 +158,7 @@ def cleanup_after_partial_place_failure(info, trader):
     return False
 
 
-def place_pair(info, trader, reference_price):  # 根据参考价构建买卖单，尝试下单，并根据结果返回新的状态
+def place_reset_rebuild(info, trader, reference_price):  # 根据参考价构建买卖单，尝试下单，并根据结果返回新的状态
     buy_action, sell_action = build_pair(reference_price)
     log_rebuild(reference_price, buy_action, sell_action)
 
@@ -188,20 +188,11 @@ def place_pair(info, trader, reference_price):  # 根据参考价构建买卖单
     return None
 
 
-def is_fill_replace_path(orders, reference_price):  #   判断是否满足填充检测的条件：仅有一个订单，且该订单的价格与参考价的距离符合预期（即该订单很可能是之前挂的单被成交了）
-    return (
-        len(orders) == 1
-        and reference_price is not None
-        and orders[0].get("oid") is not None
-        and orders[0].get("side") in {"BUY", "SELL"}
-    )
-
-
-def place_fill_replace_pair(info, trader, old_order, reference_price):
+def place_done_deal_rebuild(info, trader, remaining_order, reference_price):
     buy_action, sell_action = build_pair(reference_price)
     log_rebuild(reference_price, buy_action, sell_action)
 
-    if old_order["side"] == "SELL":
+    if remaining_order["side"] == "SELL":
         first_action = buy_action
         second_action = sell_action
     else:
@@ -213,18 +204,18 @@ def place_fill_replace_pair(info, trader, old_order, reference_price):
         return None
 
     try:
-        cancel_order_by_oid(trader, old_order)
-        old_order_gone = wait_until(
+        cancel_order_by_oid(trader, remaining_order)
+        remaining_order_gone = wait_until(
             info,
-            lambda orders: all(order.get("oid") != old_order["oid"] for order in orders),
+            lambda orders: all(order.get("oid") != remaining_order["oid"] for order in orders),
         )
     except Exception as exc:
         log_msg(f"partial placement failure: cancel/verify exception ({type(exc).__name__}: {exc})")
         cleanup_after_partial_place_failure(info, trader)
         return None
 
-    if not old_order_gone:
-        log_msg(f"cleanup failure: old order still remains oid={old_order['oid']}")
+    if not remaining_order_gone:
+        log_msg(f"cleanup failure: remaining order still remains oid={remaining_order['oid']}")
         cleanup_after_partial_place_failure(info, trader)
         return None
 
@@ -251,10 +242,12 @@ def place_fill_replace_pair(info, trader, old_order, reference_price):
     cleanup_after_partial_place_failure(info, trader)
     return None
 
-
-def rebuild(info, trader, orders, rebuild_price=None):
-    if is_fill_replace_path(orders, rebuild_price):
-        return place_fill_replace_pair(info, trader, orders[0], rebuild_price)  # 如果满足填充检测条件，尝试走填充-替换的路径进行重建，这样可以在某些订单被成交的情况下保留部分盈利并快速恢复网格状态
+def rebuild(info, trader, orders, strategy="reset", rebuild_price=None):
+    if strategy == "done_deal":
+        if len(orders) != 1 or rebuild_price is None:
+            log_msg("rebuild contract mismatch: done_deal requires exactly 1 remaining order and rebuild_price")
+            return None
+        return place_done_deal_rebuild(info, trader, orders[0], rebuild_price)
 
     if orders and not cleanup_orders(info, trader, orders):
         return None
@@ -262,4 +255,4 @@ def rebuild(info, trader, orders, rebuild_price=None):
     if rebuild_price is None:
         rebuild_price = read_btc_grid(info)
 
-    return place_pair(info, trader, rebuild_price) # 无论是否有订单需要清理，最终都走一次基于当前参考价的常规重建流程
+    return place_reset_rebuild(info, trader, rebuild_price)
