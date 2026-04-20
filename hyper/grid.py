@@ -61,7 +61,7 @@ def run_cycle(info, trader, saved_state):
     live_snapshot = {
         "orders": orders,
         "btc_mid": btc_mid,
-        **classify_order_mode(orders),  # mode; buy_price; sell_price 展平到 live_snapshot 顶层，方便后续决策逻辑使用
+        **classify_order_mode(orders),  # mode: PAIR_MODE | BUY_ONLY_MODE | SELL_ONLY_MODE | ABNORMAL_MODE
     }
 
     action, rebuild_price = decide_cycle_action(live_snapshot, saved_state)

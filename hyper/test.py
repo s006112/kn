@@ -184,9 +184,9 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
             return bootstrap_state
         return classify_order_mode(local_orders)
 
-    def fake_rebuild(info, trader, local_orders, reference_price=None):
+    def fake_rebuild(info, trader, local_orders, rebuild_price=None):
         calls["rebuild"] += 1
-        calls["rebuild_args"] = (local_orders, reference_price)
+        calls["rebuild_args"] = (local_orders, rebuild_price)
         return rebuild_state
 
     try:
@@ -313,9 +313,9 @@ def run_bootstrap_saved_state_real_case(orders, rebuild_state):
         calls["summarize_orders"] += 1
         return 0, 0
 
-    def fake_rebuild(info, trader, local_orders, reference_price=None):
+    def fake_rebuild(info, trader, local_orders, rebuild_price=None):
         calls["rebuild"] += 1
-        calls["rebuild_args"] = (local_orders, reference_price)
+        calls["rebuild_args"] = (local_orders, rebuild_price)
         return rebuild_state
 
     try:
@@ -573,9 +573,9 @@ def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, 
         calls["btc_mid_seen"] = live_snapshot["btc_mid"]
         return action_result
 
-    def fake_rebuild(info, trader, local_orders, reference_price=None):
+    def fake_rebuild(info, trader, local_orders, rebuild_price=None):
         calls["rebuild"] += 1
-        calls["rebuild_args"] = (local_orders, reference_price)
+        calls["rebuild_args"] = (local_orders, rebuild_price)
         return rebuild_result
 
     try:
@@ -681,7 +681,7 @@ def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
     return result, calls
 
 
-def run_rebuild_case(initial_orders, cleanup_result, reference_price_input, computed_reference_price, place_pair_result):
+def run_rebuild_case(initial_orders, cleanup_result, rebuild_price_input, computed_reference_price, place_pair_result):
     if grid_exec is None:
         return None, None
 
@@ -719,7 +719,7 @@ def run_rebuild_case(initial_orders, cleanup_result, reference_price_input, comp
             info=object(),
             trader=object(),
             orders=initial_orders,
-            reference_price=reference_price_input,
+            rebuild_price=rebuild_price_input,
         )
     finally:
         grid_exec.cleanup_orders = old_cleanup_orders
@@ -942,23 +942,23 @@ def run_execution_eval():
 
     placed_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10000.0}
 
-    result, calls = run_rebuild_case([], cleanup_result=True, reference_price_input=10000.0, computed_reference_price=9999.0, place_pair_result=placed_state)
+    result, calls = run_rebuild_case([], cleanup_result=True, rebuild_price_input=10000.0, computed_reference_price=9999.0, place_pair_result=placed_state)
     log_res("rebuild: explicit ref return", result, placed_state)
     log_res("rebuild: explicit ref no cleanup", calls["cleanup_orders"], 0)
     log_res("rebuild: explicit ref no read_btc_grid", calls["read_btc_grid"], 0)
     log_res("rebuild: explicit ref place arg", calls["place_pair_args"], 10000.0)
 
-    result, calls = run_rebuild_case([], cleanup_result=True, reference_price_input=None, computed_reference_price=10400.0, place_pair_result=placed_state)
+    result, calls = run_rebuild_case([], cleanup_result=True, rebuild_price_input=None, computed_reference_price=10400.0, place_pair_result=placed_state)
     log_res("rebuild: implicit ref return", result, placed_state)
     log_res("rebuild: implicit ref read_btc_grid", calls["read_btc_grid"], 1)
     log_res("rebuild: implicit ref place arg", calls["place_pair_args"], 10400.0)
 
-    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=True, reference_price_input=10000.0, computed_reference_price=9999.0, place_pair_result=placed_state)
+    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=True, rebuild_price_input=10000.0, computed_reference_price=9999.0, place_pair_result=placed_state)
     log_res("rebuild: with old orders cleanup", result, placed_state)
     log_res("rebuild: with old orders cleanup count", calls["cleanup_orders"], 1)
     log_res("rebuild: with old orders cleanup args", calls["cleanup_orders_args"], orders_with_oid)
 
-    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=False, reference_price_input=10000.0, computed_reference_price=9999.0, place_pair_result=placed_state)
+    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=False, rebuild_price_input=10000.0, computed_reference_price=9999.0, place_pair_result=placed_state)
     log_res("rebuild: cleanup fail -> None", result, None)
     log_res("rebuild: cleanup fail no place", calls["place_pair"], 0)
     log_res("rebuild: cleanup fail no read_btc_grid", calls["read_btc_grid"], 0)

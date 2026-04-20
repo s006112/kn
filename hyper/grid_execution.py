@@ -140,11 +140,11 @@ def cancel_order_by_oid(trader, order):
     trader.cancel(SYMBOL, order["oid"])
 
 
-def cleanup_orders(info, trader, orders):
-    if not orders:
+def cleanup_orders(info, trader, orders):   # 取消所有订单并验证是否成功，返回是否成功
+    if not orders:  # 无订单需要清理，直接返回成功
         return True
 
-    for order in orders:
+    for order in orders: # 逐个取消订单
         cancel_order_by_oid(trader, order)
 
     if wait_no_open_orders(info):
@@ -201,7 +201,7 @@ def place_pair(info, trader, reference_price):
     return None
 
 
-def is_fill_replace_path(orders, reference_price):
+def is_fill_replace_path(orders, reference_price):  #   判断是否满足填充检测的条件：仅有一个订单，且该订单的价格与参考价的距离符合预期（即该订单很可能是之前挂的单被成交了）
     return (
         len(orders) == 1
         and reference_price is not None
@@ -262,14 +262,14 @@ def place_fill_replace_pair(info, trader, old_order, reference_price):
     return None
 
 
-def rebuild(info, trader, orders, reference_price=None):
-    if is_fill_replace_path(orders, reference_price):
-        return place_fill_replace_pair(info, trader, orders[0], reference_price)
+def rebuild(info, trader, orders, rebuild_price=None):
+    if is_fill_replace_path(orders, rebuild_price):
+        return place_fill_replace_pair(info, trader, orders[0], rebuild_price)
 
     if orders and not cleanup_orders(info, trader, orders):
         return None
 
-    if reference_price is None:
-        reference_price = read_btc_grid(info)
+    if rebuild_price is None:
+        rebuild_price = read_btc_grid(info)
 
-    return place_pair(info, trader, reference_price)
+    return place_pair(info, trader, rebuild_price)
