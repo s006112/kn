@@ -470,7 +470,7 @@ def run_bootstrap_eval():
     log_res("Bootstrap: Wrong Gap", mode_of_bootstrap(pair_orders(99900.0, 100000.0)), ABNORMAL_MODE)
 
     log_note(
-        "Bootstrap: Size Mismatch (Known Gap)",
+        "Bootstrap: Size Mismatch",
         mode_of_bootstrap(pair_orders(99800.0, 100200.0, 1.0, 0.00001)),
         "no size validation",
     )
@@ -504,7 +504,7 @@ def run_buy_only_eval():
     log_res("BUY_ONLY: keep", decide_cycle_action(live_snapshot(live_buy), state_b), ("keep", None, None))
 
     log_note(
-        "BUY_ONLY: price drift (Expected Negative)",
+        "BUY_ONLY: price drift",
         decide_cycle_action(live_snapshot(buy_only_orders(99700.0)), state_b),
         "no price validation",
     )
@@ -532,7 +532,7 @@ def run_sell_only_eval():
     log_res("SELL_ONLY: keep", decide_cycle_action(live_snapshot(live_sell), state_s), ("keep", None, None))
 
     log_note(
-        "SELL_ONLY: price drift (Expected Negative)",
+        "SELL_ONLY: price drift",
         decide_cycle_action(live_snapshot(sell_only_orders(100300.0)), state_s),
         "no price validation",
     )
