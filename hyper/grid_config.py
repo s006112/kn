@@ -64,9 +64,6 @@ def normalize_price(price):
 def format_price(price):
     return str(int(normalize_price(price)))
 
-def prices_equal(price_a, price_b):
-    return normalize_price(price_a) == normalize_price(price_b)
-
 def price_gap_matches(buy_price, sell_price, expected_gap):
     return normalize_price(sell_price) - normalize_price(buy_price) == normalize_price(expected_gap)
 

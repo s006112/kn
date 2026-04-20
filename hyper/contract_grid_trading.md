@@ -61,7 +61,7 @@
 
 负责纯决策：
 
-- `classify_order_shape`
+- `classify_order_mode`
 - `decide_cycle_action`
 
 该模块不做 IO，不下单，不修改 `saved_state`。
@@ -114,15 +114,15 @@
 
 `ABNORMAL_MODE = "ABNORMAL"` 只用于分类结果，不允许作为继续运行的 saved state。
 
-### `PAIR` live state
+### Live classification state
 
-`classify_order_shape` 仅在识别到合法 `PAIR` 时返回 `pair_state`：
+`classify_order_mode` 返回当前 live orders 的分类 state：
 
 - `mode`
-- `buy_price`
-- `sell_price`
+- `buy_price`，仅 `PAIR` / `BUY_ONLY` 包含
+- `sell_price`，仅 `PAIR` / `SELL_ONLY` 包含
 
-该 state 是当前 live orders 的快照，不包含 `reference_price`。
+该 state 是当前 live orders 的快照，不包含 `reference_price`。`ABNORMAL` state 只包含 `mode`。
 
 ### `PAIR` rebuild state
 
@@ -162,13 +162,12 @@
 
 - `normalize_price(price)`：`round(float(price))` 后转为 `float`
 - `format_price(price)`：归一化后转为整数字符串
-- `prices_equal(price_a, price_b)`：归一化后相等
 - `price_gap_matches(buy_price, sell_price, expected_gap)`：归一化后检查 gap 精确相等
 - `price_distance_at_least(high_price, low_price, distance)`：归一化后检查距离大于等于阈值
 
 关键价格语义：
 
-- pair price equality 使用 `prices_equal`。
+- pair price equality 直接比较 live classification state 与 saved state 中的价格字段。
 - pair gap 使用 `price_gap_matches`。
 - anchor break 距离使用 `price_distance_at_least`。
 - `price_gap_matches` 当前强制 normalized gap equality。
@@ -233,14 +232,14 @@
 
 retryable exception 在最后一次失败后记录日志并重新抛出。
 
-## 7. Shape Classification
+## 7. Mode Classification
 
-`classify_order_shape(orders)` 返回：
+`classify_order_mode(orders)` 返回统一的 live classification state：
 
-- `(PAIR_MODE, pair_state)`
-- `(BUY_ONLY_MODE, None)`
-- `(SELL_ONLY_MODE, None)`
-- `(ABNORMAL_MODE, None)`
+- `{"mode": PAIR_MODE, "buy_price": buy_price, "sell_price": sell_price}`
+- `{"mode": BUY_ONLY_MODE, "buy_price": buy_price}`
+- `{"mode": SELL_ONLY_MODE, "sell_price": sell_price}`
+- `{"mode": ABNORMAL_MODE}`
 
 ### `PAIR`
 
@@ -249,12 +248,12 @@ retryable exception 在最后一次失败后记录日志并重新抛出。
 - `len(orders) == 2`
 - 恰好可取得一个 `"BUY"` order price
 - 恰好可取得一个 `"SELL"` order price
-- `buy_price` truthy
-- `sell_price` truthy
+- `buy_price is not None`
+- `sell_price is not None`
 - `buy_price < sell_price`
 - `price_gap_matches(buy_price, sell_price, (BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP)` 为真
 
-合法 `PAIR` 返回的 `pair_state`：
+合法 `PAIR` 返回的 live state：
 
 - `mode = PAIR_MODE`
 - `buy_price`
@@ -262,11 +261,11 @@ retryable exception 在最后一次失败后记录日志并重新抛出。
 
 ### `BUY_ONLY`
 
-当 `len(orders) == 1` 且该 normalized order 的 `side == "BUY"` 时，分类为 `BUY_ONLY_MODE`。
+当 `len(orders) == 1` 且该 normalized order 的 `side == "BUY"` 时，分类为 `BUY_ONLY_MODE`，并返回 `buy_price`。
 
 ### `SELL_ONLY`
 
-当 `len(orders) == 1` 且该 normalized order 的 `side != "BUY"` 时，分类为 `SELL_ONLY_MODE`。
+当 `len(orders) == 1` 且该 normalized order 的 `side != "BUY"` 时，分类为 `SELL_ONLY_MODE`，并返回 `sell_price`。
 
 在 `read_orders` 归一化边界下，单 order side 只应为 `"BUY"` 或 `"SELL"`。
 
@@ -288,8 +287,8 @@ retryable exception 在最后一次失败后记录日志并重新抛出。
 2. 创建 `trader = Exchange(Account.from_key(API_WALLET_KEY), constants.MAINNET_API_URL, account_address=ACCOUNT_ADDRESS)`。
 3. 调用 `read_orders(info)`。
 4. 调用 `summarize_orders(orders)`。
-5. 调用 `classify_order_shape(orders)`。
-6. 若 `shape == PAIR_MODE`，返回 `(pair_state, info, trader)`。
+5. 调用 `classify_order_mode(orders)`。
+6. 若 `current_state["mode"] == PAIR_MODE`，返回 `(current_state, info, trader)`。
 7. 否则调用 `rebuild(info, trader, orders)`。
 8. 若 rebuild 返回 `None`，记录 `Bootstrap Rebuild Failed` 并返回 `(None, info, trader)`。
 9. 若 rebuild 成功，返回 `(state, info, trader)`。
@@ -343,15 +342,15 @@ bootstrap 没有通用 exception shell；未捕获异常会向调用方传播。
 - `("rebuild", None)`
 - `("abnormal", None)`
 
-每轮先调用 `classify_order_shape(orders)`。
+每轮先调用 `classify_order_mode(orders)`，取得 `current_state` 与 `current_state["mode"]`。
 
 ### `saved_state["mode"] == PAIR_MODE`
 
 决策顺序：
 
-1. 若当前 `shape == SELL_ONLY_MODE`，视为 BUY filled，返回 `("rebuild", saved_state["buy_price"])`。
-2. 若当前 `shape == BUY_ONLY_MODE`，视为 SELL filled，返回 `("rebuild", saved_state["sell_price"])`。
-3. 若当前 `pair_state` 存在，且 live `buy_price` 与 saved `buy_price` normalized equal，并且 live `sell_price` 与 saved `sell_price` normalized equal，返回 `("keep", None)`。
+1. 若当前 `current_state["mode"] == SELL_ONLY_MODE`，视为 BUY filled，返回 `("rebuild", saved_state["buy_price"])`。
+2. 若当前 `current_state["mode"] == BUY_ONLY_MODE`，视为 SELL filled，返回 `("rebuild", saved_state["sell_price"])`。
+3. 若当前 `current_state["mode"] == PAIR_MODE`，且 live `buy_price` 等于 saved `buy_price`，并且 live `sell_price` 等于 saved `sell_price`，返回 `("keep", None)`。
 4. 否则返回 `("abnormal", None)`。
 
 PAIR fill-driven rebuild 使用成交侧的 saved price 作为 `reference_price`，不读取 fresh BTC grid。
@@ -361,7 +360,7 @@ PAIR fill-driven rebuild 使用成交侧的 saved price 作为 `reference_price`
 决策顺序：
 
 1. 若 `orders` 为空，视为 residual BUY fill complete，返回 `("rebuild", saved_state["buy_price"])`。
-2. 若 `shape == BUY_ONLY_MODE`，执行 anchor break 检查。
+2. 若 `current_state["mode"] == BUY_ONLY_MODE`，执行 anchor break 检查。
 3. 若 anchor break 触发，返回 `("rebuild", None)`。
 4. 若未触发 anchor break，返回 `("keep", None)`。
 5. 否则返回 `("abnormal", None)`。
@@ -373,7 +372,7 @@ PAIR fill-driven rebuild 使用成交侧的 saved price 作为 `reference_price`
 决策顺序：
 
 1. 若 `orders` 为空，视为 residual SELL fill complete，返回 `("rebuild", saved_state["sell_price"])`。
-2. 若 `shape == SELL_ONLY_MODE`，返回 `("keep", None)`。
+2. 若 `current_state["mode"] == SELL_ONLY_MODE`，返回 `("keep", None)`。
 3. 否则返回 `("abnormal", None)`。
 
 当前 `SELL_ONLY` keep 不校验 live SELL price 是否等于 `saved_state["sell_price"]`。
@@ -489,7 +488,7 @@ sizing invariant：
 - 当前 sizing 是 same notional。
 - BUY 与 SELL 使用各自价格分别按 `BUDGET_USDC` 反推 size。
 - BUY size 与 SELL size 可以不同。
-- size 不参与 `classify_order_shape` 的 pair validity 判定。
+- size 不参与 `classify_order_mode` 的 pair validity 判定。
 
 ### `classify_order_result`
 
@@ -573,10 +572,10 @@ sizing invariant：
 - execution client 变量名为 `trader`。
 - `saved_state` 继续运行时只使用 `PAIR`、`BUY_ONLY`、`SELL_ONLY`。
 - `ABNORMAL` 不作为 saved state 返回给主循环继续运行。
-- `classify_order_shape` 只在合法 `PAIR` 时返回 `pair_state`。
+- `classify_order_mode` 始终返回 live classification state，并以 `mode` 表达 `PAIR` / `BUY_ONLY` / `SELL_ONLY` / `ABNORMAL`。
 - 合法 `PAIR` 要求两张单、一买一卖、`buy_price < sell_price`、normalized gap 等于 `(BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP`。
-- `BUY_ONLY` 与 `SELL_ONLY` 是单 order shape。
-- `decide_cycle_action` 先分类 shape，再按 saved mode 分支。
+- `BUY_ONLY` 与 `SELL_ONLY` 是单 order mode。
+- `decide_cycle_action` 先分类 current mode，再按 saved mode 分支。
 - `PAIR` fill-driven rebuild 优先于 `PAIR` keep。
 - `BUY_ONLY` residual fill-complete 优先于 anchor break。
 - `BUY_ONLY` anchor break 触发后以 `reference_price=None` rebuild。
@@ -592,7 +591,7 @@ sizing invariant：
 
 当前实现明确存在以下限制：
 
-- `classify_order_shape` 不校验 order size。
+- `classify_order_mode` 不校验 order size。
 - `BUY_ONLY` keep 不校验 live BUY price 与 saved BUY price 相等。
 - `SELL_ONLY` keep 不校验 live SELL price 与 saved SELL price 相等。
 - `BUY_ONLY` live price drift 在未触发 anchor break 时仍可能 keep。

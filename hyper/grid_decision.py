@@ -15,7 +15,6 @@ from grid_config import (
     log_msg,
     price_distance_at_least,
     price_gap_matches,
-    prices_equal,
 )
 
 def classify_order_mode(orders):
@@ -71,8 +70,8 @@ def decide_cycle_action(orders, saved_state, current_btc_mid=None):
 
         if (
             current_mode == PAIR_MODE
-            and prices_equal(current_state["buy_price"], saved_state["buy_price"])
-            and prices_equal(current_state["sell_price"], saved_state["sell_price"])
+            and current_state["buy_price"] == saved_state["buy_price"]
+            and current_state["sell_price"] == saved_state["sell_price"]
         ):
             log_keep_state("pair", "Keep")
             return "keep", None
