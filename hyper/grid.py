@@ -15,7 +15,7 @@ from eth_account import Account
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
-from grid_decision import get_bootstrap_live_state, get_loop_action
+from grid_decision import get_pair_state, get_loop_action
 from grid_execution import rebuild
 from grid_config import read_orders, read_btc_mid
 from grid_config import (
@@ -40,8 +40,8 @@ def bootstrap():
     orders = read_orders(info)
     summarize_orders(orders)
 
-    state = get_bootstrap_live_state(orders)
-    if state is not None and state.get("mode") == PAIR_MODE:
+    state = get_pair_state(orders)
+    if state is not None:
         log_msg("Bootstrap Pair")
         return state, info, trader
 

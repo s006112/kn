@@ -49,10 +49,6 @@ def get_order_shape(orders):
         return BUY_ONLY_MODE if orders[0]["side"] == "BUY" else SELL_ONLY_MODE
     return ABNORMAL_MODE
 
-def get_bootstrap_live_state(orders):
-    """启动时只接受合法的双边 PAIR，否则返回 None 触发清理重建流程"""
-    return get_pair_state(orders)
-
 def get_loop_action(orders, state, current_btc_mid=None):
     """主循环决策逻辑"""
     shape = get_order_shape(orders)

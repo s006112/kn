@@ -63,23 +63,18 @@ PRICE_TICK = 1.0
 def format_price(price):
     return str(int(round(float(price))))
 
-
 def price_to_ticks(price):
     return int(round(float(price) / PRICE_TICK))
-
 
 def normalize_price(price):
     return float(price_to_ticks(price)) * PRICE_TICK
 
-
 def prices_equal(price_a, price_b):
     return price_to_ticks(price_a) == price_to_ticks(price_b)
-
 
 def price_gap_matches(buy_price, sell_price, expected_gap):
     # return price_to_ticks(sell_price) - price_to_ticks(buy_price) == price_to_ticks(expected_gap)
     return True
-
 
 def price_distance_at_least(high_price, low_price, distance):
     return price_to_ticks(high_price) - price_to_ticks(low_price) >= price_to_ticks(distance)
@@ -108,26 +103,6 @@ def log_keep_state(keep_type, message):
         log_msg(message)
         _last_keep_type = keep_type
         _last_keep_ts = now
-
-
-def summarize_orders(orders):
-    if not orders:
-        log_msg("OPEN ORDERS: none")
-        return 0, 0
-
-    parts = []
-    buy_count = 0
-    sell_count = 0
-
-    for order in orders:
-        parts.append(f"{order['side']} - {format_price(order['price'])}")
-        if order["side"] == "BUY":
-            buy_count += 1
-        else:
-            sell_count += 1
-
-    log_msg(f"OPEN ORDERS | {' | '.join(parts)}")
-    return buy_count, sell_count
 
 
 # ============================================================================
@@ -180,8 +155,27 @@ def read_btc_mid(info):
     return normalize_price(btc_mid)
 
 # ============================================================================
-# grid read order helpers
+# grid read and summarise order helpers
 # ============================================================================
+
+def summarize_orders(orders):
+    if not orders:
+        log_msg("OPEN ORDERS: none")
+        return 0, 0
+
+    parts = []
+    buy_count = 0
+    sell_count = 0
+
+    for order in orders:
+        parts.append(f"{order['side']} - {format_price(order['price'])}")
+        if order["side"] == "BUY":
+            buy_count += 1
+        else:
+            sell_count += 1
+
+    log_msg(f"OPEN ORDERS | {' | '.join(parts)}")
+    return buy_count, sell_count
 
 
 def retry_read(name, fn, retries=MAX_RETRIES, delay=RETRY_SEC):

@@ -9,7 +9,7 @@ from grid_config import (
     WAIT_NO_OPEN_ORDERS_INTERVAL_SEC,
     API_WALLET_KEY,
 )
-from grid_decision import get_bootstrap_live_state, get_loop_action
+from grid_decision import get_pair_state, get_loop_action
 
 try:
     import grid as grid_engine
@@ -82,7 +82,7 @@ def print_final_summary():
 
 
 def mode_of_bootstrap(orders):
-    state = get_bootstrap_live_state(orders)
+    state = get_pair_state(orders)
     return state["mode"] if state else None
 
 
@@ -138,14 +138,14 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
     calls = {
         "read_orders": 0,
         "summarize_orders": 0,
-        "get_bootstrap_live_state": 0,
+        "get_pair_state": 0,
         "rebuild": 0,
         "rebuild_args": None,
     }
 
     old_read_orders = grid_engine.read_orders
     old_summarize_orders = grid_engine.summarize_orders
-    old_get_bootstrap_live_state = grid_engine.get_bootstrap_live_state
+    old_get_pair_state = grid_engine.get_pair_state
     old_rebuild = grid_engine.rebuild
     old_info = grid_engine.Info
     old_exchange = grid_engine.Exchange
@@ -170,8 +170,8 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
         calls["summarize_orders"] += 1
         return 0, 0
 
-    def fake_get_bootstrap_live_state(local_orders):
-        calls["get_bootstrap_live_state"] += 1
+    def fake_get_pair_state(local_orders):
+        calls["get_pair_state"] += 1
         return bootstrap_state
 
     def fake_rebuild(info, trader, local_orders, reference_price=None):
@@ -182,7 +182,7 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
     try:
         grid_engine.read_orders = fake_read_orders
         grid_engine.summarize_orders = fake_summarize_orders
-        grid_engine.get_bootstrap_live_state = fake_get_bootstrap_live_state
+        grid_engine.get_pair_state = fake_get_pair_state
         grid_engine.rebuild = fake_rebuild
         grid_engine.Info = fake_info
         grid_engine.Exchange = fake_exchange
@@ -191,7 +191,7 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
     finally:
         grid_engine.read_orders = old_read_orders
         grid_engine.summarize_orders = old_summarize_orders
-        grid_engine.get_bootstrap_live_state = old_get_bootstrap_live_state
+        grid_engine.get_pair_state = old_get_pair_state
         grid_engine.rebuild = old_rebuild
         grid_engine.Info = old_info
         grid_engine.Exchange = old_exchange
