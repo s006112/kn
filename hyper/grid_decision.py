@@ -7,7 +7,7 @@ from grid_config import (
     GRID_STEP,
     PAIR_MODE,
     REANCHOR_BREAK,
-    REANCHOR_BREAK_STEPS,
+    REANCHOR_DISTANCE,
     SELL_GRID_FACTOR,
     SELL_ONLY_MODE,
     format_price,
@@ -86,8 +86,7 @@ def decide_cycle_action(live_snapshot, saved_state):
 
         if live_snapshot["mode"] == BUY_ONLY_MODE:
             if REANCHOR_BREAK and live_snapshot["btc_mid"] and live_snapshot["btc_mid"] > 0:  # 重锚点检测 (Anchor Break)
-                distance = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP  # 已漂移至少 REANCHOR_BREAK_STEPS * GRID_STEP
-                if price_distance_at_least(live_snapshot["btc_mid"], live_snapshot["buy_price"], distance):
+                if price_distance_at_least(live_snapshot["btc_mid"], live_snapshot["buy_price"], REANCHOR_DISTANCE):
                     log_msg("🪝 contract: anchor break")
                     return "rebuild", None
             log_keep_state("buy-only", "keep")
