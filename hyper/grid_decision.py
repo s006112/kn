@@ -19,43 +19,38 @@ from grid_config import (
     prices_equal,
 )
 
-def get_pair_state(orders):
-    """验证并提取双边网格状态"""
-    if len(orders) != 2:
-        return None
-
-    buy_price = next((o["price"] for o in orders if o["side"] == "BUY"), None)
-    sell_price = next((o["price"] for o in orders if o["side"] == "SELL"), None)
-
-    if not buy_price or not sell_price or buy_price >= sell_price:
-        return None
-
-    expected_gap = (BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP
-    if not price_gap_matches(buy_price, sell_price, expected_gap):
-        return None
-
-    return {
-        "mode": PAIR_MODE,
-        "buy_price": buy_price,
-        "sell_price": sell_price,
-        "pair_center_price": normalize_price((buy_price + sell_price) / 2.0),
-    }
-
 def classify_order_shape(orders):
-    """识别当前挂单的形态"""
+    """识别当前挂单形态，并在合法双边单时返回 pair_state"""
     if len(orders) == 2:
-        return PAIR_MODE if get_pair_state(orders) else ABNORMAL_MODE
+        buy_price = next((o["price"] for o in orders if o["side"] == "BUY"), None)
+        sell_price = next((o["price"] for o in orders if o["side"] == "SELL"), None)
+
+        if not buy_price or not sell_price or buy_price >= sell_price:
+            return ABNORMAL_MODE, None
+
+        expected_gap = (BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP
+        if not price_gap_matches(buy_price, sell_price, expected_gap):
+            return ABNORMAL_MODE, None
+
+        return PAIR_MODE, {
+            "mode": PAIR_MODE,
+            "buy_price": buy_price,
+            "sell_price": sell_price,
+            "pair_center_price": normalize_price((buy_price + sell_price) / 2.0),
+        }
+
     if len(orders) == 1:
-        return BUY_ONLY_MODE if orders[0]["side"] == "BUY" else SELL_ONLY_MODE
-    return ABNORMAL_MODE
+        shape = BUY_ONLY_MODE if orders[0]["side"] == "BUY" else SELL_ONLY_MODE
+        return shape, None
+
+    return ABNORMAL_MODE, None
 
 def decide_cycle_action(orders, saved_state, current_btc_mid=None):
     """主循环决策逻辑"""
-    shape = classify_order_shape(orders)
+    shape, pair_state = classify_order_shape(orders)
     mode = saved_state["mode"]
 
-    if mode == PAIR_MODE:
-        # 填充检测：任一侧被成交则触发 rebuild
+    if mode == PAIR_MODE:    # 填充检测：任一侧被成交则触发 rebuild
         if shape == SELL_ONLY_MODE:
             log_msg(f"🔥 BUY filled - {format_price(saved_state['buy_price'])}")
             return "rebuild", saved_state["buy_price"]
@@ -63,8 +58,6 @@ def decide_cycle_action(orders, saved_state, current_btc_mid=None):
             log_msg(f"✅ SELL filled - {format_price(saved_state['sell_price'])}")
             return "rebuild", saved_state["sell_price"]
 
-        # 维持状态检测
-        pair_state = get_pair_state(orders)
         if pair_state and prices_equal(pair_state["buy_price"], saved_state["buy_price"]) and \
            prices_equal(pair_state["sell_price"], saved_state["sell_price"]):
             log_keep_state("pair", "Keep")

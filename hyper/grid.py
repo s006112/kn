@@ -15,7 +15,7 @@ from eth_account import Account
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
-from grid_decision import get_pair_state, decide_cycle_action
+from grid_decision import classify_order_shape, decide_cycle_action
 from grid_execution import rebuild
 from grid_config import read_orders, read_btc_mid
 from grid_config import (
@@ -40,10 +40,10 @@ def bootstrap():
     orders = read_orders(info)
     summarize_orders(orders)
 
-    state = get_pair_state(orders)
-    if state is not None:
+    shape, pair_state = classify_order_shape(orders)
+    if shape == PAIR_MODE:
         log_msg("Bootstrap Pair")
-        return state, info, trader
+        return pair_state, info, trader
 
     state = rebuild(info, trader, orders)
     if state is None:
@@ -60,13 +60,13 @@ def run_cycle(info, trader, saved_state):
     if saved_state["mode"] == BUY_ONLY_MODE:
         btc_mid = read_btc_mid(info)
     
-    action, reference_price = decide_cycle_action(orders, saved_state, btc_mid)
+    action, rebuild_price = decide_cycle_action(orders, saved_state, btc_mid)
 
     if action == "keep":
         return saved_state
 
     if action == "rebuild":
-        new_state = rebuild(info, trader, orders, reference_price)
+        new_state = rebuild(info, trader, orders, rebuild_price)
         if new_state is None:
             log_msg("rebuild failed")
         return new_state
