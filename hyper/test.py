@@ -642,12 +642,12 @@ def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
     calls = {
         "cancel": 0,
         "cancel_args": [],
-        "wait_no_open_orders": 0,
+        "wait_until": 0,
         "read_orders": 0,
         "summarize_orders": 0,
     }
 
-    old_wait_no_open_orders = grid_exec.wait_no_open_orders
+    old_wait_until = grid_exec.wait_until
     old_read_orders = grid_exec.read_orders
     old_summarize_orders = grid_exec.summarize_orders
 
@@ -656,8 +656,8 @@ def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
             calls["cancel"] += 1
             calls["cancel_args"].append((symbol, oid))
 
-    def fake_wait_no_open_orders(info, max_tries=10, interval_sec=WAIT_NO_OPEN_ORDERS_INTERVAL_SEC):
-        calls["wait_no_open_orders"] += 1
+    def fake_wait_until(info, predicate, max_tries=10, interval_sec=WAIT_NO_OPEN_ORDERS_INTERVAL_SEC):
+        calls["wait_until"] += 1
         return wait_result
 
     def fake_read_orders(info):
@@ -669,12 +669,12 @@ def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
         return 0, 0
 
     try:
-        grid_exec.wait_no_open_orders = fake_wait_no_open_orders
+        grid_exec.wait_until = fake_wait_until
         grid_exec.read_orders = fake_read_orders
         grid_exec.summarize_orders = fake_summarize_orders
         result = grid_exec.cleanup_orders(info=object(), trader=FakeTrader(), orders=initial_orders)
     finally:
-        grid_exec.wait_no_open_orders = old_wait_no_open_orders
+        grid_exec.wait_until = old_wait_until
         grid_exec.read_orders = old_read_orders
         grid_exec.summarize_orders = old_summarize_orders
 
