@@ -436,9 +436,12 @@ def run_red_team_eval():
         state_b = buy_only_state(99800.0)
         live_buy_drift = buy_only_orders(90000.0)
         result = decide_cycle_action(
-            live_buy_drift,
+            {
+                "orders": live_buy_drift,
+                "live_state": classify_order_mode(live_buy_drift),
+                "btc_mid": 90000.0 + (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP - 1,
+            },
             state_b,
-            90000.0 + (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP - 1,
         )
         log_note("red-team: BUY_ONLY drift still keep", result, "saved_state drift remains silent if anchor-break not triggered")
 
@@ -477,14 +480,14 @@ def run_pair_mode_eval():
     o_pair = pair_orders()
     state_p = pair_state()
 
-    log_res("PAIR: SELL filled", decide_cycle_action(o_pair[:1], state_p), ("rebuild", 100200.0))
-    log_res("PAIR: BUY filled", decide_cycle_action(o_pair[1:], state_p), ("rebuild", 99800.0))
-    log_res("PAIR: Keep", decide_cycle_action(o_pair, state_p), ("keep", None))
+    log_res("PAIR: SELL filled", decide_cycle_action({"orders": o_pair[:1], "live_state": classify_order_mode(o_pair[:1]), "btc_mid": None}, state_p), ("rebuild", 100200.0))
+    log_res("PAIR: BUY filled", decide_cycle_action({"orders": o_pair[1:], "live_state": classify_order_mode(o_pair[1:]), "btc_mid": None}, state_p), ("rebuild", 99800.0))
+    log_res("PAIR: Keep", decide_cycle_action({"orders": o_pair, "live_state": classify_order_mode(o_pair), "btc_mid": None}, state_p), ("keep", None))
 
-    log_res("PAIR: 0 orders", decide_cycle_action([], state_p), ("abnormal", None))
-    log_res("PAIR: same side", decide_cycle_action([order("BUY", 99800.0), order("BUY", 99700.0)], state_p), ("abnormal", None))
-    log_res("PAIR: drift", decide_cycle_action(pair_orders(99000.0, 100200.0), state_p), ("abnormal", None))
-    log_res("PAIR: >2 orders", decide_cycle_action(o_pair + [order("BUY", 99600.0)], state_p), ("abnormal", None))
+    log_res("PAIR: 0 orders", decide_cycle_action({"orders": [], "live_state": classify_order_mode([]), "btc_mid": None}, state_p), ("abnormal", None))
+    log_res("PAIR: same side", decide_cycle_action({"orders": [order("BUY", 99800.0), order("BUY", 99700.0)], "live_state": classify_order_mode([order("BUY", 99800.0), order("BUY", 99700.0)]), "btc_mid": None}, state_p), ("abnormal", None))
+    log_res("PAIR: drift", decide_cycle_action({"orders": pair_orders(99000.0, 100200.0), "live_state": classify_order_mode(pair_orders(99000.0, 100200.0)), "btc_mid": None}, state_p), ("abnormal", None))
+    log_res("PAIR: >2 orders", decide_cycle_action({"orders": o_pair + [order("BUY", 99600.0)], "live_state": classify_order_mode(o_pair + [order("BUY", 99600.0)]), "btc_mid": None}, state_p), ("abnormal", None))
 
 
 def run_buy_only_eval():
@@ -493,26 +496,26 @@ def run_buy_only_eval():
     state_b = buy_only_state(99800.0)
     live_buy = buy_only_orders(99800.0)
 
-    log_res("BUY_ONLY: fill -> rebuild", decide_cycle_action([], state_b), ("rebuild", 99800.0))
-    log_res("BUY_ONLY: keep", decide_cycle_action(live_buy, state_b), ("keep", None))
+    log_res("BUY_ONLY: fill -> rebuild", decide_cycle_action({"orders": [], "live_state": classify_order_mode([]), "btc_mid": None}, state_b), ("rebuild", 99800.0))
+    log_res("BUY_ONLY: keep", decide_cycle_action({"orders": live_buy, "live_state": classify_order_mode(live_buy), "btc_mid": None}, state_b), ("keep", None))
 
     log_note(
         "BUY_ONLY: price drift (Expected Negative)",
-        decide_cycle_action(buy_only_orders(99700.0), state_b),
+        decide_cycle_action({"orders": buy_only_orders(99700.0), "live_state": classify_order_mode(buy_only_orders(99700.0)), "btc_mid": None}, state_b),
         "no price validation",
     )
 
     distance = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP
-    log_res("BUY_ONLY: break < threshold", decide_cycle_action(live_buy, state_b, 99800.0 + distance - 1.0), ("keep", None))
-    log_res("BUY_ONLY: break == threshold", decide_cycle_action(live_buy, state_b, 99800.0 + distance), ("rebuild", None))
-    log_res("BUY_ONLY: break > threshold", decide_cycle_action(live_buy, state_b, 99800.0 + distance + 1.0), ("rebuild", None))
+    log_res("BUY_ONLY: break < threshold", decide_cycle_action({"orders": live_buy, "live_state": classify_order_mode(live_buy), "btc_mid": 99800.0 + distance - 1.0}, state_b), ("keep", None))
+    log_res("BUY_ONLY: break == threshold", decide_cycle_action({"orders": live_buy, "live_state": classify_order_mode(live_buy), "btc_mid": 99800.0 + distance}, state_b), ("rebuild", None))
+    log_res("BUY_ONLY: break > threshold", decide_cycle_action({"orders": live_buy, "live_state": classify_order_mode(live_buy), "btc_mid": 99800.0 + distance + 1.0}, state_b), ("rebuild", None))
 
-    log_res("BUY_ONLY: mid None", decide_cycle_action(live_buy, state_b, None), ("keep", None))
-    log_res("BUY_ONLY: mid <=0", decide_cycle_action(live_buy, state_b, 0.0), ("keep", None))
+    log_res("BUY_ONLY: mid None", decide_cycle_action({"orders": live_buy, "live_state": classify_order_mode(live_buy), "btc_mid": None}, state_b), ("keep", None))
+    log_res("BUY_ONLY: mid <=0", decide_cycle_action({"orders": live_buy, "live_state": classify_order_mode(live_buy), "btc_mid": 0.0}, state_b), ("keep", None))
 
-    log_res("BUY_ONLY: wrong side", decide_cycle_action(sell_only_orders(), state_b), ("abnormal", None))
-    log_res("BUY_ONLY: pair snapshot", decide_cycle_action(pair_orders(), state_b), ("abnormal", None))
-    log_res("BUY_ONLY: multiple BUY", decide_cycle_action([order("BUY", 99800.0), order("BUY", 99700.0)], state_b), ("abnormal", None))
+    log_res("BUY_ONLY: wrong side", decide_cycle_action({"orders": sell_only_orders(), "live_state": classify_order_mode(sell_only_orders()), "btc_mid": None}, state_b), ("abnormal", None))
+    log_res("BUY_ONLY: pair snapshot", decide_cycle_action({"orders": pair_orders(), "live_state": classify_order_mode(pair_orders()), "btc_mid": None}, state_b), ("abnormal", None))
+    log_res("BUY_ONLY: multiple BUY", decide_cycle_action({"orders": [order("BUY", 99800.0), order("BUY", 99700.0)], "live_state": classify_order_mode([order("BUY", 99800.0), order("BUY", 99700.0)]), "btc_mid": None}, state_b), ("abnormal", None))
 
 
 def run_sell_only_eval():
@@ -521,18 +524,18 @@ def run_sell_only_eval():
     state_s = sell_only_state(100200.0)
     live_sell = sell_only_orders(100200.0)
 
-    log_res("SELL_ONLY: fill -> rebuild", decide_cycle_action([], state_s), ("rebuild", 100200.0))
-    log_res("SELL_ONLY: keep", decide_cycle_action(live_sell, state_s), ("keep", None))
+    log_res("SELL_ONLY: fill -> rebuild", decide_cycle_action({"orders": [], "live_state": classify_order_mode([]), "btc_mid": None}, state_s), ("rebuild", 100200.0))
+    log_res("SELL_ONLY: keep", decide_cycle_action({"orders": live_sell, "live_state": classify_order_mode(live_sell), "btc_mid": None}, state_s), ("keep", None))
 
     log_note(
         "SELL_ONLY: price drift (Expected Negative)",
-        decide_cycle_action(sell_only_orders(100300.0), state_s),
+        decide_cycle_action({"orders": sell_only_orders(100300.0), "live_state": classify_order_mode(sell_only_orders(100300.0)), "btc_mid": None}, state_s),
         "no price validation",
     )
 
-    log_res("SELL_ONLY: wrong side", decide_cycle_action(buy_only_orders(), state_s), ("abnormal", None))
-    log_res("SELL_ONLY: pair snapshot", decide_cycle_action(pair_orders(), state_s), ("abnormal", None))
-    log_res("SELL_ONLY: multiple SELL", decide_cycle_action([order("SELL", 100200.0), order("SELL", 100400.0)], state_s), ("abnormal", None))
+    log_res("SELL_ONLY: wrong side", decide_cycle_action({"orders": buy_only_orders(), "live_state": classify_order_mode(buy_only_orders()), "btc_mid": None}, state_s), ("abnormal", None))
+    log_res("SELL_ONLY: pair snapshot", decide_cycle_action({"orders": pair_orders(), "live_state": classify_order_mode(pair_orders()), "btc_mid": None}, state_s), ("abnormal", None))
+    log_res("SELL_ONLY: multiple SELL", decide_cycle_action({"orders": [order("SELL", 100200.0), order("SELL", 100400.0)], "live_state": classify_order_mode([order("SELL", 100200.0), order("SELL", 100400.0)]), "btc_mid": None}, state_s), ("abnormal", None))
 
 
 def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, btc_mid=100500.0):
@@ -561,9 +564,9 @@ def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, 
         calls["read_btc_mid"] += 1
         return btc_mid
 
-    def fake_decide_cycle_action(local_orders, local_state, local_btc_mid=None):
+    def fake_decide_cycle_action(live_snapshot, saved_state):
         calls["decide_cycle_action"] += 1
-        calls["btc_mid_seen"] = local_btc_mid
+        calls["btc_mid_seen"] = live_snapshot["btc_mid"]
         return action_result
 
     def fake_rebuild(info, trader, local_orders, reference_price=None):

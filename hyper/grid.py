@@ -1,5 +1,3 @@
-# hyper/grid.py
-
 import time
 
 from grid_config import apply_runtime_overrides
@@ -40,17 +38,17 @@ def bootstrap():
     orders = read_orders(info)
     summarize_orders(orders)
 
-    current_state = classify_order_mode(orders)
-    if current_state["mode"] == PAIR_MODE:
+    live_state = classify_order_mode(orders)
+    if live_state["mode"] == PAIR_MODE:
         log_msg("Bootstrap Pair")
-        return current_state, info, trader
+        return live_state, info, trader
 
     state = rebuild(info, trader, orders)       # state structure: {"mode": PAIR_MODE, "buy_price": float, "sell_price": float}
     if state is None:
         log_msg("Bootstrap Rebuild Failed")
         return None, info, trader
 
-    return state, info, trader
+    return info, trader, state
 
 
 def run_cycle(info, trader, saved_state):
@@ -59,25 +57,31 @@ def run_cycle(info, trader, saved_state):
     btc_mid = None
     if saved_state["mode"] == BUY_ONLY_MODE:
         btc_mid = read_btc_mid(info)
-    
-    action, rebuild_price = decide_cycle_action(orders, saved_state, btc_mid)
+
+    live_snapshot = {
+        "orders": orders,
+        "live_state": classify_order_mode(orders),
+        "btc_mid": btc_mid,
+    }
+
+    action, rebuild_price = decide_cycle_action(live_snapshot, saved_state)
 
     if action == "keep":
         return saved_state
 
     if action == "rebuild":
-        new_state = rebuild(info, trader, orders, rebuild_price)
+        new_state = rebuild(info, trader, live_snapshot["orders"], rebuild_price)
         if new_state is None:
             log_msg("rebuild failed")
         return new_state
 
-    summarize_orders(orders)
+    summarize_orders(live_snapshot["orders"])
     log_msg("abnormal")
     return None
 
 
 def main():
-    saved_state, info, trader = bootstrap()
+    info, trader, saved_state = bootstrap()
     if saved_state is None:
         return
 
