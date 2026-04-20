@@ -1174,10 +1174,17 @@ def run_gateway_eval():
     result, _ = run_gateway_reference_case(mids_value={grid_gate.BTC_MID_KEY: 100.0})
     log_res("gateway: get_reference_price invalid buy", result, "ValueError")
 
-    log_res("gateway: retryable TimeoutError", grid_gate.is_retryable_read_error(TimeoutError("x")), True)
-    log_res("gateway: retryable reset", grid_gate.is_retryable_read_error(ConnectionResetError("x")), True)
-    log_res("gateway: retryable OSError text", grid_gate.is_retryable_read_error(OSError("temporary failure")), True)
-    log_res("gateway: non-retryable ValueError", grid_gate.is_retryable_read_error(ValueError("x")), False)
+    result, _ = run_retry_read_case([TimeoutError("timeout"), True], retries=1)
+    log_res("gateway: retryable TimeoutError", result, True)
+
+    result, _ = run_retry_read_case([ConnectionResetError("connection reset"), True], retries=1)
+    log_res("gateway: retryable reset", result, True)
+
+    result, _ = run_retry_read_case([OSError("temporarily unavailable"), True], retries=1)
+    log_res("gateway: retryable OSError text", result, True)
+
+    result, _ = run_retry_read_case([ValueError("x"), True], retries=1)
+    log_res("gateway: non-retryable ValueError", result, "ValueError")
 
 def run_bootstrap_step7a_eval():
     print("\n🚀 bootstrap Step 7A")
