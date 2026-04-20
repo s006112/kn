@@ -9,7 +9,7 @@ from grid_config import (
     WAIT_NO_OPEN_ORDERS_INTERVAL_SEC,
     API_WALLET_KEY,
 )
-from grid_decision import get_pair_state, get_loop_action
+from grid_decision import get_pair_state, decide_cycle_action
 
 try:
     import grid as grid_engine
@@ -433,7 +433,7 @@ def run_red_team_eval():
         # 这个更像“逻辑风险暴露”，不是 mismatch
         state_b = buy_only_state(99800.0)
         live_buy_drift = buy_only_orders(90000.0)
-        result = get_loop_action(
+        result = decide_cycle_action(
             live_buy_drift,
             state_b,
             90000.0 + (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP - 1,
@@ -473,14 +473,14 @@ def run_pair_mode_eval():
     o_pair = pair_orders()
     state_p = pair_state()
 
-    log_res("PAIR: SELL filled", get_loop_action(o_pair[:1], state_p), ("rebuild", 100200.0))
-    log_res("PAIR: BUY filled", get_loop_action(o_pair[1:], state_p), ("rebuild", 99800.0))
-    log_res("PAIR: Keep", get_loop_action(o_pair, state_p), ("keep", None))
+    log_res("PAIR: SELL filled", decide_cycle_action(o_pair[:1], state_p), ("rebuild", 100200.0))
+    log_res("PAIR: BUY filled", decide_cycle_action(o_pair[1:], state_p), ("rebuild", 99800.0))
+    log_res("PAIR: Keep", decide_cycle_action(o_pair, state_p), ("keep", None))
 
-    log_res("PAIR: 0 orders", get_loop_action([], state_p), ("abnormal", None))
-    log_res("PAIR: same side", get_loop_action([order("BUY", 99800.0), order("BUY", 99700.0)], state_p), ("abnormal", None))
-    log_res("PAIR: drift", get_loop_action(pair_orders(99000.0, 100200.0), state_p), ("abnormal", None))
-    log_res("PAIR: >2 orders", get_loop_action(o_pair + [order("BUY", 99600.0)], state_p), ("abnormal", None))
+    log_res("PAIR: 0 orders", decide_cycle_action([], state_p), ("abnormal", None))
+    log_res("PAIR: same side", decide_cycle_action([order("BUY", 99800.0), order("BUY", 99700.0)], state_p), ("abnormal", None))
+    log_res("PAIR: drift", decide_cycle_action(pair_orders(99000.0, 100200.0), state_p), ("abnormal", None))
+    log_res("PAIR: >2 orders", decide_cycle_action(o_pair + [order("BUY", 99600.0)], state_p), ("abnormal", None))
 
 
 def run_buy_only_eval():
@@ -489,26 +489,26 @@ def run_buy_only_eval():
     state_b = buy_only_state(99800.0)
     live_buy = buy_only_orders(99800.0)
 
-    log_res("BUY_ONLY: fill -> rebuild", get_loop_action([], state_b), ("rebuild", 99800.0))
-    log_res("BUY_ONLY: keep", get_loop_action(live_buy, state_b), ("keep", None))
+    log_res("BUY_ONLY: fill -> rebuild", decide_cycle_action([], state_b), ("rebuild", 99800.0))
+    log_res("BUY_ONLY: keep", decide_cycle_action(live_buy, state_b), ("keep", None))
 
     log_note(
         "BUY_ONLY: price drift (Expected Negative)",
-        get_loop_action(buy_only_orders(99700.0), state_b),
+        decide_cycle_action(buy_only_orders(99700.0), state_b),
         "no price validation",
     )
 
     distance = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP
-    log_res("BUY_ONLY: break < threshold", get_loop_action(live_buy, state_b, 99800.0 + distance - 1.0), ("keep", None))
-    log_res("BUY_ONLY: break == threshold", get_loop_action(live_buy, state_b, 99800.0 + distance), ("rebuild", None))
-    log_res("BUY_ONLY: break > threshold", get_loop_action(live_buy, state_b, 99800.0 + distance + 1.0), ("rebuild", None))
+    log_res("BUY_ONLY: break < threshold", decide_cycle_action(live_buy, state_b, 99800.0 + distance - 1.0), ("keep", None))
+    log_res("BUY_ONLY: break == threshold", decide_cycle_action(live_buy, state_b, 99800.0 + distance), ("rebuild", None))
+    log_res("BUY_ONLY: break > threshold", decide_cycle_action(live_buy, state_b, 99800.0 + distance + 1.0), ("rebuild", None))
 
-    log_res("BUY_ONLY: mid None", get_loop_action(live_buy, state_b, None), ("keep", None))
-    log_res("BUY_ONLY: mid <=0", get_loop_action(live_buy, state_b, 0.0), ("keep", None))
+    log_res("BUY_ONLY: mid None", decide_cycle_action(live_buy, state_b, None), ("keep", None))
+    log_res("BUY_ONLY: mid <=0", decide_cycle_action(live_buy, state_b, 0.0), ("keep", None))
 
-    log_res("BUY_ONLY: wrong side", get_loop_action(sell_only_orders(), state_b), ("abnormal", None))
-    log_res("BUY_ONLY: pair snapshot", get_loop_action(pair_orders(), state_b), ("abnormal", None))
-    log_res("BUY_ONLY: multiple BUY", get_loop_action([order("BUY", 99800.0), order("BUY", 99700.0)], state_b), ("abnormal", None))
+    log_res("BUY_ONLY: wrong side", decide_cycle_action(sell_only_orders(), state_b), ("abnormal", None))
+    log_res("BUY_ONLY: pair snapshot", decide_cycle_action(pair_orders(), state_b), ("abnormal", None))
+    log_res("BUY_ONLY: multiple BUY", decide_cycle_action([order("BUY", 99800.0), order("BUY", 99700.0)], state_b), ("abnormal", None))
 
 
 def run_sell_only_eval():
@@ -517,18 +517,18 @@ def run_sell_only_eval():
     state_s = sell_only_state(100200.0)
     live_sell = sell_only_orders(100200.0)
 
-    log_res("SELL_ONLY: fill -> rebuild", get_loop_action([], state_s), ("rebuild", 100200.0))
-    log_res("SELL_ONLY: keep", get_loop_action(live_sell, state_s), ("keep", None))
+    log_res("SELL_ONLY: fill -> rebuild", decide_cycle_action([], state_s), ("rebuild", 100200.0))
+    log_res("SELL_ONLY: keep", decide_cycle_action(live_sell, state_s), ("keep", None))
 
     log_note(
         "SELL_ONLY: price drift (Expected Negative)",
-        get_loop_action(sell_only_orders(100300.0), state_s),
+        decide_cycle_action(sell_only_orders(100300.0), state_s),
         "no price validation",
     )
 
-    log_res("SELL_ONLY: wrong side", get_loop_action(buy_only_orders(), state_s), ("abnormal", None))
-    log_res("SELL_ONLY: pair snapshot", get_loop_action(pair_orders(), state_s), ("abnormal", None))
-    log_res("SELL_ONLY: multiple SELL", get_loop_action([order("SELL", 100200.0), order("SELL", 100400.0)], state_s), ("abnormal", None))
+    log_res("SELL_ONLY: wrong side", decide_cycle_action(buy_only_orders(), state_s), ("abnormal", None))
+    log_res("SELL_ONLY: pair snapshot", decide_cycle_action(pair_orders(), state_s), ("abnormal", None))
+    log_res("SELL_ONLY: multiple SELL", decide_cycle_action([order("SELL", 100200.0), order("SELL", 100400.0)], state_s), ("abnormal", None))
 
 
 def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, btc_mid=100500.0):
@@ -538,7 +538,7 @@ def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, 
     calls = {
         "read_orders": 0,
         "read_btc_mid": 0,
-        "get_loop_action": 0,
+        "decide_cycle_action": 0,
         "rebuild": 0,
         "rebuild_args": None,
         "btc_mid_seen": None,
@@ -546,7 +546,7 @@ def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, 
 
     old_read_orders = grid_engine.read_orders
     old_read_btc_mid = grid_engine.read_btc_mid
-    old_get_loop_action = grid_engine.get_loop_action
+    old_decide_cycle_action = grid_engine.decide_cycle_action
     old_rebuild = grid_engine.rebuild
 
     def fake_read_orders(info):
@@ -557,8 +557,8 @@ def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, 
         calls["read_btc_mid"] += 1
         return btc_mid
 
-    def fake_get_loop_action(local_orders, local_state, local_btc_mid=None):
-        calls["get_loop_action"] += 1
+    def fake_decide_cycle_action(local_orders, local_state, local_btc_mid=None):
+        calls["decide_cycle_action"] += 1
         calls["btc_mid_seen"] = local_btc_mid
         return action_result
 
@@ -570,13 +570,13 @@ def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, 
     try:
         grid_engine.read_orders = fake_read_orders
         grid_engine.read_btc_mid = fake_read_btc_mid
-        grid_engine.get_loop_action = fake_get_loop_action
+        grid_engine.decide_cycle_action = fake_decide_cycle_action
         grid_engine.rebuild = fake_rebuild
         result = grid_engine.run_cycle(info=object(), trader=object(), saved_state=saved_state)
     finally:
         grid_engine.read_orders = old_read_orders
         grid_engine.read_btc_mid = old_read_btc_mid
-        grid_engine.get_loop_action = old_get_loop_action
+        grid_engine.decide_cycle_action = old_decide_cycle_action
         grid_engine.rebuild = old_rebuild
 
     return result, calls

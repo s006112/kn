@@ -41,7 +41,7 @@ def get_pair_state(orders):
         "pair_center_price": normalize_price((buy_price + sell_price) / 2.0),
     }
 
-def get_order_shape(orders):
+def classify_order_shape(orders):
     """识别当前挂单的形态"""
     if len(orders) == 2:
         return PAIR_MODE if get_pair_state(orders) else ABNORMAL_MODE
@@ -49,31 +49,31 @@ def get_order_shape(orders):
         return BUY_ONLY_MODE if orders[0]["side"] == "BUY" else SELL_ONLY_MODE
     return ABNORMAL_MODE
 
-def get_loop_action(orders, state, current_btc_mid=None):
+def decide_cycle_action(orders, saved_state, current_btc_mid=None):
     """主循环决策逻辑"""
-    shape = get_order_shape(orders)
-    mode = state["mode"]
+    shape = classify_order_shape(orders)
+    mode = saved_state["mode"]
 
     if mode == PAIR_MODE:
         # 填充检测：任一侧被成交则触发 rebuild
         if shape == SELL_ONLY_MODE:
-            log_msg(f"🔥 BUY filled - {format_price(state['buy_price'])}")
-            return "rebuild", state["buy_price"]
+            log_msg(f"🔥 BUY filled - {format_price(saved_state['buy_price'])}")
+            return "rebuild", saved_state["buy_price"]
         if shape == BUY_ONLY_MODE:
-            log_msg(f"✅ SELL filled - {format_price(state['sell_price'])}")
-            return "rebuild", state["sell_price"]
-        
+            log_msg(f"✅ SELL filled - {format_price(saved_state['sell_price'])}")
+            return "rebuild", saved_state["sell_price"]
+
         # 维持状态检测
         pair_state = get_pair_state(orders)
-        if pair_state and prices_equal(pair_state["buy_price"], state["buy_price"]) and \
-           prices_equal(pair_state["sell_price"], state["sell_price"]):
+        if pair_state and prices_equal(pair_state["buy_price"], saved_state["buy_price"]) and \
+           prices_equal(pair_state["sell_price"], saved_state["sell_price"]):
             log_keep_state("pair", "Keep")
             return "keep", None
 
     elif mode == BUY_ONLY_MODE:
         if not orders: # 残余买单成交
             log_msg("🔥 residual fill completed: BUY_ONLY -> rebuild")
-            return "rebuild", state["buy_price"]
+            return "rebuild", saved_state["buy_price"]
         
         if shape == BUY_ONLY_MODE:
             buy_order = orders[0]
@@ -91,7 +91,7 @@ def get_loop_action(orders, state, current_btc_mid=None):
     elif mode == SELL_ONLY_MODE:
         if not orders: # 残余卖单成交
             log_msg("✅ residual fill completed: SELL_ONLY -> rebuild")
-            return "rebuild", state["sell_price"]
+            return "rebuild", saved_state["sell_price"]
         if shape == SELL_ONLY_MODE:
             log_keep_state("sell-only", "keep")
             return "keep", None

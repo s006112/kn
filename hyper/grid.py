@@ -15,7 +15,7 @@ from eth_account import Account
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
-from grid_decision import get_pair_state, get_loop_action
+from grid_decision import get_pair_state, decide_cycle_action
 from grid_execution import rebuild
 from grid_config import read_orders, read_btc_mid
 from grid_config import (
@@ -60,7 +60,7 @@ def run_cycle(info, trader, saved_state):
     if saved_state["mode"] == BUY_ONLY_MODE:
         btc_mid = read_btc_mid(info)
     
-    action, reference_price = get_loop_action(orders, saved_state, btc_mid)
+    action, reference_price = decide_cycle_action(orders, saved_state, btc_mid)
 
     if action == "keep":
         return saved_state
