@@ -49,7 +49,7 @@ def apply_runtime_overrides(overrides: dict):
 
 PAIR_MODE = "PAIR"  # 正常双边模式，同时有 1 买 1 卖且价差符合网格规则
 BUY_ONLY_MODE = "BUY_ONLY"  # 仅剩买单的残边模式，常见于卖侧因余额不足未成功挂出
-SELL_ONLY_MODE = "SELL_ONLY"  # 仅剩卖单的残边模式，常见于买侧因余额不足未成功挂出
+SELL_ONLY_MODE = "SELL_ONLY"  # 仅剩卖单的残边模式，常见于买侧因 USDC 不足未成功挂出
 ABNORMAL_MODE = "ABNORMAL"  # 非预期状态，占位用于拒绝继续执行并等待人工介入
 
 
@@ -57,28 +57,22 @@ ABNORMAL_MODE = "ABNORMAL"  # 非预期状态，占位用于拒绝继续执行�
 # price helpers
 # ============================================================================
 
-PRICE_TICK = 1.0
-
+def normalize_price(price):
+    # enforce integer price alignment across all internal comparisons
+    return float(round(float(price)))
 
 def format_price(price):
-    return str(int(round(float(price))))
-
-def price_to_ticks(price):
-    return int(round(float(price) / PRICE_TICK))
-
-def normalize_price(price):
-    return float(price_to_ticks(price)) * PRICE_TICK
+    return str(int(normalize_price(price)))
 
 def prices_equal(price_a, price_b):
-    return price_to_ticks(price_a) == price_to_ticks(price_b)
+    return normalize_price(price_a) == normalize_price(price_b)
 
 def price_gap_matches(buy_price, sell_price, expected_gap):
-    # return price_to_ticks(sell_price) - price_to_ticks(buy_price) == price_to_ticks(expected_gap)
+    # return normalize_price(sell_price) - normalize_price(buy_price) == normalize_price(expected_gap)
     return True
 
 def price_distance_at_least(high_price, low_price, distance):
-    return price_to_ticks(high_price) - price_to_ticks(low_price) >= price_to_ticks(distance)
-
+    return normalize_price(high_price) - normalize_price(low_price) >= normalize_price(distance)
 
 # ============================================================================
 # logging helpers
@@ -140,6 +134,9 @@ def get_reference_price(info):
 
     return reference_price
 
+# ============================================================================
+# grid read and summarise order helpers
+# ============================================================================
 
 def read_btc_mid(info):
     try:
@@ -148,15 +145,7 @@ def read_btc_mid(info):
         log_msg(f"infra failure: btc-mid unavailable ({type(exc).__name__}: {exc})")
         return None
 
-    if btc_mid <= 0:
-        log_msg(f"infra failure: btc-mid invalid ({btc_mid})")
-        return None
-
     return normalize_price(btc_mid)
-
-# ============================================================================
-# grid read and summarise order helpers
-# ============================================================================
 
 def summarize_orders(orders):
     if not orders:
@@ -220,4 +209,3 @@ def read_orders(info):
         normalize_order(order)
         for order in retry_read("open-orders", lambda: info.open_orders(ACCOUNT_ADDRESS))
     ]
-

@@ -55,7 +55,11 @@ def bootstrap():
 
 def run_cycle(info, trader, saved_state):
     orders = read_orders(info)
-    btc_mid = read_btc_mid(info) if saved_state["mode"] == BUY_ONLY_MODE else None
+
+    btc_mid = None
+    if saved_state["mode"] == BUY_ONLY_MODE:
+        btc_mid = read_btc_mid(info)
+    
     action, reference_price = get_loop_action(orders, saved_state, btc_mid)
 
     if action == "keep":

@@ -24,8 +24,8 @@ def get_pair_state(orders):
     if len(orders) != 2:
         return None
 
-    buy_price = next((normalize_price(o["price"]) for o in orders if o["side"] == "BUY"), None)
-    sell_price = next((normalize_price(o["price"]) for o in orders if o["side"] == "SELL"), None)
+    buy_price = next((o["price"] for o in orders if o["side"] == "BUY"), None)
+    sell_price = next((o["price"] for o in orders if o["side"] == "SELL"), None)
 
     if not buy_price or not sell_price or buy_price >= sell_price:
         return None
