@@ -38,15 +38,15 @@ def bootstrap():
     orders = read_orders(info)
     summarize_orders(orders)
 
-    live_state = classify_order_mode(orders)
-    if live_state["mode"] == PAIR_MODE:
+    state = classify_order_mode(orders)
+    if state["mode"] == PAIR_MODE:
         log_msg("Bootstrap Pair")
-        return live_state, info, trader
+        return info, trader, state
 
     state = rebuild(info, trader, orders)       # state structure: {"mode": PAIR_MODE, "buy_price": float, "sell_price": float}
     if state is None:
         log_msg("Bootstrap Rebuild Failed")
-        return None, info, trader
+        return info, trader, None
 
     return info, trader, state
 
@@ -60,8 +60,8 @@ def run_cycle(info, trader, saved_state):
 
     live_snapshot = {
         "orders": orders,
-        "live_state": classify_order_mode(orders),
         "btc_mid": btc_mid,
+        **classify_order_mode(orders),  # mode; buy_price; sell_price 展平到 live_snapshot 顶层，方便后续决策逻辑使用
     }
 
     action, rebuild_price = decide_cycle_action(live_snapshot, saved_state)
