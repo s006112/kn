@@ -1,149 +1,141 @@
 # Single Pair Grid Engine Contract
 
-## 1. Purpose
+## 1. 合同范围
 
-本合同定义当前 single-pair grid engine 的唯一运行边界与唯一策略语义。
+本合同描述 `hyper` 当前 single-pair REST polling grid engine 的已实现行为。
 
-当前系统是：
+权威实现文件：
 
-- 单组 pair
-- 纯 REST / polling
-- contract-driven state machine
+- `hyper/grid.py`
+- `hyper/grid_config.py`
+- `hyper/grid_decision.py`
+- `hyper/grid_execution.py`
 
-系统目标：
+当前系统只定义：
 
-- 持有唯一 saved state
-- 通过固定 polling loop 读取当前 live input
-- 在 accepted boundary 内做唯一决策
-- 执行 keep / rebuild / abnormal
-- 仅在得到有效新 state 后继续运行
-- 对未知异常统一收口并退出
-
-本合同是当前项目的单一语义源。
-实现不得在本合同之外扩展隐含状态机语义。
-
-## 2. Ownership and Boundaries
-
-### Engine
-
-负责：
-
-- 持有唯一 saved state
-- 驱动 bootstrap 与固定 polling loop
-- 组织 live input
-- 调用 decision
-- 执行 keep / rebuild / abnormal
-- 对运行期异常统一收口
-
-不负责：
-
-- REST 读取细节
-- retry 细节
-- 下单结果解析
-- 策略判定
-
-### Strategy
-
-负责：
-
-- 基于当前输入做唯一决策
-- 定义 pair / single-sided / abnormal 的 accepted path
-- 定义 fill-driven rebuild、keep、anchor break 的语义与优先级
-
-不负责：
-
-- IO
-- retry
-- lifecycle
-- 异常收口
-- 下单执行
-
-### Gateway
-
-是唯一读取边界，负责：
-
-- 通过 REST 读取 open orders 与 BTC mids
-- 归一化 order shape
-- 统一 price normalization
-- 对暂时性 infra read failure 做有限重试
-
-不负责：
-
-- 状态机
-- 策略决策
-- saved state 管理
-- 下单执行
-
-### Execution
-
-负责：
-
-- cleanup 现有挂单
-- wait until no open orders
-- 构造 pair order actions
-- 提交 buy / sell limit orders
-- 根据 placement result 返回新 state 或失败
-
-不负责：
-
-- 策略决策
-- IO retry
-- 主循环控制
-- 异常统一收口
-
-## 3. Scope
-
-当前合同只适用于：
-
-- 单组 pair
-- 或其合法单边 residual
-- 纯 REST / polling 主循环
+- 单币对：`SYMBOL = "UBTC/USDC"`
+- 单组 grid pair 或其合法单边 residual
+- REST 读取与固定 polling 主循环
+- `keep` / `rebuild` / `abnormal` 三类循环结果
 
 本合同不定义：
 
-- 多层 grid
-- 多组 pair
-- websocket / event-driven input model
+- 多 pair
+- 多层 ladder
+- websocket 或 event-driven 模型
+- portfolio 级状态机
 - transport abstraction
 - 自动异常修复
-- placement 后更复杂补救策略
-- 多币对并发状态机
-- 更高层 ladder / rolling / portfolio 语义
+- 合同外的隐式策略状态
 
-## 4. Accepted State Model
+## 2. 模块职责
 
-saved state 只允许为：
+### `grid.py`
 
-- `PAIR`
-- `BUY_ONLY`
-- `SELL_ONLY`
+负责 engine lifecycle：
 
-`ABNORMAL` 不允许作为继续运行的 saved state，只允许作为失败结果或退出结果。
+- 在导入其他 grid 模块前调用 `apply_runtime_overrides`
+- `bootstrap`
+- `run_cycle`
+- `main`
+- 创建 `Info`
+- 创建 `Exchange` 并赋值给 execution client 变量 `trader`
+- 持有并更新唯一 `saved_state`
 
-允许以下 state shape：
+### `grid_config.py`
+
+负责配置、读取边界与通用 helper：
+
+- env/account 配置
+- mode 常量
+- price helper
+- logging helper
+- `normalize_order`
+- `read_orders`
+- `read_btc_mid`
+- `read_btc_grid`
+- `retry_read`
+- `summarize_orders`
+
+### `grid_decision.py`
+
+负责纯决策：
+
+- `classify_order_shape`
+- `decide_cycle_action`
+
+该模块不做 IO，不下单，不修改 `saved_state`。
+
+### `grid_execution.py`
+
+负责执行侧行为：
+
+- `build_pair`
+- `classify_order_result`
+- `place_limit_order`
+- `place_pair`
+- `cleanup_orders`
+- `cleanup_after_partial_place_failure`
+- `place_fill_replace_pair`
+- `rebuild`
+
+该模块不决定主循环是否继续；成功返回新 state，失败返回 `None` 或抛出未捕获异常。
+
+## 3. 运行时配置
+
+`grid.py` 在导入 `grid_decision`、`grid_execution` 等模块前执行：
+
+- `GRID_STEP = 200.0`
+- `BUDGET_USDC = 250.0`
+- `BUY_GRID_FACTOR = 1.0`
+- `SELL_GRID_FACTOR = 1.0`
+
+因此通过 `grid.py` 标准入口运行时，上述值是当前 grid engine 的有效参数。
+
+其他当前配置：
+
+- `ALLOW_BUY_ONLY_WHEN_NO_BTC = True`
+- `ALLOW_SELL_ONLY_WHEN_NO_USDC = True`
+- `REANCHOR_BREAK = True`
+- `REANCHOR_BREAK_STEPS = 2`
+- `MAIN_LOOP_POLL_INTERVAL_SEC = 1.5`
+- `WAIT_NO_OPEN_ORDERS_INTERVAL_SEC = 0.5`
+- `MAX_RETRIES = 4`
+- `RETRY_SEC = 0.5`
+- `BTC_MID_KEY = "@142"`
+
+## 4. State Model
+
+允许作为 `saved_state["mode"]` 继续运行的模式只有：
+
+- `PAIR_MODE = "PAIR"`
+- `BUY_ONLY_MODE = "BUY_ONLY"`
+- `SELL_ONLY_MODE = "SELL_ONLY"`
+
+`ABNORMAL_MODE = "ABNORMAL"` 只用于分类结果，不允许作为继续运行的 saved state。
 
 ### `PAIR` live state
 
-用于 bootstrap 直接识别合法 pair：
+`classify_order_shape` 仅在识别到合法 `PAIR` 时返回 `pair_state`：
 
 - `mode`
 - `buy_price`
 - `sell_price`
 
-该状态只表示当前 live pair 的两侧挂单价格，不保存额外 center/anchor 字段。
+该 state 是当前 live orders 的快照，不包含 `reference_price`。
 
 ### `PAIR` rebuild state
 
-用于 rebuild 成功后返回：
+`make_pair_state` 返回：
 
 - `mode`
 - `buy_price`
 - `sell_price`
 - `reference_price`
 
-其中 `reference_price` 表示本次 rebuild 使用的 anchor。
-
 ### `BUY_ONLY` rebuild state
+
+`make_buy_only_state` 返回：
 
 - `mode`
 - `buy_price`
@@ -151,490 +143,458 @@ saved state 只允许为：
 
 ### `SELL_ONLY` rebuild state
 
+`make_sell_only_state` 返回：
+
 - `mode`
 - `sell_price`
 - `reference_price`
 
 约束：
 
-- `reference_price` 表示 rebuild anchor
-- live pair snapshot 不得被当作 rebuild anchor
-- `BUY_ONLY` 不得依赖 `sell_price`
-- `SELL_ONLY` 不得依赖 `buy_price`
+- `reference_price` 只表示 rebuild 使用的 anchor。
+- 当前实现不定义额外中心价状态。
+- `BUY_ONLY` state 不依赖 `sell_price`。
+- `SELL_ONLY` state 不依赖 `buy_price`。
 
-## 5. Live Input Boundary
+## 5. Price Helpers
 
-每轮 decision 只能基于当前输入：
+当前价格 helper 为：
 
-- 当前 `saved_state`
-- 当前 `live orders`
-- 当前按需读取的 `BTC mid`
+- `normalize_price(price)`：`round(float(price))` 后转为 `float`
+- `format_price(price)`：归一化后转为整数字符串
+- `prices_equal(price_a, price_b)`：归一化后相等
+- `price_gap_matches(buy_price, sell_price, expected_gap)`：归一化后检查 gap 精确相等
+- `price_distance_at_least(high_price, low_price, distance)`：归一化后检查距离大于等于阈值
 
-约束：
+关键价格语义：
 
-- decision 只依赖当前输入，不依赖历史事件序列
-- decision 不得直接做 IO
-- engine 不维护事件驱动内存态、runtime input 容器或额外 rebuild 运行态标志
+- pair price equality 使用 `prices_equal`。
+- pair gap 使用 `price_gap_matches`。
+- anchor break 距离使用 `price_distance_at_least`。
+- `price_gap_matches` 当前强制 normalized gap equality。
 
-## 6. Shape and Pair Validity Contract
+## 6. Read Boundary
 
-当前 live orders 的 shape 只允许分类为：
+### `normalize_order`
 
-- `PAIR`
-- `BUY_ONLY`
-- `SELL_ONLY`
-- `ABNORMAL`
+`normalize_order(order)` 的行为：
+
+- raw side `"B"` 归一化为 `"BUY"`
+- raw side `"A"` 归一化为 `"SELL"`
+- 其他 raw side 抛出 `ValueError`
+- 保留原 order 其他字段
+- 设置 `price = normalize_price(order["limitPx"])`
+
+### `read_orders`
+
+`read_orders(info)` 通过：
+
+- `retry_read("open-orders", lambda: info.open_orders(ACCOUNT_ADDRESS))`
+- 对每个返回 order 调用 `normalize_order`
+
+返回值是 normalized order list。
+
+### `read_btc_mid`
+
+`read_btc_mid(info)` 通过 `retry_read("btc-mid", info.all_mids)` 读取 mids。
+
+行为：
+
+- 从 `BTC_MID_KEY` 读取 BTC mid。
+- 缺失时按 `0` 处理。
+- `btc_mid <= 0` 时返回 `None`。
+- 正数 mid 返回 `normalize_price(btc_mid)`。
+
+### `read_btc_grid`
+
+`read_btc_grid(info)`：
+
+- 调用 `read_btc_mid(info)`。
+- 若返回 `None`，抛出 `ValueError("Failed to get BTC mid price")`。
+- 否则按 `int((btc_mid / GRID_STEP) + 0.5) * GRID_STEP` 取最近 grid。
+- 返回 `normalize_price(...)`。
+
+### `retry_read`
+
+`retry_read(name, fn, retries=MAX_RETRIES, delay=RETRY_SEC)` 当前重试：
+
+- HTTP status `429`
+- HTTP status `502`
+- HTTP status `503`
+- HTTP status `504`
+- `requests.exceptions.Timeout`
+- `requests.exceptions.ConnectionError`
+- `TimeoutError`
+- `ConnectionResetError`
+- `socket.timeout`
+- `OSError` 且异常文本包含 `timeout`、`connection` 或 `temporarily`
+
+非 retryable exception 直接抛出。
+
+retryable exception 在最后一次失败后记录日志并重新抛出。
+
+## 7. Shape Classification
+
+`classify_order_shape(orders)` 返回：
+
+- `(PAIR_MODE, pair_state)`
+- `(BUY_ONLY_MODE, None)`
+- `(SELL_ONLY_MODE, None)`
+- `(ABNORMAL_MODE, None)`
 
 ### `PAIR`
 
-必须满足：
+合法 `PAIR` 必须满足：
 
-- 恰好 2 张单
-- 其中 1 BUY + 1 SELL
-- 可被识别为合法 pair
-
-合法 pair 还必须满足：
-
-- `buy_price > 0`
-- `sell_price > 0`
+- `len(orders) == 2`
+- 恰好可取得一个 `"BUY"` order price
+- 恰好可取得一个 `"SELL"` order price
+- `buy_price` truthy
+- `sell_price` truthy
 - `buy_price < sell_price`
-- `gap == (BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP`
-- 所有关键价格判定必须使用离散化比较
+- `price_gap_matches(buy_price, sell_price, (BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP)` 为真
 
-canonical pair state 必须包括：
+合法 `PAIR` 返回的 `pair_state`：
 
-- `mode`
+- `mode = PAIR_MODE`
 - `buy_price`
 - `sell_price`
 
-其中：
-
-- `buy_price` 与 `sell_price` 必须是 normalized canonical price
-
 ### `BUY_ONLY`
 
-必须满足：
-
-- 恰好 1 张单
-- 且该单为 BUY
+当 `len(orders) == 1` 且该 normalized order 的 `side == "BUY"` 时，分类为 `BUY_ONLY_MODE`。
 
 ### `SELL_ONLY`
 
-必须满足：
+当 `len(orders) == 1` 且该 normalized order 的 `side != "BUY"` 时，分类为 `SELL_ONLY_MODE`。
 
-- 恰好 1 张单
-- 且该单为 SELL
+在 `read_orders` 归一化边界下，单 order side 只应为 `"BUY"` 或 `"SELL"`。
 
 ### `ABNORMAL`
 
-其他一切情况都必须视为 abnormal，包括但不限于：
+其他情况分类为 `ABNORMAL_MODE`，包括：
 
-- 0 张单且未命中单边 residual fill-complete 路径
-- 2 张单但不是合法 pair
-- 超过 2 张单
-- 非法 side
-- 任意未命中 accepted path 的 shape
+- `len(orders) == 0`
+- `len(orders) > 2`
+- 两张单无法取得一买一卖
+- 两张单价格顺序非法
+- 两张单 normalized gap 不等于 expected gap
 
-## 7. Bootstrap Contract
+## 8. Bootstrap
 
-engine 启动时必须：
+`bootstrap()` 当前流程：
 
-1. 初始化 client
-2. 读取当前 open orders
-3. 输出当前 open orders 摘要
-4. 尝试识别合法 bootstrap state
-5. engine 仅接受合法 `PAIR`
-6. 识别失败则执行 rebuild
+1. 创建 `info = Info(constants.MAINNET_API_URL)`。
+2. 创建 `trader = Exchange(Account.from_key(API_WALLET_KEY), constants.MAINNET_API_URL, account_address=ACCOUNT_ADDRESS)`。
+3. 调用 `read_orders(info)`。
+4. 调用 `summarize_orders(orders)`。
+5. 调用 `classify_order_shape(orders)`。
+6. 若 `shape == PAIR_MODE`，返回 `(pair_state, info, trader)`。
+7. 否则调用 `rebuild(info, trader, orders)`。
+8. 若 rebuild 返回 `None`，记录 `Bootstrap Rebuild Failed` 并返回 `(None, info, trader)`。
+9. 若 rebuild 成功，返回 `(state, info, trader)`。
 
-bootstrap 只允许接受：
+bootstrap 只直接接受合法 `PAIR`。
 
-- 合法 `PAIR`
-
-不允许接受：
+bootstrap 不直接接受：
 
 - `BUY_ONLY`
 - `SELL_ONLY`
 - `ABNORMAL`
-- 任意其他未定义 shape
 
-约束：
+bootstrap 没有通用 exception shell；未捕获异常会向调用方传播。
 
-- bootstrap 是否接受某个 live state，最终由 engine 决定
-- strategy 只负责识别当前 live orders 是否为合法 `PAIR`
-- 即使 strategy 将来返回其他 shape，engine 仍不得接受为 bootstrap saved state
-- 启动时单边 residual 必须通过 rebuild 清理并重建
-- 若无法得到有效 state 且 rebuild 失败，则必须退出
+## 9. Main Loop
 
-## 8. Decision Contract
+### `run_cycle`
 
-每轮 decision 只允许返回：
+`run_cycle(info, trader, saved_state)` 当前流程：
+
+1. 每轮调用 `read_orders(info)`。
+2. 默认 `btc_mid = None`。
+3. 仅当 `saved_state["mode"] == BUY_ONLY_MODE` 时调用 `read_btc_mid(info)`。
+4. 调用 `decide_cycle_action(orders, saved_state, btc_mid)`。
+5. 若 action 为 `"keep"`，返回原 `saved_state`。
+6. 若 action 为 `"rebuild"`，调用 `rebuild(info, trader, orders, rebuild_price)` 并返回其结果。
+7. 若 rebuild 返回 `None`，记录 `rebuild failed`。
+8. 其他 action 视为 abnormal：输出 order 摘要，记录 `abnormal`，返回 `None`。
+
+### `main`
+
+`main()` 当前流程：
+
+1. 调用 `bootstrap()`。
+2. 若 `saved_state is None`，直接返回。
+3. 循环执行：
+   - `time.sleep(MAIN_LOOP_POLL_INTERVAL_SEC)`
+   - `saved_state = run_cycle(info, trader, saved_state)`
+   - 若 `saved_state is None`，返回。
+
+`main` 是固定 polling loop。
+
+`main` 没有通用 exception shell；未捕获异常会终止调用栈。
+
+## 10. Decision
+
+`decide_cycle_action(orders, saved_state, current_btc_mid=None)` 只返回：
 
 - `("keep", None)`
 - `("rebuild", reference_price)`
 - `("rebuild", None)`
 - `("abnormal", None)`
 
-约束：
+每轮先调用 `classify_order_shape(orders)`。
 
-- 同一输入必须产生同一输出
-- 每轮只允许一个 action
-- decision 顺序固定为：
+### `saved_state["mode"] == PAIR_MODE`
 
-1. classify shape
-2. fill-driven rebuild
-3. `PAIR` keep
-4. single-sided branch
-5. abnormal
+决策顺序：
 
-## 9. Fill-Driven Rebuild Contract
+1. 若当前 `shape == SELL_ONLY_MODE`，视为 BUY filled，返回 `("rebuild", saved_state["buy_price"])`。
+2. 若当前 `shape == BUY_ONLY_MODE`，视为 SELL filled，返回 `("rebuild", saved_state["sell_price"])`。
+3. 若当前 `pair_state` 存在，且 live `buy_price` 与 saved `buy_price` normalized equal，并且 live `sell_price` 与 saved `sell_price` normalized equal，返回 `("keep", None)`。
+4. 否则返回 `("abnormal", None)`。
 
-fill-driven rebuild 优先级最高。
+PAIR fill-driven rebuild 使用成交侧的 saved price 作为 `reference_price`，不读取 fresh BTC grid。
 
-### 当 saved = `PAIR`
+### `saved_state["mode"] == BUY_ONLY_MODE`
 
-若当前 shape 为：
+决策顺序：
 
-- `SELL_ONLY` → 视为 BUY filled → `("rebuild", saved.buy_price)`
-- `BUY_ONLY` → 视为 SELL filled → `("rebuild", saved.sell_price)`
+1. 若 `orders` 为空，视为 residual BUY fill complete，返回 `("rebuild", saved_state["buy_price"])`。
+2. 若 `shape == BUY_ONLY_MODE`，执行 anchor break 检查。
+3. 若 anchor break 触发，返回 `("rebuild", None)`。
+4. 若未触发 anchor break，返回 `("keep", None)`。
+5. 否则返回 `("abnormal", None)`。
 
-约束：
+当前 `BUY_ONLY` keep 不校验 live BUY price 是否等于 `saved_state["buy_price"]`。
 
-- 必须使用刚成交那一侧的 canonical price 作为 rebuild anchor
-- 不允许改用 mid
-- 不允许改用 fresh reference price
+### `saved_state["mode"] == SELL_ONLY_MODE`
 
-### 当 saved = `BUY_ONLY`
+决策顺序：
 
-若当前 `orders == 0`：
+1. 若 `orders` 为空，视为 residual SELL fill complete，返回 `("rebuild", saved_state["sell_price"])`。
+2. 若 `shape == SELL_ONLY_MODE`，返回 `("keep", None)`。
+3. 否则返回 `("abnormal", None)`。
 
-- 视为 residual BUY fill complete
-- `("rebuild", saved.buy_price)`
-
-### 当 saved = `SELL_ONLY`
-
-若当前 `orders == 0`：
-
-- 视为 residual SELL fill complete
-- `("rebuild", saved.sell_price)`
-
-约束：
-
-- fill-driven rebuild 必须先于 keep
-- fill-driven rebuild 必须先于 anchor break
-- fill-driven rebuild 必须使用 saved canonical price
-
-## 10. Keep and Anchor Break Contract
-
-### `PAIR` keep
-
-只有在以下条件全部成立时才允许 `keep`：
-
-- `saved.mode == PAIR`
-- `shape == PAIR`
-- 当前 live orders 可识别为合法 pair
-- 当前 `buy_price == saved.buy_price`
-- 当前 `sell_price == saved.sell_price`
-
-以上比较必须使用离散化比较。
-
-### `BUY_ONLY` keep
-
-只有在以下条件全部成立时才允许 `keep`：
-
-- `saved.mode == BUY_ONLY`
-- `shape == BUY_ONLY`
-- 当前恰好 1 张 BUY
-- 未触发 anchor break
-
-### `SELL_ONLY` keep
-
-只有在以下条件全部成立时才允许 `keep`：
-
-- `saved.mode == SELL_ONLY`
-- `shape == SELL_ONLY`
-- 当前恰好 1 张 SELL
+当前 `SELL_ONLY` keep 不校验 live SELL price 是否等于 `saved_state["sell_price"]`。
 
 ### Anchor Break
 
-anchor break 只适用于 `BUY_ONLY`，且必须同时满足：
+anchor break 只存在于 `BUY_ONLY_MODE` 分支。
 
-- `saved.mode == BUY_ONLY`
-- `shape == BUY_ONLY`
-- 当前恰好 1 张 BUY
-- `REANCHOR_BREAK == True`
-- `BTC mid` 可用且大于 0
-- 当前 `BTC mid` 相对生成该 residual BUY 的原 `reference_price`，
-  已漂移至少 `REANCHOR_BREAK_STEPS * GRID_STEP`
+触发条件：
 
-实现约束：
+- `REANCHOR_BREAK` 为真
+- `current_btc_mid` truthy 且 `current_btc_mid > 0`
+- 当前 live BUY order 存在
+- `price_distance_at_least(current_btc_mid, buy_order["price"], distance)` 为真
 
-- 当前实现的直接比较对象是 `BTC mid` 与当前 BUY order price
-- 因 `buy_price = reference_price - BUY_GRID_FACTOR * GRID_STEP`
-- 所以阈值必须按以下等价形式计算：
+其中：
 
-  `distance >= (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP`
+- `distance = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP`
 
-约束：
+触发结果：
 
-- `distance` 必须使用离散化比较
-- 不得把 anchor break 解释为“mid 相对当前 BUY order price 漂移 N 格”
-- 触发时返回 `("rebuild", None)`
-- 语义是放弃旧 residual anchor，改用 fresh reference price rebuild
-- 优先级晚于 fill-driven rebuild，高于 `BUY_ONLY keep`
+- 返回 `("rebuild", None)`
+- 后续 `rebuild` 使用 fresh `read_btc_grid(info)` 计算 `reference_price`
 
-若 `BTC mid` 不可用、无效或读取失败：
+当前实现比较的是 `current_btc_mid` 与 live BUY order price，不直接比较 saved `reference_price`。
 
-- 不得触发 anchor break
-- 不得改用推测值或历史值
+## 11. Rebuild
 
-## 11. Main Loop Contract
+`rebuild(info, trader, orders, reference_price=None)` 当前选择路径：
 
-主循环必须是固定 polling loop。
+1. 若 `is_fill_replace_path(orders, reference_price)` 为真，调用 `place_fill_replace_pair(info, trader, orders[0], reference_price)`。
+2. 否则，如有 `orders`，先调用 `cleanup_orders(info, trader, orders)`。
+3. 若 cleanup 返回假值，`rebuild` 返回 `None`。
+4. 若 `reference_price is None`，调用 `read_btc_grid(info)`。
+5. 调用 `place_pair(info, trader, reference_price)` 并返回结果。
 
-每轮必须执行：
+### `is_fill_replace_path`
 
-1. sleep 固定轮询间隔
-2. 读取当前 open orders
-3. 仅当 `saved_state.mode == BUY_ONLY` 时按需读取 BTC mid
-4. 调用 decision
-5. 执行 `keep / rebuild / abnormal`
+fill-replace path 的实际条件为：
 
-### Keep
+- `len(orders) == 1`
+- `reference_price is not None`
+- `orders[0].get("oid") is not None`
+- `orders[0].get("side") in {"BUY", "SELL"}`
 
-当 decision 返回 `("keep", None)` 时：
+在当前 `run_cycle` 调用路径中，该 path 对应 `PAIR` fill-driven rebuild 后只剩一张 live order 的情况。
 
-- 不改变 saved state
-- 不执行任何 order operation
-- 继续下一轮 polling
+## 12. Fill-Replace Path
 
-### Rebuild
+`place_fill_replace_pair(info, trader, old_order, reference_price)` 当前流程：
 
-当 decision 返回 `("rebuild", reference_price)` 或 `("rebuild", None)` 时：
+1. 调用 `build_pair(reference_price)` 生成新 BUY 与新 SELL action。
+2. 若 `old_order["side"] == "SELL"`，先 place 新 BUY，再 place 新 SELL。
+3. 若 `old_order["side"] == "BUY"`，先 place 新 SELL，再 place 新 BUY。
+4. 第一张新单必须 `ok`，否则直接返回 `None`。
+5. 第一张新单成功后，调用 `cancel_order_by_oid(trader, old_order)`。
+6. 调用 `wait_order_absent(info, old_order["oid"])` 验证旧 oid 已不存在。
+7. cancel 或 verify 抛异常时，记录日志，调用 `cleanup_after_partial_place_failure`，返回 `None`。
+8. 若旧 oid 仍存在，记录日志，调用 `cleanup_after_partial_place_failure`，返回 `None`。
+9. 验证成功后 place 第二张新单。
+10. 若第二张新单 `ok`，返回 `PAIR` rebuild state。
+11. 若第二张新单为 SELL，且结果为 `insufficient_spot_balance`，且 `ALLOW_BUY_ONLY_WHEN_NO_BTC` 为真，返回 `BUY_ONLY` rebuild state。
+12. 若第二张新单为 BUY，且结果为 `insufficient_spot_balance`，且 `ALLOW_SELL_ONLY_WHEN_NO_USDC` 为真，返回 `SELL_ONLY` rebuild state。
+13. 其他情况调用 `cleanup_after_partial_place_failure` 并返回 `None`。
 
-- 使用当前 live orders 进入 rebuild
-- rebuild 只允许走以下两种 execution path：
+fill-replace verify 的目标是旧 oid absent，不要求 open orders 归零。
 
-#### Full Rebuild Path
+## 13. Cleanup
 
-适用于除 `PAIR` fill-driven rebuild 之外的所有 rebuild：
+### `cleanup_orders`
 
-- 如有旧挂单，先 cleanup
-- cleanup 成功后才允许 placement
-- 若 `reference_price is None`，则读取 fresh reference price
-- placement 成功后仅在得到有效 state 时更新 saved state
-- rebuild 失败则退出
+`cleanup_orders(info, trader, orders)` 当前行为：
 
-#### Fill-Replace Path
+- `orders` 为空时返回 `True`。
+- 对每个 order 调用 `cancel_order_by_oid(trader, order)`。
+- `cancel_order_by_oid` 使用 `trader.cancel(SYMBOL, order["oid"])`。
+- 全部 cancel 调用后，调用 `wait_no_open_orders(info)`。
+- 若确认无 open orders，返回 `True`。
+- 若仍有 open orders，读取 remaining orders，输出摘要，记录 cleanup failure，返回 `False`。
 
-只适用于以下条件同时成立时：
+当前限制：
 
-- 当前 rebuild 来自 `saved = PAIR` 的 fill-driven rebuild
-- 当前 live orders 恰好只剩 1 张单
-- `reference_price` 已由 decision 明确提供
-- 当前剩余单可提供 cancel 所需 oid
+- `cleanup_orders` 假设每个待 cancel order 都有 `oid`。
+- 缺少 `oid` 时会因 `order["oid"]` 抛出 `KeyError`。
 
-执行顺序必须为：
+### `cleanup_after_partial_place_failure`
 
-1. 基于给定 `reference_price` 计算新 pair
-2. 先 place fill side 对应的新 order
-3. 再 cancel 当前剩余旧 order 的 oid
-4. 验证该旧 oid 已不存在
-5. 再 place 另一侧新 order
+`cleanup_after_partial_place_failure(info, trader)` 当前行为：
 
-约束：
+- 调用 `read_orders(info)`。
+- 若无 remaining orders，返回 `True`。
+- 若有 remaining orders，输出摘要并调用 `cleanup_orders`。
+- cleanup 成功返回 `True`。
+- cleanup 失败记录 fatal 日志并返回 `False`。
 
-- Fill-Replace Path 不得用于 bootstrap rebuild
-- Fill-Replace Path 不得用于 anchor break rebuild
-- Fill-Replace Path 不得用于 `BUY_ONLY` / `SELL_ONLY` 的 fill-complete rebuild
-- Fill-Replace Path 中的 verify 目标是“指定旧 oid 已消失”，不是“zero open orders”
-- 若任一步失败，则 rebuild 失败；不得伪装为 keep
-- 仅在得到有效新 state 时才允许更新 saved state
+调用方在 placement failure 后返回 `None`；该 cleanup 返回值不转换为成功 state。
 
-### Abnormal
+## 14. Placement
 
-当 decision 返回 `("abnormal", None)` 时：
+### `build_pair`
 
-- 输出当前 open orders 摘要
-- 记录 abnormal
-- 立即退出
-- 不做自动修复
+`build_pair(reference_price)` 当前行为：
 
-## 12. Gateway Contract
+- `reference_price <= 0` 时抛出 `ValueError("Invalid reference price")`。
+- `buy_price = reference_price - (BUY_GRID_FACTOR * GRID_STEP)`。
+- `sell_price = reference_price + (SELL_GRID_FACTOR * GRID_STEP)`。
+- `buy_price <= 0` 时抛出 `ValueError("Invalid buy price")`。
+- BUY size 为 `round(BUDGET_USDC / buy_price, 5)`。
+- SELL size 为 `round(BUDGET_USDC / sell_price, 5)`。
 
-gateway 是 engine 的唯一读取边界。
+sizing invariant：
 
-职责：
+- 当前 sizing 是 same notional。
+- BUY 与 SELL 使用各自价格分别按 `BUDGET_USDC` 反推 size。
+- BUY size 与 SELL size 可以不同。
+- size 不参与 `classify_order_shape` 的 pair validity 判定。
 
-- 通过 REST 读取 open orders 与 BTC mids
-- 归一化 order shape
-- 统一 price normalization
-- 对短暂性 infra read failure 做有限重试
+### `classify_order_result`
 
-约束：
+下单结果只分类为：
 
-- decision 不得直接依赖底层 client
-- retry 只允许存在于读取侧
-- retry 不得扩散到 decision 层
-- gateway 可以抛出异常
-- engine 必须统一收口，不得在未知输入上继续运行
-- 非法 side 必须视为非法输入，不得进入 strategy decision
-- canonical order shape 至少应提供 strategy / execution 所需字段
+- `"ok"`
+- `"insufficient_spot_balance"`
+- `"error"`
 
-## 13. Execution Contract
+规则：
 
-execution 负责：
+- 缺少 statuses 返回 `"error"`。
+- 第一条 status 含 `"error"` 时：
+  - error 文本含 `"Insufficient spot balance"` 返回 `"insufficient_spot_balance"`。
+  - 否则返回 `"error"`。
+- 第一条 status 含 `"resting"` 或 `"filled"` 返回 `"ok"`。
+- 其他情况返回 `"error"`。
 
-- 根据 rebuild 类型选择 execution path
-- cleanup 现有挂单
-- 构造 pair order actions
-- 提交 buy / sell limit orders
-- 对旧 oid 执行定向 cancel 与 verify
-- 根据 placement result 分类返回新 state 或失败
+### `place_limit_order`
 
-### Execution Paths
+`place_limit_order(trader, action)` 调用：
 
-execution 只允许以下两种路径：
+- `trader.order(...)`
+- `SYMBOL`
+- `action["side"] == "BUY"` 作为 is_buy
+- `float(action["size"])`
+- `float(action["price"])`
+- `{"limit": {"tif": "Gtc"}}`
+- `False`
 
-#### Full Rebuild Path
+返回 `classify_order_result(result)`。
 
-适用于一般 rebuild。
+### `place_pair`
 
-语义必须为：
+`place_pair(info, trader, reference_price)` 当前流程：
 
-- 无 open orders 则直接进入 placement
-- 有 open orders 则先 bulk cancel
-- 之后轮询确认 no open orders
-- 若确认失败，则 rebuild 失败
+1. 调用 `build_pair(reference_price)`。
+2. 记录 rebuild 价格。
+3. 先 place BUY。
+4. 再 place SELL。
+5. BUY 与 SELL 都 `ok` 时返回 `PAIR` rebuild state。
+6. BUY `ok`、SELL `insufficient_spot_balance`、且 `ALLOW_BUY_ONLY_WHEN_NO_BTC` 为真时，返回 `BUY_ONLY` rebuild state。
+7. SELL `ok`、BUY `insufficient_spot_balance`、且 `ALLOW_SELL_ONLY_WHEN_NO_USDC` 为真时，返回 `SELL_ONLY` rebuild state。
+8. 其他情况调用 `cleanup_after_partial_place_failure` 并返回 `None`。
 
-约束：
+`place_pair` 的返回值只允许是：
 
-- cleanup 输入订单必须可用于 cancel
-- 若缺少 cancel 所需字段，则视为 cleanup failure
-- cleanup failure 不得伪装为成功
-
-#### Fill-Replace Path
-
-只适用于 `saved = PAIR` 的 fill-driven rebuild，且当前 live orders 恰好剩 1 张单。
-
-语义必须为：
-
-- 先根据给定 `reference_price` 构造新 pair
-- 先提交 fill side 对应的新 order
-- 若第一张新单失败，则不得继续 cancel 旧 oid
-- 第一张新单成功后，才允许 cancel 当前剩余旧 oid
-- cancel 后必须验证该 oid 已不存在
-- verify 失败时，不得继续提交另一侧新 order
-- verify 成功后，才允许提交另一侧新 order
-
-约束：
-
-- Fill-Replace Path 不得要求先达到 zero open orders
-- Fill-Replace Path 不得使用 bulk cancel 代替定向 oid cancel
-- Fill-Replace Path 不得在旧 oid 未确认消失前提交另一侧新 order
-- Fill-Replace Path 不得制造同方向双单同时暴露的 accepted path
-
-### Placement Result Classification
-
-下单结果只允许分为：
-
-- `ok`
-- `insufficient_spot_balance`
-- `error`
-
-rebuild 后新状态只允许是：
-
-- `PAIR`
-- `BUY_ONLY`
-- `SELL_ONLY`
+- `PAIR` state
+- `BUY_ONLY` state
+- `SELL_ONLY` state
 - `None`
 
-约束：
+## 15. Failure Semantics
 
-- rebuild 失败不得返回 `ABNORMAL` saved state
-- rebuild 失败后不得继续主循环
+当前实现的 failure 行为：
 
-### Placement Semantics
+- `decide_cycle_action` 未命中 accepted path 时返回 `("abnormal", None)`。
+- `run_cycle` 收到 abnormal action 后输出当前 orders 摘要，记录 `abnormal`，返回 `None`。
+- `main` 收到 `saved_state is None` 后退出。
+- `rebuild` 返回 `None` 时，`run_cycle` 记录 `rebuild failed` 并返回 `None`。
+- `bootstrap` rebuild 返回 `None` 时，记录 `Bootstrap Rebuild Failed` 并返回 `None` state。
 
-rebuild placement 的目标是放出：
+当前实现没有全局 exception shell。
 
-- 一组合法 `PAIR`
-- 或余额不足下可接受的合法单边 residual
+以下异常不会被 `grid.py` 统一捕获：
 
-当一侧余额不足时：
+- `read_orders` 抛出的异常
+- `read_btc_mid` 抛出的异常
+- `read_btc_grid` 抛出的异常
+- `cleanup_orders` 中缺少 `oid` 导致的 `KeyError`
+- `build_pair` 抛出的 `ValueError`
+- 其他未被局部 try/except 捕获的 execution exception
 
-- 仅允许按实现显式允许的方向退化为单边 residual
-- 不允许构造未定义 state shape
-- 不允许沿用旧 state 假装成功
+`place_fill_replace_pair` 仅对 cancel/verify 阶段做局部 exception handling。
 
-## 14. Price, Sizing, and Exception Contract
+## 16. Current Invariants
 
-### Price Comparison
+当前实现满足以下不变量：
 
-engine / strategy / execution 内部关键价格判定必须基于离散化比较。
+- `grid.py` 标准入口先应用 runtime overrides，再导入其他 grid 模块。
+- execution client 变量名为 `trader`。
+- `saved_state` 继续运行时只使用 `PAIR`、`BUY_ONLY`、`SELL_ONLY`。
+- `ABNORMAL` 不作为 saved state 返回给主循环继续运行。
+- `classify_order_shape` 只在合法 `PAIR` 时返回 `pair_state`。
+- 合法 `PAIR` 要求两张单、一买一卖、`buy_price < sell_price`、normalized gap 等于 `(BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP`。
+- `BUY_ONLY` 与 `SELL_ONLY` 是单 order shape。
+- `decide_cycle_action` 先分类 shape，再按 saved mode 分支。
+- `PAIR` fill-driven rebuild 优先于 `PAIR` keep。
+- `BUY_ONLY` residual fill-complete 优先于 anchor break。
+- `BUY_ONLY` anchor break 触发后以 `reference_price=None` rebuild。
+- `run_cycle` 只在 saved mode 为 `BUY_ONLY` 时读取 BTC mid。
+- `build_pair` 使用 same notional sizing。
+- `place_pair` 先 place BUY，再 place SELL。
+- general rebuild 在 placement 前 cleanup 现有 orders。
+- general rebuild 只在 `reference_price is None` 时调用 `read_btc_grid`。
+- fill-replace path 先 place 缺失替换侧，再 cancel 旧 oid，再 verify 旧 oid absent，再 place 另一侧。
+- rebuild 失败后主循环不继续使用旧 `saved_state`。
 
-至少以下逻辑必须离散化：
+## 17. Current Known Limitations
 
-- price equality
-- pair gap match
-- threshold distance check
-- normalize 后的 canonical price comparison
+当前实现明确存在以下限制：
 
-不允许：
-
-- 关键 pair 判定直接使用 float equality
-- gap 判定直接依赖未离散化浮点减法
-- anchor break 直接依赖原始浮点距离
-
-### Sizing Invariant
-
-当前 sizing invariant 为：
-
-- **same notional**
-- 不是 same base size
-
-即：
-
-- buy / sell 两边允许有不同 BTC size
-- 只要两边各自按相同 `BUDGET_USDC` 推导，就视为合法
-- size 不参与 pair validity 判定
-
-### Exception Handling
-
-运行期异常必须统一收口为：
-
-- 记录 stage
-- 记录异常摘要
-- 输出 `abnormal`
-- 停止运行
-
-当前统一收口阶段至少包括：
-
-- startup
-- bootstrap
-- main-loop
-
-约束：
-
-- engine 不允许吞掉未知异常后继续运行
-- gateway / execution 抛出的异常必须由 engine shell 统一收口
-- failure 后不得继续使用旧 saved state 运行
-
-## 15. Invariants
-
-系统必须满足：
-
-- saved state 永远不为 `ABNORMAL`
-- engine 持有唯一 saved state
-- 每轮只产生一个 action
-- decision 不做 IO
-- gateway 不做状态机
-- execution 不做策略决策
-- 主循环固定为 REST polling
-- classified live pair state 不保存 rebuild anchor
-- fill-driven rebuild 优先级最高
-- `PAIR` keep 必须同时比较 buy / sell 两侧
-- `BUY_ONLY` 不得依赖 `sell_price`
-- `SELL_ONLY` 不得依赖 `buy_price`
-- rebuild 失败后不得继续主循环
-- strategy 不得自行扩展 accepted path
-- implementation 不得在合同外引入隐式状态语义
+- `classify_order_shape` 不校验 order size。
+- `BUY_ONLY` keep 不校验 live BUY price 与 saved BUY price 相等。
+- `SELL_ONLY` keep 不校验 live SELL price 与 saved SELL price 相等。
+- `BUY_ONLY` live price drift 在未触发 anchor break 时仍可能 keep。
+- `cleanup_orders` 对缺少 `oid` 的 order 会抛出 `KeyError`。
+- `grid.py` 没有全局 exception shell。
