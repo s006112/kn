@@ -730,47 +730,6 @@ def run_rebuild_case(initial_orders, cleanup_result, rebuild_price_input, comput
     return result, calls
 
 
-def run_exec_partial_cleanup_case(remaining_orders, cleanup_result):
-    if grid_exec is None:
-        return None, None
-
-    calls = {
-        "read_orders": 0,
-        "cleanup_orders": 0,
-        "cleanup_orders_args": None,
-        "summarize_orders": 0,
-    }
-
-    old_read_orders = grid_exec.read_orders
-    old_cleanup_orders = grid_exec.cleanup_orders
-    old_summarize_orders = grid_exec.summarize_orders
-
-    def fake_read_orders(info):
-        calls["read_orders"] += 1
-        return remaining_orders
-
-    def fake_cleanup_orders(info, trader, orders):
-        calls["cleanup_orders"] += 1
-        calls["cleanup_orders_args"] = orders
-        return cleanup_result
-
-    def fake_summarize_orders(orders):
-        calls["summarize_orders"] += 1
-        return 0, 0
-
-    try:
-        grid_exec.read_orders = fake_read_orders
-        grid_exec.cleanup_orders = fake_cleanup_orders
-        grid_exec.summarize_orders = fake_summarize_orders
-        result = grid_exec.cleanup_after_partial_place_failure(info=object(), trader=object())
-    finally:
-        grid_exec.read_orders = old_read_orders
-        grid_exec.cleanup_orders = old_cleanup_orders
-        grid_exec.summarize_orders = old_summarize_orders
-
-    return result, calls
-
-
 def run_place_reset_rebuild_case(buy_status, sell_status, allow_buy_only, allow_sell_only, cleanup_result=True, price=10000.0):
     if grid_exec is None:
         return None, None
@@ -779,12 +738,12 @@ def run_place_reset_rebuild_case(buy_status, sell_status, allow_buy_only, allow_
         "build_pair": 0,
         "place_limit_order": 0,
         "place_limit_order_args": [],
-        "cleanup_after_partial_place_failure": 0,
+        "cleanup_orders": 0,
     }
 
     old_build_pair = grid_exec.build_pair
     old_place_limit_order = grid_exec.place_limit_order
-    old_cleanup_after_partial_place_failure = grid_exec.cleanup_after_partial_place_failure
+    old_cleanup_orders = grid_exec.cleanup_orders
     old_allow_buy_only = grid_exec.ALLOW_BUY_ONLY_WHEN_NO_BTC
     old_allow_sell_only = grid_exec.ALLOW_SELL_ONLY_WHEN_NO_USDC
 
@@ -802,21 +761,21 @@ def run_place_reset_rebuild_case(buy_status, sell_status, allow_buy_only, allow_
         calls["place_limit_order_args"].append(action["side"])
         return statuses.pop(0)
 
-    def fake_cleanup_after_partial_place_failure(info, trader):
-        calls["cleanup_after_partial_place_failure"] += 1
+    def fake_cleanup_orders(info, trader):
+        calls["cleanup_orders"] += 1
         return cleanup_result
 
     try:
         grid_exec.build_pair = fake_build_pair
         grid_exec.place_limit_order = fake_place_limit_order
-        grid_exec.cleanup_after_partial_place_failure = fake_cleanup_after_partial_place_failure
+        grid_exec.cleanup_orders = fake_cleanup_orders
         grid_exec.ALLOW_BUY_ONLY_WHEN_NO_BTC = allow_buy_only
         grid_exec.ALLOW_SELL_ONLY_WHEN_NO_USDC = allow_sell_only
         result = grid_exec.place_reset_rebuild(info=object(), trader=object(), price=price)
     finally:
         grid_exec.build_pair = old_build_pair
         grid_exec.place_limit_order = old_place_limit_order
-        grid_exec.cleanup_after_partial_place_failure = old_cleanup_after_partial_place_failure
+        grid_exec.cleanup_orders = old_cleanup_orders
         grid_exec.ALLOW_BUY_ONLY_WHEN_NO_BTC = old_allow_buy_only
         grid_exec.ALLOW_SELL_ONLY_WHEN_NO_USDC = old_allow_sell_only
 
@@ -1003,23 +962,6 @@ def run_execution_step4_eval():
         "error",
     )
 
-    partial_orders = [order("BUY", 99800.0, oid=11)]
-
-    result, calls = run_exec_partial_cleanup_case([], cleanup_result=True)
-    log_res("partial cleanup: no remaining -> True", result, True)
-    log_res("partial cleanup: no remaining no cleanup", calls["cleanup_orders"], 0)
-    log_res("partial cleanup: no remaining no summary", calls["summarize_orders"], 0)
-
-    result, calls = run_exec_partial_cleanup_case(partial_orders, cleanup_result=True)
-    log_res("partial cleanup: remaining -> True", result, True)
-    log_res("partial cleanup: remaining cleanup count", calls["cleanup_orders"], 1)
-    log_res("partial cleanup: remaining cleanup args", calls["cleanup_orders_args"], partial_orders)
-    log_res("partial cleanup: remaining summarize", calls["summarize_orders"], 1)
-
-    result, calls = run_exec_partial_cleanup_case(partial_orders, cleanup_result=False)
-    log_res("partial cleanup: cleanup fail -> False", result, False)
-    log_res("partial cleanup: cleanup fail count", calls["cleanup_orders"], 1)
-
     result, calls = run_place_reset_rebuild_case(
         buy_status="ok",
         sell_status="ok",
@@ -1032,7 +974,7 @@ def run_execution_step4_eval():
         result,
         {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10000.0},
     )
-    log_res("place_reset_rebuild: both ok no cleanup", calls["cleanup_after_partial_place_failure"], 0)
+    log_res("place_reset_rebuild: both ok no cleanup", calls["cleanup_orders"], 0)
     log_res("place_reset_rebuild: both ok call order", calls["place_limit_order_args"], ["BUY", "SELL"])
 
     result, calls = run_place_reset_rebuild_case(
@@ -1047,7 +989,7 @@ def run_execution_step4_eval():
         result,
         {"mode": BUY_ONLY_MODE, "buy_price": 9800.0, "reference_price": 10000.0},
     )
-    log_res("place_reset_rebuild: BUY_ONLY no cleanup", calls["cleanup_after_partial_place_failure"], 0)
+    log_res("place_reset_rebuild: BUY_ONLY no cleanup", calls["cleanup_orders"], 0)
 
     result, calls = run_place_reset_rebuild_case(
         buy_status="insufficient_spot_balance",
@@ -1061,7 +1003,7 @@ def run_execution_step4_eval():
         result,
         {"mode": SELL_ONLY_MODE, "sell_price": 10200.0, "reference_price": 10000.0},
     )
-    log_res("place_reset_rebuild: SELL_ONLY no cleanup", calls["cleanup_after_partial_place_failure"], 0)
+    log_res("place_reset_rebuild: SELL_ONLY no cleanup", calls["cleanup_orders"], 0)
 
     result, calls = run_place_reset_rebuild_case(
         buy_status="ok",
@@ -1071,7 +1013,7 @@ def run_execution_step4_eval():
         price=10000.0,
     )
     log_res("place_reset_rebuild: BUY_ONLY disallowed -> None", result, None)
-    log_res("place_reset_rebuild: BUY_ONLY disallowed cleanup", calls["cleanup_after_partial_place_failure"], 1)
+    log_res("place_reset_rebuild: BUY_ONLY disallowed cleanup", calls["cleanup_orders"], 1)
 
     result, calls = run_place_reset_rebuild_case(
         buy_status="insufficient_spot_balance",
@@ -1081,7 +1023,7 @@ def run_execution_step4_eval():
         price=10000.0,
     )
     log_res("place_reset_rebuild: SELL_ONLY disallowed -> None", result, None)
-    log_res("place_reset_rebuild: SELL_ONLY disallowed cleanup", calls["cleanup_after_partial_place_failure"], 1)
+    log_res("place_reset_rebuild: SELL_ONLY disallowed cleanup", calls["cleanup_orders"], 1)
 
     result, calls = run_place_reset_rebuild_case(
         buy_status="error",
@@ -1091,7 +1033,7 @@ def run_execution_step4_eval():
         price=10000.0,
     )
     log_res("place_reset_rebuild: buy error -> None", result, None)
-    log_res("place_reset_rebuild: buy error cleanup", calls["cleanup_after_partial_place_failure"], 1)
+    log_res("place_reset_rebuild: buy error cleanup", calls["cleanup_orders"], 1)
 
     result, calls = run_place_reset_rebuild_case(
         buy_status="ok",
@@ -1101,7 +1043,7 @@ def run_execution_step4_eval():
         price=10000.0,
     )
     log_res("place_reset_rebuild: sell error -> None", result, None)
-    log_res("place_reset_rebuild: sell error cleanup", calls["cleanup_after_partial_place_failure"], 1)
+    log_res("place_reset_rebuild: sell error cleanup", calls["cleanup_orders"], 1)
 
     result, calls = run_place_reset_rebuild_case(
         buy_status="error",
@@ -1111,7 +1053,7 @@ def run_execution_step4_eval():
         price=10000.0,
     )
     log_res("place_reset_rebuild: both error -> None", result, None)
-    log_res("place_reset_rebuild: both error cleanup", calls["cleanup_after_partial_place_failure"], 1)
+    log_res("place_reset_rebuild: both error cleanup", calls["cleanup_orders"], 1)
 
 
 def run_gateway_eval():

@@ -127,11 +127,14 @@ def cancel_order_by_oid(trader, order):
     trader.cancel(SYMBOL, order["oid"])
 
 
-def cleanup_orders(info, trader, orders):   # 取消所有订单并验证是否成功，返回是否成功
-    if not orders:  # 无订单需要清理，直接返回成功
+def cleanup_orders(info, trader, orders=None):
+    if orders is None:
+        orders = read_orders(info)
+
+    if not orders:
         return True
 
-    for order in orders: # 逐个取消订单
+    for order in orders:
         cancel_order_by_oid(trader, order)
 
     if wait_until(info, lambda orders: not orders):
@@ -140,21 +143,6 @@ def cleanup_orders(info, trader, orders):   # 取消所有订单并验证是否�
     remaining_orders = read_orders(info)
     summarize_orders(remaining_orders)
     log_msg("cleanup failure: open orders still remain")
-    return False
-
-
-def cleanup_after_partial_place_failure(info, trader):
-    remaining_orders = read_orders(info)
-    if not remaining_orders:
-        return True
-
-    summarize_orders(remaining_orders)
-    log_msg("partial placement failure: cleanup remaining orders")
-
-    if cleanup_orders(info, trader, remaining_orders):
-        return True
-
-    log_msg("fatal: partial placement cleanup failed")
     return False
 
 
@@ -176,7 +164,8 @@ def place_reset_rebuild(info, trader, price):  # 根据参考价构建买卖单�
         log_msg("rebuild -> sell-only")
         return make_sell_only_state(price, sell_action)
 
-    cleanup_after_partial_place_failure(info, trader)
+    log_msg("partial placement failure: cleanup remaining orders")
+    cleanup_orders(info, trader)
     return None
 
 
@@ -203,12 +192,12 @@ def place_done_deal_rebuild(info, trader, remaining_order, reference_price):
         )
     except Exception as exc:
         log_msg(f"partial placement failure: cancel/verify exception ({type(exc).__name__}: {exc})")
-        cleanup_after_partial_place_failure(info, trader)
+        cleanup_orders(info, trader)
         return None
 
     if not remaining_order_gone:
         log_msg(f"cleanup failure: remaining order still remains oid={remaining_order['oid']}")
-        cleanup_after_partial_place_failure(info, trader)
+        cleanup_orders(info, trader)
         return None
 
     second_status = place_limit_order(trader, second_action)
@@ -231,7 +220,8 @@ def place_done_deal_rebuild(info, trader, remaining_order, reference_price):
         log_msg("rebuild -> sell-only")
         return make_sell_only_state(reference_price, sell_action)
 
-    cleanup_after_partial_place_failure(info, trader)
+    log_msg("partial placement failure: cleanup remaining orders")
+    cleanup_orders(info, trader)
     return None
 
 def rebuild(info, trader, orders, strategy="reset", rebuild_price=None):
