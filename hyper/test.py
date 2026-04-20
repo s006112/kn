@@ -4,12 +4,13 @@ from grid_config import (
     PAIR_MODE,
     BUY_ONLY_MODE,
     SELL_ONLY_MODE,
+    ABNORMAL_MODE,
     REANCHOR_BREAK_STEPS,
     BUY_GRID_FACTOR,
     WAIT_NO_OPEN_ORDERS_INTERVAL_SEC,
     API_WALLET_KEY,
 )
-from grid_decision import classify_order_shape, decide_cycle_action
+from grid_decision import classify_order_mode, decide_cycle_action
 
 try:
     import grid as grid_engine
@@ -82,8 +83,7 @@ def print_final_summary():
 
 
 def mode_of_bootstrap(orders):
-    _, pair_state = classify_order_shape(orders)
-    return pair_state["mode"] if pair_state else None
+    return classify_order_mode(orders)["mode"]
 
 
 def order(side, price, size=None, oid=None):
@@ -138,14 +138,14 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
     calls = {
         "read_orders": 0,
         "summarize_orders": 0,
-        "classify_order_shape": 0,
+        "classify_order_mode": 0,
         "rebuild": 0,
         "rebuild_args": None,
     }
 
     old_read_orders = grid_engine.read_orders
     old_summarize_orders = grid_engine.summarize_orders
-    old_classify_order_shape = grid_engine.classify_order_shape
+    old_classify_order_mode = grid_engine.classify_order_mode
     old_rebuild = grid_engine.rebuild
     old_info = grid_engine.Info
     old_exchange = grid_engine.Exchange
@@ -170,11 +170,11 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
         calls["summarize_orders"] += 1
         return 0, 0
 
-    def fake_classify_order_shape(local_orders):
-        calls["classify_order_shape"] += 1
+    def fake_classify_order_mode(local_orders):
+        calls["classify_order_mode"] += 1
         if bootstrap_state is not None:
-            return PAIR_MODE, bootstrap_state
-        return classify_order_shape(local_orders)
+            return bootstrap_state
+        return classify_order_mode(local_orders)
 
     def fake_rebuild(info, trader, local_orders, reference_price=None):
         calls["rebuild"] += 1
@@ -184,7 +184,7 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
     try:
         grid_engine.read_orders = fake_read_orders
         grid_engine.summarize_orders = fake_summarize_orders
-        grid_engine.classify_order_shape = fake_classify_order_shape
+        grid_engine.classify_order_mode = fake_classify_order_mode
         grid_engine.rebuild = fake_rebuild
         grid_engine.Info = fake_info
         grid_engine.Exchange = fake_exchange
@@ -193,7 +193,7 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
     finally:
         grid_engine.read_orders = old_read_orders
         grid_engine.summarize_orders = old_summarize_orders
-        grid_engine.classify_order_shape = old_classify_order_shape
+        grid_engine.classify_order_mode = old_classify_order_mode
         grid_engine.rebuild = old_rebuild
         grid_engine.Info = old_info
         grid_engine.Exchange = old_exchange
@@ -448,19 +448,19 @@ def run_bootstrap_eval():
     o_valid = pair_orders()
 
     log_res("Bootstrap: Valid Pair", mode_of_bootstrap(o_valid), PAIR_MODE)
-    _, classified_pair_state = classify_order_shape(o_valid)
+    classified_pair_state = classify_order_mode(o_valid)
     log_res("Bootstrap: Pair State", classified_pair_state, pair_state())
     log_res("Bootstrap: Reversed Pair", mode_of_bootstrap([o_valid[1], o_valid[0]]), PAIR_MODE)
-    log_res("Bootstrap: Partial", mode_of_bootstrap(o_valid[:1]), None)
-    log_res("Bootstrap: Empty", mode_of_bootstrap([]), None)
-    log_res("Bootstrap: >2 Orders", mode_of_bootstrap(o_valid + [order("BUY", 99600.0)]), None)
+    log_res("Bootstrap: Partial", mode_of_bootstrap(o_valid[:1]), BUY_ONLY_MODE)
+    log_res("Bootstrap: Empty", mode_of_bootstrap([]), ABNORMAL_MODE)
+    log_res("Bootstrap: >2 Orders", mode_of_bootstrap(o_valid + [order("BUY", 99600.0)]), ABNORMAL_MODE)
 
-    log_res("Bootstrap: Two BUY", mode_of_bootstrap([order("BUY", 99800.0), order("BUY", 99600.0)]), None)
-    log_res("Bootstrap: Two SELL", mode_of_bootstrap([order("SELL", 100200.0), order("SELL", 100400.0)]), None)
-    log_res("Bootstrap: buy>=sell", mode_of_bootstrap(pair_orders(100200.0, 99800.0)), None)
+    log_res("Bootstrap: Two BUY", mode_of_bootstrap([order("BUY", 99800.0), order("BUY", 99600.0)]), ABNORMAL_MODE)
+    log_res("Bootstrap: Two SELL", mode_of_bootstrap([order("SELL", 100200.0), order("SELL", 100400.0)]), ABNORMAL_MODE)
+    log_res("Bootstrap: buy>=sell", mode_of_bootstrap(pair_orders(100200.0, 99800.0)), ABNORMAL_MODE)
 
     log_res("Bootstrap: Correct Gap", mode_of_bootstrap(pair_orders(99800.0, 100200.0)), PAIR_MODE)
-    log_res("Bootstrap: Wrong Gap", mode_of_bootstrap(pair_orders(99900.0, 100000.0)), None)
+    log_res("Bootstrap: Wrong Gap", mode_of_bootstrap(pair_orders(99900.0, 100000.0)), ABNORMAL_MODE)
 
     log_note(
         "Bootstrap: Size Mismatch (Known Gap)",
