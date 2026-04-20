@@ -207,14 +207,14 @@ def run_place_limit_order_case(action, order_result):
         return None, None
 
     calls = {
-        "exchange_order": 0,
-        "exchange_order_args": None,
+        "trader_order": 0,
+        "trader_order_args": None,
     }
 
-    class FakeExchange:
+    class FakeTrader:
         def order(self, symbol, is_buy, size, price, tif_payload, reduce_only):
-            calls["exchange_order"] += 1
-            calls["exchange_order_args"] = (
+            calls["trader_order"] += 1
+            calls["trader_order_args"] = (
                 symbol,
                 is_buy,
                 size,
@@ -224,7 +224,7 @@ def run_place_limit_order_case(action, order_result):
             )
             return order_result
 
-    result = grid_exec.place_limit_order(FakeExchange(), action)
+    result = grid_exec.place_limit_order(FakeTrader(), action)
     return result, calls
 
 
@@ -333,12 +333,12 @@ def run_cleanup_orders_missing_oid_case(orders):
     if grid_exec is None:
         return None
 
-    class FakeExchange:
+    class FakeTrader:
         def cancel(self, symbol, oid):
             return None
 
     try:
-        grid_exec.cleanup_orders(info=object(), exchange=FakeExchange(), orders=orders)
+        grid_exec.cleanup_orders(info=object(), trader=FakeTrader(), orders=orders)
         return "NO_ERROR"
     except Exception as exc:
         return type(exc).__name__
@@ -642,7 +642,7 @@ def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
     old_read_orders = grid_exec.read_orders
     old_summarize_orders = grid_exec.summarize_orders
 
-    class FakeExchange:
+    class FakeTrader:
         def cancel(self, symbol, oid):
             calls["cancel"] += 1
             calls["cancel_args"].append((symbol, oid))
@@ -663,7 +663,7 @@ def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
         grid_exec.wait_no_open_orders = fake_wait_no_open_orders
         grid_exec.read_orders = fake_read_orders
         grid_exec.summarize_orders = fake_summarize_orders
-        result = grid_exec.cleanup_orders(info=object(), exchange=FakeExchange(), orders=initial_orders)
+        result = grid_exec.cleanup_orders(info=object(), trader=FakeTrader(), orders=initial_orders)
     finally:
         grid_exec.wait_no_open_orders = old_wait_no_open_orders
         grid_exec.read_orders = old_read_orders
@@ -688,7 +688,7 @@ def run_rebuild_case(initial_orders, cleanup_result, reference_price_input, comp
     old_read_btc_grid = grid_exec.read_btc_grid
     old_place_pair = grid_exec.place_pair
 
-    def fake_cleanup_orders(info, exchange, orders):
+    def fake_cleanup_orders(info, trader, orders):
         calls["cleanup_orders"] += 1
         calls["cleanup_orders_args"] = orders
         return cleanup_result
@@ -697,7 +697,7 @@ def run_rebuild_case(initial_orders, cleanup_result, reference_price_input, comp
         calls["read_btc_grid"] += 1
         return computed_reference_price
 
-    def fake_place_pair(info, exchange, reference_price):
+    def fake_place_pair(info, trader, reference_price):
         calls["place_pair"] += 1
         calls["place_pair_args"] = reference_price
         return place_pair_result
@@ -708,7 +708,7 @@ def run_rebuild_case(initial_orders, cleanup_result, reference_price_input, comp
         grid_exec.place_pair = fake_place_pair
         result = grid_exec.rebuild(
             info=object(),
-            exchange=object(),
+            trader=object(),
             orders=initial_orders,
             reference_price=reference_price_input,
         )
@@ -739,7 +739,7 @@ def run_exec_partial_cleanup_case(remaining_orders, cleanup_result):
         calls["read_orders"] += 1
         return remaining_orders
 
-    def fake_cleanup_orders(info, exchange, orders):
+    def fake_cleanup_orders(info, trader, orders):
         calls["cleanup_orders"] += 1
         calls["cleanup_orders_args"] = orders
         return cleanup_result
@@ -752,7 +752,7 @@ def run_exec_partial_cleanup_case(remaining_orders, cleanup_result):
         grid_exec.read_orders = fake_read_orders
         grid_exec.cleanup_orders = fake_cleanup_orders
         grid_exec.summarize_orders = fake_summarize_orders
-        result = grid_exec.cleanup_after_partial_place_failure(info=object(), exchange=object())
+        result = grid_exec.cleanup_after_partial_place_failure(info=object(), trader=object())
     finally:
         grid_exec.read_orders = old_read_orders
         grid_exec.cleanup_orders = old_cleanup_orders
@@ -787,12 +787,12 @@ def run_place_pair_case(buy_status, sell_status, allow_buy_only, allow_sell_only
         calls["build_pair"] += 1
         return buy_action, sell_action
 
-    def fake_place_limit_order(exchange, action):
+    def fake_place_limit_order(trader, action):
         calls["place_limit_order"] += 1
         calls["place_limit_order_args"].append(action["side"])
         return statuses.pop(0)
 
-    def fake_cleanup_after_partial_place_failure(info, exchange):
+    def fake_cleanup_after_partial_place_failure(info, trader):
         calls["cleanup_after_partial_place_failure"] += 1
         return cleanup_result
 
@@ -802,7 +802,7 @@ def run_place_pair_case(buy_status, sell_status, allow_buy_only, allow_sell_only
         grid_exec.cleanup_after_partial_place_failure = fake_cleanup_after_partial_place_failure
         grid_exec.ALLOW_BUY_ONLY_WHEN_NO_BTC = allow_buy_only
         grid_exec.ALLOW_SELL_ONLY_WHEN_NO_USDC = allow_sell_only
-        result = grid_exec.place_pair(info=object(), exchange=object(), reference_price=reference_price)
+        result = grid_exec.place_pair(info=object(), trader=object(), reference_price=reference_price)
     finally:
         grid_exec.build_pair = old_build_pair
         grid_exec.place_limit_order = old_place_limit_order
@@ -1229,10 +1229,10 @@ def run_gateway_execution_step7b_eval():
 
         result, calls = run_place_limit_order_case(buy_action, ok_result)
         log_res("place_limit_order: BUY result", result, "ok")
-        log_res("place_limit_order: BUY call count", calls["exchange_order"], 1)
+        log_res("place_limit_order: BUY call count", calls["trader_order"], 1)
         log_res(
             "place_limit_order: BUY payload",
-            calls["exchange_order_args"],
+            calls["trader_order_args"],
             (
                 grid_exec.SYMBOL,
                 True,
@@ -1247,7 +1247,7 @@ def run_gateway_execution_step7b_eval():
         log_res("place_limit_order: SELL result", result, "ok")
         log_res(
             "place_limit_order: SELL payload",
-            calls["exchange_order_args"],
+            calls["trader_order_args"],
             (
                 grid_exec.SYMBOL,
                 False,

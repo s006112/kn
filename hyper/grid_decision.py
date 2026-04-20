@@ -19,8 +19,12 @@ from grid_config import (
     prices_equal,
 )
 
-def classify_order_shape(orders):
-    """识别当前挂单形态，并在合法双边单时返回 pair_state"""
+def classify_order_shape(orders):   
+    """
+    识别当前挂单形态，并在合法双边单时返回 pair_state
+    shape: PAIR_MODE | BUY_ONLY_MODE | SELL_ONLY_MODE | ABNORMAL_MODE
+    pair_state: {"mode": PAIR_MODE, "buy_price": float, "sell_price": float, "pair_center_price": float} or None
+    """
     if len(orders) == 2:
         buy_price = next((o["price"] for o in orders if o["side"] == "BUY"), None)
         sell_price = next((o["price"] for o in orders if o["side"] == "SELL"), None)
@@ -48,9 +52,9 @@ def classify_order_shape(orders):
 def decide_cycle_action(orders, saved_state, current_btc_mid=None):
     """主循环决策逻辑"""
     shape, pair_state = classify_order_shape(orders)
-    mode = saved_state["mode"]
+    saved_mode= saved_state["mode"]
 
-    if mode == PAIR_MODE:    # 填充检测：任一侧被成交则触发 rebuild
+    if saved_mode== PAIR_MODE:    # 填充检测：任一侧被成交则触发 rebuild
         if shape == SELL_ONLY_MODE:
             log_msg(f"🔥 BUY filled - {format_price(saved_state['buy_price'])}")
             return "rebuild", saved_state["buy_price"]
@@ -63,25 +67,23 @@ def decide_cycle_action(orders, saved_state, current_btc_mid=None):
             log_keep_state("pair", "Keep")
             return "keep", None
 
-    elif mode == BUY_ONLY_MODE:
+    elif saved_mode== BUY_ONLY_MODE:
         if not orders: # 残余买单成交
             log_msg("🔥 residual fill completed: BUY_ONLY -> rebuild")
             return "rebuild", saved_state["buy_price"]
         
         if shape == BUY_ONLY_MODE:
             buy_order = orders[0]
-            # 重锚点检测 (Anchor Break)
-            # 语义：当前 BTC mid 相对生成该 residual BUY 的原 reference_price
-            # 已漂移至少 REANCHOR_BREAK_STEPS * GRID_STEP
-            if REANCHOR_BREAK and current_btc_mid and current_btc_mid > 0:
-                distance = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP
+            
+            if REANCHOR_BREAK and current_btc_mid and current_btc_mid > 0:  # 重锚点检测 (Anchor Break)
+                distance = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP     # 已漂移至少 REANCHOR_BREAK_STEPS * GRID_STEP
                 if price_distance_at_least(current_btc_mid, buy_order["price"], distance):
                     log_msg("🪝 contract: anchor break")
                     return "rebuild", None
             log_keep_state("buy-only", "keep")
             return "keep", None
 
-    elif mode == SELL_ONLY_MODE:
+    elif saved_mode== SELL_ONLY_MODE:
         if not orders: # 残余卖单成交
             log_msg("✅ residual fill completed: SELL_ONLY -> rebuild")
             return "rebuild", saved_state["sell_price"]

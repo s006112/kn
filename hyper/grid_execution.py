@@ -66,8 +66,8 @@ def classify_order_result(result):
     return "error"
 
 
-def place_limit_order(exchange, action):
-    result = exchange.order(
+def place_limit_order(trader, action):
+    result = trader.order(
         SYMBOL,
         action["side"] == "BUY",
         float(action["size"]),
@@ -136,16 +136,16 @@ def wait_order_absent(
     return False
 
 
-def cancel_order_by_oid(exchange, order):
-    exchange.cancel(SYMBOL, order["oid"])
+def cancel_order_by_oid(trader, order):
+    trader.cancel(SYMBOL, order["oid"])
 
 
-def cleanup_orders(info, exchange, orders):
+def cleanup_orders(info, trader, orders):
     if not orders:
         return True
 
     for order in orders:
-        cancel_order_by_oid(exchange, order)
+        cancel_order_by_oid(trader, order)
 
     if wait_no_open_orders(info):
         return True
@@ -156,7 +156,7 @@ def cleanup_orders(info, exchange, orders):
     return False
 
 
-def cleanup_after_partial_place_failure(info, exchange):
+def cleanup_after_partial_place_failure(info, trader):
     remaining_orders = read_orders(info)
     if not remaining_orders:
         return True
@@ -164,19 +164,19 @@ def cleanup_after_partial_place_failure(info, exchange):
     summarize_orders(remaining_orders)
     log_msg("partial placement failure: cleanup remaining orders")
 
-    if cleanup_orders(info, exchange, remaining_orders):
+    if cleanup_orders(info, trader, remaining_orders):
         return True
 
     log_msg("fatal: partial placement cleanup failed")
     return False
 
 
-def place_pair(info, exchange, reference_price):
+def place_pair(info, trader, reference_price):
     buy_action, sell_action = build_pair(reference_price)
     log_rebuild(reference_price, buy_action, sell_action)
 
-    buy_status = place_limit_order(exchange, buy_action)
-    sell_status = place_limit_order(exchange, sell_action)
+    buy_status = place_limit_order(trader, buy_action)
+    sell_status = place_limit_order(trader, sell_action)
 
     if buy_status == "ok" and sell_status == "ok":
         return make_pair_state(reference_price, buy_action, sell_action)
@@ -197,7 +197,7 @@ def place_pair(info, exchange, reference_price):
         log_msg("rebuild -> sell-only")
         return make_sell_only_state(reference_price, sell_action)
 
-    cleanup_after_partial_place_failure(info, exchange)
+    cleanup_after_partial_place_failure(info, trader)
     return None
 
 
@@ -210,7 +210,7 @@ def is_fill_replace_path(orders, reference_price):
     )
 
 
-def place_fill_replace_pair(info, exchange, old_order, reference_price):
+def place_fill_replace_pair(info, trader, old_order, reference_price):
     buy_action, sell_action = build_pair(reference_price)
     log_rebuild(reference_price, buy_action, sell_action)
 
@@ -221,24 +221,24 @@ def place_fill_replace_pair(info, exchange, old_order, reference_price):
         first_action = sell_action
         second_action = buy_action
 
-    first_status = place_limit_order(exchange, first_action)
+    first_status = place_limit_order(trader, first_action)
     if first_status != "ok":
         return None
 
     try:
-        cancel_order_by_oid(exchange, old_order)
+        cancel_order_by_oid(trader, old_order)
         old_order_gone = wait_order_absent(info, old_order["oid"])
     except Exception as exc:
         log_msg(f"partial placement failure: cancel/verify exception ({type(exc).__name__}: {exc})")
-        cleanup_after_partial_place_failure(info, exchange)
+        cleanup_after_partial_place_failure(info, trader)
         return None
 
     if not old_order_gone:
         log_msg(f"cleanup failure: old order still remains oid={old_order['oid']}")
-        cleanup_after_partial_place_failure(info, exchange)
+        cleanup_after_partial_place_failure(info, trader)
         return None
 
-    second_status = place_limit_order(exchange, second_action)
+    second_status = place_limit_order(trader, second_action)
     if second_status == "ok":
         return make_pair_state(reference_price, buy_action, sell_action)
 
@@ -258,18 +258,18 @@ def place_fill_replace_pair(info, exchange, old_order, reference_price):
         log_msg("rebuild -> sell-only")
         return make_sell_only_state(reference_price, sell_action)
 
-    cleanup_after_partial_place_failure(info, exchange)
+    cleanup_after_partial_place_failure(info, trader)
     return None
 
 
-def rebuild(info, exchange, orders, reference_price=None):
+def rebuild(info, trader, orders, reference_price=None):
     if is_fill_replace_path(orders, reference_price):
-        return place_fill_replace_pair(info, exchange, orders[0], reference_price)
+        return place_fill_replace_pair(info, trader, orders[0], reference_price)
 
-    if orders and not cleanup_orders(info, exchange, orders):
+    if orders and not cleanup_orders(info, trader, orders):
         return None
 
     if reference_price is None:
         reference_price = read_btc_grid(info)
 
-    return place_pair(info, exchange, reference_price)
+    return place_pair(info, trader, reference_price)

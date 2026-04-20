@@ -45,7 +45,7 @@ def bootstrap():
         log_msg("Bootstrap Pair")
         return pair_state, info, trader
 
-    state = rebuild(info, trader, orders)
+    state = rebuild(info, trader, orders)       # state structure: {"mode": PAIR_MODE, "buy_price": float, "sell_price": float}
     if state is None:
         log_msg("Bootstrap Rebuild Failed")
         return None, info, trader
