@@ -22,12 +22,12 @@ from grid_config import (
 from grid_config import read_orders, read_btc_grid
 
 
-def build_pair(reference_price):
-    if reference_price <= 0:
-        raise ValueError("Invalid reference price")
+def build_pair(price):
+    if price <= 0:
+        raise ValueError("Invalid price")
 
-    buy_price = reference_price - (BUY_GRID_FACTOR * GRID_STEP)
-    sell_price = reference_price + (SELL_GRID_FACTOR * GRID_STEP)
+    buy_price = price - (BUY_GRID_FACTOR * GRID_STEP)
+    sell_price = price + (SELL_GRID_FACTOR * GRID_STEP)
 
     if buy_price <= 0:
         raise ValueError("Invalid buy price")
@@ -158,31 +158,23 @@ def cleanup_after_partial_place_failure(info, trader):
     return False
 
 
-def place_reset_rebuild(info, trader, reference_price):  # 根据参考价构建买卖单，尝试下单，并根据结果返回新的状态
-    buy_action, sell_action = build_pair(reference_price)
-    log_rebuild(reference_price, buy_action, sell_action)
+def place_reset_rebuild(info, trader, price):  # 根据参考价构建买卖单，尝试下单，并根据结果返回新的状态
+    buy_action, sell_action = build_pair(price)
+    log_rebuild(price, buy_action, sell_action)
 
     buy_status = place_limit_order(trader, buy_action)
     sell_status = place_limit_order(trader, sell_action)
 
     if buy_status == "ok" and sell_status == "ok":
-        return make_pair_state(reference_price, buy_action, sell_action)
+        return make_pair_state(price, buy_action, sell_action)
 
-    if (
-        buy_status == "ok"
-        and sell_status == "insufficient_spot_balance"
-        and ALLOW_BUY_ONLY_WHEN_NO_BTC
-    ):
+    if buy_status == "ok" and sell_status == "insufficient_spot_balance" and ALLOW_BUY_ONLY_WHEN_NO_BTC:
         log_msg("rebuild -> buy-only")
-        return make_buy_only_state(reference_price, buy_action)
+        return make_buy_only_state(price, buy_action)
 
-    if (
-        sell_status == "ok"
-        and buy_status == "insufficient_spot_balance"
-        and ALLOW_SELL_ONLY_WHEN_NO_USDC
-    ):
+    if sell_status == "ok" and buy_status == "insufficient_spot_balance" and ALLOW_SELL_ONLY_WHEN_NO_USDC:
         log_msg("rebuild -> sell-only")
-        return make_sell_only_state(reference_price, sell_action)
+        return make_sell_only_state(price, sell_action)
 
     cleanup_after_partial_place_failure(info, trader)
     return None
@@ -249,7 +241,7 @@ def rebuild(info, trader, orders, strategy="reset", rebuild_price=None):
             return None
         return place_done_deal_rebuild(info, trader, orders[0], rebuild_price)
 
-    if orders and not cleanup_orders(info, trader, orders):
+    if orders and not cleanup_orders(info, trader, orders): # 先清理掉现有订单，如果清理失败则放弃重建
         return None
 
     if rebuild_price is None:

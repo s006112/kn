@@ -682,7 +682,7 @@ def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
     return result, calls
 
 
-def run_rebuild_case(initial_orders, cleanup_result, rebuild_price_input, computed_reference_price, place_reset_rebuild_result):
+def run_rebuild_case(initial_orders, cleanup_result, rebuild_price_input, computed_price, place_reset_rebuild_result):
     if grid_exec is None:
         return None, None
 
@@ -705,11 +705,11 @@ def run_rebuild_case(initial_orders, cleanup_result, rebuild_price_input, comput
 
     def fake_read_btc_grid(info):
         calls["read_btc_grid"] += 1
-        return computed_reference_price
+        return computed_price
 
-    def fake_place_reset_rebuild(info, trader, reference_price):
+    def fake_place_reset_rebuild(info, trader, price):
         calls["place_reset_rebuild"] += 1
-        calls["place_reset_rebuild_args"] = reference_price
+        calls["place_reset_rebuild_args"] = price
         return place_reset_rebuild_result
 
     try:
@@ -771,7 +771,7 @@ def run_exec_partial_cleanup_case(remaining_orders, cleanup_result):
     return result, calls
 
 
-def run_place_reset_rebuild_case(buy_status, sell_status, allow_buy_only, allow_sell_only, cleanup_result=True, reference_price=10000.0):
+def run_place_reset_rebuild_case(buy_status, sell_status, allow_buy_only, allow_sell_only, cleanup_result=True, price=10000.0):
     if grid_exec is None:
         return None, None
 
@@ -793,7 +793,7 @@ def run_place_reset_rebuild_case(buy_status, sell_status, allow_buy_only, allow_
 
     statuses = [buy_status, sell_status]
 
-    def fake_build_pair(local_reference_price):
+    def fake_build_pair(local_price):
         calls["build_pair"] += 1
         return buy_action, sell_action
 
@@ -812,7 +812,7 @@ def run_place_reset_rebuild_case(buy_status, sell_status, allow_buy_only, allow_
         grid_exec.cleanup_after_partial_place_failure = fake_cleanup_after_partial_place_failure
         grid_exec.ALLOW_BUY_ONLY_WHEN_NO_BTC = allow_buy_only
         grid_exec.ALLOW_SELL_ONLY_WHEN_NO_USDC = allow_sell_only
-        result = grid_exec.place_reset_rebuild(info=object(), trader=object(), reference_price=reference_price)
+        result = grid_exec.place_reset_rebuild(info=object(), trader=object(), price=price)
     finally:
         grid_exec.build_pair = old_build_pair
         grid_exec.place_limit_order = old_place_limit_order
@@ -911,9 +911,9 @@ def run_execution_eval():
 
     try:
         grid_exec.build_pair(0.0)
-        log_res("build_pair: invalid ref <=0", "NO_ERROR", "ValueError")
+        log_res("build_pair: invalid price <=0", "NO_ERROR", "ValueError")
     except ValueError:
-        log_res("build_pair: invalid ref <=0", "ValueError", "ValueError")
+        log_res("build_pair: invalid price <=0", "ValueError", "ValueError")
 
     try:
         grid_exec.build_pair(grid_exec.BUY_GRID_FACTOR * GRID_STEP)
@@ -943,23 +943,23 @@ def run_execution_eval():
 
     placed_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10000.0}
 
-    result, calls = run_rebuild_case([], cleanup_result=True, rebuild_price_input=10000.0, computed_reference_price=9999.0, place_reset_rebuild_result=placed_state)
-    log_res("rebuild: explicit ref return", result, placed_state)
-    log_res("rebuild: explicit ref no cleanup", calls["cleanup_orders"], 0)
-    log_res("rebuild: explicit ref no read_btc_grid", calls["read_btc_grid"], 0)
-    log_res("rebuild: explicit ref place_reset_rebuild arg", calls["place_reset_rebuild_args"], 10000.0)
+    result, calls = run_rebuild_case([], cleanup_result=True, rebuild_price_input=10000.0, computed_price=9999.0, place_reset_rebuild_result=placed_state)
+    log_res("rebuild: explicit price return", result, placed_state)
+    log_res("rebuild: explicit price no cleanup", calls["cleanup_orders"], 0)
+    log_res("rebuild: explicit price no read_btc_grid", calls["read_btc_grid"], 0)
+    log_res("rebuild: explicit price place_reset_rebuild arg", calls["place_reset_rebuild_args"], 10000.0)
 
-    result, calls = run_rebuild_case([], cleanup_result=True, rebuild_price_input=None, computed_reference_price=10400.0, place_reset_rebuild_result=placed_state)
-    log_res("rebuild: implicit ref return", result, placed_state)
-    log_res("rebuild: implicit ref read_btc_grid", calls["read_btc_grid"], 1)
-    log_res("rebuild: implicit ref place_reset_rebuild arg", calls["place_reset_rebuild_args"], 10400.0)
+    result, calls = run_rebuild_case([], cleanup_result=True, rebuild_price_input=None, computed_price=10400.0, place_reset_rebuild_result=placed_state)
+    log_res("rebuild: implicit price return", result, placed_state)
+    log_res("rebuild: implicit price read_btc_grid", calls["read_btc_grid"], 1)
+    log_res("rebuild: implicit price place_reset_rebuild arg", calls["place_reset_rebuild_args"], 10400.0)
 
-    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=True, rebuild_price_input=10000.0, computed_reference_price=9999.0, place_reset_rebuild_result=placed_state)
+    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=True, rebuild_price_input=10000.0, computed_price=9999.0, place_reset_rebuild_result=placed_state)
     log_res("rebuild: with old orders cleanup", result, placed_state)
     log_res("rebuild: with old orders cleanup count", calls["cleanup_orders"], 1)
     log_res("rebuild: with old orders cleanup args", calls["cleanup_orders_args"], orders_with_oid)
 
-    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=False, rebuild_price_input=10000.0, computed_reference_price=9999.0, place_reset_rebuild_result=placed_state)
+    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=False, rebuild_price_input=10000.0, computed_price=9999.0, place_reset_rebuild_result=placed_state)
     log_res("rebuild: cleanup fail -> None", result, None)
     log_res("rebuild: cleanup fail no place_reset_rebuild", calls["place_reset_rebuild"], 0)
     log_res("rebuild: cleanup fail no read_btc_grid", calls["read_btc_grid"], 0)
@@ -1025,7 +1025,7 @@ def run_execution_step4_eval():
         sell_status="ok",
         allow_buy_only=True,
         allow_sell_only=True,
-        reference_price=10000.0,
+        price=10000.0,
     )
     log_res(
         "place_reset_rebuild: both ok -> PAIR",
@@ -1040,7 +1040,7 @@ def run_execution_step4_eval():
         sell_status="insufficient_spot_balance",
         allow_buy_only=True,
         allow_sell_only=True,
-        reference_price=10000.0,
+        price=10000.0,
     )
     log_res(
         "place_reset_rebuild: buy ok -> BUY_ONLY",
@@ -1054,7 +1054,7 @@ def run_execution_step4_eval():
         sell_status="ok",
         allow_buy_only=True,
         allow_sell_only=True,
-        reference_price=10000.0,
+        price=10000.0,
     )
     log_res(
         "place_reset_rebuild: sell ok -> SELL_ONLY",
@@ -1068,7 +1068,7 @@ def run_execution_step4_eval():
         sell_status="insufficient_spot_balance",
         allow_buy_only=False,
         allow_sell_only=True,
-        reference_price=10000.0,
+        price=10000.0,
     )
     log_res("place_reset_rebuild: BUY_ONLY disallowed -> None", result, None)
     log_res("place_reset_rebuild: BUY_ONLY disallowed cleanup", calls["cleanup_after_partial_place_failure"], 1)
@@ -1078,7 +1078,7 @@ def run_execution_step4_eval():
         sell_status="ok",
         allow_buy_only=True,
         allow_sell_only=False,
-        reference_price=10000.0,
+        price=10000.0,
     )
     log_res("place_reset_rebuild: SELL_ONLY disallowed -> None", result, None)
     log_res("place_reset_rebuild: SELL_ONLY disallowed cleanup", calls["cleanup_after_partial_place_failure"], 1)
@@ -1088,7 +1088,7 @@ def run_execution_step4_eval():
         sell_status="ok",
         allow_buy_only=True,
         allow_sell_only=True,
-        reference_price=10000.0,
+        price=10000.0,
     )
     log_res("place_reset_rebuild: buy error -> None", result, None)
     log_res("place_reset_rebuild: buy error cleanup", calls["cleanup_after_partial_place_failure"], 1)
@@ -1098,7 +1098,7 @@ def run_execution_step4_eval():
         sell_status="error",
         allow_buy_only=True,
         allow_sell_only=True,
-        reference_price=10000.0,
+        price=10000.0,
     )
     log_res("place_reset_rebuild: sell error -> None", result, None)
     log_res("place_reset_rebuild: sell error cleanup", calls["cleanup_after_partial_place_failure"], 1)
@@ -1108,7 +1108,7 @@ def run_execution_step4_eval():
         sell_status="error",
         allow_buy_only=True,
         allow_sell_only=True,
-        reference_price=10000.0,
+        price=10000.0,
     )
     log_res("place_reset_rebuild: both error -> None", result, None)
     log_res("place_reset_rebuild: both error cleanup", calls["cleanup_after_partial_place_failure"], 1)
