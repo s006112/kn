@@ -1,6 +1,5 @@
 """Gateway reads and retry helpers for the grid engine."""
 
-import random
 import socket
 import time
 
@@ -13,15 +12,10 @@ from grid_config import (
     BTC_MID_KEY,
     BTC_MID_MAX_RETRIES,
     BTC_MID_RETRY_BASE_SEC,
-    BTC_MID_RETRY_MAX_SEC,
     BUY_GRID_FACTOR,
     GRID_STEP,
     OPEN_ORDERS_MAX_RETRIES,
     OPEN_ORDERS_RETRY_BASE_SEC,
-    OPEN_ORDERS_RETRY_COOLDOWN_SEC,
-    OPEN_ORDERS_RETRY_JITTER_MAX_SEC,
-    OPEN_ORDERS_RETRY_MAX_SEC,
-    OPEN_ORDERS_RETRYABLE_STATUS_CODES,
     log_msg,
     normalize_price,
 )
@@ -44,7 +38,7 @@ def normalize_order(order):
 
 def is_retryable_read_error(exc):
     status_code = getattr(exc, "status_code", None)
-    if status_code in OPEN_ORDERS_RETRYABLE_STATUS_CODES:
+    if status_code in {429, 502, 503, 504}:
         return True
 
     if isinstance(
@@ -91,9 +85,6 @@ def read_with_retry(
     read_name,
     max_retries,
     base_delay_sec,
-    max_delay_sec,
-    jitter_max_sec=0.0,
-    cooldown_sec=0.0,
 ):
     for attempt in range(max_retries + 1):
         try:
@@ -106,17 +97,12 @@ def read_with_retry(
                 log_msg(f"infra failure: {read_name} after retries ({format_read_error(exc)})")
                 raise
 
-            delay_sec = min(base_delay_sec * (2 ** attempt), max_delay_sec)
-            if jitter_max_sec > 0:
-                delay_sec += random.uniform(0.0, jitter_max_sec)
-
+            delay_sec = base_delay_sec
             log_msg(
                 f"infra retry: {read_name} {attempt + 1}/{max_retries} "
                 f"in {delay_sec:.2f}s ({format_read_error(exc)})"
             )
             time.sleep(delay_sec)
-            if cooldown_sec > 0:
-                time.sleep(cooldown_sec)
 
 
 def read_orders(info):
@@ -125,9 +111,6 @@ def read_orders(info):
         read_name="open-orders",
         max_retries=OPEN_ORDERS_MAX_RETRIES,
         base_delay_sec=OPEN_ORDERS_RETRY_BASE_SEC,
-        max_delay_sec=OPEN_ORDERS_RETRY_MAX_SEC,
-        jitter_max_sec=OPEN_ORDERS_RETRY_JITTER_MAX_SEC,
-        cooldown_sec=OPEN_ORDERS_RETRY_COOLDOWN_SEC,
     )
     return [normalize_order(order) for order in orders]
 
@@ -138,7 +121,6 @@ def read_all_mids(info):
         read_name="btc-mid",
         max_retries=BTC_MID_MAX_RETRIES,
         base_delay_sec=BTC_MID_RETRY_BASE_SEC,
-        max_delay_sec=BTC_MID_RETRY_MAX_SEC,
     )
 
 

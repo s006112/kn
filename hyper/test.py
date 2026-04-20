@@ -258,9 +258,6 @@ def run_read_with_retry_case(sequence, read_name="test-read", max_retries=2):
                 read_name=read_name,
                 max_retries=max_retries,
                 base_delay_sec=0.1,
-                max_delay_sec=0.5,
-                jitter_max_sec=0.0,
-                cooldown_sec=0.0,
             )
             return result, calls
         except Exception as exc:
@@ -367,9 +364,6 @@ def run_read_with_retry_status_case(exc_obj, max_retries=2):
                 read_name="status-case",
                 max_retries=max_retries,
                 base_delay_sec=0.1,
-                max_delay_sec=0.5,
-                jitter_max_sec=0.0,
-                cooldown_sec=0.0,
             )
             return "NO_ERROR", calls
         except Exception as exc:
@@ -827,7 +821,7 @@ def run_gateway_open_orders_case(raw_orders):
 
     old_read_with_retry = grid_gate.read_with_retry
 
-    def fake_read_with_retry(read_func, read_name, max_retries, base_delay_sec, max_delay_sec, jitter_max_sec=0.0, cooldown_sec=0.0):
+    def fake_read_with_retry(read_func, read_name, max_retries, base_delay_sec):
         calls["read_with_retry"] += 1
         return raw_orders
 
@@ -1276,6 +1270,7 @@ def run_gateway_execution_step7b_eval():
         log_res("read_with_retry: retry then success", result, {"ok": 1})
         log_res("read_with_retry: retry then success calls", calls["read_func"], 3)
         log_res("read_with_retry: retry then success sleeps", calls["sleep"], 2)
+        log_res("read_with_retry: retry then success delay", calls["sleep_args"], [0.1, 0.1])
 
         result, calls = run_read_with_retry_case(
             [ValueError("bad request")],
@@ -1292,6 +1287,7 @@ def run_gateway_execution_step7b_eval():
         log_res("read_with_retry: exhausted raise", result, "TimeoutError")
         log_res("read_with_retry: exhausted calls", calls["read_func"], 3)
         log_res("read_with_retry: exhausted sleeps", calls["sleep"], 2)
+        log_res("read_with_retry: exhausted delay", calls["sleep_args"], [0.1, 0.1])
 
 
 if __name__ == "__main__":
