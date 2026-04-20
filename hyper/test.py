@@ -257,7 +257,7 @@ def run_read_with_retry_case(sequence, read_name="test-read", max_retries=2):
                 fake_read,
                 read_name=read_name,
                 max_retries=max_retries,
-                base_delay_sec=0.1,
+                retry_sec=0.1,
             )
             return result, calls
         except Exception as exc:
@@ -363,7 +363,7 @@ def run_read_with_retry_status_case(exc_obj, max_retries=2):
                 fake_read,
                 read_name="status-case",
                 max_retries=max_retries,
-                base_delay_sec=0.1,
+                retry_sec=0.1,
             )
             return "NO_ERROR", calls
         except Exception as exc:
@@ -821,7 +821,7 @@ def run_gateway_open_orders_case(raw_orders):
 
     old_read_with_retry = grid_gate.read_with_retry
 
-    def fake_read_with_retry(read_func, read_name, max_retries, base_delay_sec):
+    def fake_read_with_retry(read_func, read_name, max_retries=grid_gate.MAX_RETRIES, retry_sec=grid_gate.RETRY_SEC):
         calls["read_with_retry"] += 1
         return raw_orders
 

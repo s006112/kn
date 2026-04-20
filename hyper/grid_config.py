@@ -1,13 +1,12 @@
-# grid_config   .py
-
-"""Shared config, helpers, and gateway reads for the grid engine."""
+# grid_config.py
 
 import os
 import socket
 import time
 from datetime import datetime, timedelta, timezone
-from hyperliquid.utils.error import ClientError
+
 from dotenv import load_dotenv
+from hyperliquid.utils.error import ClientError
 from requests import exceptions as requests_exceptions
 
 load_dotenv()
@@ -53,11 +52,8 @@ KEEP_LOG_INTERVAL_SEC = 900  # keep 状态同类日志至少每 900 秒打印一
 MAIN_LOOP_POLL_INTERVAL_SEC = 1.5  # 主循环，检查挂单和状态是否变化
 WAIT_NO_OPEN_ORDERS_INTERVAL_SEC = 0.5  # 撤单后检查一次是否已无遗留挂单
 
-OPEN_ORDERS_MAX_RETRIES = 4  # 查询挂单列表最多重试 4 次，容忍短暂接口抖动
-OPEN_ORDERS_RETRY_BASE_SEC = 0.5  # 查询挂单重试的固定等待时间
-
-BTC_MID_MAX_RETRIES = 2  # 拉取 BTC 中间价最多重试 2 次，失败就放弃本轮 fresh anchor
-BTC_MID_RETRY_BASE_SEC = 0.3  # BTC 中间价重试的基础等待时间
+MAX_RETRIES = 4  # 读取接口最多重试 4 次，容忍短暂接口抖动
+RETRY_SEC = 0.5  # 读取接口重试的固定等待时间
 
 
 # ============================================================================
@@ -210,7 +206,7 @@ def format_read_error(exc):
     return f"{type(exc).__name__} status={status_code}"
 
 
-def read_with_retry(read_func, read_name, max_retries, base_delay_sec):
+def read_with_retry(read_func, read_name, max_retries=MAX_RETRIES, retry_sec=RETRY_SEC):
     for attempt in range(max_retries + 1):
         try:
             return read_func()
@@ -224,27 +220,15 @@ def read_with_retry(read_func, read_name, max_retries, base_delay_sec):
 
             log_msg(
                 f"infra retry: {read_name} {attempt + 1}/{max_retries} "
-                f"in {base_delay_sec:.2f}s ({format_read_error(exc)})"
+                f"in {retry_sec:.2f}s ({format_read_error(exc)})"
             )
-            time.sleep(base_delay_sec)
-
-
-def read_orders(info):
-    orders = read_with_retry(
-        lambda: info.open_orders(ACCOUNT_ADDRESS),
-        read_name="open-orders",
-        max_retries=OPEN_ORDERS_MAX_RETRIES,
-        base_delay_sec=OPEN_ORDERS_RETRY_BASE_SEC,
-    )
-    return [normalize_order(order) for order in orders]
+            time.sleep(retry_sec)
 
 
 def read_all_mids(info):
     return read_with_retry(
         info.all_mids,
         read_name="btc-mid",
-        max_retries=BTC_MID_MAX_RETRIES,
-        base_delay_sec=BTC_MID_RETRY_BASE_SEC,
     )
 
 
@@ -274,3 +258,11 @@ def read_btc_mid(info):
         return None
 
     return normalize_price(btc_mid)
+
+
+def read_orders(info):
+    orders = read_with_retry(
+        lambda: info.open_orders(ACCOUNT_ADDRESS),
+        read_name="open-orders",
+    )
+    return [normalize_order(order) for order in orders]
