@@ -677,13 +677,13 @@ def run_rebuild_case(initial_orders, cleanup_result, reference_price_input, comp
     calls = {
         "cleanup_orders": 0,
         "cleanup_orders_args": None,
-        "get_reference_price": 0,
+        "read_btc_grid": 0,
         "place_pair": 0,
         "place_pair_args": None,
     }
 
     old_cleanup_orders = grid_exec.cleanup_orders
-    old_get_reference_price = grid_exec.get_reference_price
+    old_read_btc_grid = grid_exec.read_btc_grid
     old_place_pair = grid_exec.place_pair
 
     def fake_cleanup_orders(info, exchange, orders):
@@ -691,8 +691,8 @@ def run_rebuild_case(initial_orders, cleanup_result, reference_price_input, comp
         calls["cleanup_orders_args"] = orders
         return cleanup_result
 
-    def fake_get_reference_price(info):
-        calls["get_reference_price"] += 1
+    def fake_read_btc_grid(info):
+        calls["read_btc_grid"] += 1
         return computed_reference_price
 
     def fake_place_pair(info, exchange, reference_price):
@@ -702,7 +702,7 @@ def run_rebuild_case(initial_orders, cleanup_result, reference_price_input, comp
 
     try:
         grid_exec.cleanup_orders = fake_cleanup_orders
-        grid_exec.get_reference_price = fake_get_reference_price
+        grid_exec.read_btc_grid = fake_read_btc_grid
         grid_exec.place_pair = fake_place_pair
         result = grid_exec.rebuild(
             info=object(),
@@ -712,7 +712,7 @@ def run_rebuild_case(initial_orders, cleanup_result, reference_price_input, comp
         )
     finally:
         grid_exec.cleanup_orders = old_cleanup_orders
-        grid_exec.get_reference_price = old_get_reference_price
+        grid_exec.read_btc_grid = old_read_btc_grid
         grid_exec.place_pair = old_place_pair
 
     return result, calls
@@ -838,20 +838,16 @@ def run_gateway_read_mid_case(mids_value=None, mids_exc=None):
     if grid_gate is None:
         return None
 
-    old_read_all_mids = grid_gate.read_all_mids
-
-    def fake_read_all_mids(info):
-        if mids_exc is not None:
-            raise mids_exc
-        return mids_value
+    class FakeInfo:
+        def all_mids(self):
+            if mids_exc is not None:
+                raise mids_exc
+            return mids_value
 
     try:
-        grid_gate.read_all_mids = fake_read_all_mids
-        result = grid_gate.read_btc_mid(info=object())
-    finally:
-        grid_gate.read_all_mids = old_read_all_mids
-
-    return result
+        return grid_gate.read_btc_mid(info=FakeInfo())
+    except Exception as exc:
+        return type(exc).__name__
 
 
 def run_gateway_reference_case(mids_value=None, mids_exc=None):
@@ -859,26 +855,21 @@ def run_gateway_reference_case(mids_value=None, mids_exc=None):
         return None, None
 
     calls = {
-        "read_all_mids": 0,
+        "all_mids": 0,
     }
 
-    old_read_all_mids = grid_gate.read_all_mids
-
-    def fake_read_all_mids(info):
-        calls["read_all_mids"] += 1
-        if mids_exc is not None:
-            raise mids_exc
-        return mids_value
+    class FakeInfo:
+        def all_mids(self):
+            calls["all_mids"] += 1
+            if mids_exc is not None:
+                raise mids_exc
+            return mids_value
 
     try:
-        grid_gate.read_all_mids = fake_read_all_mids
-        try:
-            result = grid_gate.get_reference_price(info=object())
-            return result, calls
-        except Exception as exc:
-            return type(exc).__name__, calls
-    finally:
-        grid_gate.read_all_mids = old_read_all_mids
+        result = grid_gate.read_btc_grid(info=FakeInfo())
+        return result, calls
+    except Exception as exc:
+        return type(exc).__name__, calls
 
 
 def run_execution_eval():
@@ -943,12 +934,12 @@ def run_execution_eval():
     result, calls = run_rebuild_case([], cleanup_result=True, reference_price_input=10000.0, computed_reference_price=9999.0, place_pair_result=placed_state)
     log_res("rebuild: explicit ref return", result, placed_state)
     log_res("rebuild: explicit ref no cleanup", calls["cleanup_orders"], 0)
-    log_res("rebuild: explicit ref no get_ref", calls["get_reference_price"], 0)
+    log_res("rebuild: explicit ref no read_btc_grid", calls["read_btc_grid"], 0)
     log_res("rebuild: explicit ref place arg", calls["place_pair_args"], 10000.0)
 
     result, calls = run_rebuild_case([], cleanup_result=True, reference_price_input=None, computed_reference_price=10400.0, place_pair_result=placed_state)
     log_res("rebuild: implicit ref return", result, placed_state)
-    log_res("rebuild: implicit ref get_ref", calls["get_reference_price"], 1)
+    log_res("rebuild: implicit ref read_btc_grid", calls["read_btc_grid"], 1)
     log_res("rebuild: implicit ref place arg", calls["place_pair_args"], 10400.0)
 
     result, calls = run_rebuild_case(orders_with_oid, cleanup_result=True, reference_price_input=10000.0, computed_reference_price=9999.0, place_pair_result=placed_state)
@@ -959,7 +950,7 @@ def run_execution_eval():
     result, calls = run_rebuild_case(orders_with_oid, cleanup_result=False, reference_price_input=10000.0, computed_reference_price=9999.0, place_pair_result=placed_state)
     log_res("rebuild: cleanup fail -> None", result, None)
     log_res("rebuild: cleanup fail no place", calls["place_pair"], 0)
-    log_res("rebuild: cleanup fail no get_ref", calls["get_reference_price"], 0)
+    log_res("rebuild: cleanup fail no read_btc_grid", calls["read_btc_grid"], 0)
 
 
 def run_execution_step4_eval():
@@ -1158,21 +1149,21 @@ def run_gateway_eval():
     log_res("gateway: read_btc_mid missing -> None", result, None)
 
     result = run_gateway_read_mid_case(mids_exc=RuntimeError("mid failed"))
-    log_res("gateway: read_btc_mid exc -> None", result, None)
+    log_res("gateway: read_btc_mid exc", result, "RuntimeError")
 
     result, calls = run_gateway_reference_case(mids_value={grid_gate.BTC_MID_KEY: 100123.4})
     expected_reference = grid_gate.normalize_price(int((100123.4 / GRID_STEP) + 0.5) * GRID_STEP)
-    log_res("gateway: get_reference_price success", result, expected_reference)
-    log_res("gateway: get_reference_price read call", calls["read_all_mids"], 1)
+    log_res("gateway: read_btc_grid success", result, expected_reference)
+    log_res("gateway: read_btc_grid read call", calls["all_mids"], 1)
 
     result, _ = run_gateway_reference_case(mids_value={grid_gate.BTC_MID_KEY: 0})
-    log_res("gateway: get_reference_price zero", result, "ValueError")
+    log_res("gateway: read_btc_grid zero", result, "ValueError")
 
     result, _ = run_gateway_reference_case(mids_value={})
-    log_res("gateway: get_reference_price missing", result, "ValueError")
+    log_res("gateway: read_btc_grid missing", result, "ValueError")
 
     result, _ = run_gateway_reference_case(mids_value={grid_gate.BTC_MID_KEY: 100.0})
-    log_res("gateway: get_reference_price invalid buy", result, "ValueError")
+    log_res("gateway: read_btc_grid small mid", result, grid_gate.normalize_price(GRID_STEP))
 
     result, _ = run_retry_read_case([TimeoutError("timeout"), True], retries=1)
     log_res("gateway: retryable TimeoutError", result, True)

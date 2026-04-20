@@ -18,7 +18,7 @@ from grid_config import (
     log_msg,
     summarize_orders,
 )
-from grid_config import read_orders, get_reference_price
+from grid_config import read_orders, read_btc_grid
 
 
 def build_pair(reference_price):
@@ -270,6 +270,6 @@ def rebuild(info, exchange, orders, reference_price=None):
         return None
 
     if reference_price is None:
-        reference_price = get_reference_price(info)
+        reference_price = read_btc_grid(info)
 
     return place_pair(info, exchange, reference_price)

@@ -98,9 +98,8 @@ def log_keep_state(keep_type, message):
         _last_keep_type = keep_type
         _last_keep_ts = now
 
-
 # ============================================================================
-# gateway reads / retry helpers
+# grid read and summarise order helpers
 # ============================================================================
 
 def normalize_order(order):
@@ -118,34 +117,23 @@ def normalize_order(order):
     return normalized
 
 
-def read_all_mids(info):
-    return retry_read("btc-mid", info.all_mids)
-
-def get_reference_price(info):
-    btc_mid = float(read_all_mids(info).get(BTC_MID_KEY, 0))
-    if btc_mid <= 0:
-        raise ValueError("Failed to get BTC mid price")
-
-    reference_price = normalize_price(int((btc_mid / GRID_STEP) + 0.5) * GRID_STEP)
-    if reference_price <= 0:
-        raise ValueError("Invalid reference price")
-    if reference_price - (BUY_GRID_FACTOR * GRID_STEP) <= 0:
-        raise ValueError("Invalid buy price")
-
-    return reference_price
-
-# ============================================================================
-# grid read and summarise order helpers
-# ============================================================================
-
 def read_btc_mid(info):
-    try:
-        btc_mid = float(read_all_mids(info).get(BTC_MID_KEY, 0))
-    except Exception as exc:
-        log_msg(f"infra failure: btc-mid unavailable ({type(exc).__name__}: {exc})")
+    btc_mid = float(retry_read("btc-mid", info.all_mids).get(BTC_MID_KEY, 0))
+
+    if btc_mid <= 0:
         return None
 
     return normalize_price(btc_mid)
+
+
+def read_btc_grid(info):
+    btc_mid = read_btc_mid(info)
+
+    if btc_mid is None:
+        raise ValueError("Failed to get BTC mid price")
+
+    return normalize_price(int((btc_mid / GRID_STEP) + 0.5) * GRID_STEP)
+
 
 def summarize_orders(orders):
     if not orders:
