@@ -342,7 +342,7 @@ bootstrap 没有通用 exception shell；未捕获异常会向调用方传播。
 - `("rebuild", None)`
 - `("abnormal", None)`
 
-每轮先调用 `classify_order_mode(orders)`，取得 `current_state` 与 `current_state["mode"]`。
+每轮先调用 `classify_order_mode(orders)`，取得 `current_state`。
 
 ### `saved_state["mode"] == PAIR_MODE`
 

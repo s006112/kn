@@ -19,8 +19,9 @@ from grid_config import (
 
 def classify_order_mode(orders):
     """
-    识别当前挂单形态，并返回统一的 live state。
     state["mode"]: PAIR_MODE | BUY_ONLY_MODE | SELL_ONLY_MODE | ABNORMAL_MODE
+    state["buy_price"]: 买单价格，BUY_ONLY 和 PAIR 模式有效
+    state["sell_price"]: 卖单价格，SELL_ONLY 和 PAIR 模式有效
     """
     if len(orders) == 2:
         buy_price = next((o["price"] for o in orders if o["side"] == "BUY"), None)
@@ -55,21 +56,20 @@ def classify_order_mode(orders):
     return {"mode": ABNORMAL_MODE}
 
 def decide_cycle_action(orders, saved_state, current_btc_mid=None):
-    """主循环决策逻辑"""
+
     saved_mode = saved_state["mode"]
     current_state = classify_order_mode(orders)
-    current_mode = current_state["mode"]
 
     if saved_mode == PAIR_MODE:    # 填充检测：任一侧被成交则触发 rebuild
-        if current_mode == SELL_ONLY_MODE:
+        if current_state["mode"] == SELL_ONLY_MODE:
             log_msg(f"🔥 BUY filled - {format_price(saved_state['buy_price'])}")
             return "rebuild", saved_state["buy_price"]
-        if current_mode == BUY_ONLY_MODE:
+        if current_state["mode"] == BUY_ONLY_MODE:
             log_msg(f"✅ SELL filled - {format_price(saved_state['sell_price'])}")
             return "rebuild", saved_state["sell_price"]
 
         if (
-            current_mode == PAIR_MODE
+            current_state["mode"] == PAIR_MODE
             and current_state["buy_price"] == saved_state["buy_price"]
             and current_state["sell_price"] == saved_state["sell_price"]
         ):
@@ -81,7 +81,7 @@ def decide_cycle_action(orders, saved_state, current_btc_mid=None):
             log_msg("🔥 residual fill completed: BUY_ONLY -> rebuild")
             return "rebuild", saved_state["buy_price"]
         
-        if current_mode == BUY_ONLY_MODE:
+        if current_state["mode"] == BUY_ONLY_MODE:
             if REANCHOR_BREAK and current_btc_mid and current_btc_mid > 0:  # 重锚点检测 (Anchor Break)
                 distance = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP     # 已漂移至少 REANCHOR_BREAK_STEPS * GRID_STEP
                 if price_distance_at_least(current_btc_mid, current_state["buy_price"], distance):
@@ -94,7 +94,7 @@ def decide_cycle_action(orders, saved_state, current_btc_mid=None):
         if not orders: # 残余卖单成交
             log_msg("✅ residual fill completed: SELL_ONLY -> rebuild")
             return "rebuild", saved_state["sell_price"]
-        if current_mode == SELL_ONLY_MODE:
+        if current_state["mode"] == SELL_ONLY_MODE:
             log_keep_state("sell-only", "keep")
             return "keep", None
 
