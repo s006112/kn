@@ -448,6 +448,8 @@ def run_bootstrap_eval():
     o_valid = pair_orders()
 
     log_res("Bootstrap: Valid Pair", mode_of_bootstrap(o_valid), PAIR_MODE)
+    _, classified_pair_state = classify_order_shape(o_valid)
+    log_res("Bootstrap: Pair State", classified_pair_state, pair_state())
     log_res("Bootstrap: Reversed Pair", mode_of_bootstrap([o_valid[1], o_valid[0]]), PAIR_MODE)
     log_res("Bootstrap: Partial", mode_of_bootstrap(o_valid[:1]), None)
     log_res("Bootstrap: Empty", mode_of_bootstrap([]), None)

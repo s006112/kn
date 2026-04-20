@@ -13,7 +13,6 @@ from grid_config import (
     format_price,
     log_keep_state,
     log_msg,
-    normalize_price,
     price_distance_at_least,
     price_gap_matches,
     prices_equal,
@@ -23,7 +22,7 @@ def classify_order_shape(orders):
     """
     识别当前挂单形态，并在合法双边单时返回 pair_state
     shape: PAIR_MODE | BUY_ONLY_MODE | SELL_ONLY_MODE | ABNORMAL_MODE
-    pair_state: {"mode": PAIR_MODE, "buy_price": float, "sell_price": float, "pair_center_price": float} or None
+    pair_state: {"mode": PAIR_MODE, "buy_price": float, "sell_price": float} or None
     """
     if len(orders) == 2:
         buy_price = next((o["price"] for o in orders if o["side"] == "BUY"), None)
@@ -40,7 +39,6 @@ def classify_order_shape(orders):
             "mode": PAIR_MODE,
             "buy_price": buy_price,
             "sell_price": sell_price,
-            "pair_center_price": normalize_price((buy_price + sell_price) / 2.0),
         }
 
     if len(orders) == 1:
