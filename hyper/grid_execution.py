@@ -18,7 +18,7 @@ from grid_config import (
     log_msg,
     summarize_orders,
 )
-from grid_gateway import read_orders, get_reference_price
+from grid_config import read_orders, get_reference_price
 
 
 def build_pair(reference_price):

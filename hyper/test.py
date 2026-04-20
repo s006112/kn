@@ -22,7 +22,7 @@ except Exception:
     grid_exec = None
 
 try:
-    import grid_gateway as grid_gate
+    import grid_config as grid_gate
 except Exception:
     grid_gate = None
 

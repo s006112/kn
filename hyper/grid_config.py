@@ -1,13 +1,16 @@
-"""Shared config, price helpers, and logging for the grid engine."""
+# grid_config   .py
+
+"""Shared config, helpers, and gateway reads for the grid engine."""
 
 import os
+import socket
 import time
 from datetime import datetime, timedelta, timezone
-
+from hyperliquid.utils.error import ClientError
 from dotenv import load_dotenv
+from requests import exceptions as requests_exceptions
 
 load_dotenv()
-
 
 # ============================================================================
 # env / account config
@@ -34,11 +37,13 @@ ALLOW_SELL_ONLY_WHEN_NO_USDC = True  # 买单因 USDC 不足下不出时，允�
 REANCHOR_BREAK = True  # 启用 BUY_ONLY 模式下的重锚检测，偏离太远时整组重建
 REANCHOR_BREAK_STEPS = 2  # 与 BTC 中间价相差达到 2 格时，触发 anchor break 重挂
 
+
 def apply_runtime_overrides(overrides: dict):
     globals_ = globals()
     for k, v in overrides.items():
         if k in globals_:
             globals_[k] = v
+
 
 # ============================================================================
 # timing / retry
@@ -89,8 +94,9 @@ def prices_equal(price_a, price_b):
 
 
 def price_gap_matches(buy_price, sell_price, expected_gap):
-    #return price_to_ticks(sell_price) - price_to_ticks(buy_price) == price_to_ticks(expected_gap)
-    return True 
+    # return price_to_ticks(sell_price) - price_to_ticks(buy_price) == price_to_ticks(expected_gap)
+    return True
+
 
 def price_distance_at_least(high_price, low_price, distance):
     return price_to_ticks(high_price) - price_to_ticks(low_price) >= price_to_ticks(distance)
@@ -139,3 +145,132 @@ def summarize_orders(orders):
 
     log_msg(f"OPEN ORDERS | {' | '.join(parts)}")
     return buy_count, sell_count
+
+
+# ============================================================================
+# gateway reads / retry helpers
+# ============================================================================
+
+def normalize_order(order):
+    raw_side = order["side"]
+    if raw_side == "B":
+        side = "BUY"
+    elif raw_side == "A":
+        side = "SELL"
+    else:
+        raise ValueError(f"Unknown order side: {raw_side!r}")
+
+    normalized = dict(order)
+    normalized["side"] = side
+    normalized["price"] = normalize_price(order["limitPx"])
+    return normalized
+
+
+def is_retryable_read_error(exc):
+    status_code = getattr(exc, "status_code", None)
+    if status_code in {429, 502, 503, 504}:
+        return True
+
+    if isinstance(
+        exc,
+        (
+            requests_exceptions.Timeout,
+            requests_exceptions.ConnectionError,
+            TimeoutError,
+            ConnectionResetError,
+            socket.timeout,
+        ),
+    ):
+        return True
+
+    if isinstance(exc, OSError):
+        message = str(exc).lower()
+        return any(
+            marker in message
+            for marker in (
+                "timeout",
+                "timed out",
+                "connection reset",
+                "connection aborted",
+                "temporary failure",
+                "temporarily unavailable",
+            )
+        )
+
+    return False
+
+
+def format_read_error(exc):
+    status_code = getattr(exc, "status_code", None)
+    if status_code is None:
+        return f"{type(exc).__name__}: {exc}"
+
+    if isinstance(exc, ClientError):
+        return f"{type(exc).__name__} status={status_code} code={exc.error_code}"
+    return f"{type(exc).__name__} status={status_code}"
+
+
+def read_with_retry(read_func, read_name, max_retries, base_delay_sec):
+    for attempt in range(max_retries + 1):
+        try:
+            return read_func()
+        except Exception as exc:
+            if not is_retryable_read_error(exc):
+                raise
+
+            if attempt >= max_retries:
+                log_msg(f"infra failure: {read_name} after retries ({format_read_error(exc)})")
+                raise
+
+            log_msg(
+                f"infra retry: {read_name} {attempt + 1}/{max_retries} "
+                f"in {base_delay_sec:.2f}s ({format_read_error(exc)})"
+            )
+            time.sleep(base_delay_sec)
+
+
+def read_orders(info):
+    orders = read_with_retry(
+        lambda: info.open_orders(ACCOUNT_ADDRESS),
+        read_name="open-orders",
+        max_retries=OPEN_ORDERS_MAX_RETRIES,
+        base_delay_sec=OPEN_ORDERS_RETRY_BASE_SEC,
+    )
+    return [normalize_order(order) for order in orders]
+
+
+def read_all_mids(info):
+    return read_with_retry(
+        info.all_mids,
+        read_name="btc-mid",
+        max_retries=BTC_MID_MAX_RETRIES,
+        base_delay_sec=BTC_MID_RETRY_BASE_SEC,
+    )
+
+
+def get_reference_price(info):
+    btc_mid = float(read_all_mids(info).get(BTC_MID_KEY, 0))
+    if btc_mid <= 0:
+        raise ValueError("Failed to get BTC mid price")
+
+    reference_price = normalize_price(int((btc_mid / GRID_STEP) + 0.5) * GRID_STEP)
+    if reference_price <= 0:
+        raise ValueError("Invalid reference price")
+    if reference_price - (BUY_GRID_FACTOR * GRID_STEP) <= 0:
+        raise ValueError("Invalid buy price")
+
+    return reference_price
+
+
+def read_btc_mid(info):
+    try:
+        btc_mid = float(read_all_mids(info).get(BTC_MID_KEY, 0))
+    except Exception as exc:
+        log_msg(f"infra failure: btc-mid unavailable ({type(exc).__name__}: {exc})")
+        return None
+
+    if btc_mid <= 0:
+        log_msg(f"infra failure: btc-mid invalid ({btc_mid})")
+        return None
+
+    return normalize_price(btc_mid)
