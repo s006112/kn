@@ -537,7 +537,7 @@ def run_sell_only_eval():
     log_res("SELL_ONLY: multiple SELL", get_loop_action([order("SELL", 100200.0), order("SELL", 100400.0)], state_s), ("abnormal", None))
 
 
-def run_step_engine_case(saved_state, orders, action_result, rebuild_result=None, btc_mid=100500.0):
+def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, btc_mid=100500.0):
     if grid_engine is None:
         return None, None
 
@@ -578,7 +578,7 @@ def run_step_engine_case(saved_state, orders, action_result, rebuild_result=None
         grid_engine.read_btc_mid = fake_read_btc_mid
         grid_engine.get_loop_action = fake_get_loop_action
         grid_engine.rebuild = fake_rebuild
-        result = grid_engine.step_engine(info=object(), trader=object(), saved_state=saved_state)
+        result = grid_engine.run_cycle(info=object(), trader=object(), saved_state=saved_state)
     finally:
         grid_engine.get_open_orders = old_get_open_orders
         grid_engine.read_btc_mid = old_read_btc_mid
@@ -588,11 +588,11 @@ def run_step_engine_case(saved_state, orders, action_result, rebuild_result=None
     return result, calls
 
 
-def run_step_engine_eval():
-    print("\n🚀 step_engine Mode")
+def run_run_cycle_eval():
+    print("\n🚀 run_cycle Mode")
 
     if grid_engine is None:
-        log_note("step_engine: import grid", "SKIPPED", "grid import failed")
+        log_note("run_cycle: import grid", "SKIPPED", "grid import failed")
         return
 
     state_p = pair_state()
@@ -601,33 +601,33 @@ def run_step_engine_eval():
     orders_p = pair_orders()
     rebuilt_state = {"mode": PAIR_MODE, "buy_price": 99700.0, "sell_price": 100100.0}
 
-    result, calls = run_step_engine_case(state_p, orders_p, ("keep", None))
-    log_res("step_engine: PAIR keep return", result, state_p)
-    log_res("step_engine: PAIR keep no rebuild", calls["rebuild"], 0)
-    log_res("step_engine: PAIR keep no mid read", calls["read_btc_mid"], 0)
+    result, calls = run_run_cycle_case(state_p, orders_p, ("keep", None))
+    log_res("run_cycle: PAIR keep return", result, state_p)
+    log_res("run_cycle: PAIR keep no rebuild", calls["rebuild"], 0)
+    log_res("run_cycle: PAIR keep no mid read", calls["read_btc_mid"], 0)
 
-    result, calls = run_step_engine_case(state_p, orders_p[:1], ("rebuild", 100200.0), rebuild_result=rebuilt_state)
-    log_res("step_engine: PAIR rebuild return", result, rebuilt_state)
-    log_res("step_engine: PAIR rebuild count", calls["rebuild"], 1)
-    log_res("step_engine: PAIR rebuild ref", calls["rebuild_args"][1], 100200.0)
+    result, calls = run_run_cycle_case(state_p, orders_p[:1], ("rebuild", 100200.0), rebuild_result=rebuilt_state)
+    log_res("run_cycle: PAIR rebuild return", result, rebuilt_state)
+    log_res("run_cycle: PAIR rebuild count", calls["rebuild"], 1)
+    log_res("run_cycle: PAIR rebuild ref", calls["rebuild_args"][1], 100200.0)
 
-    result, calls = run_step_engine_case(state_p, orders_p[:1], ("rebuild", 100200.0), rebuild_result=None)
-    log_res("step_engine: PAIR rebuild fail", result, None)
-    log_res("step_engine: PAIR rebuild fail count", calls["rebuild"], 1)
+    result, calls = run_run_cycle_case(state_p, orders_p[:1], ("rebuild", 100200.0), rebuild_result=None)
+    log_res("run_cycle: PAIR rebuild fail", result, None)
+    log_res("run_cycle: PAIR rebuild fail count", calls["rebuild"], 1)
 
-    result, calls = run_step_engine_case(state_p, [], ("abnormal", None))
-    log_res("step_engine: PAIR abnormal return", result, None)
-    log_res("step_engine: PAIR abnormal no rebuild", calls["rebuild"], 0)
+    result, calls = run_run_cycle_case(state_p, [], ("abnormal", None))
+    log_res("run_cycle: PAIR abnormal return", result, None)
+    log_res("run_cycle: PAIR abnormal no rebuild", calls["rebuild"], 0)
 
-    result, calls = run_step_engine_case(state_b, buy_only_orders(), ("keep", None), btc_mid=100250.0)
-    log_res("step_engine: BUY_ONLY keep return", result, state_b)
-    log_res("step_engine: BUY_ONLY read mid", calls["read_btc_mid"], 1)
-    log_res("step_engine: BUY_ONLY pass mid", calls["btc_mid_seen"], 100250.0)
+    result, calls = run_run_cycle_case(state_b, buy_only_orders(), ("keep", None), btc_mid=100250.0)
+    log_res("run_cycle: BUY_ONLY keep return", result, state_b)
+    log_res("run_cycle: BUY_ONLY read mid", calls["read_btc_mid"], 1)
+    log_res("run_cycle: BUY_ONLY pass mid", calls["btc_mid_seen"], 100250.0)
 
-    result, calls = run_step_engine_case(state_s, sell_only_orders(), ("keep", None), btc_mid=100250.0)
-    log_res("step_engine: SELL_ONLY keep return", result, state_s)
-    log_res("step_engine: SELL_ONLY no mid read", calls["read_btc_mid"], 0)
-    log_res("step_engine: SELL_ONLY pass mid", calls["btc_mid_seen"], None)
+    result, calls = run_run_cycle_case(state_s, sell_only_orders(), ("keep", None), btc_mid=100250.0)
+    log_res("run_cycle: SELL_ONLY keep return", result, state_s)
+    log_res("run_cycle: SELL_ONLY no mid read", calls["read_btc_mid"], 0)
+    log_res("run_cycle: SELL_ONLY pass mid", calls["btc_mid_seen"], None)
 
 
 def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
@@ -1299,7 +1299,7 @@ if __name__ == "__main__":
     run_pair_mode_eval()
     run_buy_only_eval()
     run_sell_only_eval()
-    run_step_engine_eval()
+    run_run_cycle_eval()
     run_execution_eval()
     run_execution_step4_eval()
     run_gateway_eval()

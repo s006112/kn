@@ -1,3 +1,5 @@
+# hyper/grid.py
+
 import time
 
 from grid_config import apply_runtime_overrides
@@ -51,7 +53,7 @@ def bootstrap():
     return state, info, trader
 
 
-def step_engine(info, trader, saved_state):
+def run_cycle(info, trader, saved_state):
     orders = get_open_orders(info)
     btc_mid = read_btc_mid(info) if saved_state["mode"] == BUY_ONLY_MODE else None
     action, reference_price = get_loop_action(orders, saved_state, btc_mid)
@@ -77,7 +79,7 @@ def main():
 
     while True:
         time.sleep(MAIN_LOOP_POLL_INTERVAL_SEC)
-        saved_state = step_engine(info, trader, saved_state)
+        saved_state = run_cycle(info, trader, saved_state)
         if saved_state is None:
             return
 
