@@ -160,7 +160,7 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
         calls["get_bootstrap_live_state"] += 1
         return bootstrap_state
 
-    def fake_rebuild(info, exchange, local_orders, reference_price=None):
+    def fake_rebuild(info, trader, local_orders, reference_price=None):
         calls["rebuild"] += 1
         calls["rebuild_args"] = (local_orders, reference_price)
         return rebuild_state
@@ -170,7 +170,7 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
         grid_engine.summarize_orders = fake_summarize_orders
         grid_engine.get_bootstrap_live_state = fake_get_bootstrap_live_state
         grid_engine.rebuild = fake_rebuild
-        result = grid_engine.bootstrap_saved_state(info=object(), exchange=object())
+        result = grid_engine.bootstrap_saved_state(info=object(), trader=object())
     finally:
         grid_engine.get_open_orders = old_get_open_orders
         grid_engine.summarize_orders = old_summarize_orders
@@ -272,7 +272,7 @@ def run_bootstrap_saved_state_real_case(orders, rebuild_state):
         calls["summarize_orders"] += 1
         return 0, 0
 
-    def fake_rebuild(info, exchange, local_orders, reference_price=None):
+    def fake_rebuild(info, trader, local_orders, reference_price=None):
         calls["rebuild"] += 1
         calls["rebuild_args"] = (local_orders, reference_price)
         return rebuild_state
@@ -281,7 +281,7 @@ def run_bootstrap_saved_state_real_case(orders, rebuild_state):
         grid_engine.get_open_orders = fake_get_open_orders
         grid_engine.summarize_orders = fake_summarize_orders
         grid_engine.rebuild = fake_rebuild
-        result = grid_engine.bootstrap_saved_state(info=object(), exchange=object())
+        result = grid_engine.bootstrap_saved_state(info=object(), trader=object())
     finally:
         grid_engine.get_open_orders = old_get_open_orders
         grid_engine.summarize_orders = old_summarize_orders
@@ -528,7 +528,7 @@ def run_step_engine_case(saved_state, orders, action_result, rebuild_result=None
         calls["btc_mid_seen"] = local_btc_mid
         return action_result
 
-    def fake_rebuild(info, exchange, local_orders, reference_price=None):
+    def fake_rebuild(info, trader, local_orders, reference_price=None):
         calls["rebuild"] += 1
         calls["rebuild_args"] = (local_orders, reference_price)
         return rebuild_result
@@ -538,7 +538,7 @@ def run_step_engine_case(saved_state, orders, action_result, rebuild_result=None
         grid_engine.read_btc_mid = fake_read_btc_mid
         grid_engine.get_loop_action = fake_get_loop_action
         grid_engine.rebuild = fake_rebuild
-        result = grid_engine.step_engine(info=object(), exchange=object(), saved_state=saved_state)
+        result = grid_engine.step_engine(info=object(), trader=object(), saved_state=saved_state)
     finally:
         grid_engine.get_open_orders = old_get_open_orders
         grid_engine.read_btc_mid = old_read_btc_mid

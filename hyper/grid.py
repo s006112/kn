@@ -1,8 +1,4 @@
-"""Engine shell and entrypoint for the REST polling grid."""
-
 import time
-import traceback
-
 
 from grid_config import apply_runtime_overrides
 
@@ -10,7 +6,7 @@ apply_runtime_overrides({
     "GRID_STEP": 200.0,
     "BUDGET_USDC": 250.0,
     "BUY_GRID_FACTOR": 1.0,
-    "SELL_GRID_FACTOR": 1.0
+    "SELL_GRID_FACTOR": 1.0,
 })
 
 from eth_account import Account
@@ -26,31 +22,25 @@ from grid_config import (
     BUY_ONLY_MODE,
     MAIN_LOOP_POLL_INTERVAL_SEC,
     PAIR_MODE,
-    SELL_ONLY_MODE,
     log_msg,
     summarize_orders,
 )
 
 
-def create_exchange():
+def create_clients():
     if not API_WALLET_KEY:
         raise ValueError("Missing HYPERLIQUID_API_WALLET_KEY")
 
-    return Exchange(
+    info = Info(constants.MAINNET_API_URL)
+    trader = Exchange(
         Account.from_key(API_WALLET_KEY),
         constants.MAINNET_API_URL,
         account_address=ACCOUNT_ADDRESS,
     )
+    return info, trader
 
 
-def log_exception_summary(stage, exc):
-    log_msg(f"infra failure at {stage}: {type(exc).__name__}: {exc}")
-    last_line = traceback.format_exc().strip().splitlines()[-1]
-    if last_line:
-        log_msg(f"exception summary: {last_line}")
-
-
-def bootstrap_saved_state(info, exchange):
+def bootstrap_saved_state(info, trader):
     orders = get_open_orders(info)
     summarize_orders(orders)
 
@@ -59,7 +49,7 @@ def bootstrap_saved_state(info, exchange):
         log_msg("Bootstrap Pair")
         return state
 
-    state = rebuild(info, exchange, orders)
+    state = rebuild(info, trader, orders)
     if state is None:
         log_msg("Bootstrap Rebuild Failed")
         return None
@@ -67,7 +57,7 @@ def bootstrap_saved_state(info, exchange):
     return state
 
 
-def step_engine(info, exchange, saved_state):
+def step_engine(info, trader, saved_state):
     orders = get_open_orders(info)
     btc_mid = read_btc_mid(info) if saved_state["mode"] == BUY_ONLY_MODE else None
     action, reference_price = get_loop_action(orders, saved_state, btc_mid)
@@ -76,7 +66,7 @@ def step_engine(info, exchange, saved_state):
         return saved_state
 
     if action == "rebuild":
-        new_state = rebuild(info, exchange, orders, reference_price)
+        new_state = rebuild(info, trader, orders, reference_price)
         if new_state is None:
             log_msg("rebuild failed")
         return new_state
@@ -87,37 +77,15 @@ def step_engine(info, exchange, saved_state):
 
 
 def main():
-    if not ACCOUNT_ADDRESS:
-        log_msg("Missing HYPERLIQUID_ACCOUNT_ADDRESS")
-        return
-
-    try:
-        info = Info(constants.MAINNET_API_URL)
-        exchange = create_exchange()
-    except Exception as exc:
-        log_exception_summary("startup", exc)
-        log_msg("abnormal")
-        return
-
-    try:
-        saved_state = bootstrap_saved_state(info, exchange)
-    except Exception as exc:
-        log_exception_summary("Bootstrap", exc)
-        log_msg("abnormal")
-        return
+    info, trader = create_clients()
+    saved_state = bootstrap_saved_state(info, trader)
 
     if saved_state is None:
         return
 
     while True:
         time.sleep(MAIN_LOOP_POLL_INTERVAL_SEC)
-        try:
-            saved_state = step_engine(info, exchange, saved_state)
-        except Exception as exc:
-            log_exception_summary("main-loop", exc)
-            log_msg("abnormal")
-            return
-
+        saved_state = step_engine(info, trader, saved_state)
         if saved_state is None:
             return
 
