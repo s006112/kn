@@ -1,5 +1,3 @@
-# grid_config.py
-
 import os
 import socket
 import time
@@ -206,30 +204,30 @@ def format_read_error(exc):
     return f"{type(exc).__name__} status={status_code}"
 
 
-def read_with_retry(read_func, read_name, max_retries=MAX_RETRIES, retry_sec=RETRY_SEC):
-    for attempt in range(max_retries + 1):
+def retry_read(name, fn, retries=MAX_RETRIES, delay=RETRY_SEC):
+    for attempt in range(retries + 1):
         try:
-            return read_func()
+            return fn()
         except Exception as exc:
             if not is_retryable_read_error(exc):
                 raise
 
-            if attempt >= max_retries:
-                log_msg(f"infra failure: {read_name} after retries ({format_read_error(exc)})")
+            if attempt == retries:
+                log_msg(f"{name} failed after {retries} retries: {format_read_error(exc)}")
                 raise
 
-            log_msg(
-                f"infra retry: {read_name} {attempt + 1}/{max_retries} "
-                f"in {retry_sec:.2f}s ({format_read_error(exc)})"
-            )
-            time.sleep(retry_sec)
+            log_msg(f"{name} retry {attempt+1}/{retries} ({format_read_error(exc)})")
+            time.sleep(delay)
+
+def read_orders(info):
+    return [
+        normalize_order(order)
+        for order in retry_read("open-orders", lambda: info.open_orders(ACCOUNT_ADDRESS))
+    ]
 
 
 def read_all_mids(info):
-    return read_with_retry(
-        info.all_mids,
-        read_name="btc-mid",
-    )
+    return retry_read("btc-mid", info.all_mids)
 
 
 def get_reference_price(info):
@@ -258,11 +256,3 @@ def read_btc_mid(info):
         return None
 
     return normalize_price(btc_mid)
-
-
-def read_orders(info):
-    orders = read_with_retry(
-        lambda: info.open_orders(ACCOUNT_ADDRESS),
-        read_name="open-orders",
-    )
-    return [normalize_order(order) for order in orders]

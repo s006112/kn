@@ -226,7 +226,7 @@ def run_place_limit_order_case(action, order_result):
     return result, calls
 
 
-def run_read_with_retry_case(sequence, read_name="test-read", max_retries=2):
+def run_retry_read_case(sequence, name="test-read", retries=2):
     if grid_gate is None:
         return None, None
 
@@ -253,11 +253,11 @@ def run_read_with_retry_case(sequence, read_name="test-read", max_retries=2):
     try:
         grid_gate.time.sleep = fake_sleep
         try:
-            result = grid_gate.read_with_retry(
+            result = grid_gate.retry_read(
+                name,
                 fake_read,
-                read_name=read_name,
-                max_retries=max_retries,
-                retry_sec=0.1,
+                retries=retries,
+                delay=0.1,
             )
             return result, calls
         except Exception as exc:
@@ -342,7 +342,7 @@ def run_cleanup_orders_missing_oid_case(orders):
         return type(exc).__name__
 
 
-def run_read_with_retry_status_case(exc_obj, max_retries=2):
+def run_retry_read_status_case(exc_obj, retries=2):
     if grid_gate is None:
         return None, None
 
@@ -359,11 +359,11 @@ def run_read_with_retry_status_case(exc_obj, max_retries=2):
     try:
         grid_gate.time.sleep = fake_sleep
         try:
-            grid_gate.read_with_retry(
+            grid_gate.retry_read(
+                "status-case",
                 fake_read,
-                read_name="status-case",
-                max_retries=max_retries,
-                retry_sec=0.1,
+                retries=retries,
+                delay=0.1,
             )
             return "NO_ERROR", calls
         except Exception as exc:
@@ -420,12 +420,12 @@ def run_red_team_eval():
                 super().__init__(f"status={status_code}")
                 self.status_code = status_code
 
-        result, calls = run_read_with_retry_status_case(RetryableHTTPError(502), max_retries=2)
+        result, calls = run_retry_read_status_case(RetryableHTTPError(502), retries=2)
         log_res("red-team: retryable status exhausted", result, "RetryableHTTPError")
         log_res("red-team: retryable status calls", calls["read_func"], 3)
         log_res("red-team: retryable status sleeps", calls["sleep"], 2)
 
-        result, calls = run_read_with_retry_status_case(NonRetryableHTTPError(400), max_retries=2)
+        result, calls = run_retry_read_status_case(NonRetryableHTTPError(400), retries=2)
         log_res("red-team: nonretry status direct", result, "NonRetryableHTTPError")
         log_res("red-team: nonretry status calls", calls["read_func"], 1)
         log_res("red-team: nonretry status no sleep", calls["sleep"], 0)
@@ -816,20 +816,20 @@ def run_gateway_open_orders_case(raw_orders):
         return None, None
 
     calls = {
-        "read_with_retry": 0,
+        "retry_read": 0,
     }
 
-    old_read_with_retry = grid_gate.read_with_retry
+    old_retry_read = grid_gate.retry_read
 
-    def fake_read_with_retry(read_func, read_name, max_retries=grid_gate.MAX_RETRIES, retry_sec=grid_gate.RETRY_SEC):
-        calls["read_with_retry"] += 1
+    def fake_retry_read(name, fn, retries=grid_gate.MAX_RETRIES, delay=grid_gate.RETRY_SEC):
+        calls["retry_read"] += 1
         return raw_orders
 
     try:
-        grid_gate.read_with_retry = fake_read_with_retry
+        grid_gate.retry_read = fake_retry_read
         result = grid_gate.read_orders(info=object())
     finally:
-        grid_gate.read_with_retry = old_read_with_retry
+        grid_gate.retry_read = old_retry_read
 
     return result, calls
 
@@ -1146,7 +1146,7 @@ def run_gateway_eval():
             {"side": "SELL", "price": grid_gate.normalize_price(100200.4), "oid": 22, "limitPx": 100200.4},
         ],
     )
-    log_res("gateway: read_orders retry call", calls["read_with_retry"], 1)
+    log_res("gateway: read_orders retry call", calls["retry_read"], 1)
 
     result = run_gateway_read_mid_case(mids_value={grid_gate.BTC_MID_KEY: 100123.4})
     log_res("gateway: read_btc_mid success", result, grid_gate.normalize_price(100123.4))
@@ -1263,31 +1263,31 @@ def run_gateway_execution_step7b_eval():
     else:
         retry_exc = TimeoutError("temporary timeout")
 
-        result, calls = run_read_with_retry_case(
+        result, calls = run_retry_read_case(
             [retry_exc, retry_exc, {"ok": 1}],
-            max_retries=2,
+            retries=2,
         )
-        log_res("read_with_retry: retry then success", result, {"ok": 1})
-        log_res("read_with_retry: retry then success calls", calls["read_func"], 3)
-        log_res("read_with_retry: retry then success sleeps", calls["sleep"], 2)
-        log_res("read_with_retry: retry then success delay", calls["sleep_args"], [0.1, 0.1])
+        log_res("retry_read: retry then success", result, {"ok": 1})
+        log_res("retry_read: retry then success calls", calls["read_func"], 3)
+        log_res("retry_read: retry then success sleeps", calls["sleep"], 2)
+        log_res("retry_read: retry then success delay", calls["sleep_args"], [0.1, 0.1])
 
-        result, calls = run_read_with_retry_case(
+        result, calls = run_retry_read_case(
             [ValueError("bad request")],
-            max_retries=2,
+            retries=2,
         )
-        log_res("read_with_retry: non-retryable raise", result, "ValueError")
-        log_res("read_with_retry: non-retryable calls", calls["read_func"], 1)
-        log_res("read_with_retry: non-retryable no sleep", calls["sleep"], 0)
+        log_res("retry_read: non-retryable raise", result, "ValueError")
+        log_res("retry_read: non-retryable calls", calls["read_func"], 1)
+        log_res("retry_read: non-retryable no sleep", calls["sleep"], 0)
 
-        result, calls = run_read_with_retry_case(
+        result, calls = run_retry_read_case(
             [retry_exc, retry_exc, retry_exc],
-            max_retries=2,
+            retries=2,
         )
-        log_res("read_with_retry: exhausted raise", result, "TimeoutError")
-        log_res("read_with_retry: exhausted calls", calls["read_func"], 3)
-        log_res("read_with_retry: exhausted sleeps", calls["sleep"], 2)
-        log_res("read_with_retry: exhausted delay", calls["sleep_args"], [0.1, 0.1])
+        log_res("retry_read: exhausted raise", result, "TimeoutError")
+        log_res("retry_read: exhausted calls", calls["read_func"], 3)
+        log_res("retry_read: exhausted sleeps", calls["sleep"], 2)
+        log_res("retry_read: exhausted delay", calls["sleep_args"], [0.1, 0.1])
 
 
 if __name__ == "__main__":
