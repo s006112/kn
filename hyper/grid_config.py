@@ -24,8 +24,8 @@ GRID_STEP = 200.0  # 参考价每上下偏移 100 美元挂一格，是网格的
 BUY_GRID_FACTOR = 1.00  # 买单距离 = 1.00 x GRID_STEP，1.00 表示向下 1 格挂买单
 SELL_GRID_FACTOR = 1.00  # 卖单距离 = 1.00 x GRID_STEP，1.00 表示向上 1 格挂卖单
 GRID_GAP = (BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP  # 买卖单之间的价差，理论上应该保持稳定
-TICK_COUNT = 10  # 价格偏移超过 5 格时，认为价格发生了较大变动，可能需要重锚
-ORDER_ZONE = GRID_GAP * 0.15 # 订单区间，价格偏移在网格间距的 20% 以内时，认为价格在订单附近
+TICK_COUNT = 15  # 价格偏移超过 5 格时，认为价格发生了较大变动，可能需要重锚
+ORDER_ZONE = GRID_GAP * 0.10 # 订单区间，价格偏移在网格间距的 20% 以内时，认为价格在订单附近
 
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True  # 卖单因 BTC 不足下不出时，允许退化成仅挂买单
 ALLOW_SELL_ONLY_WHEN_NO_USDC = True  # 买单因 USDC 不足下不出时，允许退化成仅挂卖单
@@ -35,7 +35,7 @@ REANCHOR_BREAK_STEPS = 2  # 与 BTC 中间价相差达到 2 格时，触发 anch
 REANCHOR_DISTANCE = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP    # 当 BTC mid 与当前 buy order 距离 >= REANCHOR_DISTANCE 时触发 anchor break
 
 KEEP_LOG_INTERVAL_SEC = 900  # keep 状态同类日志至少每 900 秒打印一次，避免刷屏
-MAIN_LOOP_POLL_INTERVAL_SEC = 1.5  # 主循环，检查挂单和状态是否变化
+MAIN_LOOP_POLL_INTERVAL_SEC = 1.0  # 主循环，检查挂单和状态是否变化
 WAIT_NO_OPEN_ORDERS_INTERVAL_SEC = 0.5  # 撤单后检查一次是否已无遗留挂单
 
 MAX_RETRIES = 4  # 读取接口最多重试 4 次，容忍短暂接口抖动

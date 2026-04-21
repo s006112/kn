@@ -71,15 +71,17 @@ def run_cycle(info, trader, saved_state, tick_count):
         refresh_orders = True
     elif saved_state["mode"] == PAIR_MODE:
         if (
-            abs(btc_mid - saved_state["buy_price"]) <= ORDER_ZONE
-            or abs(saved_state["sell_price"] - btc_mid) <= ORDER_ZONE
+            btc_mid <= saved_state["buy_price"] + ORDER_ZONE
+            or btc_mid >= saved_state["sell_price"] - ORDER_ZONE
         ):
             refresh_orders = True
+
     elif saved_state["mode"] == BUY_ONLY_MODE:
-        if abs(btc_mid - saved_state["buy_price"]) <= ORDER_ZONE:
+        if btc_mid <= saved_state["buy_price"] + ORDER_ZONE:
             refresh_orders = True
+
     elif saved_state["mode"] == SELL_ONLY_MODE:
-        if abs(saved_state["sell_price"] - btc_mid) <= ORDER_ZONE:
+        if btc_mid >= saved_state["sell_price"] - ORDER_ZONE:
             refresh_orders = True
     else:
         refresh_orders = True
