@@ -449,33 +449,33 @@ def run_red_team_eval():
         )
         log_note("red-team: BUY_ONLY drift still keep", result, "saved_state drift remains silent if anchor-break not triggered")
 
-def run_bootstrap_eval():
-    print(f"🚀 Bootstrap Evaluation (GRID_STEP={GRID_STEP})")
+def run_order_mode_classification_eval():
+    print(f"🚀 Order Mode Classification Evaluation (GRID_STEP={GRID_STEP})")
 
     o_valid = pair_orders()
 
-    log_res("Bootstrap: Valid Pair", mode_of_bootstrap(o_valid), PAIR_MODE)
+    log_res("Order Mode: Valid Pair", mode_of_bootstrap(o_valid), PAIR_MODE)
     classified_pair_state = classify_order_mode(o_valid)
-    log_res("Bootstrap: Pair State", classified_pair_state, pair_state())
-    log_res("Bootstrap: Reversed Pair", mode_of_bootstrap([o_valid[1], o_valid[0]]), PAIR_MODE)
-    log_res("Bootstrap: Partial", mode_of_bootstrap(o_valid[:1]), BUY_ONLY_MODE)
-    log_res("Bootstrap: Empty", mode_of_bootstrap([]), ABNORMAL_MODE)
-    log_res("Bootstrap: >2 Orders", mode_of_bootstrap(o_valid + [order("BUY", 99600.0)]), ABNORMAL_MODE)
+    log_res("Order Mode: Pair State", classified_pair_state, pair_state())
+    log_res("Order Mode: Reversed Pair", mode_of_bootstrap([o_valid[1], o_valid[0]]), PAIR_MODE)
+    log_res("Order Mode: Partial", mode_of_bootstrap(o_valid[:1]), BUY_ONLY_MODE)
+    log_res("Order Mode: Empty", mode_of_bootstrap([]), ABNORMAL_MODE)
+    log_res("Order Mode: >2 Orders", mode_of_bootstrap(o_valid + [order("BUY", 99600.0)]), ABNORMAL_MODE)
 
-    log_res("Bootstrap: Two BUY", mode_of_bootstrap([order("BUY", 99800.0), order("BUY", 99600.0)]), ABNORMAL_MODE)
-    log_res("Bootstrap: Two SELL", mode_of_bootstrap([order("SELL", 100200.0), order("SELL", 100400.0)]), ABNORMAL_MODE)
-    log_res("Bootstrap: buy>=sell", mode_of_bootstrap(pair_orders(100200.0, 99800.0)), ABNORMAL_MODE)
+    log_res("Order Mode: Two BUY", mode_of_bootstrap([order("BUY", 99800.0), order("BUY", 99600.0)]), ABNORMAL_MODE)
+    log_res("Order Mode: Two SELL", mode_of_bootstrap([order("SELL", 100200.0), order("SELL", 100400.0)]), ABNORMAL_MODE)
+    log_res("Order Mode: buy>=sell", mode_of_bootstrap(pair_orders(100200.0, 99800.0)), ABNORMAL_MODE)
 
-    log_res("Bootstrap: Correct Gap", mode_of_bootstrap(pair_orders(99800.0, 100200.0)), PAIR_MODE)
-    log_res("Bootstrap: Wrong Gap", mode_of_bootstrap(pair_orders(99900.0, 100000.0)), ABNORMAL_MODE)
+    log_res("Order Mode: Correct Gap", mode_of_bootstrap(pair_orders(99800.0, 100200.0)), PAIR_MODE)
+    log_res("Order Mode: Wrong Gap", mode_of_bootstrap(pair_orders(99900.0, 100000.0)), ABNORMAL_MODE)
 
     log_note(
-        "Bootstrap: Size Mismatch",
+        "Order Mode: Size Mismatch",
         mode_of_bootstrap(pair_orders(99800.0, 100200.0, 1.0, 0.00001)),
         "no size validation",
     )
 
-    log_res("Bootstrap: API Wallet Key", "Exists" if API_WALLET_KEY else "Missing", "Exists")
+    log_res("Config: API Wallet Key", "Exists" if API_WALLET_KEY else "Missing", "Exists")
 
 
 def run_pair_mode_eval():
@@ -1243,7 +1243,7 @@ def run_gateway_execution_step7b_eval():
 
 
 if __name__ == "__main__":
-    run_bootstrap_eval()
+    run_order_mode_classification_eval()
     run_pair_mode_eval()
     run_buy_only_eval()
     run_sell_only_eval()
