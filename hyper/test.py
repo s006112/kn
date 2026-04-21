@@ -184,9 +184,9 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
             return bootstrap_state
         return classify_order_mode(local_orders)
 
-    def fake_rebuild(info, trader, local_orders, rebuild_price=None):
+    def fake_rebuild(info, trader, local_snapshot, strategy="reset", rebuild_price=None):
         calls["rebuild"] += 1
-        calls["rebuild_args"] = (local_orders, rebuild_price)
+        calls["rebuild_args"] = (local_snapshot, strategy, rebuild_price)
         return rebuild_state
 
     try:
@@ -313,9 +313,9 @@ def run_bootstrap_saved_state_real_case(orders, rebuild_state):
         calls["summarize_orders"] += 1
         return 0, 0
 
-    def fake_rebuild(info, trader, local_orders, rebuild_price=None):
+    def fake_rebuild(info, trader, local_snapshot, strategy="reset", rebuild_price=None):
         calls["rebuild"] += 1
-        calls["rebuild_args"] = (local_orders, rebuild_price)
+        calls["rebuild_args"] = (local_snapshot, strategy, rebuild_price)
         return rebuild_state
 
     try:
@@ -574,9 +574,9 @@ def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, 
         calls["btc_mid_seen"] = live_snapshot["btc_mid"]
         return action_result
 
-    def fake_rebuild(info, trader, local_orders, strategy="reset", rebuild_price=None):
+    def fake_rebuild(info, trader, local_snapshot, strategy="reset", rebuild_price=None):
         calls["rebuild"] += 1
-        calls["rebuild_args"] = (local_orders, strategy, rebuild_price)
+        calls["rebuild_args"] = (local_snapshot, strategy, rebuild_price)
         return rebuild_result
 
     try:
@@ -720,7 +720,7 @@ def run_rebuild_case(initial_orders, cleanup_result, rebuild_price_input, comput
         result = grid_exec.rebuild(
             info=object(),
             trader=object(),
-            orders=initial_orders,
+            live_snapshot=live_snapshot(initial_orders),
             rebuild_price=rebuild_price_input,
         )
     finally:
@@ -1159,7 +1159,7 @@ def run_bootstrap_step7a_eval():
     )
     log_res("bootstrap_saved_state: reject->rebuild", result, rebuilt_state)
     log_res("bootstrap_saved_state: reject->rebuild count", calls["rebuild"], 1)
-    log_res("bootstrap_saved_state: reject->rebuild args", calls["rebuild_args"][0], orders[:1])
+    log_res("bootstrap_saved_state: reject->rebuild args", calls["rebuild_args"][0], live_snapshot(orders[:1]))
 
     result, calls = run_bootstrap_saved_state_case(
         orders=orders[:1],

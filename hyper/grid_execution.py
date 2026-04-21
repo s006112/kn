@@ -111,7 +111,8 @@ def make_sell_only_state(reference_price, sell_action):
         "reference_price": reference_price,
     }
 
-def wait_until(     # 等待直到满足条件，期间定期检查订单状态，返回是否成功
+
+def wait_until(
     info,
     done,
     max_tries=MAX_RETRIES,
@@ -122,6 +123,7 @@ def wait_until(     # 等待直到满足条件，期间定期检查订单状态�
             return True
         time.sleep(interval_sec)
     return False
+
 
 def cancel_order_by_oid(trader, order):
     trader.cancel(SYMBOL, order["oid"])
@@ -146,27 +148,46 @@ def cleanup_orders(info, trader, orders=None):
     return False
 
 
-def place_reset_rebuild(info, trader, price):  # 根据参考价构建买卖单，尝试下单，并根据结果返回新的状态
+def resolve_rebuild_result(info, trader, reference_price, buy_action, sell_action, second_action, second_status):
+    if second_status == "ok":
+        return make_pair_state(reference_price, buy_action, sell_action)
+
+    if (
+        second_action["side"] == "SELL"
+        and second_status == "insufficient_spot_balance"
+        and ALLOW_BUY_ONLY_WHEN_NO_BTC
+    ):
+        log_msg("rebuild -> buy-only")
+        return make_buy_only_state(reference_price, buy_action)
+
+    if (
+        second_action["side"] == "BUY"
+        and second_status == "insufficient_spot_balance"
+        and ALLOW_SELL_ONLY_WHEN_NO_USDC
+    ):
+        log_msg("rebuild -> sell-only")
+        return make_sell_only_state(reference_price, sell_action)
+
+    log_msg("partial placement failure: cleanup remaining orders")
+    cleanup_orders(info, trader)
+    return None
+
+
+def place_reset_rebuild(info, trader, price):
     buy_action, sell_action = build_pair(price)
     log_rebuild(price, buy_action, sell_action)
 
     buy_status = place_limit_order(trader, buy_action)
     sell_status = place_limit_order(trader, sell_action)
 
-    if buy_status == "ok" and sell_status == "ok":
-        return make_pair_state(price, buy_action, sell_action)
+    if buy_status != "ok":
+        return resolve_rebuild_result(
+            info, trader, price, buy_action, sell_action, buy_action, buy_status
+        )
 
-    if buy_status == "ok" and sell_status == "insufficient_spot_balance" and ALLOW_BUY_ONLY_WHEN_NO_BTC:
-        log_msg("rebuild -> buy-only")
-        return make_buy_only_state(price, buy_action)
-
-    if sell_status == "ok" and buy_status == "insufficient_spot_balance" and ALLOW_SELL_ONLY_WHEN_NO_USDC:
-        log_msg("rebuild -> sell-only")
-        return make_sell_only_state(price, sell_action)
-
-    log_msg("partial placement failure: cleanup remaining orders")
-    cleanup_orders(info, trader)
-    return None
+    return resolve_rebuild_result(
+        info, trader, price, buy_action, sell_action, sell_action, sell_status
+    )
 
 
 def place_done_deal_rebuild(info, trader, remaining_order, reference_price):
@@ -201,37 +222,23 @@ def place_done_deal_rebuild(info, trader, remaining_order, reference_price):
         return None
 
     second_status = place_limit_order(trader, second_action)
-    if second_status == "ok":
-        return make_pair_state(reference_price, buy_action, sell_action)
+    return resolve_rebuild_result(
+        info, trader, reference_price, buy_action, sell_action, second_action, second_status
+    )
 
-    if (
-        second_action["side"] == "SELL"
-        and second_status == "insufficient_spot_balance"
-        and ALLOW_BUY_ONLY_WHEN_NO_BTC
-    ):
-        log_msg("rebuild -> buy-only")
-        return make_buy_only_state(reference_price, buy_action)
 
-    if (
-        second_action["side"] == "BUY"
-        and second_status == "insufficient_spot_balance"
-        and ALLOW_SELL_ONLY_WHEN_NO_USDC
-    ):
-        log_msg("rebuild -> sell-only")
-        return make_sell_only_state(reference_price, sell_action)
+def rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None):
 
-    log_msg("partial placement failure: cleanup remaining orders")
-    cleanup_orders(info, trader)
-    return None
+    if strategy in ("done_deal", "anchor_break") and live_snapshot["mode"] in (BUY_ONLY_MODE, SELL_ONLY_MODE):
+        if rebuild_price is None:
+            if strategy != "anchor_break":
+                log_msg("rebuild contract mismatch: done_deal requires rebuild_price")
+                return None
+            rebuild_price = read_btc_grid(info)
 
-def rebuild(info, trader, orders, strategy="reset", rebuild_price=None):
-    if strategy == "done_deal":
-        if len(orders) != 1 or rebuild_price is None:
-            log_msg("rebuild contract mismatch: done_deal requires exactly 1 remaining order and rebuild_price")
-            return None
-        return place_done_deal_rebuild(info, trader, orders[0], rebuild_price)
+        return place_done_deal_rebuild(info, trader, live_snapshot["orders"][0], rebuild_price)
 
-    if orders and not cleanup_orders(info, trader, orders): # 先清理掉现有订单，如果清理失败则放弃重建
+    if live_snapshot["orders"] and not cleanup_orders(info, trader, live_snapshot["orders"]):
         return None
 
     if rebuild_price is None:

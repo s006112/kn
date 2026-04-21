@@ -43,7 +43,13 @@ def bootstrap():
         log_msg("Bootstrap Pair")
         return info, trader, state
 
-    state = rebuild(info, trader, orders)       # state structure: {"mode": PAIR_MODE, "buy_price": float, "sell_price": float}
+    live_snapshot = {
+        "orders": orders,
+        "btc_mid": None,
+        **state,
+    }
+
+    state = rebuild(info, trader, live_snapshot)  # state structure: {"mode": PAIR_MODE, "buy_price": float, "sell_price": float}
     if state is None:
         log_msg("Bootstrap Rebuild Failed")
         return info, trader, None
@@ -70,7 +76,7 @@ def run_cycle(info, trader, saved_state):
         return saved_state
 
     if action == "rebuild":
-        new_state = rebuild(info, trader, live_snapshot["orders"], strategy, rebuild_price)
+        new_state = rebuild(info, trader, live_snapshot, strategy, rebuild_price)
         if new_state is None:
             log_msg("rebuild failed")
         return new_state
