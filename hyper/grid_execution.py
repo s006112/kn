@@ -226,22 +226,14 @@ def place_done_deal_rebuild(info, trader, remaining_order, reference_price):
         info, trader, reference_price, buy_action, sell_action, second_action, second_status
     )
 
-
 def rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None):
-
-    if strategy in ("done_deal", "anchor_break") and live_snapshot["mode"] in (BUY_ONLY_MODE, SELL_ONLY_MODE):
-        if rebuild_price is None:
-            if strategy != "anchor_break":
-                log_msg("rebuild contract mismatch: done_deal requires rebuild_price")
-                return None
-            rebuild_price = read_btc_grid(info)
-
-        return place_done_deal_rebuild(info, trader, live_snapshot["orders"][0], rebuild_price)
+    if strategy in ("done_deal", "anchor_break"):
+        if live_snapshot["mode"] in (BUY_ONLY_MODE, SELL_ONLY_MODE):
+            if rebuild_price is None:
+                rebuild_price = read_btc_grid(info)
+            return place_done_deal_rebuild(info, trader, live_snapshot["orders"][0], rebuild_price)
 
     if live_snapshot["orders"] and not cleanup_orders(info, trader, live_snapshot["orders"]):
         return None
 
-    if rebuild_price is None:
-        rebuild_price = read_btc_grid(info)
-
-    return place_reset_rebuild(info, trader, rebuild_price)
+    return place_reset_rebuild(info, trader, read_btc_grid(info))

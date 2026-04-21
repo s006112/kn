@@ -906,8 +906,8 @@ def run_execution_eval():
     result, calls = run_rebuild_case([], cleanup_result=True, rebuild_price_input=10000.0, computed_price=9999.0, place_reset_rebuild_result=placed_state)
     log_res("rebuild: explicit price return", result, placed_state)
     log_res("rebuild: explicit price no cleanup", calls["cleanup_orders"], 0)
-    log_res("rebuild: explicit price no read_btc_grid", calls["read_btc_grid"], 0)
-    log_res("rebuild: explicit price place_reset_rebuild arg", calls["place_reset_rebuild_args"], 10000.0)
+    log_res("rebuild: reset reads current grid", calls["read_btc_grid"], 1)
+    log_res("rebuild: reset place_reset_rebuild arg", calls["place_reset_rebuild_args"], 9999.0)
 
     result, calls = run_rebuild_case([], cleanup_result=True, rebuild_price_input=None, computed_price=10400.0, place_reset_rebuild_result=placed_state)
     log_res("rebuild: implicit price return", result, placed_state)
