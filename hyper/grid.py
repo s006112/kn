@@ -20,8 +20,11 @@ from grid_config import (
     ACCOUNT_ADDRESS,
     API_WALLET_KEY,
     BUY_ONLY_MODE,
+    SELL_ONLY_MODE,
     MAIN_LOOP_POLL_INTERVAL_SEC,
+    ORDER_ZONE,
     PAIR_MODE,
+    TICK_COUNT,
     log_msg,
     summarize_orders,
 )
@@ -57,17 +60,39 @@ def bootstrap():
     return info, trader, state
 
 
-def run_cycle(info, trader, saved_state):
+def run_cycle(info, trader, saved_state, tick_count):
+    btc_mid = read_btc_mid(info)
+    log_msg(f"trigger: read_btc_mid | {btc_mid}")
+    refresh_orders = False
+
+    if btc_mid is None:
+        refresh_orders = True
+    elif tick_count % TICK_COUNT == 0:
+        refresh_orders = True
+    elif saved_state["mode"] == PAIR_MODE:
+        if (
+            abs(btc_mid - saved_state["buy_price"]) <= ORDER_ZONE
+            or abs(saved_state["sell_price"] - btc_mid) <= ORDER_ZONE
+        ):
+            refresh_orders = True
+    elif saved_state["mode"] == BUY_ONLY_MODE:
+        if abs(btc_mid - saved_state["buy_price"]) <= ORDER_ZONE:
+            refresh_orders = True
+    elif saved_state["mode"] == SELL_ONLY_MODE:
+        if abs(saved_state["sell_price"] - btc_mid) <= ORDER_ZONE:
+            refresh_orders = True
+    else:
+        refresh_orders = True
+
+    if not refresh_orders:
+        return saved_state
+
+    log_msg("trigger: read_orders")
     orders = read_orders(info)
-
-    btc_mid = None
-    if saved_state["mode"] == BUY_ONLY_MODE:
-        btc_mid = read_btc_mid(info)
-
     live_snapshot = {
         "orders": orders,
         "btc_mid": btc_mid,
-        **classify_order_mode(orders),  # mode: PAIR_MODE | BUY_ONLY_MODE | SELL_ONLY_MODE | ABNORMAL_MODE
+        **classify_order_mode(orders),
     }
 
     action, strategy, rebuild_price = decide_cycle_action(live_snapshot, saved_state)
@@ -85,15 +110,17 @@ def run_cycle(info, trader, saved_state):
     log_msg("abnormal")
     return None
 
-
 def main():
     info, trader, saved_state = bootstrap()
     if saved_state is None:
         return
 
+    tick_count = 0
+
     while True:
         time.sleep(MAIN_LOOP_POLL_INTERVAL_SEC)
-        saved_state = run_cycle(info, trader, saved_state)
+        tick_count += 1
+        saved_state = run_cycle(info, trader, saved_state, tick_count)
         if saved_state is None:
             return
 

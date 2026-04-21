@@ -164,13 +164,9 @@ def rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None):
         sell_status = place_limit_order(trader, sell_action)
 
         if buy_status != "ok":
-            return finish_rebuild(
-                info, trader, price, buy_action, sell_action, buy_action, buy_status
-            )
+            return finish_rebuild(info, trader, price, buy_action, sell_action, buy_action, buy_status)
 
-        return finish_rebuild(
-            info, trader, price, buy_action, sell_action, sell_action, sell_status
-        )
+        return finish_rebuild(info, trader, price, buy_action, sell_action, sell_action, sell_status)
 
     if remaining_order["side"] == "SELL":
         first_action = buy_action
@@ -200,6 +196,4 @@ def rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None):
         return None
 
     second_status = place_limit_order(trader, second_action)
-    return finish_rebuild(
-        info, trader, price, buy_action, sell_action, second_action, second_status
-    )
+    return finish_rebuild(info, trader, price, buy_action, sell_action, second_action, second_status)
