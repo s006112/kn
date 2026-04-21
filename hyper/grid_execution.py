@@ -123,6 +123,7 @@ def finish_rebuild(info, trader, price, buy_action, sell_action, action, status)
         return {
             "mode": BUY_ONLY_MODE,
             "buy_price": buy_action["price"],
+            "sell_price": sell_action["price"],
             "price": price,
         }
 
@@ -134,6 +135,7 @@ def finish_rebuild(info, trader, price, buy_action, sell_action, action, status)
         log_msg("rebuild -> sell-only")
         return {
             "mode": SELL_ONLY_MODE,
+            "buy_price": buy_action["price"],
             "sell_price": sell_action["price"],
             "price": price,
         }

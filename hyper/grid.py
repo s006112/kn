@@ -19,8 +19,6 @@ from grid_config import read_orders, read_btc_mid
 from grid_config import (
     ACCOUNT_ADDRESS,
     API_WALLET_KEY,
-    BUY_ONLY_MODE,
-    SELL_ONLY_MODE,
     MAIN_LOOP_POLL_INTERVAL_SEC,
     ORDER_ZONE,
     PAIR_MODE,
@@ -69,21 +67,10 @@ def run_cycle(info, trader, saved_state, tick_count):
         refresh_orders = True
     elif tick_count % TICK_COUNT == 0:
         refresh_orders = True
-    elif saved_state["mode"] == PAIR_MODE:
-        if (
-            btc_mid <= saved_state["buy_price"] + ORDER_ZONE
-            or btc_mid >= saved_state["sell_price"] - ORDER_ZONE
-        ):
-            refresh_orders = True
-
-    elif saved_state["mode"] == BUY_ONLY_MODE:
-        if btc_mid <= saved_state["buy_price"] + ORDER_ZONE:
-            refresh_orders = True
-
-    elif saved_state["mode"] == SELL_ONLY_MODE:
-        if btc_mid >= saved_state["sell_price"] - ORDER_ZONE:
-            refresh_orders = True
-    else:
+    elif (
+        btc_mid <= saved_state["buy_price"] + ORDER_ZONE
+        or btc_mid >= saved_state["sell_price"] - ORDER_ZONE
+    ):
         refresh_orders = True
 
     if not refresh_orders:
