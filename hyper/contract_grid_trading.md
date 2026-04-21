@@ -428,7 +428,7 @@ fill-replace path 的实际条件为：
 2. 若 `old_order["side"] == "SELL"`，先 place 新 BUY，再 place 新 SELL。
 3. 若 `old_order["side"] == "BUY"`，先 place 新 SELL，再 place 新 BUY。
 4. 第一张新单必须 `ok`，否则直接返回 `None`。
-5. 第一张新单成功后，调用 `cancel_order_by_oid(trader, old_order)`。
+5. 第一张新单成功后，调用 `trader.cancel(SYMBOL, old_order["oid"])`。
 6. 调用 `wait_order_absent(info, old_order["oid"])` 验证旧 oid 已不存在。
 7. cancel 或 verify 抛异常时，记录日志，调用 `cleanup_after_partial_place_failure`，返回 `None`。
 8. 若旧 oid 仍存在，记录日志，调用 `cleanup_after_partial_place_failure`，返回 `None`。

@@ -111,21 +111,12 @@ def make_sell_only_state(reference_price, sell_action):
     }
 
 
-def wait_until(
-    info,
-    done,
-    max_tries=MAX_RETRIES,
-    interval_sec=WAIT_NO_OPEN_ORDERS_INTERVAL_SEC,
-):
+def wait_until(info, done, max_tries=MAX_RETRIES, interval_sec=WAIT_NO_OPEN_ORDERS_INTERVAL_SEC):
     for _ in range(max_tries):
         if done(read_orders(info)):
             return True
         time.sleep(interval_sec)
     return False
-
-
-def cancel_order_by_oid(trader, order):
-    trader.cancel(SYMBOL, order["oid"])
 
 
 def cleanup_orders(info, trader, orders=None):
@@ -198,7 +189,7 @@ def place_done_deal_rebuild(info, trader, remaining_order, reference_price):
         return None
 
     try:
-        cancel_order_by_oid(trader, remaining_order)
+        trader.cancel(SYMBOL, remaining_order["oid"])
         remaining_order_gone = wait_until(
             info,
             lambda orders: all(order.get("oid") != remaining_order["oid"] for order in orders),
