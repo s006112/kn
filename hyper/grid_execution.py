@@ -105,50 +105,49 @@ def cleanup_orders(info, trader, orders=None):
     return False
 
 
+def finish_rebuild(info, trader, reference_price, buy_action, sell_action, action, status):
+    if status == "ok":
+        return {
+            "mode": PAIR_MODE,
+            "buy_price": buy_action["price"],
+            "sell_price": sell_action["price"],
+            "reference_price": reference_price,
+        }
+
+    if (
+        action["side"] == "SELL"
+        and status == "insufficient_spot_balance"
+        and ALLOW_BUY_ONLY_WHEN_NO_BTC
+    ):
+        log_msg("rebuild -> buy-only")
+        return {
+            "mode": BUY_ONLY_MODE,
+            "buy_price": buy_action["price"],
+            "reference_price": reference_price,
+        }
+
+    if (
+        action["side"] == "BUY"
+        and status == "insufficient_spot_balance"
+        and ALLOW_SELL_ONLY_WHEN_NO_USDC
+    ):
+        log_msg("rebuild -> sell-only")
+        return {
+            "mode": SELL_ONLY_MODE,
+            "sell_price": sell_action["price"],
+            "reference_price": reference_price,
+        }
+
+    log_msg("partial placement failure: cleanup remaining orders")
+    cleanup_orders(info, trader)
+    return None
+
+
 def rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None):
-    def finish_rebuild(reference_price, buy_action, sell_action, action, status):
-        if status == "ok":
-            return {
-                "mode": PAIR_MODE,
-                "buy_price": buy_action["price"],
-                "sell_price": sell_action["price"],
-                "reference_price": reference_price,
-            }
-
-        if (
-            action["side"] == "SELL"
-            and status == "insufficient_spot_balance"
-            and ALLOW_BUY_ONLY_WHEN_NO_BTC
-        ):
-            log_msg("rebuild -> buy-only")
-            return {
-                "mode": BUY_ONLY_MODE,
-                "buy_price": buy_action["price"],
-                "reference_price": reference_price,
-            }
-
-        if (
-            action["side"] == "BUY"
-            and status == "insufficient_spot_balance"
-            and ALLOW_SELL_ONLY_WHEN_NO_USDC
-        ):
-            log_msg("rebuild -> sell-only")
-            return {
-                "mode": SELL_ONLY_MODE,
-                "sell_price": sell_action["price"],
-                "reference_price": reference_price,
-            }
-
-        log_msg("partial placement failure: cleanup remaining orders")
-        cleanup_orders(info, trader)
-        return None
-
-    is_done_deal_rebuild = (
+    if (
         strategy in ("done_deal", "anchor_break")
         and live_snapshot["mode"] in (BUY_ONLY_MODE, SELL_ONLY_MODE)
-    )
-
-    if is_done_deal_rebuild:
+    ):
         reference_price = rebuild_price if rebuild_price is not None else read_btc_grid(info)
         remaining_order = live_snapshot["orders"][0]
     else:
@@ -165,9 +164,13 @@ def rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None):
         sell_status = place_limit_order(trader, sell_action)
 
         if buy_status != "ok":
-            return finish_rebuild(reference_price, buy_action, sell_action, buy_action, buy_status)
+            return finish_rebuild(
+                info, trader, reference_price, buy_action, sell_action, buy_action, buy_status
+            )
 
-        return finish_rebuild(reference_price, buy_action, sell_action, sell_action, sell_status)
+        return finish_rebuild(
+            info, trader, reference_price, buy_action, sell_action, sell_action, sell_status
+        )
 
     if remaining_order["side"] == "SELL":
         first_action = buy_action
@@ -197,4 +200,6 @@ def rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None):
         return None
 
     second_status = place_limit_order(trader, second_action)
-    return finish_rebuild(reference_price, buy_action, sell_action, second_action, second_status)
+    return finish_rebuild(
+        info, trader, reference_price, buy_action, sell_action, second_action, second_status
+    )
