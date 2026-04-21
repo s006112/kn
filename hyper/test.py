@@ -616,7 +616,7 @@ def run_run_cycle_eval():
     log_res("run_cycle: PAIR rebuild return", result, rebuilt_state)
     log_res("run_cycle: PAIR rebuild count", calls["rebuild"], 1)
     log_res("run_cycle: PAIR rebuild strategy", calls["rebuild_args"][1], "done_deal")
-    log_res("run_cycle: PAIR rebuild ref", calls["rebuild_args"][2], 10200.0)
+    log_res("run_cycle: PAIR rebuild price", calls["rebuild_args"][2], 10200.0)
 
     result, calls = run_run_cycle_case(state_p, orders_p[:1], ("rebuild", "done_deal", 10200.0), rebuild_result=None)
     log_res("run_cycle: PAIR rebuild fail", result, None)
@@ -891,7 +891,7 @@ def run_execution_eval():
     log_res("cleanup_orders: remain -> False", result, False)
     log_res("cleanup_orders: remain no extra read_orders", calls["read_orders"], 0)
 
-    placed_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 9999.0}
+    placed_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "price": 9999.0}
 
     result, calls = run_rebuild_case([], cleanup_result=True, rebuild_price_input=10000.0, computed_price=9999.0)
     log_res("rebuild: reset explicit price ignored", result, placed_state)
@@ -899,7 +899,7 @@ def run_execution_eval():
     log_res("rebuild: reset reads current grid", calls["read_btc_grid"], 1)
     log_res("rebuild: reset build_pair arg", calls["build_pair_args"], [9999.0])
 
-    placed_state_10400 = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10400.0}
+    placed_state_10400 = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "price": 10400.0}
     result, calls = run_rebuild_case([], cleanup_result=True, rebuild_price_input=None, computed_price=10400.0)
     log_res("rebuild: reset implicit price return", result, placed_state_10400)
     log_res("rebuild: reset implicit price read_btc_grid", calls["read_btc_grid"], 1)
@@ -915,7 +915,7 @@ def run_execution_eval():
     log_res("rebuild: cleanup fail no place orders", calls["place_limit_order"], 0)
     log_res("rebuild: cleanup fail no read_btc_grid", calls["read_btc_grid"], 0)
 
-    done_deal_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10000.0}
+    done_deal_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "price": 10000.0}
     result, calls = run_rebuild_case(
         [order("BUY", 9800.0, oid=11)],
         rebuild_price_input=10000.0,
@@ -929,7 +929,7 @@ def run_execution_eval():
     log_res("rebuild: done_deal cancel remaining", calls["cancel_args"], [(grid_exec.SYMBOL, 11)])
     log_res("rebuild: done_deal verify cancel", calls["wait_until"], 1)
 
-    anchor_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10400.0}
+    anchor_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "price": 10400.0}
     result, calls = run_rebuild_case(
         [order("SELL", 10200.0, oid=22)],
         rebuild_price_input=None,
@@ -989,7 +989,7 @@ def run_execution_step4_eval():
     log_res(
         "rebuild reset: both ok -> PAIR",
         result,
-        {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10000.0},
+        {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "price": 10000.0},
     )
     log_res("rebuild reset: both ok no cleanup", calls["cleanup_orders"], 0)
     log_res("rebuild reset: both ok call order", calls["place_limit_order_args"], ["BUY", "SELL"])
@@ -1003,7 +1003,7 @@ def run_execution_step4_eval():
     log_res(
         "rebuild reset: buy ok -> BUY_ONLY",
         result,
-        {"mode": BUY_ONLY_MODE, "buy_price": 9800.0, "reference_price": 10000.0},
+        {"mode": BUY_ONLY_MODE, "buy_price": 9800.0, "price": 10000.0},
     )
     log_res("rebuild reset: BUY_ONLY no cleanup", calls["cleanup_orders"], 0)
 
@@ -1016,7 +1016,7 @@ def run_execution_step4_eval():
     log_res(
         "rebuild reset: sell ok -> SELL_ONLY",
         result,
-        {"mode": SELL_ONLY_MODE, "sell_price": 10200.0, "reference_price": 10000.0},
+        {"mode": SELL_ONLY_MODE, "sell_price": 10200.0, "price": 10000.0},
     )
     log_res("rebuild reset: SELL_ONLY no cleanup", calls["cleanup_orders"], 0)
 

@@ -122,7 +122,7 @@
 - `buy_price`，仅 `PAIR` / `BUY_ONLY` 包含
 - `sell_price`，仅 `PAIR` / `SELL_ONLY` 包含
 
-该 state 是当前 live orders 的快照，不包含 `reference_price`。`ABNORMAL` state 只包含 `mode`。
+该 state 是当前 live orders 的快照，不包含 `price`。`ABNORMAL` state 只包含 `mode`。
 
 ### `PAIR` rebuild state
 
@@ -131,7 +131,7 @@
 - `mode`
 - `buy_price`
 - `sell_price`
-- `reference_price`
+- `price`
 
 ### `BUY_ONLY` rebuild state
 
@@ -139,7 +139,7 @@
 
 - `mode`
 - `buy_price`
-- `reference_price`
+- `price`
 
 ### `SELL_ONLY` rebuild state
 
@@ -147,11 +147,11 @@
 
 - `mode`
 - `sell_price`
-- `reference_price`
+- `price`
 
 约束：
 
-- `reference_price` 只表示 rebuild 使用的 anchor。
+- `price` 只表示 rebuild 使用的 anchor。
 - 当前实现不定义额外中心价状态。
 - `BUY_ONLY` state 不依赖 `sell_price`。
 - `SELL_ONLY` state 不依赖 `buy_price`。
@@ -338,7 +338,7 @@ bootstrap 没有通用 exception shell；未捕获异常会向调用方传播。
 `decide_cycle_action(orders, saved_state, current_btc_mid=None)` 只返回：
 
 - `("keep", None)`
-- `("rebuild", reference_price)`
+- `("rebuild", price)`
 - `("rebuild", None)`
 - `("abnormal", None)`
 
@@ -353,7 +353,7 @@ bootstrap 没有通用 exception shell；未捕获异常会向调用方传播。
 3. 若当前 `current_state["mode"] == PAIR_MODE`，且 live `buy_price` 等于 saved `buy_price`，并且 live `sell_price` 等于 saved `sell_price`，返回 `("keep", None)`。
 4. 否则返回 `("abnormal", None)`。
 
-PAIR fill-driven rebuild 使用成交侧的 saved price 作为 `reference_price`，不读取 fresh BTC grid。
+PAIR fill-driven rebuild 使用成交侧的 saved price 作为 `price`，不读取 fresh BTC grid。
 
 ### `saved_state["mode"] == BUY_ONLY_MODE`
 
@@ -395,26 +395,26 @@ anchor break 只存在于 `BUY_ONLY_MODE` 分支。
 触发结果：
 
 - 返回 `("rebuild", None)`
-- 后续 `rebuild` 使用 fresh `read_btc_grid(info)` 计算 `reference_price`
+- 后续 `rebuild` 使用 fresh `read_btc_grid(info)` 计算 `price`
 
-当前实现比较的是 `current_btc_mid` 与 live BUY order price，不直接比较 saved `reference_price`。
+当前实现比较的是 `current_btc_mid` 与 live BUY order price，不直接比较 saved `price`。
 
 ## 11. Rebuild
 
-`rebuild(info, trader, orders, reference_price=None)` 当前选择路径：
+`rebuild(info, trader, orders, price=None)` 当前选择路径：
 
-1. 若 `is_fill_replace_path(orders, reference_price)` 为真，调用 `place_fill_replace_pair(info, trader, orders[0], reference_price)`。
+1. 若 `is_fill_replace_path(orders, price)` 为真，调用 `place_fill_replace_pair(info, trader, orders[0], price)`。
 2. 否则，如有 `orders`，先调用 `cleanup_orders(info, trader, orders)`。
 3. 若 cleanup 返回假值，`rebuild` 返回 `None`。
-4. 若 `reference_price is None`，调用 `read_btc_grid(info)`。
-5. 调用 `place_pair(info, trader, reference_price)` 并返回结果。
+4. 若 `price is None`，调用 `read_btc_grid(info)`。
+5. 调用 `place_pair(info, trader, price)` 并返回结果。
 
 ### `is_fill_replace_path`
 
 fill-replace path 的实际条件为：
 
 - `len(orders) == 1`
-- `reference_price is not None`
+- `price is not None`
 - `orders[0].get("oid") is not None`
 - `orders[0].get("side") in {"BUY", "SELL"}`
 
@@ -422,9 +422,9 @@ fill-replace path 的实际条件为：
 
 ## 12. Fill-Replace Path
 
-`place_fill_replace_pair(info, trader, old_order, reference_price)` 当前流程：
+`place_fill_replace_pair(info, trader, old_order, price)` 当前流程：
 
-1. 调用 `build_pair(reference_price)` 生成新 BUY 与新 SELL action。
+1. 调用 `build_pair(price)` 生成新 BUY 与新 SELL action。
 2. 若 `old_order["side"] == "SELL"`，先 place 新 BUY，再 place 新 SELL。
 3. 若 `old_order["side"] == "BUY"`，先 place 新 SELL，再 place 新 BUY。
 4. 第一张新单必须 `ok`，否则直接返回 `None`。
@@ -473,11 +473,11 @@ fill-replace verify 的目标是旧 oid absent，不要求 open orders 归零。
 
 ### `build_pair`
 
-`build_pair(reference_price)` 当前行为：
+`build_pair(price)` 当前行为：
 
-- `reference_price <= 0` 时抛出 `ValueError("Invalid reference price")`。
-- `buy_price = reference_price - (BUY_GRID_FACTOR * GRID_STEP)`。
-- `sell_price = reference_price + (SELL_GRID_FACTOR * GRID_STEP)`。
+- `price <= 0` 时抛出 `ValueError("Invalid price")`。
+- `buy_price = price - (BUY_GRID_FACTOR * GRID_STEP)`。
+- `sell_price = price + (SELL_GRID_FACTOR * GRID_STEP)`。
 - `buy_price <= 0` 时抛出 `ValueError("Invalid buy price")`。
 - BUY size 为 `round(BUDGET_USDC / buy_price, 5)`。
 - SELL size 为 `round(BUDGET_USDC / sell_price, 5)`。
@@ -522,9 +522,9 @@ sizing invariant：
 
 ### `place_pair`
 
-`place_pair(info, trader, reference_price)` 当前流程：
+`place_pair(info, trader, price)` 当前流程：
 
-1. 调用 `build_pair(reference_price)`。
+1. 调用 `build_pair(price)`。
 2. 记录 rebuild 价格。
 3. 先 place BUY。
 4. 再 place SELL。
@@ -577,12 +577,12 @@ sizing invariant：
 - `decide_cycle_action` 先分类 current mode，再按 saved mode 分支。
 - `PAIR` fill-driven rebuild 优先于 `PAIR` keep。
 - `BUY_ONLY` residual fill-complete 优先于 anchor break。
-- `BUY_ONLY` anchor break 触发后以 `reference_price=None` rebuild。
+- `BUY_ONLY` anchor break 触发后以 `price=None` rebuild。
 - `run_cycle` 只在 saved mode 为 `BUY_ONLY` 时读取 BTC mid。
 - `build_pair` 使用 same notional sizing。
 - `place_pair` 先 place BUY，再 place SELL。
 - general rebuild 在 placement 前 cleanup 现有 orders。
-- general rebuild 只在 `reference_price is None` 时调用 `read_btc_grid`。
+- general rebuild 只在 `price is None` 时调用 `read_btc_grid`。
 - fill-replace path 先 place 缺失替换侧，再 cancel 旧 oid，再 verify 旧 oid absent，再 place 另一侧。
 - rebuild 失败后主循环不继续使用旧 `saved_state`。
 

@@ -78,10 +78,10 @@ def place_limit_order(trader, action):
     return classify_order_result(result)
 
 
-def log_rebuild(reference_price, buy_action, sell_action):
+def log_rebuild(price, buy_action, sell_action):
     log_msg(
         f"rebuild | SELL - {format_price(sell_action['price'])} | "
-        f"REF - {format_price(reference_price)} | "
+        f"PRICE - {format_price(price)} | "
         f"BUY - {format_price(buy_action['price'])}"
     )
 
@@ -105,13 +105,13 @@ def cleanup_orders(info, trader, orders=None):
     return False
 
 
-def finish_rebuild(info, trader, reference_price, buy_action, sell_action, action, status):
+def finish_rebuild(info, trader, price, buy_action, sell_action, action, status):
     if status == "ok":
         return {
             "mode": PAIR_MODE,
             "buy_price": buy_action["price"],
             "sell_price": sell_action["price"],
-            "reference_price": reference_price,
+            "price": price,
         }
 
     if (
@@ -123,7 +123,7 @@ def finish_rebuild(info, trader, reference_price, buy_action, sell_action, actio
         return {
             "mode": BUY_ONLY_MODE,
             "buy_price": buy_action["price"],
-            "reference_price": reference_price,
+            "price": price,
         }
 
     if (
@@ -135,7 +135,7 @@ def finish_rebuild(info, trader, reference_price, buy_action, sell_action, actio
         return {
             "mode": SELL_ONLY_MODE,
             "sell_price": sell_action["price"],
-            "reference_price": reference_price,
+            "price": price,
         }
 
     log_msg("partial placement failure: cleanup remaining orders")
@@ -144,20 +144,20 @@ def finish_rebuild(info, trader, reference_price, buy_action, sell_action, actio
 
 
 def rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None):
-    if (
+    if (    # 如果是 done_deal 或 anchor_break 场景，并且当前状态是单边，那么尝试在原价位重建；否则直接清理所有订单，在当前价格重建
         strategy in ("done_deal", "anchor_break")
         and live_snapshot["mode"] in (BUY_ONLY_MODE, SELL_ONLY_MODE)
     ):
-        reference_price = rebuild_price if rebuild_price is not None else read_btc_grid(info)
+        price = rebuild_price if rebuild_price is not None else read_btc_grid(info)
         remaining_order = live_snapshot["orders"][0]
     else:
-        if live_snapshot["orders"] and not cleanup_orders(info, trader, live_snapshot["orders"]):
+        if live_snapshot["orders"] and not cleanup_orders(info, trader, live_snapshot["orders"]):   # 如果当前有订单但清理失败，记录日志并放弃本次重建
             return None
-        reference_price = read_btc_grid(info)
+        price = read_btc_grid(info)
         remaining_order = None
 
-    buy_action, sell_action = build_pair(reference_price)
-    log_rebuild(reference_price, buy_action, sell_action)
+    buy_action, sell_action = build_pair(price)
+    log_rebuild(price, buy_action, sell_action)
 
     if remaining_order is None:
         buy_status = place_limit_order(trader, buy_action)
@@ -165,11 +165,11 @@ def rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None):
 
         if buy_status != "ok":
             return finish_rebuild(
-                info, trader, reference_price, buy_action, sell_action, buy_action, buy_status
+                info, trader, price, buy_action, sell_action, buy_action, buy_status
             )
 
         return finish_rebuild(
-            info, trader, reference_price, buy_action, sell_action, sell_action, sell_status
+            info, trader, price, buy_action, sell_action, sell_action, sell_status
         )
 
     if remaining_order["side"] == "SELL":
@@ -201,5 +201,5 @@ def rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None):
 
     second_status = place_limit_order(trader, second_action)
     return finish_rebuild(
-        info, trader, reference_price, buy_action, sell_action, second_action, second_status
+        info, trader, price, buy_action, sell_action, second_action, second_status
     )
