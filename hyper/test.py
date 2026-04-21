@@ -95,18 +95,18 @@ def order(side, price, size=None, oid=None):
     return o
 
 
-def pair_orders(buy_price=99800.0, sell_price=100200.0, buy_size=None, sell_size=None):
+def pair_orders(buy_price=9800.0, sell_price=10200.0, buy_size=None, sell_size=None):
     return [
         order("BUY", buy_price, buy_size),
         order("SELL", sell_price, sell_size),
     ]
 
 
-def buy_only_orders(price=99800.0, size=None):
+def buy_only_orders(price=9800.0, size=None):
     return [order("BUY", price, size)]
 
 
-def sell_only_orders(price=100200.0, size=None):
+def sell_only_orders(price=10200.0, size=None):
     return [order("SELL", price, size)]
 
 
@@ -118,7 +118,7 @@ def live_snapshot(orders, btc_mid=None):
     }
 
 
-def pair_state(buy_price=99800.0, sell_price=100200.0):
+def pair_state(buy_price=9800.0, sell_price=10200.0):
     return {
         "mode": PAIR_MODE,
         "buy_price": float(buy_price),
@@ -126,14 +126,14 @@ def pair_state(buy_price=99800.0, sell_price=100200.0):
     }
 
 
-def buy_only_state(buy_price=99800.0):
+def buy_only_state(buy_price=9800.0):
     return {
         "mode": BUY_ONLY_MODE,
         "buy_price": float(buy_price),
     }
 
 
-def sell_only_state(sell_price=100200.0):
+def sell_only_state(sell_price=10200.0):
     return {
         "mode": SELL_ONLY_MODE,
         "sell_price": float(sell_price),
@@ -387,7 +387,7 @@ def run_red_team_eval():
     if grid_engine is None:
         log_note("red-team: bootstrap real import", "SKIPPED", "grid import failed")
     else:
-        inherited_state = {"mode": PAIR_MODE, "buy_price": 99800.0, "sell_price": 100200.0}
+        inherited_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0}
 
         result, calls = run_bootstrap_saved_state_real_case(
             orders=pair_orders(),
@@ -396,25 +396,25 @@ def run_red_team_eval():
         log_res(
             "red-team: bootstrap real inherit",
             (result["mode"], result["buy_price"], result["sell_price"]),
-            (PAIR_MODE, 99800.0, 100200.0),
+            (PAIR_MODE, 9800.0, 10200.0),
         )
         log_res("red-team: bootstrap real no rebuild", calls["rebuild"], 0)
 
         result, calls = run_bootstrap_saved_state_real_case(
-            orders=pair_orders(99900.0, 100000.0),  # wrong gap, real decision should reject
-            rebuild_state={"mode": PAIR_MODE, "buy_price": 99700.0, "sell_price": 100100.0},
+            orders=pair_orders(9900.0, 10000.0),  # wrong gap, real decision should reject
+            rebuild_state={"mode": PAIR_MODE, "buy_price": 9700.0, "sell_price": 10100.0},
         )
-        log_res("red-team: bootstrap real reject->rebuild", result, {"mode": PAIR_MODE, "buy_price": 99700.0, "sell_price": 100100.0})
+        log_res("red-team: bootstrap real reject->rebuild", result, {"mode": PAIR_MODE, "buy_price": 9700.0, "sell_price": 10100.0})
         log_res("red-team: bootstrap real reject rebuild", calls["rebuild"], 1)
 
     if grid_exec is None:
         log_note("red-team: cleanup missing oid", "SKIPPED", "grid_execution import failed")
     else:
         # 这不是你想要的行为，但很可能是真实会暴露的弱点
-        result = run_cleanup_orders_missing_oid_case([{"side": "BUY", "price": 99800.0}])
+        result = run_cleanup_orders_missing_oid_case([{"side": "BUY", "price": 9800.0}])
         log_note("red-team: cleanup missing oid", result, "cleanup_orders assumes every order has oid")
 
-        result = run_cleanup_orders_missing_oid_case([{"side": "BUY", "price": 99800.0, "oid": 11}])
+        result = run_cleanup_orders_missing_oid_case([{"side": "BUY", "price": 9800.0, "oid": 11}])
         log_res("red-team: cleanup with oid shape", result in ("NO_ERROR", "AttributeError", "TypeError"), True)
 
     if grid_gate is None:
@@ -441,10 +441,10 @@ def run_red_team_eval():
         log_res("red-team: nonretry status no sleep", calls["sleep"], 0)
 
         # 这个更像“逻辑风险暴露”，不是 mismatch
-        state_b = buy_only_state(99800.0)
-        live_buy_drift = buy_only_orders(90000.0)
+        state_b = buy_only_state(9800.0)
+        live_buy_drift = buy_only_orders(9000.0)
         result = decide_cycle_action(
-            live_snapshot(live_buy_drift, 90000.0 + (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP - 1),
+            live_snapshot(live_buy_drift, 9000.0 + (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP - 1),
             state_b,
         )
         log_note("red-team: BUY_ONLY drift still keep", result, "saved_state drift remains silent if anchor-break not triggered")
@@ -460,18 +460,18 @@ def run_order_mode_classification_eval():
     log_res("Order Mode: Reversed Pair", mode_of_bootstrap([o_valid[1], o_valid[0]]), PAIR_MODE)
     log_res("Order Mode: Partial", mode_of_bootstrap(o_valid[:1]), BUY_ONLY_MODE)
     log_res("Order Mode: Empty", mode_of_bootstrap([]), ABNORMAL_MODE)
-    log_res("Order Mode: >2 Orders", mode_of_bootstrap(o_valid + [order("BUY", 99600.0)]), ABNORMAL_MODE)
+    log_res("Order Mode: >2 Orders", mode_of_bootstrap(o_valid + [order("BUY", 9600.0)]), ABNORMAL_MODE)
 
-    log_res("Order Mode: Two BUY", mode_of_bootstrap([order("BUY", 99800.0), order("BUY", 99600.0)]), ABNORMAL_MODE)
-    log_res("Order Mode: Two SELL", mode_of_bootstrap([order("SELL", 100200.0), order("SELL", 100400.0)]), ABNORMAL_MODE)
-    log_res("Order Mode: buy>=sell", mode_of_bootstrap(pair_orders(100200.0, 99800.0)), ABNORMAL_MODE)
+    log_res("Order Mode: Two BUY", mode_of_bootstrap([order("BUY", 9800.0), order("BUY", 9600.0)]), ABNORMAL_MODE)
+    log_res("Order Mode: Two SELL", mode_of_bootstrap([order("SELL", 10200.0), order("SELL", 10400.0)]), ABNORMAL_MODE)
+    log_res("Order Mode: buy>=sell", mode_of_bootstrap(pair_orders(10200.0, 9800.0)), ABNORMAL_MODE)
 
-    log_res("Order Mode: Correct Gap", mode_of_bootstrap(pair_orders(99800.0, 100200.0)), PAIR_MODE)
-    log_res("Order Mode: Wrong Gap", mode_of_bootstrap(pair_orders(99900.0, 100000.0)), ABNORMAL_MODE)
+    log_res("Order Mode: Correct Gap", mode_of_bootstrap(pair_orders(9800.0, 10200.0)), PAIR_MODE)
+    log_res("Order Mode: Wrong Gap", mode_of_bootstrap(pair_orders(9900.0, 10000.0)), ABNORMAL_MODE)
 
     log_note(
         "Order Mode: Size Mismatch",
-        mode_of_bootstrap(pair_orders(99800.0, 100200.0, 1.0, 0.00001)),
+        mode_of_bootstrap(pair_orders(9800.0, 10200.0, 1.0, 0.00001)),
         "no size validation",
     )
 
@@ -484,65 +484,65 @@ def run_pair_mode_eval():
     o_pair = pair_orders()
     state_p = pair_state()
 
-    log_res("PAIR: SELL filled", decide_cycle_action(live_snapshot(o_pair[:1]), state_p), ("rebuild", "done_deal", 100200.0))
-    log_res("PAIR: BUY filled", decide_cycle_action(live_snapshot(o_pair[1:]), state_p), ("rebuild", "done_deal", 99800.0))
+    log_res("PAIR: SELL filled", decide_cycle_action(live_snapshot(o_pair[:1]), state_p), ("rebuild", "done_deal", 10200.0))
+    log_res("PAIR: BUY filled", decide_cycle_action(live_snapshot(o_pair[1:]), state_p), ("rebuild", "done_deal", 9800.0))
     log_res("PAIR: Keep", decide_cycle_action(live_snapshot(o_pair), state_p), ("keep", None, None))
 
     log_res("PAIR: 0 orders", decide_cycle_action(live_snapshot([]), state_p), ("abnormal", None, None))
-    log_res("PAIR: same side", decide_cycle_action(live_snapshot([order("BUY", 99800.0), order("BUY", 99700.0)]), state_p), ("abnormal", None, None))
-    log_res("PAIR: drift", decide_cycle_action(live_snapshot(pair_orders(99000.0, 100200.0)), state_p), ("abnormal", None, None))
-    log_res("PAIR: >2 orders", decide_cycle_action(live_snapshot(o_pair + [order("BUY", 99600.0)]), state_p), ("abnormal", None, None))
+    log_res("PAIR: same side", decide_cycle_action(live_snapshot([order("BUY", 9800.0), order("BUY", 9700.0)]), state_p), ("abnormal", None, None))
+    log_res("PAIR: drift", decide_cycle_action(live_snapshot(pair_orders(9000.0, 10200.0)), state_p), ("abnormal", None, None))
+    log_res("PAIR: >2 orders", decide_cycle_action(live_snapshot(o_pair + [order("BUY", 9600.0)]), state_p), ("abnormal", None, None))
 
 
 def run_buy_only_eval():
     print("\n🚀 BUY_ONLY Mode")
 
-    state_b = buy_only_state(99800.0)
-    live_buy = buy_only_orders(99800.0)
+    state_b = buy_only_state(9800.0)
+    live_buy = buy_only_orders(9800.0)
 
-    log_res("BUY_ONLY: fill -> rebuild", decide_cycle_action(live_snapshot([]), state_b), ("rebuild", "done_deal", 99800.0))
+    log_res("BUY_ONLY: fill -> rebuild", decide_cycle_action(live_snapshot([]), state_b), ("rebuild", "done_deal", 9800.0))
     log_res("BUY_ONLY: keep", decide_cycle_action(live_snapshot(live_buy), state_b), ("keep", None, None))
 
     log_note(
         "BUY_ONLY: price drift",
-        decide_cycle_action(live_snapshot(buy_only_orders(99700.0)), state_b),
+        decide_cycle_action(live_snapshot(buy_only_orders(9700.0)), state_b),
         "no price validation",
     )
 
     distance = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP
-    log_res("BUY_ONLY: break < threshold", decide_cycle_action(live_snapshot(live_buy, 99800.0 + distance - 1.0), state_b), ("keep", None, None))
-    log_res("BUY_ONLY: break == threshold", decide_cycle_action(live_snapshot(live_buy, 99800.0 + distance), state_b), ("rebuild", "anchor_break", None))
-    log_res("BUY_ONLY: break > threshold", decide_cycle_action(live_snapshot(live_buy, 99800.0 + distance + 1.0), state_b), ("rebuild", "anchor_break", None))
+    log_res("BUY_ONLY: break < threshold", decide_cycle_action(live_snapshot(live_buy, 9800.0 + distance - 1.0), state_b), ("keep", None, None))
+    log_res("BUY_ONLY: break == threshold", decide_cycle_action(live_snapshot(live_buy, 9800.0 + distance), state_b), ("rebuild", "anchor_break", None))
+    log_res("BUY_ONLY: break > threshold", decide_cycle_action(live_snapshot(live_buy, 9800.0 + distance + 1.0), state_b), ("rebuild", "anchor_break", None))
 
     log_res("BUY_ONLY: mid None", decide_cycle_action(live_snapshot(live_buy, None), state_b), ("keep", None, None))
     log_res("BUY_ONLY: mid <=0", decide_cycle_action(live_snapshot(live_buy, 0.0), state_b), ("keep", None, None))
 
     log_res("BUY_ONLY: wrong side", decide_cycle_action(live_snapshot(sell_only_orders()), state_b), ("abnormal", None, None))
     log_res("BUY_ONLY: pair snapshot", decide_cycle_action(live_snapshot(pair_orders()), state_b), ("abnormal", None, None))
-    log_res("BUY_ONLY: multiple BUY", decide_cycle_action(live_snapshot([order("BUY", 99800.0), order("BUY", 99700.0)]), state_b), ("abnormal", None, None))
+    log_res("BUY_ONLY: multiple BUY", decide_cycle_action(live_snapshot([order("BUY", 9800.0), order("BUY", 9700.0)]), state_b), ("abnormal", None, None))
 
 
 def run_sell_only_eval():
     print("\n🚀 SELL_ONLY Mode")
 
-    state_s = sell_only_state(100200.0)
-    live_sell = sell_only_orders(100200.0)
+    state_s = sell_only_state(10200.0)
+    live_sell = sell_only_orders(10200.0)
 
-    log_res("SELL_ONLY: fill -> rebuild", decide_cycle_action(live_snapshot([]), state_s), ("rebuild", "done_deal", 100200.0))
+    log_res("SELL_ONLY: fill -> rebuild", decide_cycle_action(live_snapshot([]), state_s), ("rebuild", "done_deal", 10200.0))
     log_res("SELL_ONLY: keep", decide_cycle_action(live_snapshot(live_sell), state_s), ("keep", None, None))
 
     log_note(
         "SELL_ONLY: price drift",
-        decide_cycle_action(live_snapshot(sell_only_orders(100300.0)), state_s),
+        decide_cycle_action(live_snapshot(sell_only_orders(10300.0)), state_s),
         "no price validation",
     )
 
     log_res("SELL_ONLY: wrong side", decide_cycle_action(live_snapshot(buy_only_orders()), state_s), ("abnormal", None, None))
     log_res("SELL_ONLY: pair snapshot", decide_cycle_action(live_snapshot(pair_orders()), state_s), ("abnormal", None, None))
-    log_res("SELL_ONLY: multiple SELL", decide_cycle_action(live_snapshot([order("SELL", 100200.0), order("SELL", 100400.0)]), state_s), ("abnormal", None, None))
+    log_res("SELL_ONLY: multiple SELL", decide_cycle_action(live_snapshot([order("SELL", 10200.0), order("SELL", 10400.0)]), state_s), ("abnormal", None, None))
 
 
-def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, btc_mid=100500.0):
+def run_run_cycle_case(saved_state, orders, action_result, rebuild_result=None, btc_mid=10500.0):
     if grid_engine is None:
         return None, None
 
@@ -604,20 +604,20 @@ def run_run_cycle_eval():
     state_b = buy_only_state()
     state_s = sell_only_state()
     orders_p = pair_orders()
-    rebuilt_state = {"mode": PAIR_MODE, "buy_price": 99700.0, "sell_price": 100100.0}
+    rebuilt_state = {"mode": PAIR_MODE, "buy_price": 9700.0, "sell_price": 10100.0}
 
     result, calls = run_run_cycle_case(state_p, orders_p, ("keep", None, None))
     log_res("run_cycle: PAIR keep return", result, state_p)
     log_res("run_cycle: PAIR keep no rebuild", calls["rebuild"], 0)
     log_res("run_cycle: PAIR keep no mid read", calls["read_btc_mid"], 0)
 
-    result, calls = run_run_cycle_case(state_p, orders_p[:1], ("rebuild", "done_deal", 100200.0), rebuild_result=rebuilt_state)
+    result, calls = run_run_cycle_case(state_p, orders_p[:1], ("rebuild", "done_deal", 10200.0), rebuild_result=rebuilt_state)
     log_res("run_cycle: PAIR rebuild return", result, rebuilt_state)
     log_res("run_cycle: PAIR rebuild count", calls["rebuild"], 1)
     log_res("run_cycle: PAIR rebuild strategy", calls["rebuild_args"][1], "done_deal")
-    log_res("run_cycle: PAIR rebuild ref", calls["rebuild_args"][2], 100200.0)
+    log_res("run_cycle: PAIR rebuild ref", calls["rebuild_args"][2], 10200.0)
 
-    result, calls = run_run_cycle_case(state_p, orders_p[:1], ("rebuild", "done_deal", 100200.0), rebuild_result=None)
+    result, calls = run_run_cycle_case(state_p, orders_p[:1], ("rebuild", "done_deal", 10200.0), rebuild_result=None)
     log_res("run_cycle: PAIR rebuild fail", result, None)
     log_res("run_cycle: PAIR rebuild fail count", calls["rebuild"], 1)
 
@@ -625,12 +625,12 @@ def run_run_cycle_eval():
     log_res("run_cycle: PAIR abnormal return", result, None)
     log_res("run_cycle: PAIR abnormal no rebuild", calls["rebuild"], 0)
 
-    result, calls = run_run_cycle_case(state_b, buy_only_orders(), ("keep", None, None), btc_mid=100250.0)
+    result, calls = run_run_cycle_case(state_b, buy_only_orders(), ("keep", None, None), btc_mid=10250.0)
     log_res("run_cycle: BUY_ONLY keep return", result, state_b)
     log_res("run_cycle: BUY_ONLY read mid", calls["read_btc_mid"], 1)
-    log_res("run_cycle: BUY_ONLY pass mid", calls["btc_mid_seen"], 100250.0)
+    log_res("run_cycle: BUY_ONLY pass mid", calls["btc_mid_seen"], 10250.0)
 
-    result, calls = run_run_cycle_case(state_s, sell_only_orders(), ("keep", None, None), btc_mid=100250.0)
+    result, calls = run_run_cycle_case(state_s, sell_only_orders(), ("keep", None, None), btc_mid=10250.0)
     log_res("run_cycle: SELL_ONLY keep return", result, state_s)
     log_res("run_cycle: SELL_ONLY no mid read", calls["read_btc_mid"], 0)
     log_res("run_cycle: SELL_ONLY pass mid", calls["btc_mid_seen"], None)
@@ -880,7 +880,7 @@ def run_execution_eval():
     except ValueError:
         log_res("build_pair: invalid buy <=0", "ValueError", "ValueError")
 
-    orders_with_oid = [order("BUY", 99800.0, oid=11), order("SELL", 100200.0, oid=22)]
+    orders_with_oid = [order("BUY", 9800.0, oid=11), order("SELL", 10200.0, oid=22)]
 
     result, calls = run_exec_cleanup_case([], wait_result=True, remaining_orders=[])
     log_res("cleanup_orders: empty -> True", result, True)
@@ -1063,38 +1063,38 @@ def run_gateway_eval():
         log_note("gateway: import grid_gateway", "SKIPPED", "grid_gateway import failed")
         return
 
-    normalized_buy = grid_gate.normalize_order({"side": "B", "limitPx": 99800.4, "oid": 11})
+    normalized_buy = grid_gate.normalize_order({"side": "B", "limitPx": 9800.4, "oid": 11})
     log_res("gateway: normalize BUY side", normalized_buy["side"], "BUY")
-    log_res("gateway: normalize BUY price", normalized_buy["price"], grid_gate.normalize_price(99800.4))
+    log_res("gateway: normalize BUY price", normalized_buy["price"], grid_gate.normalize_price(9800.4))
     log_res("gateway: normalize BUY oid keep", normalized_buy["oid"], 11)
 
-    normalized_sell = grid_gate.normalize_order({"side": "A", "limitPx": 100200.4, "oid": 22})
+    normalized_sell = grid_gate.normalize_order({"side": "A", "limitPx": 10200.4, "oid": 22})
     log_res("gateway: normalize SELL side", normalized_sell["side"], "SELL")
-    log_res("gateway: normalize SELL price", normalized_sell["price"], grid_gate.normalize_price(100200.4))
+    log_res("gateway: normalize SELL price", normalized_sell["price"], grid_gate.normalize_price(10200.4))
 
     try:
-        grid_gate.normalize_order({"side": "X", "limitPx": 100000.0})
+        grid_gate.normalize_order({"side": "X", "limitPx": 10000.0})
         log_res("gateway: normalize invalid side", "NO_ERROR", "ValueError")
     except ValueError:
         log_res("gateway: normalize invalid side", "ValueError", "ValueError")
 
     raw_orders = [
-        {"side": "B", "limitPx": 99800.4, "oid": 11},
-        {"side": "A", "limitPx": 100200.4, "oid": 22},
+        {"side": "B", "limitPx": 9800.4, "oid": 11},
+        {"side": "A", "limitPx": 10200.4, "oid": 22},
     ]
     result, calls = run_gateway_open_orders_case(raw_orders)
     log_res(
         "gateway: read_orders result",
         result,
         [
-            {"side": "BUY", "price": grid_gate.normalize_price(99800.4), "oid": 11, "limitPx": 99800.4},
-            {"side": "SELL", "price": grid_gate.normalize_price(100200.4), "oid": 22, "limitPx": 100200.4},
+            {"side": "BUY", "price": grid_gate.normalize_price(9800.4), "oid": 11, "limitPx": 9800.4},
+            {"side": "SELL", "price": grid_gate.normalize_price(10200.4), "oid": 22, "limitPx": 10200.4},
         ],
     )
     log_res("gateway: read_orders retry call", calls["retry_read"], 1)
 
-    result = run_gateway_read_mid_case(mids_value={grid_gate.BTC_MID_KEY: 100123.4})
-    log_res("gateway: read_btc_mid success", result, grid_gate.normalize_price(100123.4))
+    result = run_gateway_read_mid_case(mids_value={grid_gate.BTC_MID_KEY: 10123.4})
+    log_res("gateway: read_btc_mid success", result, grid_gate.normalize_price(10123.4))
 
     result = run_gateway_read_mid_case(mids_value={grid_gate.BTC_MID_KEY: 0})
     log_res("gateway: read_btc_mid zero -> None", result, None)
@@ -1105,8 +1105,8 @@ def run_gateway_eval():
     result = run_gateway_read_mid_case(mids_exc=RuntimeError("mid failed"))
     log_res("gateway: read_btc_mid exc", result, "RuntimeError")
 
-    result, calls = run_gateway_reference_case(mids_value={grid_gate.BTC_MID_KEY: 100123.4})
-    expected_reference = grid_gate.normalize_price(int((100123.4 / GRID_STEP) + 0.5) * GRID_STEP)
+    result, calls = run_gateway_reference_case(mids_value={grid_gate.BTC_MID_KEY: 10123.4})
+    expected_reference = grid_gate.normalize_price(int((10123.4 / GRID_STEP) + 0.5) * GRID_STEP)
     log_res("gateway: read_btc_grid success", result, expected_reference)
     log_res("gateway: read_btc_grid read call", calls["all_mids"], 1)
 
@@ -1138,8 +1138,8 @@ def run_bootstrap_step7a_eval():
         log_note("bootstrap step7A: import grid", "SKIPPED", "grid import failed")
         return
 
-    inherited_state = {"mode": PAIR_MODE, "buy_price": 99800.0, "sell_price": 100200.0}
-    rebuilt_state = {"mode": PAIR_MODE, "buy_price": 99700.0, "sell_price": 100100.0}
+    inherited_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0}
+    rebuilt_state = {"mode": PAIR_MODE, "buy_price": 9700.0, "sell_price": 10100.0}
     orders = pair_orders()
 
     result, calls = run_bootstrap_saved_state_case(
@@ -1174,8 +1174,8 @@ def run_gateway_execution_step7b_eval():
     if grid_exec is None:
         log_note("step7B: import grid_execution", "SKIPPED", "grid_execution import failed")
     else:
-        buy_action = {"side": "BUY", "price": 99800.0, "size": 0.00123}
-        sell_action = {"side": "SELL", "price": 100200.0, "size": 0.00456}
+        buy_action = {"side": "BUY", "price": 9800.0, "size": 0.00123}
+        sell_action = {"side": "SELL", "price": 10200.0, "size": 0.00456}
 
         ok_result = {"response": {"data": {"statuses": [{"resting": {"oid": 1}}]}}}
 
