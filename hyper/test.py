@@ -675,7 +675,18 @@ def run_exec_cleanup_case(initial_orders, wait_result):
     return result, calls
 
 
-def run_rebuild_case(initial_orders, cleanup_result, rebuild_price_input, computed_price, place_reset_rebuild_result):
+def run_rebuild_case(
+    initial_orders=None,
+    cleanup_result=True,
+    rebuild_price_input=None,
+    computed_price=10000.0,
+    place_statuses=None,
+    strategy="reset",
+    allow_buy_only=True,
+    allow_sell_only=True,
+    wait_result=True,
+    cancel_exc=None,
+):
     if grid_exec is None:
         return None, None
 
@@ -683,15 +694,36 @@ def run_rebuild_case(initial_orders, cleanup_result, rebuild_price_input, comput
         "cleanup_orders": 0,
         "cleanup_orders_args": None,
         "read_btc_grid": 0,
-        "place_reset_rebuild": 0,
-        "place_reset_rebuild_args": None,
+        "build_pair": 0,
+        "build_pair_args": [],
+        "place_limit_order": 0,
+        "place_limit_order_args": [],
+        "cancel": 0,
+        "cancel_args": [],
+        "wait_until": 0,
     }
 
     old_cleanup_orders = grid_exec.cleanup_orders
     old_read_btc_grid = grid_exec.read_btc_grid
-    old_place_reset_rebuild = grid_exec.place_reset_rebuild
+    old_build_pair = grid_exec.build_pair
+    old_place_limit_order = grid_exec.place_limit_order
+    old_wait_until = grid_exec.wait_until
+    old_allow_buy_only = grid_exec.ALLOW_BUY_ONLY_WHEN_NO_BTC
+    old_allow_sell_only = grid_exec.ALLOW_SELL_ONLY_WHEN_NO_USDC
 
-    def fake_cleanup_orders(info, trader, orders):
+    initial_orders = [] if initial_orders is None else initial_orders
+    buy_action = {"side": "BUY", "price": 9800.0, "size": 0.001}
+    sell_action = {"side": "SELL", "price": 10200.0, "size": 0.001}
+    statuses = list(place_statuses or ["ok", "ok"])
+
+    class FakeTrader:
+        def cancel(self, symbol, oid):
+            calls["cancel"] += 1
+            calls["cancel_args"].append((symbol, oid))
+            if cancel_exc is not None:
+                raise cancel_exc
+
+    def fake_cleanup_orders(info, trader, orders=None):
         calls["cleanup_orders"] += 1
         calls["cleanup_orders_args"] = orders
         return cleanup_result
@@ -700,53 +732,9 @@ def run_rebuild_case(initial_orders, cleanup_result, rebuild_price_input, comput
         calls["read_btc_grid"] += 1
         return computed_price
 
-    def fake_place_reset_rebuild(info, trader, price):
-        calls["place_reset_rebuild"] += 1
-        calls["place_reset_rebuild_args"] = price
-        return place_reset_rebuild_result
-
-    try:
-        grid_exec.cleanup_orders = fake_cleanup_orders
-        grid_exec.read_btc_grid = fake_read_btc_grid
-        grid_exec.place_reset_rebuild = fake_place_reset_rebuild
-        result = grid_exec.rebuild(
-            info=object(),
-            trader=object(),
-            live_snapshot=live_snapshot(initial_orders),
-            rebuild_price=rebuild_price_input,
-        )
-    finally:
-        grid_exec.cleanup_orders = old_cleanup_orders
-        grid_exec.read_btc_grid = old_read_btc_grid
-        grid_exec.place_reset_rebuild = old_place_reset_rebuild
-
-    return result, calls
-
-
-def run_place_reset_rebuild_case(buy_status, sell_status, allow_buy_only, allow_sell_only, cleanup_result=True, price=10000.0):
-    if grid_exec is None:
-        return None, None
-
-    calls = {
-        "build_pair": 0,
-        "place_limit_order": 0,
-        "place_limit_order_args": [],
-        "cleanup_orders": 0,
-    }
-
-    old_build_pair = grid_exec.build_pair
-    old_place_limit_order = grid_exec.place_limit_order
-    old_cleanup_orders = grid_exec.cleanup_orders
-    old_allow_buy_only = grid_exec.ALLOW_BUY_ONLY_WHEN_NO_BTC
-    old_allow_sell_only = grid_exec.ALLOW_SELL_ONLY_WHEN_NO_USDC
-
-    buy_action = {"side": "BUY", "price": 9800.0, "size": 0.001}
-    sell_action = {"side": "SELL", "price": 10200.0, "size": 0.001}
-
-    statuses = [buy_status, sell_status]
-
     def fake_build_pair(local_price):
         calls["build_pair"] += 1
+        calls["build_pair_args"].append(local_price)
         return buy_action, sell_action
 
     def fake_place_limit_order(trader, action):
@@ -754,21 +742,31 @@ def run_place_reset_rebuild_case(buy_status, sell_status, allow_buy_only, allow_
         calls["place_limit_order_args"].append(action["side"])
         return statuses.pop(0)
 
-    def fake_cleanup_orders(info, trader):
-        calls["cleanup_orders"] += 1
-        return cleanup_result
+    def fake_wait_until(info, predicate, max_tries=10, interval_sec=WAIT_NO_OPEN_ORDERS_INTERVAL_SEC):
+        calls["wait_until"] += 1
+        return wait_result
 
     try:
+        grid_exec.cleanup_orders = fake_cleanup_orders
+        grid_exec.read_btc_grid = fake_read_btc_grid
         grid_exec.build_pair = fake_build_pair
         grid_exec.place_limit_order = fake_place_limit_order
-        grid_exec.cleanup_orders = fake_cleanup_orders
+        grid_exec.wait_until = fake_wait_until
         grid_exec.ALLOW_BUY_ONLY_WHEN_NO_BTC = allow_buy_only
         grid_exec.ALLOW_SELL_ONLY_WHEN_NO_USDC = allow_sell_only
-        result = grid_exec.place_reset_rebuild(info=object(), trader=object(), price=price)
+        result = grid_exec.rebuild(
+            info=object(),
+            trader=FakeTrader(),
+            live_snapshot=live_snapshot(initial_orders),
+            strategy=strategy,
+            rebuild_price=rebuild_price_input,
+        )
     finally:
+        grid_exec.cleanup_orders = old_cleanup_orders
+        grid_exec.read_btc_grid = old_read_btc_grid
         grid_exec.build_pair = old_build_pair
         grid_exec.place_limit_order = old_place_limit_order
-        grid_exec.cleanup_orders = old_cleanup_orders
+        grid_exec.wait_until = old_wait_until
         grid_exec.ALLOW_BUY_ONLY_WHEN_NO_BTC = old_allow_buy_only
         grid_exec.ALLOW_SELL_ONLY_WHEN_NO_USDC = old_allow_sell_only
 
@@ -893,28 +891,55 @@ def run_execution_eval():
     log_res("cleanup_orders: remain -> False", result, False)
     log_res("cleanup_orders: remain no extra read_orders", calls["read_orders"], 0)
 
-    placed_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10000.0}
+    placed_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 9999.0}
 
-    result, calls = run_rebuild_case([], cleanup_result=True, rebuild_price_input=10000.0, computed_price=9999.0, place_reset_rebuild_result=placed_state)
-    log_res("rebuild: explicit price return", result, placed_state)
-    log_res("rebuild: explicit price no cleanup", calls["cleanup_orders"], 0)
+    result, calls = run_rebuild_case([], cleanup_result=True, rebuild_price_input=10000.0, computed_price=9999.0)
+    log_res("rebuild: reset explicit price ignored", result, placed_state)
+    log_res("rebuild: reset explicit price no cleanup", calls["cleanup_orders"], 0)
     log_res("rebuild: reset reads current grid", calls["read_btc_grid"], 1)
-    log_res("rebuild: reset place_reset_rebuild arg", calls["place_reset_rebuild_args"], 9999.0)
+    log_res("rebuild: reset build_pair arg", calls["build_pair_args"], [9999.0])
 
-    result, calls = run_rebuild_case([], cleanup_result=True, rebuild_price_input=None, computed_price=10400.0, place_reset_rebuild_result=placed_state)
-    log_res("rebuild: implicit price return", result, placed_state)
-    log_res("rebuild: implicit price read_btc_grid", calls["read_btc_grid"], 1)
-    log_res("rebuild: implicit price place_reset_rebuild arg", calls["place_reset_rebuild_args"], 10400.0)
+    placed_state_10400 = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10400.0}
+    result, calls = run_rebuild_case([], cleanup_result=True, rebuild_price_input=None, computed_price=10400.0)
+    log_res("rebuild: reset implicit price return", result, placed_state_10400)
+    log_res("rebuild: reset implicit price read_btc_grid", calls["read_btc_grid"], 1)
+    log_res("rebuild: reset implicit price build_pair arg", calls["build_pair_args"], [10400.0])
 
-    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=True, rebuild_price_input=10000.0, computed_price=9999.0, place_reset_rebuild_result=placed_state)
+    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=True, rebuild_price_input=10000.0, computed_price=9999.0)
     log_res("rebuild: with old orders cleanup", result, placed_state)
     log_res("rebuild: with old orders cleanup count", calls["cleanup_orders"], 1)
     log_res("rebuild: with old orders cleanup args", calls["cleanup_orders_args"], orders_with_oid)
 
-    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=False, rebuild_price_input=10000.0, computed_price=9999.0, place_reset_rebuild_result=placed_state)
+    result, calls = run_rebuild_case(orders_with_oid, cleanup_result=False, rebuild_price_input=10000.0, computed_price=9999.0)
     log_res("rebuild: cleanup fail -> None", result, None)
-    log_res("rebuild: cleanup fail no place_reset_rebuild", calls["place_reset_rebuild"], 0)
+    log_res("rebuild: cleanup fail no place orders", calls["place_limit_order"], 0)
     log_res("rebuild: cleanup fail no read_btc_grid", calls["read_btc_grid"], 0)
+
+    done_deal_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10000.0}
+    result, calls = run_rebuild_case(
+        [order("BUY", 9800.0, oid=11)],
+        rebuild_price_input=10000.0,
+        computed_price=9999.0,
+        strategy="done_deal",
+    )
+    log_res("rebuild: done_deal explicit price return", result, done_deal_state)
+    log_res("rebuild: done_deal explicit no grid read", calls["read_btc_grid"], 0)
+    log_res("rebuild: done_deal explicit build_pair arg", calls["build_pair_args"], [10000.0])
+    log_res("rebuild: done_deal missing side first", calls["place_limit_order_args"], ["SELL", "BUY"])
+    log_res("rebuild: done_deal cancel remaining", calls["cancel_args"], [(grid_exec.SYMBOL, 11)])
+    log_res("rebuild: done_deal verify cancel", calls["wait_until"], 1)
+
+    anchor_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10400.0}
+    result, calls = run_rebuild_case(
+        [order("SELL", 10200.0, oid=22)],
+        rebuild_price_input=None,
+        computed_price=10400.0,
+        strategy="anchor_break",
+    )
+    log_res("rebuild: anchor_break fallback return", result, anchor_state)
+    log_res("rebuild: anchor_break fallback grid read", calls["read_btc_grid"], 1)
+    log_res("rebuild: anchor_break fallback build_pair arg", calls["build_pair_args"], [10400.0])
+    log_res("rebuild: anchor_break missing side first", calls["place_limit_order_args"], ["BUY", "SELL"])
 
 
 def run_execution_step4_eval():
@@ -955,98 +980,111 @@ def run_execution_step4_eval():
         "error",
     )
 
-    result, calls = run_place_reset_rebuild_case(
-        buy_status="ok",
-        sell_status="ok",
+    result, calls = run_rebuild_case(
+        place_statuses=["ok", "ok"],
         allow_buy_only=True,
         allow_sell_only=True,
-        price=10000.0,
+        computed_price=10000.0,
     )
     log_res(
-        "place_reset_rebuild: both ok -> PAIR",
+        "rebuild reset: both ok -> PAIR",
         result,
         {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10000.0},
     )
-    log_res("place_reset_rebuild: both ok no cleanup", calls["cleanup_orders"], 0)
-    log_res("place_reset_rebuild: both ok call order", calls["place_limit_order_args"], ["BUY", "SELL"])
+    log_res("rebuild reset: both ok no cleanup", calls["cleanup_orders"], 0)
+    log_res("rebuild reset: both ok call order", calls["place_limit_order_args"], ["BUY", "SELL"])
 
-    result, calls = run_place_reset_rebuild_case(
-        buy_status="ok",
-        sell_status="insufficient_spot_balance",
+    result, calls = run_rebuild_case(
+        place_statuses=["ok", "insufficient_spot_balance"],
         allow_buy_only=True,
         allow_sell_only=True,
-        price=10000.0,
+        computed_price=10000.0,
     )
     log_res(
-        "place_reset_rebuild: buy ok -> BUY_ONLY",
+        "rebuild reset: buy ok -> BUY_ONLY",
         result,
         {"mode": BUY_ONLY_MODE, "buy_price": 9800.0, "reference_price": 10000.0},
     )
-    log_res("place_reset_rebuild: BUY_ONLY no cleanup", calls["cleanup_orders"], 0)
+    log_res("rebuild reset: BUY_ONLY no cleanup", calls["cleanup_orders"], 0)
 
-    result, calls = run_place_reset_rebuild_case(
-        buy_status="insufficient_spot_balance",
-        sell_status="ok",
+    result, calls = run_rebuild_case(
+        place_statuses=["insufficient_spot_balance", "ok"],
         allow_buy_only=True,
         allow_sell_only=True,
-        price=10000.0,
+        computed_price=10000.0,
     )
     log_res(
-        "place_reset_rebuild: sell ok -> SELL_ONLY",
+        "rebuild reset: sell ok -> SELL_ONLY",
         result,
         {"mode": SELL_ONLY_MODE, "sell_price": 10200.0, "reference_price": 10000.0},
     )
-    log_res("place_reset_rebuild: SELL_ONLY no cleanup", calls["cleanup_orders"], 0)
+    log_res("rebuild reset: SELL_ONLY no cleanup", calls["cleanup_orders"], 0)
 
-    result, calls = run_place_reset_rebuild_case(
-        buy_status="ok",
-        sell_status="insufficient_spot_balance",
+    result, calls = run_rebuild_case(
+        place_statuses=["ok", "insufficient_spot_balance"],
         allow_buy_only=False,
         allow_sell_only=True,
-        price=10000.0,
+        computed_price=10000.0,
     )
-    log_res("place_reset_rebuild: BUY_ONLY disallowed -> None", result, None)
-    log_res("place_reset_rebuild: BUY_ONLY disallowed cleanup", calls["cleanup_orders"], 1)
+    log_res("rebuild reset: BUY_ONLY disallowed -> None", result, None)
+    log_res("rebuild reset: BUY_ONLY disallowed cleanup", calls["cleanup_orders"], 1)
 
-    result, calls = run_place_reset_rebuild_case(
-        buy_status="insufficient_spot_balance",
-        sell_status="ok",
+    result, calls = run_rebuild_case(
+        place_statuses=["insufficient_spot_balance", "ok"],
         allow_buy_only=True,
         allow_sell_only=False,
-        price=10000.0,
+        computed_price=10000.0,
     )
-    log_res("place_reset_rebuild: SELL_ONLY disallowed -> None", result, None)
-    log_res("place_reset_rebuild: SELL_ONLY disallowed cleanup", calls["cleanup_orders"], 1)
+    log_res("rebuild reset: SELL_ONLY disallowed -> None", result, None)
+    log_res("rebuild reset: SELL_ONLY disallowed cleanup", calls["cleanup_orders"], 1)
 
-    result, calls = run_place_reset_rebuild_case(
-        buy_status="error",
-        sell_status="ok",
+    result, calls = run_rebuild_case(
+        place_statuses=["error", "ok"],
         allow_buy_only=True,
         allow_sell_only=True,
-        price=10000.0,
+        computed_price=10000.0,
     )
-    log_res("place_reset_rebuild: buy error -> None", result, None)
-    log_res("place_reset_rebuild: buy error cleanup", calls["cleanup_orders"], 1)
+    log_res("rebuild reset: buy error -> None", result, None)
+    log_res("rebuild reset: buy error cleanup", calls["cleanup_orders"], 1)
 
-    result, calls = run_place_reset_rebuild_case(
-        buy_status="ok",
-        sell_status="error",
+    result, calls = run_rebuild_case(
+        place_statuses=["ok", "error"],
         allow_buy_only=True,
         allow_sell_only=True,
-        price=10000.0,
+        computed_price=10000.0,
     )
-    log_res("place_reset_rebuild: sell error -> None", result, None)
-    log_res("place_reset_rebuild: sell error cleanup", calls["cleanup_orders"], 1)
+    log_res("rebuild reset: sell error -> None", result, None)
+    log_res("rebuild reset: sell error cleanup", calls["cleanup_orders"], 1)
 
-    result, calls = run_place_reset_rebuild_case(
-        buy_status="error",
-        sell_status="error",
+    result, calls = run_rebuild_case(
+        place_statuses=["error", "error"],
         allow_buy_only=True,
         allow_sell_only=True,
-        price=10000.0,
+        computed_price=10000.0,
     )
-    log_res("place_reset_rebuild: both error -> None", result, None)
-    log_res("place_reset_rebuild: both error cleanup", calls["cleanup_orders"], 1)
+    log_res("rebuild reset: both error -> None", result, None)
+    log_res("rebuild reset: both error cleanup", calls["cleanup_orders"], 1)
+
+    result, calls = run_rebuild_case(
+        [order("BUY", 9800.0, oid=11)],
+        rebuild_price_input=10000.0,
+        place_statuses=["ok", "ok"],
+        strategy="done_deal",
+        wait_result=False,
+    )
+    log_res("rebuild done_deal: verify fail -> None", result, None)
+    log_res("rebuild done_deal: verify fail cleanup", calls["cleanup_orders"], 1)
+    log_res("rebuild done_deal: verify fail no second place", calls["place_limit_order_args"], ["SELL"])
+
+    result, calls = run_rebuild_case(
+        [order("BUY", 9800.0, oid=11)],
+        rebuild_price_input=10000.0,
+        place_statuses=["ok", "ok"],
+        strategy="done_deal",
+        cancel_exc=RuntimeError("cancel failed"),
+    )
+    log_res("rebuild done_deal: cancel exception -> None", result, None)
+    log_res("rebuild done_deal: cancel exception cleanup", calls["cleanup_orders"], 1)
 
 
 def run_gateway_eval():
