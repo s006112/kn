@@ -46,10 +46,12 @@ def classify_order_mode(orders):
                 "mode": BUY_ONLY_MODE,
                 "buy_price": order["price"],
             }
-        return {
-            "mode": SELL_ONLY_MODE,
-            "sell_price": order["price"],
-        }
+        if order["side"] == "SELL":
+            return {
+                "mode": SELL_ONLY_MODE,
+                "sell_price": order["price"],
+            }
+        return {"mode": ABNORMAL_MODE}
 
     return {"mode": ABNORMAL_MODE}
 

@@ -465,7 +465,8 @@ def run_order_mode_classification_eval():
     log_res("Order Mode: Two BUY", mode_of_bootstrap([order("BUY", 9800.0), order("BUY", 9600.0)]), ABNORMAL_MODE)
     log_res("Order Mode: Two SELL", mode_of_bootstrap([order("SELL", 10200.0), order("SELL", 10400.0)]), ABNORMAL_MODE)
     log_res("Order Mode: buy>=sell", mode_of_bootstrap(pair_orders(10200.0, 9800.0)), ABNORMAL_MODE)
-
+    log_res("Order Mode: HOLD", mode_of_bootstrap([order("HOLD", 10200.0)]), ABNORMAL_MODE)
+    log_res("Order Mode: sell", mode_of_bootstrap([order("sell", 10200.0)]), ABNORMAL_MODE)
     log_res("Order Mode: Correct Gap", mode_of_bootstrap(pair_orders(9800.0, 10200.0)), PAIR_MODE)
     log_res("Order Mode: Wrong Gap", mode_of_bootstrap(pair_orders(9900.0, 10000.0)), ABNORMAL_MODE)
 
