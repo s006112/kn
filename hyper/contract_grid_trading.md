@@ -446,12 +446,11 @@ fill-replace verify 的目标是旧 oid absent，不要求 open orders 归零。
 
 `cleanup_orders(info, trader, orders)` 当前行为：
 
-- `orders` 为空时返回 `True`。
-- 对每个 order 调用 `cancel_order_by_oid(trader, order)`。
-- `cancel_order_by_oid` 使用 `trader.cancel(SYMBOL, order["oid"])`。
-- 全部 cancel 调用后，调用 `wait_no_open_orders(info)`。
+- `orders` 未传入时先读取当前 open orders。
+- 使用 `trader.bulk_cancel([{"coin": SYMBOL, "oid": order["oid"]}, ...])` 一次提交全部撤单请求。
+- bulk cancel 调用后，调用 `wait_no_open_orders(info)`。
 - 若确认无 open orders，返回 `True`。
-- 若仍有 open orders，读取 remaining orders，输出摘要，记录 cleanup failure，返回 `False`。
+- 若仍有 open orders，记录 cleanup failure，返回 `False`。
 
 当前限制：
 

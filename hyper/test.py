@@ -342,7 +342,7 @@ def run_cleanup_orders_missing_oid_case(orders):
         return None
 
     class FakeTrader:
-        def cancel(self, symbol, oid):
+        def bulk_cancel(self, cancel_requests):
             return None
 
     try:
@@ -637,26 +637,24 @@ def run_run_cycle_eval():
     log_res("run_cycle: SELL_ONLY pass mid", calls["btc_mid_seen"], None)
 
 
-def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
+def run_exec_cleanup_case(initial_orders, wait_result):
     if grid_exec is None:
         return None, None
 
     calls = {
-        "cancel": 0,
-        "cancel_args": [],
+        "bulk_cancel": 0,
+        "bulk_cancel_args": [],
         "wait_until": 0,
         "read_orders": 0,
-        "summarize_orders": 0,
     }
 
     old_wait_until = grid_exec.wait_until
     old_read_orders = grid_exec.read_orders
-    old_summarize_orders = grid_exec.summarize_orders
 
     class FakeTrader:
-        def cancel(self, symbol, oid):
-            calls["cancel"] += 1
-            calls["cancel_args"].append((symbol, oid))
+        def bulk_cancel(self, cancel_requests):
+            calls["bulk_cancel"] += 1
+            calls["bulk_cancel_args"].append(cancel_requests)
 
     def fake_wait_until(info, predicate, max_tries=10, interval_sec=WAIT_NO_OPEN_ORDERS_INTERVAL_SEC):
         calls["wait_until"] += 1
@@ -664,21 +662,15 @@ def run_exec_cleanup_case(initial_orders, wait_result, remaining_orders):
 
     def fake_read_orders(info):
         calls["read_orders"] += 1
-        return remaining_orders
-
-    def fake_summarize_orders(orders):
-        calls["summarize_orders"] += 1
-        return 0, 0
+        return []
 
     try:
         grid_exec.wait_until = fake_wait_until
         grid_exec.read_orders = fake_read_orders
-        grid_exec.summarize_orders = fake_summarize_orders
         result = grid_exec.cleanup_orders(info=object(), trader=FakeTrader(), orders=initial_orders)
     finally:
         grid_exec.wait_until = old_wait_until
         grid_exec.read_orders = old_read_orders
-        grid_exec.summarize_orders = old_summarize_orders
 
     return result, calls
 
@@ -883,23 +875,23 @@ def run_execution_eval():
 
     orders_with_oid = [order("BUY", 9800.0, oid=11), order("SELL", 10200.0, oid=22)]
 
-    result, calls = run_exec_cleanup_case([], wait_result=True, remaining_orders=[])
+    result, calls = run_exec_cleanup_case([], wait_result=True)
     log_res("cleanup_orders: empty -> True", result, True)
-    log_res("cleanup_orders: empty no cancel", calls["cancel"], 0)
+    log_res("cleanup_orders: empty bulk cancel count", calls["bulk_cancel"], 1)
+    log_res("cleanup_orders: empty bulk cancel payload", calls["bulk_cancel_args"], [[]])
 
-    result, calls = run_exec_cleanup_case(orders_with_oid, wait_result=True, remaining_orders=[])
+    result, calls = run_exec_cleanup_case(orders_with_oid, wait_result=True)
     log_res("cleanup_orders: success -> True", result, True)
-    log_res("cleanup_orders: success cancel count", calls["cancel"], 2)
+    log_res("cleanup_orders: success bulk cancel count", calls["bulk_cancel"], 1)
     log_res(
-        "cleanup_orders: success cancel payload",
-        calls["cancel_args"],
-        [(grid_exec.SYMBOL, 11), (grid_exec.SYMBOL, 22)],
+        "cleanup_orders: success bulk cancel payload",
+        calls["bulk_cancel_args"],
+        [[{"coin": grid_exec.SYMBOL, "oid": 11}, {"coin": grid_exec.SYMBOL, "oid": 22}]],
     )
 
-    result, calls = run_exec_cleanup_case(orders_with_oid, wait_result=False, remaining_orders=orders_with_oid[:1])
+    result, calls = run_exec_cleanup_case(orders_with_oid, wait_result=False)
     log_res("cleanup_orders: remain -> False", result, False)
-    log_res("cleanup_orders: remain read_orders", calls["read_orders"], 1)
-    log_res("cleanup_orders: remain summarize", calls["summarize_orders"], 1)
+    log_res("cleanup_orders: remain no extra read_orders", calls["read_orders"], 0)
 
     placed_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "reference_price": 10000.0}
 

@@ -17,7 +17,6 @@ from grid_config import (
     MAX_RETRIES,
     format_price,
     log_msg,
-    summarize_orders,
 )
 from grid_config import read_orders, read_btc_grid
 
@@ -130,20 +129,13 @@ def cancel_order_by_oid(trader, order):
 
 
 def cleanup_orders(info, trader, orders=None):
-    if orders is None:
-        orders = read_orders(info)
-
-    if not orders:
-        return True
-
-    for order in orders:
-        cancel_order_by_oid(trader, order)
+    
+    orders = read_orders(info) if orders is None else orders
+    trader.bulk_cancel([{"coin": SYMBOL, "oid": order["oid"]} for order in orders])
 
     if wait_until(info, lambda orders: not orders):
         return True
 
-    remaining_orders = read_orders(info)
-    summarize_orders(remaining_orders)
     log_msg("cleanup failure: open orders still remain")
     return False
 
