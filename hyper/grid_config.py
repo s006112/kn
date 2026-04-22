@@ -21,8 +21,8 @@ BTC_MID_KEY = "@142"
 
 BUDGET_USDC = 200.0  # 每侧订单按 100 USDC 名义金额下单，用它反推买卖数量
 GRID_STEP = 200.0  # 参考价每上下偏移 100 美元挂一格，是网格的基础间距
-BUY_GRID_FACTOR =0.90  # 买单距离 = 1.00 x GRID_STEP，1.00 表示向下 1 格挂买单
-SELL_GRID_FACTOR = 1.11  # 卖单距离 = 1.00 x GRID_STEP，1.00 表示向上 1 格挂卖单
+BUY_GRID_FACTOR =1.0  # 买单距离 = 1.00 x GRID_STEP，1.00 表示向下 1 格挂买单
+SELL_GRID_FACTOR = 1.0  # 卖单距离 = 1.00 x GRID_STEP，1.00 表示向上 1 格挂卖单
 GRID_GAP = (BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP  # 买卖单之间的价差，理论上应该保持稳定
 
 TICK_COUNT = 40  # 价格偏移超过 N 格时，认为价格发生了较大变动，可能需要重锚
