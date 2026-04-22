@@ -21,14 +21,14 @@ BTC_MID_KEY = "@142"
 
 BUDGET_USDC = 200.0  # 每侧订单按 100 USDC 名义金额下单，用它反推买卖数量
 GRID_STEP = 200.0  # 参考价每上下偏移 100 美元挂一格，是网格的基础间距
-BUY_GRID_FACTOR = 1.00  # 买单距离 = 1.00 x GRID_STEP，1.00 表示向下 1 格挂买单
-SELL_GRID_FACTOR = 1.00  # 卖单距离 = 1.00 x GRID_STEP，1.00 表示向上 1 格挂卖单
+BUY_GRID_FACTOR =0.90  # 买单距离 = 1.00 x GRID_STEP，1.00 表示向下 1 格挂买单
+SELL_GRID_FACTOR = 1.11  # 卖单距离 = 1.00 x GRID_STEP，1.00 表示向上 1 格挂卖单
 GRID_GAP = (BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP  # 买卖单之间的价差，理论上应该保持稳定
 
 TICK_COUNT = 40  # 价格偏移超过 N 格时，认为价格发生了较大变动，可能需要重锚
-MAIN_LOOP_POLL_INTERVAL_SEC = 0.5  # 主循环，检查挂单和状态是否变化
+MAIN_LOOP_POLL_INTERVAL_SEC = 1.0  # 主循环，检查挂单和状态是否变化
 CONSECUTIVE_READS = 2  # btc_mid 连续不变读数窗口
-ORDER_ZONE = GRID_GAP * 0.05 # 订单区间，价格偏移在网格间距的 xx% 以内时，认为价格在订单附近
+ORDER_ZONE = GRID_GAP * 0.03 # 订单区间，价格偏移在网格间距的 xx% 以内时，认为价格在订单附近
 
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True  # 卖单因 BTC 不足下不出时，允许退化成仅挂买单
 ALLOW_SELL_ONLY_WHEN_NO_USDC = True  # 买单因 USDC 不足下不出时，允许退化成仅挂卖单
@@ -72,8 +72,8 @@ def format_price(price):
     return str(int(normalize_price(price)))
 
 def price_gap_matches(buy_price, sell_price, expected_gap):
-    return normalize_price(sell_price) - normalize_price(buy_price) == normalize_price(expected_gap)
-    #return True
+    #return normalize_price(sell_price) - normalize_price(buy_price) == normalize_price(expected_gap)
+    return True
 
 def price_distance_at_least(high_price, low_price, distance):
     return normalize_price(high_price) - normalize_price(low_price) >= normalize_price(distance)
