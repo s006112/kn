@@ -75,7 +75,7 @@ def route_email(subject: str, body: str) -> RouteResult:
     # -------------------------
     # category + risk
     # -------------------------
-    if re.search(r"\b(iec|ul|en|ce|certification|compliance|standards?)\b", text):
+    if re.search(r"\b(iec|ul|en|ce|csa|certification|certificates?|compliance|standards?)\b", text):
         return RouteResult(
             category="safety_regulation",
             intent=intent,
@@ -84,7 +84,7 @@ def route_email(subject: str, body: str) -> RouteResult:
             confidence=0.9,
         )
 
-    if re.search(r"\b(specifications?|test|wiring|voltage|current|power|dimensions?)\b", text):
+    if re.search(r"\b(specifications?|test(?:ing|s)?|wiring|voltage|current|power|dimensions?)\b", text):
         return RouteResult(
             category="technical",
             intent=intent,
@@ -93,7 +93,7 @@ def route_email(subject: str, body: str) -> RouteResult:
             confidence=0.7,
         )
 
-    if re.search(r"\b(price|quotation|moq|payment)\b", text) or "lead time" in text:
+    if re.search(r"\b(price|quotations?|moq|payment)\b", text) or "lead time" in text:
         return RouteResult(
             category="commercial",
             intent=intent,
