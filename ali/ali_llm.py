@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,36 +42,27 @@ RAG_ENGINE_BY_CATEGORY = {
     "technical": "standard",
     "rita": "rita",
 }
+_RAG_ENGINE_CACHE = {}
 
 
-def step2_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalResult:
+def rag_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalResult:
     engine_name = RAG_ENGINE_BY_CATEGORY.get(route.category)
     if engine_name is None:
         return RetrievalResult(used=False, context=None, source=None)
 
-    rag_answer = _get_rag_answer_lazy(body, engine_name)
-    if rag_answer:
-        return RetrievalResult(used=True, context=rag_answer, source="rag")
-    return RetrievalResult(used=False, context=None, source=None)
-
-
-@lru_cache(maxsize=None)
-def _get_rag_engine(engine_name: str):
-    return get_rag_engine(engine_name)
-
-
-def _get_rag_answer_lazy(
-    question: str,
-    engine_name: str = "standard",
-) -> str:
     try:
-        answer, table_str = _get_rag_engine(engine_name).answer_question(question)
+        if engine_name not in _RAG_ENGINE_CACHE:
+            _RAG_ENGINE_CACHE[engine_name] = get_rag_engine(engine_name)
+        answer, table_str = _RAG_ENGINE_CACHE[engine_name].answer_question(body)
         if table_str:
             print(f"\n[RAG] FAISS similarity table:\n\n{table_str}\n")
-        return answer
     except Exception as e:
         print(f"RAG Retrieval or Generation failed: {e}")
-        return ""
+        return RetrievalResult(used=False, context=None, source=None)
+
+    if answer:
+        return RetrievalResult(used=True, context=answer, source="rag")
+    return RetrievalResult(used=False, context=None, source=None)
 
 
 # -----------------------------------------------------------------------------
@@ -100,7 +90,7 @@ def generate_review_package(
     if previous_draft is None:
         # v1 — rewrite
         route = route_email(subject_norm, body_norm)
-        retrieval = step2_retrieval(route, subject_norm, body_norm)
+        retrieval = rag_retrieval(route, subject_norm, body_norm)
 
         if retrieval.used:
             draft = retrieval.context.strip()
