@@ -48,8 +48,8 @@ MODEL_CATALOG = {
     "gemini-3-pro-image-preview": "Nano-Banana-Pro",   # $120, $0.134 per 1K/2K image
     "gemini-3.1-flash-image-preview": "Nano-Banana-2",   # $60, $0.045 per 1K/2K image
     "gemini-2.5-flash-image": "Nano-Banana",   # $0.039 per image
+    "gpt-image-2": "GPT-2",   # $30, $0.13 per image
     "gpt-image-1.5": "GPT-1.5",    # $32, $0.133 per image
-    "gpt-image-1": "GPT-1",   # $40, $0.167 per image
     "gpt-image-1-mini": "GPT-1-Mini",   # $8.00, $0.036 per images
     "grok-imagine-image-pro": "Grok-image",   # $0.07 per images
     #"grok-2-image-1212": "Grok-2, $",   # $0.07 per images
