@@ -64,8 +64,8 @@ def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
     - A tuple `(sqlite_path, index_path)` under `data/faiss`, where each
       filename starts with `mode` and has the correct extension.
     """
-    if mode not in {"standard", "mbox"}:
-        raise ValueError(f"Unknown RAG mode: {mode!r} (expected 'standard' or 'mbox')")
+    #if mode not in {"standard", "mbox"}:
+    #    raise ValueError(f"Unknown RAG mode: {mode!r} (expected 'standard' or 'mbox')")
 
     sqlite_paths = sorted(
         p for p in faiss_dir.iterdir()

@@ -17,7 +17,7 @@ from rag.helper_rag_pipeline import get_rag_engine
 # ─── Environment setup ──────────────────────────────────────────────────────
 load_dotenv()  # load API keys if present
 
-rag_engine = get_rag_engine("mbox")
+rag_engine = get_rag_engine("rita")
 
 def answer_question(raw_query: str):
     return rag_engine.answer_question(raw_query or "")
