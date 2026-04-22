@@ -9,6 +9,8 @@ from grid_config import (
     BUY_GRID_FACTOR,
     ORDER_ZONE,
     TICK_COUNT,
+    MAIN_LOOP_POLL_INTERVAL_SEC,
+    CONSECUTIVE_READS,
     WAIT_NO_OPEN_ORDERS_INTERVAL_SEC,
     API_WALLET_KEY,
 )
@@ -554,6 +556,7 @@ def run_run_cycle_case(
     rebuild_result=None,
     btc_mid=10500.0,
     tick_count=1,
+    live_poll_interval_sec=MAIN_LOOP_POLL_INTERVAL_SEC,
 ):
     if grid_engine is None:
         return None, None
@@ -600,6 +603,7 @@ def run_run_cycle_case(
             trader=object(),
             saved_state=saved_state,
             tick_count=tick_count,
+            live_poll_interval_sec=live_poll_interval_sec,
         )
     finally:
         grid_engine.read_orders = old_read_orders
@@ -624,13 +628,13 @@ def run_run_cycle_eval():
     rebuilt_state = {"mode": PAIR_MODE, "buy_price": 9700.0, "sell_price": 10100.0}
 
     result, calls = run_run_cycle_case(state_p, orders_p, ("keep", None, None))
-    log_res("run_cycle: PAIR keep return", result, state_p)
+    log_res("run_cycle: PAIR keep return", result, (state_p, 10500.0))
     log_res("run_cycle: PAIR keep no rebuild", calls["rebuild"], 0)
     log_res("run_cycle: PAIR keep read mid", calls["read_btc_mid"], 1)
     log_res("run_cycle: PAIR keep read orders", calls["read_orders"], 1)
 
     result, calls = run_run_cycle_case(state_p, orders_p, ("keep", None, None), btc_mid=10000.0)
-    log_res("run_cycle: order zone middle return", result, state_p)
+    log_res("run_cycle: order zone middle return", result, (state_p, 10000.0))
     log_res("run_cycle: order zone middle skip orders", calls["read_orders"], 0)
     log_res("run_cycle: order zone middle skip decision", calls["decide_cycle_action"], 0)
 
@@ -641,37 +645,64 @@ def run_run_cycle_eval():
         btc_mid=10000.0,
         tick_count=TICK_COUNT,
     )
-    log_res("run_cycle: tick_count refresh return", result, state_p)
+    log_res("run_cycle: tick_count refresh return", result, (state_p, 10000.0))
     log_res("run_cycle: tick_count refresh orders", calls["read_orders"], 1)
     log_res("run_cycle: tick_count refresh decision", calls["decide_cycle_action"], 1)
 
     result, calls = run_run_cycle_case(state_p, orders_p[:1], ("rebuild", "done_deal", 10200.0), rebuild_result=rebuilt_state)
-    log_res("run_cycle: PAIR rebuild return", result, rebuilt_state)
+    log_res("run_cycle: PAIR rebuild return", result, (rebuilt_state, 10500.0))
     log_res("run_cycle: PAIR rebuild count", calls["rebuild"], 1)
     log_res("run_cycle: PAIR rebuild strategy", calls["rebuild_args"][1], "done_deal")
     log_res("run_cycle: PAIR rebuild price", calls["rebuild_args"][2], 10200.0)
 
     result, calls = run_run_cycle_case(state_p, orders_p[:1], ("rebuild", "done_deal", 10200.0), rebuild_result=None)
-    log_res("run_cycle: PAIR rebuild fail", result, None)
+    log_res("run_cycle: PAIR rebuild fail", result, (None, 10500.0))
     log_res("run_cycle: PAIR rebuild fail count", calls["rebuild"], 1)
 
     result, calls = run_run_cycle_case(state_p, [], ("abnormal", None, None))
-    log_res("run_cycle: PAIR abnormal return", result, None)
+    log_res("run_cycle: PAIR abnormal return", result, (None, 10500.0))
     log_res("run_cycle: PAIR abnormal no rebuild", calls["rebuild"], 0)
 
     buy_only_sell_zone = state_b["sell_price"] - ORDER_ZONE
     result, calls = run_run_cycle_case(state_b, buy_only_orders(), ("keep", None, None), btc_mid=buy_only_sell_zone)
-    log_res("run_cycle: BUY_ONLY keep return", result, state_b)
+    log_res("run_cycle: BUY_ONLY keep return", result, (state_b, buy_only_sell_zone))
     log_res("run_cycle: BUY_ONLY read mid", calls["read_btc_mid"], 1)
     log_res("run_cycle: BUY_ONLY sell zone read orders", calls["read_orders"], 1)
     log_res("run_cycle: BUY_ONLY pass mid", calls["btc_mid_seen"], buy_only_sell_zone)
 
     sell_only_buy_zone = state_s["buy_price"] + ORDER_ZONE
     result, calls = run_run_cycle_case(state_s, sell_only_orders(), ("keep", None, None), btc_mid=sell_only_buy_zone)
-    log_res("run_cycle: SELL_ONLY keep return", result, state_s)
+    log_res("run_cycle: SELL_ONLY keep return", result, (state_s, sell_only_buy_zone))
     log_res("run_cycle: SELL_ONLY read mid", calls["read_btc_mid"], 1)
     log_res("run_cycle: SELL_ONLY buy zone read orders", calls["read_orders"], 1)
     log_res("run_cycle: SELL_ONLY pass mid", calls["btc_mid_seen"], sell_only_buy_zone)
+
+
+def run_adaptive_polling_eval():
+    print("\n🚀 adaptive polling")
+
+    log_res("adaptive polling: base interval", MAIN_LOOP_POLL_INTERVAL_SEC, 1.0)
+    log_res("adaptive polling: consecutive reads", CONSECUTIVE_READS, 2)
+    log_res(
+        "adaptive polling: 1 same read",
+        MAIN_LOOP_POLL_INTERVAL_SEC * (1 + (1 // CONSECUTIVE_READS)),
+        1.0,
+    )
+    log_res(
+        "adaptive polling: 2 same reads",
+        MAIN_LOOP_POLL_INTERVAL_SEC * (1 + (2 // CONSECUTIVE_READS)),
+        2.0,
+    )
+    log_res(
+        "adaptive polling: 3 same reads",
+        MAIN_LOOP_POLL_INTERVAL_SEC * (1 + (3 // CONSECUTIVE_READS)),
+        2.0,
+    )
+    log_res(
+        "adaptive polling: 4 same reads",
+        MAIN_LOOP_POLL_INTERVAL_SEC * (1 + (4 // CONSECUTIVE_READS)),
+        3.0,
+    )
 
 
 def run_exec_cleanup_case(initial_orders, wait_result):
@@ -1316,6 +1347,7 @@ if __name__ == "__main__":
     run_buy_only_eval()
     run_sell_only_eval()
     run_run_cycle_eval()
+    run_adaptive_polling_eval()
     run_execution_eval()
     run_execution_step4_eval()
     run_gateway_eval()
