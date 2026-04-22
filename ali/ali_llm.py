@@ -38,21 +38,35 @@ class RetrievalResult:
     source: str | None
 
 
+RAG_ENGINE_BY_CATEGORY = {
+    "safety_regulation": "standard",
+    "technical": "standard",
+    "rita": "rita",
+}
+
+
 def step2_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalResult:
-    if route.category != "safety_regulation" and route.category != "technical":   # only RAG for safety_regulation and compliance, bypass otherwise
+    engine_name = RAG_ENGINE_BY_CATEGORY.get(route.category)
+    if engine_name is None:
         return RetrievalResult(used=False, context=None, source=None)
 
-    rag_answer = _get_rag_answer_lazy(body)
+    rag_answer = _get_rag_answer_lazy(body, engine_name)
     if rag_answer:
         return RetrievalResult(used=True, context=rag_answer, source="rag")
     return RetrievalResult(used=False, context=None, source=None)
 
+
+@lru_cache(maxsize=None)
+def _get_rag_engine(engine_name: str):
+    return get_rag_engine(engine_name)
+
+
 def _get_rag_answer_lazy(
     question: str,
-    _engine=lru_cache(maxsize=1)(lambda: get_rag_engine("standard")),
+    engine_name: str = "standard",
 ) -> str:
     try:
-        answer, table_str = _engine().answer_question(question)
+        answer, table_str = _get_rag_engine(engine_name).answer_question(question)
         if table_str:
             print(f"\n[RAG] FAISS similarity table:\n\n{table_str}\n")
         return answer
