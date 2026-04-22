@@ -19,9 +19,11 @@ from grid_config import read_orders, read_btc_mid
 from grid_config import (
     ACCOUNT_ADDRESS,
     API_WALLET_KEY,
+    CONSECUTIVE_READS,
     MAIN_LOOP_POLL_INTERVAL_SEC,
     ORDER_ZONE,
     PAIR_MODE,
+    POLLING_MULTIPIER,
     TICK_COUNT,
     log_msg,
     summarize_orders,
@@ -58,9 +60,9 @@ def bootstrap():
     return info, trader, state
 
 
-def run_cycle(info, trader, saved_state, tick_count):
+def run_cycle(info, trader, saved_state, tick_count, live_poll_interval_sec):
     btc_mid = read_btc_mid(info)
-    log_msg(f"trigger: read_btc_mid | {btc_mid}")
+    log_msg(f"trigger: read_btc_mid | {btc_mid} | {live_poll_interval_sec}")
     refresh_orders = False
 
     if btc_mid is None:
@@ -74,7 +76,7 @@ def run_cycle(info, trader, saved_state, tick_count):
         refresh_orders = True
 
     if not refresh_orders:
-        return saved_state
+        return saved_state, btc_mid
 
     log_msg("trigger: read_orders")
     orders = read_orders(info)
@@ -87,17 +89,18 @@ def run_cycle(info, trader, saved_state, tick_count):
     action, strategy, rebuild_price = decide_cycle_action(live_snapshot, saved_state)
 
     if action == "keep":
-        return saved_state
+        return saved_state, btc_mid
 
     if action == "rebuild":
         new_state = rebuild(info, trader, live_snapshot, strategy, rebuild_price)
         if new_state is None:
             log_msg("rebuild failed")
-        return new_state
+        return new_state, btc_mid
 
     summarize_orders(live_snapshot["orders"])
     log_msg("abnormal")
-    return None
+    return None, btc_mid
+
 
 def main():
     info, trader, saved_state = bootstrap()
@@ -105,13 +108,31 @@ def main():
         return
 
     tick_count = 0
+    live_poll_interval_sec = MAIN_LOOP_POLL_INTERVAL_SEC
+    last_btc_mid = None
+    same_btc_mid_reads = 0
 
     while True:
-        time.sleep(MAIN_LOOP_POLL_INTERVAL_SEC)
+        time.sleep(live_poll_interval_sec)
         tick_count += 1
-        saved_state = run_cycle(info, trader, saved_state, tick_count)
+        saved_state, btc_mid = run_cycle(info, trader, saved_state, tick_count, live_poll_interval_sec)
         if saved_state is None:
             return
+
+        if btc_mid is None:
+            last_btc_mid = None
+            same_btc_mid_reads = 0
+            live_poll_interval_sec = MAIN_LOOP_POLL_INTERVAL_SEC
+            continue
+
+        if btc_mid == last_btc_mid:
+            same_btc_mid_reads += 1
+        else:
+            last_btc_mid = btc_mid
+            same_btc_mid_reads = 1
+
+        backoff_steps = same_btc_mid_reads // CONSECUTIVE_READS
+        live_poll_interval_sec = MAIN_LOOP_POLL_INTERVAL_SEC * (POLLING_MULTIPIER ** backoff_steps)
 
 
 if __name__ == "__main__":
