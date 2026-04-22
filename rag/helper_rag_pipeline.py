@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from helper.helper_llm import call_llm
+from rag.faiss_index_builder import build_embedding_text
 from rag.helper_faiss_embedding import embed
 from rag.helper_query_rewriting import rewrite_query_variants, merge_candidates_maxscore
 
@@ -361,8 +362,13 @@ def build_context(chunks, metas, tokenizer, max_tokens):
     """
     assert len(chunks) == len(metas)
 
+    context_chunks = [
+        build_embedding_text(chunk, meta or {})
+        for chunk, meta in zip(chunks, metas)
+    ]
+
     if tokenizer is None or max_tokens is None:
-        return "\n\n".join(chunks)
+        return "\n\n".join(context_chunks)
 
     budget = int(max_tokens)
     if budget <= 0:
@@ -370,7 +376,7 @@ def build_context(chunks, metas, tokenizer, max_tokens):
 
     kept = []
     used = 0
-    for chunk in chunks:
+    for chunk in context_chunks:
         chunk_tokens = len(tokenizer.encode(chunk))
         if not kept and chunk_tokens > budget:
             kept.append(chunk)

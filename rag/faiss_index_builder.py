@@ -27,7 +27,10 @@ import json
 import sqlite3
 import faiss
 
-from helper_faiss_embedding import embed
+if __package__:
+    from .helper_faiss_embedding import embed
+else:
+    from helper_faiss_embedding import embed
 
 SAFE_BATCH = 16
 
