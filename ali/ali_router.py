@@ -84,7 +84,7 @@ def route_email(subject: str, body: str) -> RouteResult:
             confidence=0.9,
         )
 
-    if re.search(r"\b(specifications?|wiring|voltage|current|power|dimensions?)\b", text):
+    if re.search(r"\b(specifications?|test|wiring|voltage|current|power|dimensions?)\b", text):
         return RouteResult(
             category="technical",
             intent=intent,

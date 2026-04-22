@@ -39,7 +39,7 @@ class RetrievalResult:
 
 
 def step2_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalResult:
-    if route.category != "safety_regulation":   # only RAG for safety_regulation, bypass otherwise
+    if route.category == "safety_regulation" or route.category == "technical":   # only RAG for safety_regulation and compliance, bypass otherwise
         return RetrievalResult(used=False, context=None, source=None)
 
     rag_answer = _get_rag_answer_lazy(body)
