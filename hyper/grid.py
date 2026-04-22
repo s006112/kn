@@ -23,7 +23,6 @@ from grid_config import (
     MAIN_LOOP_POLL_INTERVAL_SEC,
     ORDER_ZONE,
     PAIR_MODE,
-    POLLING_MULTIPIER,
     TICK_COUNT,
     log_msg,
     summarize_orders,
@@ -131,9 +130,7 @@ def main():
             last_btc_mid = btc_mid
             same_btc_mid_reads = 1
 
-        backoff_steps = same_btc_mid_reads // CONSECUTIVE_READS
-        live_poll_interval_sec = MAIN_LOOP_POLL_INTERVAL_SEC * (POLLING_MULTIPIER ** backoff_steps)
-
+        live_poll_interval_sec = MAIN_LOOP_POLL_INTERVAL_SEC * ( 1 + (same_btc_mid_reads // CONSECUTIVE_READS) )
 
 if __name__ == "__main__":
     main()
