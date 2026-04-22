@@ -62,7 +62,7 @@ def bootstrap():
 
 def run_cycle(info, trader, saved_state, tick_count, live_poll_interval_sec):
     btc_mid = read_btc_mid(info)
-    log_msg(f"trigger: read_btc_mid | {btc_mid} | {live_poll_interval_sec}")
+    log_msg(f"read_btc_mid | {btc_mid} | {live_poll_interval_sec}")
     refresh_orders = False
 
     if btc_mid is None:
@@ -78,7 +78,7 @@ def run_cycle(info, trader, saved_state, tick_count, live_poll_interval_sec):
     if not refresh_orders:
         return saved_state, btc_mid
 
-    log_msg("trigger: read_orders")
+    log_msg("trigger: read_orders ------------------------------------")
     orders = read_orders(info)
     live_snapshot = {
         "orders": orders,
