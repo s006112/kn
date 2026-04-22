@@ -61,15 +61,28 @@ def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
     - mode: Retrieval mode name.
 
     Outputs:
-    - A tuple `(sqlite_path, index_path)` under `data/faiss`.
+    - A tuple `(sqlite_path, index_path)` under `data/faiss`, where each
+      filename starts with `mode` and has the correct extension.
     """
     if mode not in {"standard", "mbox"}:
         raise ValueError(f"Unknown RAG mode: {mode!r} (expected 'standard' or 'mbox')")
-    
-    return (
-        faiss_dir / f"{mode}_metadata.sqlite",
-        faiss_dir / f"{mode}_faiss.index",
+
+    sqlite_paths = sorted(
+        p for p in faiss_dir.iterdir()
+        if p.is_file() and p.name.startswith(mode) and p.suffix == ".sqlite"
     )
+    index_paths = sorted(
+        p for p in faiss_dir.iterdir()
+        if p.is_file() and p.name.startswith(mode) and p.suffix == ".index"
+    )
+
+    if len(sqlite_paths) != 1 or len(index_paths) != 1:
+        raise FileNotFoundError(
+            f"Expected exactly one .sqlite and one .index artifact "
+            f"for RAG mode {mode!r} in {faiss_dir}"
+        )
+
+    return sqlite_paths[0], index_paths[0]
 
 
 def get_rag_engine(mode: str = "standard"):
