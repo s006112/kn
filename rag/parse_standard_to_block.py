@@ -17,7 +17,7 @@ from parse_raw_to_jsonl import parse_pdf_bytes_to_canonical_blocks
 
 RAW_PDF_DIR = Path("data/standard/pdf")
 PER_FILE_DIR = Path("data/standard/jsonl")
-CANONICAL_JSONL = Path("data/canonical_blocks.jsonl")
+CANONICAL_JSONL = Path("data/standard_chunks.jsonl")
 
 def list_pdfs(root: Path):
     return sorted(root.rglob("*.pdf"))

@@ -1,7 +1,9 @@
+# faiss_build.py, only handle file with suffix "_chunks.jsonl"
+
 from pathlib import Path
 from faiss_index_builder import build_index
 
-TARGET = "mbox"
+TARGET = "standard" # "mbox" or "standard"
 
 ROOT_DIR = Path(__file__).resolve().parent.parent  # ← 关键
 DATA_DIR = ROOT_DIR / "data"
