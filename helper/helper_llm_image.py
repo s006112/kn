@@ -558,7 +558,7 @@ def generate_image(
             init_image=primary_image,
         )
 
-    if backend_name == "grok-image":
+    if backend_name == "grok":
         if primary_image is None:
             raise RuntimeError("Grok image editing requires an input image.")
         print(f"DEBUG: Grok image edit, model={model_name}, bytes={len(primary_image)}")
@@ -574,7 +574,7 @@ def generate_image(
 
     # OpenAI gpt-image-1 在這裡自動切換為 images/edits
     if backend_name == "openai" and primary_image is not None:
-        if model_name.lower().startswith("gpt-image-1"):
+        if model_name.lower().startswith("gpt"):
             print(
                 f"DEBUG: OpenAI image edit, model={model_name}, bytes={len(primary_image)}"
             )
