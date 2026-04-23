@@ -128,7 +128,7 @@ def main():
 
         live_poll_interval_sec = MAIN_LOOP_POLL_INTERVAL_SEC * ( 1 + (same_btc_mid_reads // CONSECUTIVE_READS) )
         if in_order_zone(btc_mid, cycle_state):
-            live_poll_interval_sec /= 3
+            live_poll_interval_sec /= 2
 
 if __name__ == "__main__":
     main()
