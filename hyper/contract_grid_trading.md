@@ -19,19 +19,14 @@ Authoritative source files:
 
 ## Runtime Configuration
 
-`grid.py` imports `apply_runtime_overrides`, applies overrides, then imports `grid_decision` and `grid_execution`.
+Configuration names are defined in `grid_config.py` and used by this contract:
 
-Standard `grid.py` runtime overrides:
-
+- `SYMBOL = "UBTC/USDC"`
+- `BTC_MID_KEY = "@142"`
 - `GRID_STEP = 200.0`
 - `BUDGET_USDC = 250.0`
 - `BUY_GRID_FACTOR = 0.9`
 - `SELL_GRID_FACTOR = 1.1`
-
-Configuration names defined in `grid_config.py` and used by this contract:
-
-- `SYMBOL = "UBTC/USDC"`
-- `BTC_MID_KEY = "@142"`
 - `TICK_COUNT = 40`
 - `MAIN_LOOP_POLL_INTERVAL_SEC = 1.0`
 - `CONSECUTIVE_READS = 2`
@@ -47,7 +42,7 @@ Configuration names defined in `grid_config.py` and used by this contract:
 - `WAIT_NO_OPEN_ORDERS_INTERVAL_SEC = 0.5`
 - `KEEP_LOG_INTERVAL_SEC = 900`
 
-Derived constants are not recalculated by `apply_runtime_overrides`. Under the standard `grid.py` entry path, the effective derived values are `GRID_GAP = 400.0`, `ORDER_ZONE = 12.0`, and `REANCHOR_DISTANCE = 600.0`.
+Derived values from the standard configuration are `GRID_GAP = 400.0`, `ORDER_ZONE = 12.0`, and `REANCHOR_DISTANCE = 580.0`.
 
 ## Pipeline
 
@@ -252,5 +247,4 @@ The one-sided replacement path catches exceptions only around cancel and absence
 - `BUY_ONLY` keep does not validate live `buy_price` against `saved_state["buy_price"]`.
 - `SELL_ONLY` keep does not validate live `sell_price` against `saved_state["sell_price"]`.
 - `cleanup_orders` assumes every order being cancelled has `oid`.
-- Derived constants are not recomputed when `apply_runtime_overrides` changes base configuration globals.
 - The engine has no global exception recovery loop.
