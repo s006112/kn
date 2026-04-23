@@ -40,7 +40,6 @@ Configuration names are defined in `grid_config.py` and used by this contract:
 - `MAX_RETRIES = 4`
 - `RETRY_SEC = 0.5`
 - `WAIT_NO_OPEN_ORDERS_INTERVAL_SEC = 0.5`
-- `KEEP_LOG_INTERVAL_SEC = 900`
 
 Derived values from the standard configuration are `GRID_GAP = 400.0`, `ORDER_ZONE = 12.0`, and `REANCHOR_DISTANCE = 580.0`.
 

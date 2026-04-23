@@ -9,7 +9,6 @@ from grid_config import (
     REANCHOR_BREAK,
     REANCHOR_DISTANCE,
     format_price,
-    log_keep_state,
     log_msg,
     price_distance_at_least,
     price_gap_matches,
@@ -77,7 +76,6 @@ def decide_cycle_action(live_snapshot, saved_state):
             and live_snapshot["buy_price"] == saved_state["buy_price"]
             and live_snapshot["sell_price"] == saved_state["sell_price"]
         ):
-            log_keep_state("pair", "Keep")
             return "keep", None, None
 
     elif saved_state["mode"] == BUY_ONLY_MODE:
@@ -95,7 +93,6 @@ def decide_cycle_action(live_snapshot, saved_state):
                     log_msg("🪝 contract: anchor break")
                     return "rebuild", "anchor_break", None
 
-            log_keep_state("buy-only", "keep")
             return "keep", None, None
 
     elif saved_state["mode"] == SELL_ONLY_MODE:
@@ -104,7 +101,6 @@ def decide_cycle_action(live_snapshot, saved_state):
             return "rebuild", "done_deal", saved_state["sell_price"]
 
         if live_snapshot["mode"] == SELL_ONLY_MODE:
-            log_keep_state("sell-only", "keep")
             return "keep", None, None
 
     return "abnormal", None, None

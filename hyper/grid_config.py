@@ -37,8 +37,6 @@ REANCHOR_BREAK = True  # 启用 BUY_ONLY 模式下的重锚检测，偏离太远
 REANCHOR_BREAK_STEPS = 2  # 与 BTC 中间价相差达到 2 格时，触发 anchor break 重挂
 REANCHOR_DISTANCE = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP    # 当 BTC mid 与当前 buy order 距离 >= REANCHOR_DISTANCE 时触发 anchor break
 
-KEEP_LOG_INTERVAL_SEC = 900  # keep 状态同类日志至少每 900 秒打印一次，避免刷屏
-
 WAIT_NO_OPEN_ORDERS_INTERVAL_SEC = 0.5  # 撤单后检查一次是否已无遗留挂单
 
 MAX_RETRIES = 4  # 读取接口最多重试 4 次，容忍短暂接口抖动
@@ -76,25 +74,12 @@ def price_distance_at_least(high_price, low_price, distance):
 # logging helpers
 # ============================================================================
 
-_last_keep_type = None
-_last_keep_ts = 0.0
 GMT_PLUS_8 = timezone(timedelta(hours=8))
 
 
 def log_msg(message):
     timestamp = datetime.now(GMT_PLUS_8).strftime("%H:%M:%S")
     print(f"[{timestamp}] {message}")
-
-
-def log_keep_state(keep_type, message):
-    global _last_keep_type
-    global _last_keep_ts
-
-    now = time.time()
-    if keep_type != _last_keep_type or now - _last_keep_ts >= KEEP_LOG_INTERVAL_SEC:
-        log_msg(message)
-        _last_keep_type = keep_type
-        _last_keep_ts = now
 
 # ============================================================================
 # grid read and summarise order helpers
