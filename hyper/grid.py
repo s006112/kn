@@ -50,6 +50,13 @@ def bootstrap():
     return info, trader, state
 
 
+def in_order_zone(btc_mid, saved_state):
+    return (
+        btc_mid <= saved_state["buy_price"] + ORDER_ZONE
+        or btc_mid >= saved_state["sell_price"] - ORDER_ZONE
+    )
+
+
 def run_cycle(info, trader, saved_state, tick_count, live_poll_interval_sec):
     btc_mid = read_btc_mid(info)
     log_msg(f"| {btc_mid} | {live_poll_interval_sec}")
@@ -59,10 +66,7 @@ def run_cycle(info, trader, saved_state, tick_count, live_poll_interval_sec):
         refresh_orders = True
     elif tick_count % TICK_COUNT == 0:
         refresh_orders = True
-    elif (
-        btc_mid <= saved_state["buy_price"] + ORDER_ZONE
-        or btc_mid >= saved_state["sell_price"] - ORDER_ZONE
-    ):
+    elif in_order_zone(btc_mid, saved_state):
         refresh_orders = True
 
     if not refresh_orders:
@@ -105,6 +109,7 @@ def main():
     while True:
         time.sleep(live_poll_interval_sec)
         tick_count += 1
+        cycle_state = saved_state
         saved_state, btc_mid = run_cycle(info, trader, saved_state, tick_count, live_poll_interval_sec)
         if saved_state is None:
             return
@@ -122,6 +127,8 @@ def main():
             same_btc_mid_reads = 1
 
         live_poll_interval_sec = MAIN_LOOP_POLL_INTERVAL_SEC * ( 1 + (same_btc_mid_reads // CONSECUTIVE_READS) )
+        if in_order_zone(btc_mid, cycle_state):
+            live_poll_interval_sec /= 3
 
 if __name__ == "__main__":
     main()
