@@ -558,7 +558,7 @@ def generate_image(
             init_image=primary_image,
         )
 
-    if backend_name == "grok":
+    if backend_name == "grok-image":
         if primary_image is None:
             raise RuntimeError("Grok image editing requires an input image.")
         print(f"DEBUG: Grok image edit, model={model_name}, bytes={len(primary_image)}")
