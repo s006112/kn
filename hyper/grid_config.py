@@ -19,8 +19,9 @@ API_WALLET_KEY = os.getenv("HYPERLIQUID_API_WALLET_KEY")
 SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
-BUDGET_USDC = 300.0  # 每侧订单按 N USDC 名义金额下单，用它反推买卖数量
-GRID_STEP = 300.0  # 参考价每上下偏移 N 美元挂一格，是网格的基础间距
+GRID_STEP = int(os.getenv("GRID_STEP"))  # 网格基础间距，单位美元，参考价每上下偏移 N 美元挂一格
+BUDGET_GRID_FACTOR = float(os.getenv("BUDGET_GRID_FACTOR"))  # 预设的网格预算因子，用来计算网格间距和订单数量，理论上应该与 GRID_STEP 保持一定比例关系
+BUDGET_USDC = int(GRID_STEP * BUDGET_GRID_FACTOR)  # 每单的预算金额，单位 USDC，根据网格间距和预算因子计算得出，理论上应该保持稳定
 BUY_GRID_FACTOR = 0.9  # 买单距离 = N x GRID_STEP
 SELL_GRID_FACTOR = 1.1  # 卖单距离 = N x GRID_STEP
 GRID_GAP = (BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP  # 买卖单之间的价差，理论上应该保持稳定
