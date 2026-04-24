@@ -20,7 +20,7 @@ SYMBOL = "UBTC/USDC"
 BTC_MID_KEY = "@142"
 
 BUDGET_USDC = 300.0  # 每侧订单按 N USDC 名义金额下单，用它反推买卖数量
-GRID_STEP = 200.0  # 参考价每上下偏移 N 美元挂一格，是网格的基础间距
+GRID_STEP = 300.0  # 参考价每上下偏移 N 美元挂一格，是网格的基础间距
 BUY_GRID_FACTOR = 0.9  # 买单距离 = N x GRID_STEP
 SELL_GRID_FACTOR = 1.1  # 卖单距离 = N x GRID_STEP
 GRID_GAP = (BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP  # 买卖单之间的价差，理论上应该保持稳定
