@@ -75,18 +75,12 @@ else:
 
 
 def _supports_multi_image_blending(model_name: str) -> bool:
-    """Purpose:
-    Determine whether a model name is treated as supporting multi-image blending.
-
-    Inputs:
-    - model_name: Model identifier to inspect.
-
-    Outputs:
-    - `True` when the lowercased identifier starts with `gemini` and contains `image`;
-      otherwise `False`.
-    """
     lowered = model_name.lower()
-    return lowered.startswith("gemini") and "image" in lowered
+    return (
+        lowered.startswith("grok")
+        or lowered.startswith("gpt-image")
+        or (lowered.startswith("gemini") and "image" in lowered)
+    )
 
 
 def _blend_prompt_suffix(image_count: int) -> str:
@@ -136,7 +130,7 @@ def request_render(image_bytes_list: list[bytes] | None, model: str, prompt: str
     images = generate_image(
         model=model,
         prompt=final_prompt,
-        size="1024x1024",
+        size="auto",
         n=1,
         image_bytes=input_images[0] if input_images else None,
         image_bytes_list=input_images or None,

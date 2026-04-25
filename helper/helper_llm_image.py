@@ -64,10 +64,7 @@ def _detect_image_mime(data: bytes) -> str:
 
 
 def _get_grok_max_input_images(model: str) -> int:
-    model_key = model.lower().strip()
-    if model_key == "grok-imagine-image-pro":
-        return 1
-    return 3
+    return 5
 
 
 def _build_stability_payload(
@@ -210,8 +207,8 @@ def call_grok_i2i(
     init_image: bytes,
     init_images: Optional[List[bytes]] = None,
 ) -> List[bytes]:
-    """Image-to-image for xAI (SDK first, JSON HTTP fallback)."""
-    del size  # xAI image edit endpoint does not use OpenAI-style size.
+    """Image-to-image for xAI, max-quality config enabled."""
+    del size  # xAI uses aspect_ratio + resolution, not OpenAI-style size.
 
     api_key = getattr(client, "api_key", None)
     if not api_key:
@@ -229,7 +226,7 @@ def call_grok_i2i(
         if b64:
             try:
                 return base64.b64decode(b64)
-            except Exception as exc:  # pragma: no cover - defensive
+            except Exception as exc:
                 raise RuntimeError("Grok image payload b64_json is not valid base64.") from exc
 
         image_blob = getattr(item, "image", None)
@@ -252,18 +249,39 @@ def call_grok_i2i(
             return r.content
         return None
 
+    def _to_xai_data_uri(img: bytes) -> str:
+        mime = _detect_image_mime(img)
+        if mime not in ("image/png", "image/jpeg"):
+            try:
+                from io import BytesIO
+                from PIL import Image
+
+                src = BytesIO(img)
+                dst = BytesIO()
+                Image.open(src).convert("RGBA").save(dst, format="PNG")
+                img = dst.getvalue()
+                mime = "image/png"
+            except Exception as exc:
+                raise RuntimeError(
+                    "Grok image editing supports PNG/JPEG inputs. "
+                    "Failed to normalize uploaded image to PNG."
+                ) from exc
+
+        return f"data:{mime};base64,{base64.b64encode(img).decode('utf-8')}"
+
     count = max(1, n)
-    image_inputs = _collect_image_inputs(
-        init_image,
-        init_images,
-        max_items=_get_grok_max_input_images(model),
-    )
+    image_inputs = _collect_image_inputs(init_image, init_images)
+    max_images = _get_grok_max_input_images(model)
+
     if not image_inputs:
         raise RuntimeError("Grok image editing requires an input image.")
-    image_data_uris = [
-        f"data:{_detect_image_mime(img)};base64,{base64.b64encode(img).decode('utf-8')}"
-        for img in image_inputs
-    ]
+    if len(image_inputs) > max_images:
+        raise RuntimeError(
+            f"Grok image editing supports up to {max_images} input images; "
+            f"got {len(image_inputs)}."
+        )
+
+    image_data_uris = [_to_xai_data_uri(img) for img in image_inputs]
     primary_image_uri = image_data_uris[0]
 
     sdk_error: Optional[str] = None
@@ -275,26 +293,38 @@ def call_grok_i2i(
         except TypeError:
             sdk_client = xai_sdk.Client()
 
-        sdk_images: List[bytes] = []
-        for _ in range(count):
-            request_kwargs: Dict[str, Any] = {
-                "prompt": prompt,
-                "model": model,
-            }
-            if len(image_data_uris) == 1:
-                request_kwargs["image_url"] = primary_image_uri
-            else:
-                request_kwargs["image_urls"] = image_data_uris
-            response = sdk_client.image.sample(**request_kwargs)
-            if img := _extract_image_bytes(response):
-                sdk_images.append(img)
+        request_kwargs: Dict[str, Any] = {
+            "prompt": prompt,
+            "model": model,
+            "resolution": "2k",
+            "image_format": "base64",
+        }
 
+        if len(image_data_uris) == 1:
+            request_kwargs["image_url"] = primary_image_uri
+        else:
+            request_kwargs["image_urls"] = image_data_uris
+
+        responses: List[Any] = []
+        if count == 1:
+            responses = [sdk_client.image.sample(**request_kwargs)]
+        else:
+            try:
+                responses = list(sdk_client.image.sample_batch(**request_kwargs, n=count))
+            except Exception:
+                responses = [
+                    sdk_client.image.sample(**request_kwargs)
+                    for _ in range(count)
+                ]
+
+        sdk_images = [img for item in responses if (img := _extract_image_bytes(item))]
         if sdk_images:
             return sdk_images
-        sdk_error = "xAI SDK image.sample returned no decodable image."
+
+        sdk_error = "xAI SDK returned no decodable image."
     except ImportError as exc:
         sdk_error = f"xAI SDK unavailable ({exc})."
-    except Exception as exc:  # pragma: no cover - runtime/API dependent
+    except Exception as exc:
         sdk_error = f"xAI SDK image.sample failed: {exc}"
 
     base_url = str(getattr(client, "base_url", "https://api.x.ai/v1")).rstrip("/")
@@ -303,11 +333,15 @@ def call_grok_i2i(
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+
     body: Dict[str, Any] = {
         "model": model,
         "prompt": prompt,
         "n": count,
+        "resolution": "2k",
+        "response_format": "b64_json",
     }
+
     if len(image_data_uris) == 1:
         body["image"] = {
             "url": primary_image_uri,
@@ -326,7 +360,7 @@ def call_grok_i2i(
     if resp.status_code != 200:
         detail = f" (sdk fallback note: {sdk_error})" if sdk_error else ""
         raise RuntimeError(
-            f"Grok image edit error {resp.status_code}: {resp.text[:200]}{detail}"
+            f"Grok image edit error {resp.status_code}: {resp.text[:300]}{detail}"
         )
 
     payload = resp.json()
@@ -339,8 +373,8 @@ def call_grok_i2i(
     if not images:
         detail = f" (sdk fallback note: {sdk_error})" if sdk_error else ""
         raise RuntimeError(f"Grok image edit API returned no decodable image.{detail}")
-    return images
 
+    return images
 
 def call_openai_i2i(
     client: openai.OpenAI,
@@ -351,58 +385,125 @@ def call_openai_i2i(
     init_image: bytes,
     init_images: Optional[List[bytes]] = None,
 ) -> List[bytes]:
-    """Call OpenAI /v1/images/edits for image-to-image editing."""
+    """OpenAI image edit/reference generation. Transport adapter only."""
     api_key = getattr(client, "api_key", None)
     if not api_key:
         raise RuntimeError("OpenAI client is missing api_key.")
 
-    url = "https://api.openai.com/v1/images/edits"
+    model_name = model.strip()
+    model_key = model_name.lower()
+    image_inputs = _collect_image_inputs(init_image, init_images, max_items=16)
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-    }
+    if not image_inputs:
+        raise RuntimeError("OpenAI image editing requires at least one input image.")
 
-    image_inputs = _collect_image_inputs(init_image, init_images)
+    if not prompt or not prompt.strip():
+        raise RuntimeError("OpenAI image editing requires a non-empty prompt.")
+
+    allowed_sizes = {"auto", "1024x1024", "1536x1024", "1024x1536"}
+    openai_size = size if size in allowed_sizes else "auto"
+
+    def to_openai_file(idx: int, img: bytes) -> tuple[str, bytes, str]:
+        mime = _detect_image_mime(img)
+
+        if mime == "image/png":
+            return f"input_{idx}.png", img, mime
+        if mime == "image/jpeg":
+            return f"input_{idx}.jpg", img, mime
+        if mime == "image/webp":
+            return f"input_{idx}.webp", img, mime
+
+        # OpenAI GPT image edit supports png/jpg/webp inputs.
+        # Convert unsupported UI uploads such as bmp/tiff to png.
+        from io import BytesIO
+        from PIL import Image
+
+        with Image.open(BytesIO(img)) as im:
+            if im.mode not in ("RGB", "RGBA"):
+                im = im.convert("RGBA" if "A" in im.getbands() else "RGB")
+
+            out = BytesIO()
+            im.save(out, format="PNG")
+            png_bytes = out.getvalue()
+
+        return f"input_{idx}.png", png_bytes, "image/png"
+
+    image_files = [to_openai_file(idx, img) for idx, img in enumerate(image_inputs)]
+
+    for filename, data, _mime in image_files:
+        if len(data) > 50 * 1024 * 1024:
+            raise RuntimeError(f"OpenAI image input exceeds 50MB: {filename}")
 
     files: List[tuple[str, Any]] = [
-        ("model", (None, model)),
-        ("prompt", (None, prompt)),
-        ("n", (None, str(max(1, n)))),
-        ("size", (None, size)),
+        ("model", (None, model_name)),
+        ("prompt", (None, prompt.strip())),
+        ("n", (None, str(max(1, min(n, 10))))),
+        ("size", (None, openai_size)),
+        ("quality", (None, "high")),
+        ("output_format", (None, "png")),
     ]
-    for idx, img in enumerate(image_inputs):
-        files.append(("image[]", (f"init_{idx}.png", img, "image/png")))
 
-    resp = requests.post(url, headers=headers, files=files, timeout=120)
+    # gpt-image-2 already processes image inputs at high fidelity.
+    # Avoid passing optional fidelity knobs unless the model family clearly supports them.
+    if model_key in {"gpt-image-1", "gpt-image-1.5", "chatgpt-image-latest"}:
+        files.append(("input_fidelity", (None, "high")))
+
+    for filename, data, mime in image_files:
+        files.append(("image[]", (filename, data, mime)))
+
+    resp = requests.post(
+        "https://api.openai.com/v1/images/edits",
+        headers={"Authorization": f"Bearer {api_key}"},
+        files=files,
+        timeout=240,
+    )
+
+    request_id = resp.headers.get("x-request-id", "")
+    print(
+        "DEBUG: OpenAI image edit | "
+        f"request_id={request_id or '-'} | "
+        f"model={model_name} | "
+        f"inputs={len(image_files)} | "
+        f"size={openai_size} | "
+        f"quality=high | "
+        f"prompt_chars={len(prompt.strip())}"
+    )
+
     if resp.status_code != 200:
         raise RuntimeError(
-            f"OpenAI image edit error {resp.status_code}: {resp.text[:200]}"
+            f"OpenAI image edit error {resp.status_code}"
+            f"{f' request_id={request_id}' if request_id else ''}: "
+            f"{resp.text[:500]}"
         )
 
     payload = resp.json()
     data = payload.get("data") or []
     if not data:
-        raise RuntimeError("OpenAI image edit API returned no data.")
+        raise RuntimeError(
+            f"OpenAI image edit API returned no data"
+            f"{f' request_id={request_id}' if request_id else ''}."
+        )
 
     images: List[bytes] = []
     for item in data:
         b64 = item.get("b64_json")
         if b64:
-            try:
-                images.append(base64.b64decode(b64))
-                continue
-            except Exception:  # pragma: no cover - fallback to URL fetch
-                pass
-        url2 = item.get("url")
-        if url2:
-            r2 = requests.get(url2, timeout=120)
-            r2.raise_for_status()
-            images.append(r2.content)
+            images.append(base64.b64decode(b64))
+            continue
+
+        url = item.get("url")
+        if url:
+            r = requests.get(url, timeout=120)
+            r.raise_for_status()
+            images.append(r.content)
 
     if not images:
-        raise RuntimeError("OpenAI image edit API did not return any decodable image.")
-    return images
+        raise RuntimeError(
+            f"OpenAI image edit API did not return any decodable image"
+            f"{f' request_id={request_id}' if request_id else ''}."
+        )
 
+    return images
 
 def call_gemini_image(
     client: Any,
