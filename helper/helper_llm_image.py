@@ -440,6 +440,7 @@ def call_openai_i2i(
         ("n", (None, str(max(1, min(n, 10))))),
         ("size", (None, openai_size)),
         ("quality", (None, "high")),
+        ("background", (None, "opaque")),
         ("output_format", (None, "png")),
     ]
 
