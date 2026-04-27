@@ -1,346 +1,223 @@
 #!/usr/bin/env python3
-"""
-Minimal standalone web UI for downloading audio via yt-dlp.
-"""
+"""Minimal standalone web UI for yt-dlp."""
 
 import argparse
+import errno
 import html
 import os
-import errno
 import shlex
 import shutil
 import subprocess
 import tempfile
+from pathlib import Path
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler
-from urllib.parse import parse_qs, quote
-
-try:
-    from http.server import ThreadingHTTPServer
-except ImportError:  # pragma: no cover (fallback for very old Python)
-    from http.server import HTTPServer
-    from socketserver import ThreadingMixIn
-
-    class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
-        daemon_threads = True
-
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, quote, urlencode, urlsplit, urlunsplit
 
 MAX_POST_BYTES = 4096
+TRACKING_KEYS = {"fbclid", "feature", "pp", "si", "t"}
+FORMATS = {
+    "worst": ["-f", "(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst"],
+    "720p": [
+        "-f",
+        "(bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a])/"
+        "(bestvideo[height=720]+bestaudio)/"
+        "(bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a])/"
+        "(bestvideo[height<=720]+bestaudio)/best[height<=720]",
+        "--merge-output-format",
+        "mp4",
+    ],
+    "mp3": ["-x", "--audio-format", "mp3", "-f", "bestaudio/best"],
+}
 FORM_HTML = """<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Downloader</title>
-  <style>
-    body {{font-family: sans-serif; margin: 2rem; background: #f6f6f6;}}
-    main {{max-width: 480px; margin: auto; background: #fff; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1);}}
-    form {{display: flex; gap: 0.5rem;}}
-    form + form {{margin-top: 0.5rem;}}
-    input[type=text] {{flex: 1; padding: 0.6rem; border: 1px solid #ccc; border-radius: 4px;}}
-    button {{padding: 0.6rem 1rem; border: none; border-radius: 4px; background: #0067c0; color: #fff; cursor: pointer;}}
-    button:hover {{background: #00509d;}}
-    p.status {{margin-top: 1rem; padding: 0.75rem; border-radius: 4px;}}
-    p.info {{background: #eef7ff; color: #0c3a62;}}
-    p.error {{background: #fdecea; color: #611a15;}}
-    small {{color: #555;}}
-  </style>
-</head>
-<body>
-  <main>
-    <h2>Download audio</h2>
-    <form method="post">
-      <input type="hidden" name="mode" value="worst">
-      <input type="text" name="url" placeholder="https://example.com/video" required>
-      <button type="submit">Fetch</button>
-    </form>
-    <form method="post">
-      <input type="hidden" name="mode" value="720p">
-      <input type="text" name="url" placeholder="https://example.com/video (720p)" required>
-      <button type="submit">720p</button>
-    </form>
-    <form method="post">
-      <input type="hidden" name="mode" value="mp3">
-      <input type="text" name="url" placeholder="https://youtube.com/watch?v=... (MP3)" required>
-      <button type="submit">MP3</button>
-    </form>
-    {status}
-    <small>Top form runs. Files are removed after each request.</small>
-  </main>
-</body>
-</html>
+<meta charset="utf-8">
+<title>yt-dlp downloader</title>
+<style>
+body{font-family:sans-serif;margin:2rem;background:#f6f6f6}
+main{max-width:560px;margin:auto;background:#fff;padding:1.5rem;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+form{display:flex;flex-wrap:wrap;gap:.5rem}
+input{flex:1 1 100%;padding:.7rem;border:1px solid #ccc;border-radius:4px}
+button{padding:.65rem 1rem;border:0;border-radius:4px;background:#0067c0;color:#fff;cursor:pointer}
+.status{margin-top:1rem;padding:.75rem;border-radius:4px}.info{background:#eef7ff;color:#0c3a62}.error{background:#fdecea;color:#611a15}
+small{display:block;margin-top:1rem;color:#555}
+</style>
+<main>
+  <h2>yt-dlp downloader</h2>
+  <form method="post">
+    <input name="url" placeholder="https://youtube.com/watch?v=..." required>
+    <button name="mode" value="worst">最低</button>
+    <button name="mode" value="720p">720p</button>
+    <button name="mode" value="mp3">MP3</button>
+  </form>
+  {status}
+  <small>只保留最低画质、720p 和 MP3。文件在发送后会删除。</small>
+</main>
 """
 
 
-def _limit_filename_length(filename, limit=50):
-    if len(filename) <= limit:
-        return filename
-    name, ext = os.path.splitext(filename)
-    max_name_len = max(1, limit - len(ext))
-    trimmed = name[:max_name_len]
-    return trimmed + ext
-
-
-def _split_env_args(var_name):
-    value = os.environ.get(var_name)
-    return shlex.split(value) if value else []
-
-
-def _detect_js_runtime():
-    configured = os.environ.get("YTD_JS_RUNTIME")
-    if configured:
-        trimmed = configured.strip()
-        return trimmed or None
-    candidates = [
+def detect_js_runtime():
+    if runtime := os.getenv("YTD_JS_RUNTIME", "").strip():
+        return runtime
+    for label, binary in (
         ("deno", "deno"),
         ("node", "node"),
         ("bun", "bun"),
         ("quickjs", "qjs"),
         ("quickjs", "quickjs"),
+    ):
+        if path := shutil.which(binary):
+            return label if label == binary else f"{label}:{path}"
+    return ""
+
+
+def common_args():
+    values = [
+        ("--js-runtimes", detect_js_runtime()),
+        ("--remote-components", os.getenv("YTD_REMOTE_COMPONENTS", "ejs:github").strip()),
+        ("--extractor-args", os.getenv("YTD_EXTRACTOR_ARGS", "youtube:player_client=default").strip()),
+        ("--cookies", os.getenv("YTD_COOKIES_FILE", "").strip()),
+        ("--cookies-from-browser", os.getenv("YTD_COOKIES_FROM_BROWSER", "").strip()),
     ]
-    for runtime, binary in candidates:
-        path = shutil.which(binary)
-        if path:
-            return runtime if runtime == binary else f"{runtime}:{path}"
-    return None
+    args = [item for flag, value in values if value for item in (flag, value)]
+    return args + shlex.split(os.getenv("YTD_EXTRA_ARGS", ""))
 
 
-JS_RUNTIME = _detect_js_runtime()
-REMOTE_COMPONENTS = os.environ.get("YTD_REMOTE_COMPONENTS", "ejs:github").strip() or None
-EXTRACTOR_ARGS = os.environ.get("YTD_EXTRACTOR_ARGS", "youtube:player_client=default").strip() or None
-COOKIES_FILE = os.environ.get("YTD_COOKIES_FILE")
-COOKIES_FROM_BROWSER = os.environ.get("YTD_COOKIES_FROM_BROWSER")
-EXTRA_ARGS = _split_env_args("YTD_EXTRA_ARGS")
+COMMON_ARGS = common_args()
+
+
+def clean_url(url):
+    url = url.strip()
+    if url and "://" not in url:
+        url = "https://" + url.lstrip("/")
+    parts = urlsplit(url)
+    host = parts.netloc.lower()
+    if "youtu.be" in host:
+        return urlunsplit((parts.scheme or "https", parts.netloc, parts.path.rstrip("/"), "", ""))
+    if "youtube.com" in host or "youtube-nocookie.com" in host:
+        if parts.path == "/watch":
+            video_id = parse_qs(parts.query).get("v", [""])[0].strip()
+            return f"{parts.scheme or 'https'}://{parts.netloc}/watch?v={video_id}" if video_id else ""
+        return urlunsplit((parts.scheme or "https", parts.netloc, parts.path.rstrip("/"), "", ""))
+    query = [
+        (key, value)
+        for key, values in parse_qs(parts.query, keep_blank_values=True).items()
+        if not key.lower().startswith("utm_") and key.lower() not in TRACKING_KEYS
+        for value in values
+    ]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query, doseq=True), ""))
 
 
 class DownloadHandler(BaseHTTPRequestHandler):
-    server_version = "MinimalYTD/0.1"
+    server_version = "MinimalYTD/0.2"
     protocol_version = "HTTP/1.1"
 
     def do_GET(self):
-        self._render_form("Ready.")
+        self.render("Ready.")
 
     def do_POST(self):
-        url, mode, error = self._extract_request()
-        if error:
-            self._render_form(error, is_error=True)
-            return
-
-        temp_dir = None
         try:
-            self.log_message("Received download request for %s", url)
-            temp_dir, file_path = self._download_with_yt_dlp(url, mode)
-            self._send_file(file_path)
-            self.log_message("Completed download request for %s", url)
+            url, mode = self.read_form()
+            self.log_message("Download request: %s (%s)", url, mode)
+            with tempfile.TemporaryDirectory(prefix="ytdlp_") as temp_dir:
+                self.send_file(self.download(url, mode, temp_dir))
         except RuntimeError as exc:
-            self.log_message("Request failed for %s: %s", url, exc)
-            self._render_form(str(exc), is_error=True)
-        finally:
-            if temp_dir:
-                shutil.rmtree(temp_dir, ignore_errors=True)
+            self.render(str(exc), True)
 
-    # Helper methods -----------------------------------------------------
-
-    def _extract_request(self):
-        length_header = self.headers.get("Content-Length")
-        if length_header is None:
-            return None, None, "Missing Content-Length header."
+    def read_form(self):
         try:
-            length = int(length_header)
-        except ValueError:
-            return None, None, "Invalid Content-Length value."
-
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as exc:
+            raise RuntimeError("Content-Length 无效。") from exc
         if length <= 0:
-            return None, None, "Missing form data."
-
+            raise RuntimeError("缺少表单数据。")
         if length > MAX_POST_BYTES:
-            self.rfile.read(length)  # drain oversize body
-            return None, None, "Form data is too large."
-
-        raw = self.rfile.read(length)
-        try:
-            decoded = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            decoded = raw.decode("utf-8", "ignore")
-
-        params = parse_qs(decoded, keep_blank_values=True)
-        url = params.get("url", [""])[0].strip()
-        if "&" in url:
-            url = url.split("&", 1)[0]
+            self.rfile.read(length)
+            raise RuntimeError("表单过大。")
+        params = parse_qs(self.rfile.read(length).decode("utf-8", "ignore"), keep_blank_values=True)
+        url = clean_url(params.get("url", [""])[0])
         if not url:
-            return None, None, "Please enter a URL."
+            raise RuntimeError("请输入有效链接。")
         mode = params.get("mode", ["worst"])[0].strip().lower()
-        if mode not in {"worst", "720p", "mp3"}:
-            mode = "worst"
-        return url, mode, None
+        return url, mode if mode in FORMATS else "worst"
 
-    def _yt_dlp_common_args(self):
-        cmd = []
-        if JS_RUNTIME:
-            cmd += ["--js-runtimes", JS_RUNTIME]
-        if REMOTE_COMPONENTS:
-            cmd += ["--remote-components", REMOTE_COMPONENTS]
-        if EXTRACTOR_ARGS:
-            cmd += ["--extractor-args", EXTRACTOR_ARGS]
-        if COOKIES_FILE:
-            cmd += ["--cookies", COOKIES_FILE]
-        if COOKIES_FROM_BROWSER:
-            cmd += ["--cookies-from-browser", COOKIES_FROM_BROWSER]
-        if EXTRA_ARGS:
-            cmd += EXTRA_ARGS
-        return cmd
-
-    def _download_with_yt_dlp(self, url, mode):
-        temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
-        if mode == "mp3":
-            cmd = ["yt-dlp", "-x", "--audio-format", "mp3", "-f", "bestaudio/best"]
-        else:
-            is_720p = mode == "720p"
-            # Keep the Fetch action intentionally small by forcing the worst
-            # available muxed video+audio combination. The 720p action attempts an
-            # exact 720p grab first before falling back to any format at or below
-            # 720p so that users get the intended resolution when available.
-            format_selector = (
-                "(bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a])/"
-                "(bestvideo[height=720]+bestaudio)/"
-                "(bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a])/"
-                "(bestvideo[height<=720]+bestaudio)/"
-                "best[height<=720]"
-                if is_720p
-                else "(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst"
-            )
-            cmd = ["yt-dlp", "-f", format_selector]
-            if is_720p:
-                cmd += ["--merge-output-format", "mp4"]
-
-        cmd += ["-o", "%(title).50s.%(ext)s"]
-        cmd += self._yt_dlp_common_args()
-        cmd.append(url)
-        self.log_message("Starting yt-dlp process: %s", " ".join(cmd))
-
+    def download(self, url, mode, temp_dir):
+        cmd = ["yt-dlp", *FORMATS[mode], "-o", "%(title).50s.%(ext)s", *COMMON_ARGS, url]
+        self.log_message("Running: %s", " ".join(cmd))
         try:
-            proc = subprocess.Popen(
+            proc = subprocess.run(
                 cmd,
                 cwd=temp_dir,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1,
+                check=False,
             )
         except FileNotFoundError as exc:
-            raise RuntimeError("yt-dlp executable is not available on this system.") from exc
-
-        output_lines = []
-        assert proc.stdout is not None
-        for raw_line in proc.stdout:
-            line = raw_line.rstrip()
-            output_lines.append(line)
-            if line:
-                self.log_message("[yt-dlp] %s", line)
-        proc.stdout.close()
-        return_code = proc.wait()
-
-        if return_code != 0:
-            snippet = "\n".join(line for line in output_lines[-10:] if line.strip()) or "Unknown yt-dlp error."
-            raise RuntimeError(f"yt-dlp failed:\n{snippet}")
-
-        self.log_message("yt-dlp finished successfully with %d lines of output.", len(output_lines))
-
-        files = [
-            os.path.join(temp_dir, name)
-            for name in os.listdir(temp_dir)
-            if os.path.isfile(os.path.join(temp_dir, name))
-        ]
+            raise RuntimeError("系统里找不到 yt-dlp。") from exc
+        if proc.returncode:
+            lines = [line for line in proc.stdout.splitlines() if line.strip()]
+            raise RuntimeError("yt-dlp failed:\n" + ("\n".join(lines[-10:]) or "Unknown yt-dlp error."))
+        files = [path for path in Path(temp_dir).iterdir() if path.is_file()]
         if not files:
-            raise RuntimeError("Download completed but no file was created.")
+            raise RuntimeError("下载完成，但没有生成文件。")
+        return max(files, key=lambda path: path.stat().st_mtime)
 
-        latest = max(files, key=os.path.getmtime)
-        limited_name = _limit_filename_length(os.path.basename(latest))
-        if limited_name != os.path.basename(latest):
-            new_path = os.path.join(temp_dir, limited_name)
-            os.replace(latest, new_path)
-            latest = new_path
-        return temp_dir, latest
-
-    def _send_file(self, file_path):
-        filename = os.path.basename(file_path)
-        try:
-            size = os.path.getsize(file_path)
-        except OSError as exc:
-            raise RuntimeError(f"Downloaded file missing: {exc}") from exc
-
-        ascii_fallback = filename.encode("ascii", "ignore").decode("ascii") or "download.bin"
-        ascii_fallback = ascii_fallback.replace('"', "_")
-        utf8_name = quote(filename)
+    def send_file(self, path):
+        size = path.stat().st_size
+        name = path.name
+        fallback = name.encode("ascii", "ignore").decode("ascii").replace('"', "_") or "download.bin"
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/octet-stream")
-        disposition = f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{utf8_name}'
-        self.send_header("Content-Disposition", disposition)
+        self.send_header("Content-Disposition", f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(name)}')
         self.send_header("Content-Length", str(size))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-
         try:
-            with open(file_path, "rb") as src:
-                shutil.copyfileobj(src, self.wfile, length=64 * 1024)
+            with path.open("rb") as fh:
+                shutil.copyfileobj(fh, self.wfile, 64 * 1024)
         except BrokenPipeError:
-            self.log_message("Client canceled download for %s", filename)
+            self.log_message("Client canceled download: %s", name)
 
-    def _render_form(self, message, is_error=False):
-        css_class = "error" if is_error else "info"
-        status_block = f'<p class="status {css_class}">{html.escape(message)}</p>' if message else ""
-        body = FORM_HTML.format(status=status_block)
-        encoded = body.encode("utf-8")
+    def render(self, message, is_error=False):
+        status = f'<p class="status {"error" if is_error else "info"}">{html.escape(message)}</p>' if message else ""
+        body = FORM_HTML.replace("{status}", status).encode()
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(encoded)))
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(encoded)
+        self.wfile.write(body)
 
-    # Reduce default noisy logging
     def log_message(self, fmt, *args):
         print(f"[{self.log_date_time_string()}] {self.address_string()} {fmt % args}")
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Minimal yt-dlp download helper.")
-    parser.add_argument(
-        "--host",
-        default=os.environ.get("YTD_HOST", "0.0.0.0"),
-        help="Host/interface to bind (default: 0.0.0.0 or YTD_HOST env).",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=int(os.environ.get("YTD_PORT", "8765")),
-        help="Port to bind (default: 8765 or YTD_PORT env). Use 0 to auto-pick a free port.",
-    )
+    parser.add_argument("--host", default=os.getenv("YTD_HOST", "0.0.0.0"))
+    parser.add_argument("--port", type=int, default=int(os.getenv("YTD_PORT", "8765")))
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
 
-    class ReusableThreadingHTTPServer(ThreadingHTTPServer):
+    class Server(ThreadingHTTPServer):
         allow_reuse_address = True
 
     try:
-        server = ReusableThreadingHTTPServer((args.host, args.port), DownloadHandler)
+        server = Server((args.host, args.port), DownloadHandler)
     except OSError as exc:
         if exc.errno == errno.EADDRINUSE:
             print(
-                "启动失败：端口已被占用（Address already in use）。\n"
-                f"- 当前尝试绑定：{args.host}:{args.port}\n"
-                "- 解决办法：\n"
-                "  1) 换一个端口：`python3 whisper/tool_ytd.py --port 8766`\n"
-                "  2) 或让系统自动选空闲端口：`python3 whisper/tool_ytd.py --port 0`\n"
-                "  3) 或查出是谁占用了端口并结束它：`ss -ltnp | rg ':8765'`（把 8765 换成你的端口）\n"
-                "- 也可能是你之前启动的同一个脚本还在后台运行。"
+                "启动失败：端口已被占用。\n"
+                f"- 当前地址：{args.host}:{args.port}\n"
+                "- 可改用：`python3 ytd.py --port 8766` 或 `python3 ytd.py --port 0`"
             )
             raise SystemExit(2) from exc
         raise
 
     host, port = server.server_address[:2]
-    print(f"Serving  downloader on http://{host}:{port}")
+    print(f"Serving downloader on http://{host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
