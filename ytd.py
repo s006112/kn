@@ -5,6 +5,7 @@ import argparse
 import errno
 import html
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -101,24 +102,46 @@ def clean_url(url):
 
 def download(url, mode):
     temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
-    cmd = ["yt-dlp", *FORMATS[mode], "-o", "%(title).50s.%(ext)s", *COMMON_ARGS, url]
+    cmd = ["yt-dlp", "--newline", *FORMATS[mode], "-o", "%(title).50s.%(ext)s", *COMMON_ARGS, url]
     print(f"Download request: {url} ({mode})")
     print("Running:", " ".join(cmd))
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=temp_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            check=False,
+            bufsize=1,
         )
     except FileNotFoundError as exc:
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise RuntimeError("系统里找不到 yt-dlp。") from exc
-    if proc.returncode:
+    lines = []
+    shown = -1
+    assert proc.stdout is not None
+    for raw in proc.stdout:
+        line = raw.strip()
+        if line:
+            lines.append(line)
+        if "[download]" not in line:
+            continue
+        match = re.search(r"(\d+(?:\.\d+)?)%", line)
+        if not match:
+            continue
+        pct = max(0, min(100, int(float(match.group(1)))))
+        if pct == shown:
+            continue
+        shown = pct
+        width = 40
+        filled = width * pct // 100
+        print(f"\r[{'█' * filled}{'-' * (width - filled)}] {pct:3d}%", end="", flush=True)
+    proc.stdout.close()
+    return_code = proc.wait()
+    if shown >= 0:
+        print()
+    if return_code:
         shutil.rmtree(temp_dir, ignore_errors=True)
-        lines = [line for line in proc.stdout.splitlines() if line.strip()]
         raise RuntimeError("yt-dlp failed:\n" + ("\n".join(lines[-10:]) or "Unknown yt-dlp error."))
     files = [path for path in Path(temp_dir).iterdir() if path.is_file()]
     if not files:
