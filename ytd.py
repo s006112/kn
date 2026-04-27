@@ -10,9 +10,8 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlencode, urlsplit, urlunsplit
+from wsgiref.simple_server import make_server
 
 MAX_POST_BYTES = 4096
 TRACKING_KEYS = {"fbclid", "feature", "pp", "si", "t"}
@@ -58,31 +57,24 @@ small{display:block;margin-top:1rem;color:#555}
 def detect_js_runtime():
     if runtime := os.getenv("YTD_JS_RUNTIME", "").strip():
         return runtime
-    for label, binary in (
-        ("deno", "deno"),
-        ("node", "node"),
-        ("bun", "bun"),
-        ("quickjs", "qjs"),
-        ("quickjs", "quickjs"),
-    ):
-        if path := shutil.which(binary):
-            return label if label == binary else f"{label}:{path}"
+    for name in ("deno", "node", "bun", "qjs", "quickjs"):
+        if path := shutil.which(name):
+            return "quickjs" if name == "quickjs" else f"quickjs:{path}" if name == "qjs" else name
     return ""
 
 
-def common_args():
-    values = [
+COMMON_ARGS = [
+    item
+    for flag, value in (
         ("--js-runtimes", detect_js_runtime()),
         ("--remote-components", os.getenv("YTD_REMOTE_COMPONENTS", "ejs:github").strip()),
         ("--extractor-args", os.getenv("YTD_EXTRACTOR_ARGS", "youtube:player_client=default").strip()),
         ("--cookies", os.getenv("YTD_COOKIES_FILE", "").strip()),
         ("--cookies-from-browser", os.getenv("YTD_COOKIES_FROM_BROWSER", "").strip()),
-    ]
-    args = [item for flag, value in values if value for item in (flag, value)]
-    return args + shlex.split(os.getenv("YTD_EXTRA_ARGS", ""))
-
-
-COMMON_ARGS = common_args()
+    )
+    if value
+    for item in (flag, value)
+] + shlex.split(os.getenv("YTD_EXTRA_ARGS", ""))
 
 
 def clean_url(url):
@@ -107,105 +99,88 @@ def clean_url(url):
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query, doseq=True), ""))
 
 
-class DownloadHandler(BaseHTTPRequestHandler):
-    server_version = "MinimalYTD/0.2"
-    protocol_version = "HTTP/1.1"
+def download(url, mode):
+    temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
+    cmd = ["yt-dlp", *FORMATS[mode], "-o", "%(title).50s.%(ext)s", *COMMON_ARGS, url]
+    print(f"Download request: {url} ({mode})")
+    print("Running:", " ".join(cmd))
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=temp_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise RuntimeError("系统里找不到 yt-dlp。") from exc
+    if proc.returncode:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        lines = [line for line in proc.stdout.splitlines() if line.strip()]
+        raise RuntimeError("yt-dlp failed:\n" + ("\n".join(lines[-10:]) or "Unknown yt-dlp error."))
+    files = [path for path in Path(temp_dir).iterdir() if path.is_file()]
+    if not files:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise RuntimeError("下载完成，但没有生成文件。")
+    return max(files, key=lambda path: path.stat().st_mtime), temp_dir
 
-    def do_GET(self):
-        self.render("Ready.")
 
-    def do_POST(self):
+def app(environ, start_response):
+    def reply(message, is_error=False):
+        status = f'<p class="status {"error" if is_error else "info"}">{html.escape(message)}</p>' if message else ""
+        body = FORM_HTML.replace("{status}", status).encode()
+        start_response("200 OK", [("Content-Type", "text/html; charset=utf-8"), ("Content-Length", str(len(body)))])
+        return [body]
+
+    if environ.get("REQUEST_METHOD") != "POST":
+        return reply("Ready.")
+    try:
         try:
-            url, mode = self.read_form()
-            self.log_message("Download request: %s (%s)", url, mode)
-            with tempfile.TemporaryDirectory(prefix="ytdlp_") as temp_dir:
-                self.send_file(self.download(url, mode, temp_dir))
-        except RuntimeError as exc:
-            self.render(str(exc), True)
-
-    def read_form(self):
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
+            length = int(environ.get("CONTENT_LENGTH") or "0")
         except ValueError as exc:
             raise RuntimeError("Content-Length 无效。") from exc
         if length <= 0:
             raise RuntimeError("缺少表单数据。")
         if length > MAX_POST_BYTES:
-            self.rfile.read(length)
             raise RuntimeError("表单过大。")
-        params = parse_qs(self.rfile.read(length).decode("utf-8", "ignore"), keep_blank_values=True)
+        params = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "ignore"), keep_blank_values=True)
         url = clean_url(params.get("url", [""])[0])
         if not url:
             raise RuntimeError("请输入有效链接。")
         mode = params.get("mode", ["worst"])[0].strip().lower()
-        return url, mode if mode in FORMATS else "worst"
-
-    def download(self, url, mode, temp_dir):
-        cmd = ["yt-dlp", *FORMATS[mode], "-o", "%(title).50s.%(ext)s", *COMMON_ARGS, url]
-        self.log_message("Running: %s", " ".join(cmd))
-        try:
-            proc = subprocess.run(
-                cmd,
-                cwd=temp_dir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                check=False,
-            )
-        except FileNotFoundError as exc:
-            raise RuntimeError("系统里找不到 yt-dlp。") from exc
-        if proc.returncode:
-            lines = [line for line in proc.stdout.splitlines() if line.strip()]
-            raise RuntimeError("yt-dlp failed:\n" + ("\n".join(lines[-10:]) or "Unknown yt-dlp error."))
-        files = [path for path in Path(temp_dir).iterdir() if path.is_file()]
-        if not files:
-            raise RuntimeError("下载完成，但没有生成文件。")
-        return max(files, key=lambda path: path.stat().st_mtime)
-
-    def send_file(self, path):
-        size = path.stat().st_size
-        name = path.name
-        fallback = name.encode("ascii", "ignore").decode("ascii").replace('"', "_") or "download.bin"
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "application/octet-stream")
-        self.send_header("Content-Disposition", f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(name)}')
-        self.send_header("Content-Length", str(size))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
+        path, temp_dir = download(url, mode)
+    except RuntimeError as exc:
+        return reply(str(exc), True)
+    name = path.name
+    fallback = name.encode("ascii", "ignore").decode("ascii").replace('"', "_") or "download.bin"
+    start_response(
+        "200 OK",
+        [
+            ("Content-Type", "application/octet-stream"),
+            ("Content-Disposition", f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(name)}'),
+            ("Content-Length", str(path.stat().st_size)),
+            ("Cache-Control", "no-store"),
+        ],
+    )
+    def stream():
         try:
             with path.open("rb") as fh:
-                shutil.copyfileobj(fh, self.wfile, 64 * 1024)
-        except BrokenPipeError:
-            self.log_message("Client canceled download: %s", name)
-
-    def render(self, message, is_error=False):
-        status = f'<p class="status {"error" if is_error else "info"}">{html.escape(message)}</p>' if message else ""
-        body = FORM_HTML.replace("{status}", status).encode()
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def log_message(self, fmt, *args):
-        print(f"[{self.log_date_time_string()}] {self.address_string()} {fmt % args}")
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Minimal yt-dlp download helper.")
-    parser.add_argument("--host", default=os.getenv("YTD_HOST", "0.0.0.0"))
-    parser.add_argument("--port", type=int, default=int(os.getenv("YTD_PORT", "8765")))
-    return parser.parse_args()
+                while chunk := fh.read(64 * 1024):
+                    yield chunk
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+    return stream()
 
 
 def main():
-    args = parse_args()
-
-    class Server(ThreadingHTTPServer):
-        allow_reuse_address = True
-
+    parser = argparse.ArgumentParser(description="Minimal yt-dlp download helper.")
+    parser.add_argument("--host", default=os.getenv("YTD_HOST", "0.0.0.0"))
+    parser.add_argument("--port", type=int, default=int(os.getenv("YTD_PORT", "8765")))
+    args = parser.parse_args()
     try:
-        server = Server((args.host, args.port), DownloadHandler)
+        server = make_server(args.host, args.port, app)
     except OSError as exc:
         if exc.errno == errno.EADDRINUSE:
             print(
@@ -215,7 +190,6 @@ def main():
             )
             raise SystemExit(2) from exc
         raise
-
     host, port = server.server_address[:2]
     print(f"Serving downloader on http://{host}:{port}")
     try:
