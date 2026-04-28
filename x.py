@@ -10,7 +10,7 @@ load_dotenv()
 auth_token = os.environ["X_AUTH_TOKEN"]
 ct0 = os.environ["X_CT0"]
 
-target_url = "https://x.com/i/status/2047122784678293988"
+target_url = "https://x.com/i/status/2044968730833424598"
 
 # Automatically resolve redirects (e.g., from /i/status/... to the actual status URL)
 # We pass your auth cookies to ensure X doesn't redirect to a login/guest block page
@@ -43,7 +43,6 @@ os.makedirs(download_dir, exist_ok=True)
 ydl_opts = {
     'cookiefile': temp_cookie_path,
     'format': 'http-2176/bestvideo+bestaudio/best', # Fallback added just in case
-    #'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
     'merge_output_format': 'mp4',
     'outtmpl': os.path.join(download_dir, '%(uploader)s_%(id)s.%(ext)s'),
     'prefer_free_formats': False, # Ensures it sticks to standard mp4/m4a,

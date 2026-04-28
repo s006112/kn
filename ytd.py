@@ -143,8 +143,7 @@ def download(url, mode):
     if return_code:
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise RuntimeError("yt-dlp failed:\n" + ("\n".join(lines[-10:]) or "Unknown yt-dlp error."))
-    files = [path for path in Path(temp_dir).iterdir() if path.is_file()]
-    if not files:
+    if not (files := [path for path in Path(temp_dir).iterdir() if path.is_file()]):
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise RuntimeError("下载完成，但没有生成文件。")
     return max(files, key=lambda path: path.stat().st_mtime), temp_dir
@@ -160,20 +159,16 @@ def app(environ, start_response):
     if environ.get("REQUEST_METHOD") != "POST":
         return reply("Ready.")
     try:
-        try:
-            length = int(environ.get("CONTENT_LENGTH") or "0")
-        except ValueError as exc:
-            raise RuntimeError("Content-Length 无效。") from exc
-        if length <= 0:
-            raise RuntimeError("缺少表单数据。")
-        if length > MAX_POST_BYTES:
-            raise RuntimeError("表单过大。")
+        length = int(environ.get("CONTENT_LENGTH") or "0")
+        if not 0 < length <= MAX_POST_BYTES:
+            raise RuntimeError("缺少表单数据。" if length <= 0 else "表单过大。")
         params = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "ignore"), keep_blank_values=True)
-        url = clean_url(params.get("url", [""])[0])
-        if not url:
+        if not (url := clean_url(params.get("url", [""])[0])):
             raise RuntimeError("请输入有效链接。")
         mode = params.get("mode", ["worst"])[0].strip().lower()
         path, temp_dir = download(url, mode)
+    except ValueError:
+        return reply("Content-Length 无效。", True)
     except RuntimeError as exc:
         return reply(str(exc), True)
     name = path.name
