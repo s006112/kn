@@ -13,7 +13,7 @@ ct0 = os.getenv("X_CT0")
 if not auth_token or not ct0:
     raise ValueError("Missing X_AUTH_TOKEN or X_CT0 in .env file.")
 
-target_url = "https://x.com/i/status/2046079024422858758"
+target_url = "https://x.com/i/status/2048671732639445415"
 
 # Automatically resolve redirects (e.g., from /i/status/... to the actual status URL)
 # We pass your auth cookies to ensure X doesn't redirect to a login/guest block page
@@ -42,13 +42,16 @@ with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding
 
 print("Authenticating with temporary cookie file...")
 
+download_dir = "/desktop/X"
+os.makedirs(download_dir, exist_ok=True)
+
 # Set up yt-dlp options (matching your CLI arguments)
 ydl_opts = {
     'cookiefile': temp_cookie_path,
     'format': 'http-2176/bestvideo+bestaudio/best', # Fallback added just in case
     #'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
     'merge_output_format': 'mp4',
-    'outtmpl': 'downloads/%(uploader)s_%(id)s.%(ext)s',
+    'outtmpl': os.path.join(download_dir, '%(uploader)s_%(id)s.%(ext)s'),
     'prefer_free_formats': False, # Ensures it sticks to standard mp4/m4a,
     'quiet': False
 }
