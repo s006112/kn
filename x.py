@@ -7,27 +7,21 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-auth_token = os.getenv("X_AUTH_TOKEN")
-ct0 = os.getenv("X_CT0")
+auth_token = os.environ["X_AUTH_TOKEN"]
+ct0 = os.environ["X_CT0"]
 
-if not auth_token or not ct0:
-    raise ValueError("Missing X_AUTH_TOKEN or X_CT0 in .env file.")
-
-target_url = "https://x.com/i/status/2048671732639445415"
+target_url = "https://x.com/i/status/2047122784678293988"
 
 # Automatically resolve redirects (e.g., from /i/status/... to the actual status URL)
 # We pass your auth cookies to ensure X doesn't redirect to a login/guest block page
 print(f"Resolving URL: {target_url}")
-try:
-    req = Request(target_url, headers={
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        'Cookie': f"auth_token={auth_token}; ct0={ct0}"
-    })
-    with urlopen(req) as response:
-        target_url = response.geturl()
-    print(f"Resolved to: {target_url}")
-except Exception as e:
-    print(f"URL resolution fallback (error: {e})")
+req = Request(target_url, headers={
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    'Cookie': f"auth_token={auth_token}; ct0={ct0}"
+})
+with urlopen(req) as response:
+    target_url = response.geturl()
+print(f"Resolved to: {target_url}")
 
 # Dynamically generate the Netscape HTTP Cookie File content
 cookie_content = f"""# Netscape HTTP Cookie File
@@ -42,7 +36,7 @@ with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding
 
 print("Authenticating with temporary cookie file...")
 
-download_dir = "/desktop/X"
+download_dir = "/desktop/Sync/Whisper/X"
 os.makedirs(download_dir, exist_ok=True)
 
 # Set up yt-dlp options (matching your CLI arguments)
@@ -56,12 +50,6 @@ ydl_opts = {
     'quiet': False
 }
 
-try:
-    # Initialize and run yt-dlp with the newly resolved URL
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([target_url])
-finally:
-    # Ensure the temporary cookie file is deleted even if the download fails
-    if os.path.exists(temp_cookie_path):
-        os.remove(temp_cookie_path)
-        print("Cleanup: Temporary cookie file securely deleted.")
+with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    ydl.download([target_url])
+os.remove(temp_cookie_path)
