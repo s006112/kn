@@ -12,16 +12,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlencode, urlsplit, urlunsplit
-from urllib.request import Request, urlopen
 from wsgiref.simple_server import make_server
-
-try:
-    from dotenv import load_dotenv
-except ImportError:  # pragma: no cover - optional dependency
-    load_dotenv = None
-
-if load_dotenv is not None:
-    load_dotenv()
 
 MAX_POST_BYTES = 4096
 TRACKING_KEYS = {"fbclid", "feature", "pp", "si", "t"}
@@ -38,13 +29,6 @@ FORMATS = {
     ],
     "mp3": ["-x", "--audio-format", "mp3", "-f", "bestaudio/best"],
 }
-X_FORMAT_ARGS = [
-    "-f",
-    "http-2176/bestvideo+bestaudio/best",
-    "--merge-output-format",
-    "mp4",
-]
-X_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 FORM_HTML = """<!doctype html>
 <meta charset="utf-8">
 <title>yt-dlp downloader</title>
@@ -60,13 +44,13 @@ small{display:block;margin-top:1rem;color:#555}
 <main>
   <h2>yt-dlp downloader</h2>
   <form method="post">
-    <input name="url" placeholder="https://youtube.com/watch?v=... 或 https://x.com/..." required>
+    <input name="url" placeholder="https://youtube.com/watch?v=..." required>
     <button name="mode" value="worst">最低</button>
     <button name="mode" value="720p">720p</button>
     <button name="mode" value="mp3">MP3</button>
   </form>
   {status}
-  <small>YouTube 保留最低画质、720p 和 MP3；X/Twitter 链接统一按视频模式下载。文件在发送后会删除。</small>
+  <small>只保留最低画质、720p 和 MP3。文件在发送后会删除。</small>
 </main>
 """
 
@@ -80,29 +64,18 @@ def detect_js_runtime():
     return ""
 
 
-def build_common_args(include_cookie_sources=True):
-    args = [
-        item
-        for flag, value in (
-            ("--js-runtimes", detect_js_runtime()),
-            ("--remote-components", os.getenv("YTD_REMOTE_COMPONENTS", "ejs:github").strip()),
-            ("--extractor-args", os.getenv("YTD_EXTRACTOR_ARGS", "youtube:player_client=default").strip()),
-            ("--cookies", os.getenv("YTD_COOKIES_FILE", "").strip()) if include_cookie_sources else ("", ""),
-            (
-                "--cookies-from-browser",
-                os.getenv("YTD_COOKIES_FROM_BROWSER", "").strip(),
-            )
-            if include_cookie_sources
-            else ("", ""),
-        )
-        if flag and value
-        for item in (flag, value)
-    ]
-    return args + shlex.split(os.getenv("YTD_EXTRA_ARGS", ""))
-
-
-COMMON_ARGS = build_common_args()
-X_COMMON_ARGS = build_common_args(include_cookie_sources=False)
+COMMON_ARGS = [
+    item
+    for flag, value in (
+        ("--js-runtimes", detect_js_runtime()),
+        ("--remote-components", os.getenv("YTD_REMOTE_COMPONENTS", "ejs:github").strip()),
+        ("--extractor-args", os.getenv("YTD_EXTRACTOR_ARGS", "youtube:player_client=default").strip()),
+        ("--cookies", os.getenv("YTD_COOKIES_FILE", "").strip()),
+        ("--cookies-from-browser", os.getenv("YTD_COOKIES_FROM_BROWSER", "").strip()),
+    )
+    if value
+    for item in (flag, value)
+] + shlex.split(os.getenv("YTD_EXTRA_ARGS", ""))
 
 
 def clean_url(url):
@@ -127,61 +100,10 @@ def clean_url(url):
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query, doseq=True), ""))
 
 
-def is_x_twitter_url(url):
-    host = urlsplit(url).netloc.lower().split(":", 1)[0]
-    return host == "x.com" or host.endswith(".x.com") or host == "twitter.com" or host.endswith(".twitter.com")
-
-
-def get_x_auth():
-    auth_token = os.getenv("X_AUTH_TOKEN", "").strip()
-    ct0 = os.getenv("X_CT0", "").strip()
-    if not auth_token or not ct0:
-        raise RuntimeError("缺少 X/Twitter 下载所需环境变量：X_AUTH_TOKEN 和 X_CT0。请先在环境变量或 .env 中设置。")
-    return auth_token, ct0
-
-
-def resolve_x_url(url, auth_token, ct0):
-    print(f"Resolving X/Twitter URL: {url}")
-    request = Request(
-        url,
-        headers={
-            "User-Agent": X_USER_AGENT,
-            "Cookie": f"auth_token={auth_token}; ct0={ct0}",
-        },
-    )
-    try:
-        with urlopen(request, timeout=20) as response:
-            resolved_url = response.geturl()
-    except OSError as exc:
-        raise RuntimeError("解析 X/Twitter 链接失败，请确认链接可访问且当前认证信息有效。") from exc
-    resolved_url = clean_url(resolved_url) or resolved_url
-    print(f"Resolved X/Twitter URL: {resolved_url}")
-    return resolved_url
-
-
-def create_x_cookie_file(temp_dir, auth_token, ct0):
-    cookie_content = (
-        "# Netscape HTTP Cookie File\n"
-        f".x.com\tTRUE\t/\tTRUE\t2000000000\tauth_token\t{auth_token}\n"
-        f".x.com\tTRUE\t/\tTRUE\t2000000000\tct0\t{ct0}\n"
-        f".twitter.com\tTRUE\t/\tTRUE\t2000000000\tauth_token\t{auth_token}\n"
-        f".twitter.com\tTRUE\t/\tTRUE\t2000000000\tct0\t{ct0}\n"
-    )
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            delete=False,
-            prefix="x_cookies_",
-            suffix=".txt",
-            encoding="utf-8",
-        ) as temp_cookie:
-            temp_cookie.write(cookie_content)
-            return temp_cookie.name
-    except OSError as exc:
-        raise RuntimeError("创建 X/Twitter 临时 cookie 文件失败。") from exc
-
-
-def run_yt_dlp(cmd, temp_dir):
+def download(url, mode):
+    temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
+    cmd = ["yt-dlp", "--newline", *FORMATS[mode], "-o", "%(title).50s.%(ext)s", *COMMON_ARGS, url]
+    print(f"Download request: {url} ({mode})")
     print("Running:", " ".join(cmd))
     try:
         proc = subprocess.Popen(
@@ -227,51 +149,6 @@ def run_yt_dlp(cmd, temp_dir):
     return max(files, key=lambda path: path.stat().st_mtime), temp_dir
 
 
-def download_youtube(url, mode):
-    if mode not in FORMATS:
-        raise RuntimeError("无效下载模式。")
-    temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
-    cmd = ["yt-dlp", "--newline", *FORMATS[mode], "-o", "%(title).50s.%(ext)s", *COMMON_ARGS, url]
-    print(f"Download request: {url} ({mode})")
-    return run_yt_dlp(cmd, temp_dir)
-
-
-def download_x_twitter(url):
-    temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
-    try:
-        auth_token, ct0 = get_x_auth()
-        resolved_url = resolve_x_url(url, auth_token, ct0)
-        cookie_path = create_x_cookie_file(temp_dir, auth_token, ct0)
-        cmd = [
-            "yt-dlp",
-            "--newline",
-            *X_FORMAT_ARGS,
-            "-o",
-            "%(uploader)s_%(id)s.%(ext)s",
-            *X_COMMON_ARGS,
-            "--cookies",
-            cookie_path,
-            resolved_url,
-        ]
-        print(f"Download request: {resolved_url} (x/twitter)")
-        try:
-            return run_yt_dlp(cmd, temp_dir)
-        finally:
-            try:
-                os.remove(cookie_path)
-            except FileNotFoundError:
-                pass
-    except Exception:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        raise
-
-
-def download(url, mode):
-    if is_x_twitter_url(url):
-        return download_x_twitter(url)
-    return download_youtube(url, mode)
-
-
 def app(environ, start_response):
     def reply(message, is_error=False):
         status = f'<p class="status {"error" if is_error else "info"}">{html.escape(message)}</p>' if message else ""
@@ -305,7 +182,6 @@ def app(environ, start_response):
             ("Cache-Control", "no-store"),
         ],
     )
-
     def stream():
         try:
             with path.open("rb") as fh:
@@ -313,7 +189,6 @@ def app(environ, start_response):
                     yield chunk
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
-
     return stream()
 
 
