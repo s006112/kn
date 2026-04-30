@@ -60,7 +60,7 @@ small{display:block;margin-top:1rem;color:#555}
 <main>
   <h2>yt-dlp downloader</h2>
   <form method="post">
-    <input name="url" placeholder="https://youtube.com/watch?v=... 或 https://x.com/..." required>
+    <input name="url" placeholder="https://youtube.com/watch?v=..." required>
     <button name="mode" value="worst">最低</button>
     <button name="mode" value="720p">720p</button>
     <button name="mode" value="mp3">MP3</button>
