@@ -47,7 +47,7 @@ X_FORMAT_ARGS = [
 X_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 FORM_HTML = """<!doctype html>
 <meta charset="utf-8">
-<title>yt-dlp downloader</title>
+<title>yt downloader</title>
 <style>
 body{font-family:sans-serif;margin:2rem;background:#f6f6f6}
 main{max-width:560px;margin:auto;background:#fff;padding:1.5rem;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.1)}
@@ -58,7 +58,7 @@ button{padding:.65rem 1rem;border:0;border-radius:4px;background:#0067c0;color:#
 small{display:block;margin-top:1rem;color:#555}
 </style>
 <main>
-  <h2>yt-dlp downloader</h2>
+  <h2>yt downloader</h2>
   <form method="post">
     <input name="url" placeholder="https://youtube.com/watch?v=..." required>
     <button name="mode" value="worst">最低</button>
