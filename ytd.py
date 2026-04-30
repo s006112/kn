@@ -66,7 +66,6 @@ small{display:block;margin-top:1rem;color:#555}
     <button name="mode" value="mp3">MP3</button>
   </form>
   {status}
-  <small>YouTube 保留最低画质、720p 和 MP3；X/Twitter 链接统一按视频模式下载。文件在发送后会删除。</small>
 </main>
 """
 
