@@ -50,6 +50,12 @@ from utils_unlink import clean_dead_links
 from utils_files import get_next_available_filename, safe_rename
 from utils_text import sanitize_and_trim_filename
 from helper.helper_llm import LLMPermanentFailure
+from ytd import (
+    download_url_to_folder,
+    read_next_download_url,
+    remove_download_url_line,
+    resolve_download_url_list_file,
+)
 from utils_lock_registry import (
     acquire_file_lock,
     release_file_lock,
@@ -57,6 +63,9 @@ from utils_lock_registry import (
     file_lock,
     get_file_lock_functions,
 )
+
+
+DOWNLOAD_SCAN_INTERVAL_SECONDS = 30
 
 
 def create_pipeline_handlers(
@@ -230,6 +239,87 @@ def list_matching_files(folder: str, predicate: Callable[[str], bool]) -> set[st
     return {
         os.path.join(folder, fn) for fn in os.listdir(folder) if predicate(fn)
     }
+
+
+def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
+    current_thread = threading.current_thread()
+    current_thread.name = "XUrlDownloadPipeline"
+    logged_watch_path = None
+
+    while not ctx.shutdown_flag.is_set():
+        wait_seconds = DOWNLOAD_SCAN_INTERVAL_SECONDS
+        try:
+            target_folder = Path(
+                ctx.config.get("DOWNLOAD_TARGET_FOLDER", ctx.config["WHISPER_FOLDER"])
+            )
+            list_file = Path(
+                ctx.config.get("X_URL_LIST_FILE", target_folder / "x.txt")
+            )
+            active_list_file = resolve_download_url_list_file(list_file)
+            target_folder.mkdir(parents=True, exist_ok=True)
+            skipped_urls: set[str] = set()
+
+            if active_list_file != logged_watch_path:
+                logging.info(
+                    "XUrlDownloadPipeline: Watching %s -> %s",
+                    active_list_file,
+                    target_folder,
+                )
+                logged_watch_path = active_list_file
+
+            while not ctx.shutdown_flag.is_set():
+                list_path = os.fspath(active_list_file)
+                with file_lock(list_path) as locked:
+                    if not locked:
+                        break
+                    url, active_list_file = read_next_download_url(
+                        active_list_file,
+                        skipped_urls,
+                    )
+
+                if not url:
+                    break
+
+                try:
+                    logging.info("XUrlDownloadPipeline: Downloading %s", url)
+                    cleaned_url, output_path = download_url_to_folder(
+                        url,
+                        target_folder,
+                    )
+                except Exception as exc:
+                    logging.error(
+                        "XUrlDownloadPipeline: Download failed for %s: %s",
+                        url,
+                        exc,
+                    )
+                    skipped_urls.add(url)
+                    continue
+
+                with file_lock(os.fspath(active_list_file)) as locked:
+                    removed = (
+                        remove_download_url_line(active_list_file, url)
+                        if locked
+                        else False
+                    )
+
+                if removed:
+                    logging.info(
+                        "XUrlDownloadPipeline: Downloaded %s -> %s",
+                        cleaned_url,
+                        output_path,
+                    )
+                else:
+                    logging.warning(
+                        "XUrlDownloadPipeline: Downloaded %s but URL line was not removed",
+                        url,
+                    )
+                    skipped_urls.add(url)
+
+        except Exception as exc:
+            logging.error("XUrlDownloadPipeline: Error during scan: %s", exc)
+
+        if ctx.shutdown_flag.wait(wait_seconds):
+            return
 
 
 def scan_existing_files(ctx: PipelineContext) -> None:

@@ -45,6 +45,7 @@ X_FORMAT_ARGS = [
     "mp4",
 ]
 X_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+DOWNLOAD_URL_PREFIXES = ("https://x.com", "https://www.youtube.com")
 FORM_HTML = """<!doctype html>
 <meta charset="utf-8">
 <title>yt downloader</title>
@@ -129,6 +130,31 @@ def clean_url(url):
 def is_x_twitter_url(url):
     host = urlsplit(url).netloc.lower().split(":", 1)[0]
     return host == "x.com" or host.endswith(".x.com") or host == "twitter.com" or host.endswith(".twitter.com")
+
+
+def resolve_download_url_list_file(list_file):
+    path = Path(list_file)
+    if path.exists() or path.name != "x.txt":
+        return path
+    uppercase_path = path.with_name("X.txt")
+    return uppercase_path if uppercase_path.exists() else path
+
+
+def is_download_list_url(url):
+    return url.strip().startswith(DOWNLOAD_URL_PREFIXES)
+
+
+def read_next_download_url(list_file, skipped_urls):
+    path = resolve_download_url_list_file(list_file)
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                url = line.strip()
+                if url and url not in skipped_urls and is_download_list_url(url):
+                    return url, path
+    except FileNotFoundError:
+        return None, path
+    return None, path
 
 
 def get_x_auth():
@@ -226,16 +252,39 @@ def run_yt_dlp(cmd, temp_dir):
     return max(files, key=lambda path: path.stat().st_mtime), temp_dir
 
 
-def download_youtube(url, mode):
+def move_download_to_output_dir(path, temp_dir, output_dir):
+    if output_dir is None:
+        return path, temp_dir
+
+    target_dir = Path(output_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / path.name
+    if target.exists():
+        counter = 1
+        while True:
+            candidate = target_dir / f"{target.stem}_{counter}{target.suffix}"
+            if not candidate.exists():
+                target = candidate
+                break
+            counter += 1
+    try:
+        shutil.move(os.fspath(path), os.fspath(target))
+        return target, None
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def download_youtube(url, mode, output_dir=None):
     if mode not in FORMATS:
         raise RuntimeError("无效下载模式。")
     temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
     cmd = ["yt-dlp", "--newline", *FORMATS[mode], "-o", "%(title).50s.%(ext)s", *COMMON_ARGS, url]
     print(f"Download request: {url} ({mode})")
-    return run_yt_dlp(cmd, temp_dir)
+    path, temp_dir = run_yt_dlp(cmd, temp_dir)
+    return move_download_to_output_dir(path, temp_dir, output_dir)
 
 
-def download_x_twitter(url):
+def download_x_twitter(url, output_dir=None):
     temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
     try:
         auth_token, ct0 = get_x_auth()
@@ -254,7 +303,8 @@ def download_x_twitter(url):
         ]
         print(f"Download request: {resolved_url} (x/twitter)")
         try:
-            return run_yt_dlp(cmd, temp_dir)
+            path, temp_dir = run_yt_dlp(cmd, temp_dir)
+            return move_download_to_output_dir(path, temp_dir, output_dir)
         finally:
             try:
                 os.remove(cookie_path)
@@ -265,10 +315,51 @@ def download_x_twitter(url):
         raise
 
 
-def download(url, mode):
+def download(url, mode, output_dir=None):
     if is_x_twitter_url(url):
-        return download_x_twitter(url)
-    return download_youtube(url, mode)
+        return download_x_twitter(url, output_dir=output_dir)
+    return download_youtube(url, mode, output_dir=output_dir)
+
+
+def download_url_to_folder(url, output_dir):
+    cleaned_url = clean_url(url)
+    if not cleaned_url:
+        raise RuntimeError(f"Invalid URL: {url}")
+    path, _ = download(cleaned_url, "720p", output_dir=output_dir)
+    return cleaned_url, path
+
+
+def remove_download_url_line(list_file, url):
+    path = resolve_download_url_list_file(list_file)
+    tmp_path = None
+    try:
+        with path.open("r", encoding="utf-8", errors="replace", newline="") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return False
+
+    for index, line in enumerate(lines):
+        if line.strip() != url:
+            continue
+
+        del lines[index]
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=os.fspath(path.parent),
+            text=True,
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+                f.writelines(lines)
+            os.replace(tmp_path, path)
+            tmp_path = None
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        return True
+
+    return False
 
 
 def app(environ, start_response):

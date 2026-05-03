@@ -45,6 +45,7 @@ from p_pipelines import (
     process_premium_extract_queue,
     process_pretext_queue,
     process_ttml_pipeline,
+    process_x_url_download_pipeline,
     process_wikilink_cleaning,
     scan_existing_files,
 )
@@ -160,6 +161,12 @@ def start_system(cfg: Optional[Dict[str, Any]] = None) -> SystemHandles:
             daemon=True,
             name="WikilinkCleaner",
         ),
+        "XUrlDownloadPipeline": threading.Thread(
+            target=process_x_url_download_pipeline,
+            args=(ctx,),
+            daemon=True,
+            name="XUrlDownloadPipeline",
+        ),
     }
 
     for t in threads.values():
@@ -255,12 +262,13 @@ def main(cfg: Optional[Dict[str, Any]] = None) -> None:
     ValueError when `cfg` is None; RuntimeError if `CURRENT_CONTEXT` becomes None during monitoring.
     """
     logging.info(
-        "Starting: TTML + Text + Audio + WikilinkCleaner"
+        "Starting: TTML + Text + Audio + WikilinkCleaner + XUrlDownloadPipeline"
     )
     handles = start_system(cfg)
 
     logging.info("TTML: Independent subtitle file processing")
     logging.info("Text: Pretext → Extract/Premium Extract")
+    logging.info("Download: x.txt URL processing")
 
     try:
         while True:
