@@ -6,13 +6,8 @@ import errno
 import html
 import os
 import shutil
-import sys
-from pathlib import Path
 from urllib.parse import parse_qs, quote
 from wsgiref.simple_server import make_server
-
-WHISPER_DIR = Path(__file__).resolve().parent / "whisper"
-sys.path.insert(0, os.fspath(WHISPER_DIR))
 
 from tool_ytd import clean_url, download
 
@@ -83,7 +78,8 @@ def app(environ, start_response):
                 while chunk := fh.read(64 * 1024):
                     yield chunk
         finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            if temp_dir is not None:
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
     return stream()
 
