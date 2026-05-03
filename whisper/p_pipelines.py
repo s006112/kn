@@ -264,7 +264,7 @@ def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
 
             if active_list_file != logged_watch_path:
                 logging.info(
-                    "XUrlDownloadPipeline: Watching %s -> %s",
+                    "YTD: %s -> %s",
                     active_list_file,
                     target_folder,
                 )
