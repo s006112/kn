@@ -267,8 +267,23 @@ def move_download_to_output_dir(path, temp_dir, output_dir):
                 target = candidate
                 break
             counter += 1
+
     try:
         shutil.move(os.fspath(path), os.fspath(target))
+
+        try:
+            parent_stat = target_dir.stat()
+            os.chown(target, parent_stat.st_uid, parent_stat.st_gid)
+        except PermissionError:
+            pass
+        except AttributeError:
+            pass
+
+        try:
+            os.chmod(target, 0o664)
+        except PermissionError:
+            pass
+
         return target, None
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
@@ -331,7 +346,6 @@ def download_url_to_folder(url, output_dir):
 
 def remove_download_url_line(list_file, url):
     path = resolve_download_url_list_file(list_file)
-    tmp_path = None
     try:
         with path.open("r", encoding="utf-8", errors="replace", newline="") as f:
             lines = f.readlines()
@@ -343,20 +357,8 @@ def remove_download_url_line(list_file, url):
             continue
 
         del lines[index]
-        fd, tmp_path = tempfile.mkstemp(
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            dir=os.fspath(path.parent),
-            text=True,
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
-                f.writelines(lines)
-            os.replace(tmp_path, path)
-            tmp_path = None
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+        with path.open("w", encoding="utf-8", newline="") as f:
+            f.writelines(lines)
         return True
 
     return False
