@@ -253,6 +253,7 @@ def process_pretext_file(ctx: PipelineContext, file_path: str) -> None:
     - Logs and re-raises exceptions; writes .error file on partial results.
     """
     config = ctx.config
+    intervals = config.get("INTERVALS", {})
     normalized_path = os.path.abspath(os.fspath(file_path))
     try:
         os.makedirs(config['ORIGINAL_FOLDER'], exist_ok=True)
@@ -298,6 +299,9 @@ def process_pretext_file(ctx: PipelineContext, file_path: str) -> None:
                     system_prompt=config['PRETEXT_PROMPT'],
                     user_text=chunk,
                     file_path=normalized_path,
+                    max_retries=intervals.get("LLM_MAX_RETRIES", 2),
+                    timeout=intervals.get("LLM_TIMEOUT_SECONDS", 90),
+                    retry_delay=intervals.get("LLM_RETRY_DELAY_SECONDS", 10),
                 )
             except Exception as exc:
                 logging.error(

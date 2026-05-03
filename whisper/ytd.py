@@ -165,7 +165,7 @@ def get_x_auth():
     return auth_token, ct0
 
 
-def resolve_x_url(url, auth_token, ct0):
+def resolve_x_url(url, auth_token, ct0, timeout=20):
     print(f"Resolving X/Twitter URL: {url}")
     request = Request(
         url,
@@ -175,7 +175,7 @@ def resolve_x_url(url, auth_token, ct0):
         },
     )
     try:
-        with urlopen(request, timeout=20) as response:
+        with urlopen(request, timeout=timeout) as response:
             resolved_url = response.geturl()
     except OSError as exc:
         raise RuntimeError("解析 X/Twitter 链接失败，请确认链接可访问且当前认证信息有效。") from exc
@@ -299,11 +299,11 @@ def download_youtube(url, mode, output_dir=None):
     return move_download_to_output_dir(path, temp_dir, output_dir)
 
 
-def download_x_twitter(url, output_dir=None):
+def download_x_twitter(url, output_dir=None, resolve_timeout=20):
     temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
     try:
         auth_token, ct0 = get_x_auth()
-        resolved_url = resolve_x_url(url, auth_token, ct0)
+        resolved_url = resolve_x_url(url, auth_token, ct0, timeout=resolve_timeout)
         cookie_path = create_x_cookie_file(temp_dir, auth_token, ct0)
         cmd = [
             "yt-dlp",
@@ -330,17 +330,26 @@ def download_x_twitter(url, output_dir=None):
         raise
 
 
-def download(url, mode, output_dir=None):
+def download(url, mode, output_dir=None, resolve_timeout=20):
     if is_x_twitter_url(url):
-        return download_x_twitter(url, output_dir=output_dir)
+        return download_x_twitter(
+            url,
+            output_dir=output_dir,
+            resolve_timeout=resolve_timeout,
+        )
     return download_youtube(url, mode, output_dir=output_dir)
 
 
-def download_url_to_folder(url, output_dir):
+def download_url_to_folder(url, output_dir, resolve_timeout=20):
     cleaned_url = clean_url(url)
     if not cleaned_url:
         raise RuntimeError(f"Invalid URL: {url}")
-    path, _ = download(cleaned_url, "720p", output_dir=output_dir)
+    path, _ = download(
+        cleaned_url,
+        "720p",
+        output_dir=output_dir,
+        resolve_timeout=resolve_timeout,
+    )
     return cleaned_url, path
 
 

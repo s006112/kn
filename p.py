@@ -67,9 +67,37 @@ PATH_CONFIG = {
     "DOWNLOAD_TARGET_FOLDER": WHISPER_FOLDER / "X",
 }
 
-RETRY_CONFIG = {
-    "MAX_RETRIES": 1,
-    "RETRY_DELAY": 5,  # seconds
+INTERVAL_CONFIG = {
+    # folder / file scan intervals
+    "PERIODIC_SCAN_SECONDS": 60,          # pretext/extract/premium/torrent backup scan
+    "DOWNLOAD_SCAN_SECONDS": 30,          # x.txt / X.txt URL downloader scan
+    "AUDIO_IDLE_SCAN_SECONDS": 60,        # audio queue empty -> rescan later
+    "TTML_SCAN_SECONDS": 2,               # TTML folder polling
+    "WIKILINK_CLEAN_SECONDS": 60,         # main p.py wikilink cleaner
+
+    # queue worker pacing
+    "TEXT_QUEUE_IDLE_SECONDS": 0.5,       # pretext/extract/premium queue empty
+    "TEXT_QUEUE_LOOP_SECONDS": 0.5,       # sleep after text queue loop
+    "FILE_LOCK_RETRY_SECONDS": 1,         # lock miss -> requeue delay
+
+    # readiness / error backoff
+    "FILE_READY_STABILITY_SECONDS": 1.0,  # TTML size stable check
+    "PIPELINE_ERROR_BACKOFF_SECONDS": 5,  # audio/TTML error sleep
+    "SCAN_ERROR_BACKOFF_SECONDS": 60,     # periodic scanner error sleep
+
+    # monitoring only
+    "STATUS_LOG_SECONDS": 300,            # orchestrator status log loop
+
+    # LLM/API timing
+    "LLM_TIMEOUT_SECONDS": 90,
+    "LLM_RETRY_DELAY_SECONDS": 10,
+    "LLM_MAX_RETRIES": 2,
+
+    # ytd / downloader network timing
+    "X_RESOLVE_TIMEOUT_SECONDS": 20,
+
+    # standalone tool only, if we want it shared too
+    "STANDALONE_WIKILINK_CLEAN_SECONDS": 120,
 }
 
 CONFIG = {
@@ -79,7 +107,7 @@ CONFIG = {
     "MODEL_DISTILL": MODEL_DISTILL,
     "PRETEXT_SUFFIX": ".txt",
     "EXTRACT_SUFFIX": ("_p.txt", ".md"),
-    **RETRY_CONFIG,
+    "INTERVALS": INTERVAL_CONFIG,
     # 由 orchestration 注入
     "PRETEXT_PROMPT": None,
     "EXTRACT_PROMPT": None,

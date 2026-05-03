@@ -12,12 +12,17 @@ import sys
 import time
 from pathlib import Path
 
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from p import INTERVAL_CONFIG
 from utils_unlink import clean_dead_links, setup_wikilink_cleaner_logging
 
 # -------------------------
 # Wikilink cleaner config
 # -------------------------
-WIKILINK_CLEAN_INTERVAL_MINUTES = 2
+WIKILINK_CLEAN_INTERVAL_SECONDS = INTERVAL_CONFIG["STANDALONE_WIKILINK_CLEAN_SECONDS"]
 WIKILINK_CLEAN_TARGET_DIR = Path("/desktop/Obsidian/O_2025")
 WIKILINK_CLEAN_BACKUP_DIR: Path | None = None
 WIKILINK_CLEAN_MAX_FILES = 50
@@ -62,10 +67,10 @@ def clean_cycle(logger: logging.Logger) -> None:
 def main() -> int:
     logger = build_logger()
     setup_wikilink_cleaner_logging(logger)
-    interval_seconds = max(1, int(WIKILINK_CLEAN_INTERVAL_MINUTES) * 60)
+    interval_seconds = max(1, int(WIKILINK_CLEAN_INTERVAL_SECONDS))
     logger.info(
-        "Starting continuous wikilink cleaner (interval: %d minutes, target: %s)",
-        int(WIKILINK_CLEAN_INTERVAL_MINUTES),
+        "Starting continuous wikilink cleaner (interval: %.1f seconds, target: %s)",
+        interval_seconds,
         WIKILINK_CLEAN_TARGET_DIR,
     )
 

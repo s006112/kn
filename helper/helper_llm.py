@@ -286,6 +286,8 @@ def call_llm(
     messages: Optional[Iterable[Dict[str, Any]]] = None,
     file_path: Optional[str] = None,
     max_retries: int = 2,
+    timeout: int = 90,
+    retry_delay: float = 10,
 ) -> str:
     if not model:
         raise ValueError("Model name must not be empty.")
@@ -293,8 +295,6 @@ def call_llm(
     model_name = model.strip()
     backend_name, backend_cfg = _resolve_backend(model_name)
 
-    timeout = 90
-    wait = 10
     attempts = max_retries
 
     for i in range(attempts):
@@ -316,4 +316,4 @@ def call_llm(
                     file_path=file_path,
                     reason=str(exc),
                 ) from exc
-            time.sleep(wait)
+            time.sleep(retry_delay)

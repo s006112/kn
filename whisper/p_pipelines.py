@@ -64,10 +64,6 @@ from utils_lock_registry import (
     get_file_lock_functions,
 )
 
-
-DOWNLOAD_SCAN_INTERVAL_SECONDS = 30
-
-
 def create_pipeline_handlers(
     ctx: PipelineContext,
 ) -> Tuple[PretextHandler, PretextProcessor, ExtractHandler, PremiumExtractHandler]:
@@ -132,17 +128,21 @@ def process_queue(
     - Logs and continues on exceptions from processing or queue operations.
     """
     process = getattr(handler, method_name)
+    intervals = ctx.config.get("INTERVALS", {})
+    queue_idle_seconds = intervals.get("TEXT_QUEUE_IDLE_SECONDS", 0.5)
+    queue_loop_seconds = intervals.get("TEXT_QUEUE_LOOP_SECONDS", 0.5)
+    file_lock_retry_seconds = intervals.get("FILE_LOCK_RETRY_SECONDS", 1)
     while True:
         try:
             if queue.empty():
-                time.sleep(0.5)
+                time.sleep(queue_idle_seconds)
                 continue
             file_path = queue.get()
             with file_lock(file_path) as locked:
                 if not locked:
                     queue.put(file_path)
                     queue.task_done()
-                    time.sleep(1)
+                    time.sleep(file_lock_retry_seconds)
                     continue
                 try:
                     process(file_path, get_next_available_filename)
@@ -164,7 +164,7 @@ def process_queue(
         except Exception as e:
             logging.error("%s queue error (outer): %s", method_name, e)
             queue.task_done()
-        time.sleep(0.5)
+        time.sleep(queue_loop_seconds)
 
 
 def process_pretext_queue(ctx: PipelineContext, processor: PretextProcessor) -> None:
@@ -245,9 +245,12 @@ def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
     current_thread = threading.current_thread()
     current_thread.name = "XUrlDownloadPipeline"
     logged_watch_path = None
+    intervals = ctx.config.get("INTERVALS", {})
+    download_scan_seconds = intervals.get("DOWNLOAD_SCAN_SECONDS", 30)
+    x_resolve_timeout_seconds = intervals.get("X_RESOLVE_TIMEOUT_SECONDS", 20)
 
     while not ctx.shutdown_flag.is_set():
-        wait_seconds = DOWNLOAD_SCAN_INTERVAL_SECONDS
+        wait_seconds = download_scan_seconds
         try:
             target_folder = Path(
                 ctx.config.get("DOWNLOAD_TARGET_FOLDER", ctx.config["WHISPER_FOLDER"])
@@ -285,6 +288,7 @@ def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
                     cleaned_url, output_path = download_url_to_folder(
                         url,
                         target_folder,
+                        resolve_timeout=x_resolve_timeout_seconds,
                     )
                 except Exception as exc:
                     logging.error(
@@ -417,10 +421,13 @@ def periodic_file_scanner(ctx: PipelineContext) -> None:
     processed = set()
     extract_done = set()
     premium_processed = set()
+    intervals = ctx.config.get("INTERVALS", {})
+    periodic_scan_seconds = intervals.get("PERIODIC_SCAN_SECONDS", 60)
+    scan_error_backoff_seconds = intervals.get("SCAN_ERROR_BACKOFF_SECONDS", 60)
 
     while not ctx.shutdown_flag.is_set():
         try:
-            time.sleep(60)
+            time.sleep(periodic_scan_seconds)
 
             scan_torrent_watch_folder(ctx.config)
 
@@ -451,7 +458,7 @@ def periodic_file_scanner(ctx: PipelineContext) -> None:
 
         except Exception as e:
             logging.error("Periodic scanner error: %s", e)
-            time.sleep(60)
+            time.sleep(scan_error_backoff_seconds)
 
 
 def process_audio_pipeline(ctx: PipelineContext) -> None:
@@ -495,6 +502,10 @@ def process_ttml_pipeline(ctx: PipelineContext) -> None:
     """
     watch_folder = os.fspath(ctx.config["TTML_WATCH_FOLDER"])
     original_folder = os.fspath(ctx.config["ORIGINAL_FOLDER"])
+    intervals = ctx.config.get("INTERVALS", {})
+    ttml_scan_seconds = intervals.get("TTML_SCAN_SECONDS", 2)
+    file_ready_stability_seconds = intervals.get("FILE_READY_STABILITY_SECONDS", 1.0)
+    pipeline_error_backoff_seconds = intervals.get("PIPELINE_ERROR_BACKOFF_SECONDS", 5)
 
     while not ctx.shutdown_flag.is_set():
         try:
@@ -511,7 +522,7 @@ def process_ttml_pipeline(ctx: PipelineContext) -> None:
                     return
 
                 src = os.path.join(watch_folder, fn)
-                if not is_file_ready(src):
+                if not is_file_ready(src, wait=file_ready_stability_seconds):
                     continue
 
                 if acquire_file_lock(src):
@@ -531,11 +542,11 @@ def process_ttml_pipeline(ctx: PipelineContext) -> None:
                         release_file_lock(src)
                         cleanup_file_lock(src)
 
-            time.sleep(2)
+            time.sleep(ttml_scan_seconds)
 
         except Exception as e:
             logging.error("TTML Pipeline: Error during scan: %s", e)
-            time.sleep(5)
+            time.sleep(pipeline_error_backoff_seconds)
 
 
 def process_wikilink_cleaning(ctx: PipelineContext) -> None:
@@ -551,6 +562,8 @@ def process_wikilink_cleaning(ctx: PipelineContext) -> None:
     Failure modes:
     - Suppresses exceptions from clean_dead_links.
     """
+    intervals = ctx.config.get("INTERVALS", {})
+    wikilink_clean_seconds = intervals.get("WIKILINK_CLEAN_SECONDS", 60)
     while not ctx.shutdown_flag.is_set():
         try:
             clean_dead_links(
@@ -565,6 +578,5 @@ def process_wikilink_cleaning(ctx: PipelineContext) -> None:
         except Exception:
             pass  # Suppress errors for now, as logging is removed
 
-        for _ in range(2):
-            if ctx.shutdown_flag.wait(30):
-                return
+        if ctx.shutdown_flag.wait(wikilink_clean_seconds):
+            return

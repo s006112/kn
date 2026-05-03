@@ -170,6 +170,7 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
     extract_folder = os.fspath(config["EXTRACT_FOLDER"])
     distill_model = (config.get("MODEL_DISTILL") or "").strip()
     distill_suffix = f"_{sanitize_filename(distill_model)}" if distill_model else ""
+    intervals = config.get("INTERVALS", {})
 
     if not distill_model:
         logging.info("Distillation: MODEL_DISTILL not configured, skipping for %s", base_name)
@@ -199,6 +200,9 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
             system_prompt=config["DISTILL_PROMPT"],
             user_text=user_payload,
             file_path=extracts[0][2],
+            max_retries=intervals.get("LLM_MAX_RETRIES", 2),
+            timeout=intervals.get("LLM_TIMEOUT_SECONDS", 90),
+            retry_delay=intervals.get("LLM_RETRY_DELAY_SECONDS", 10),
         )
     except Exception as exc:
         _write_distill_error(extract_folder, base_name, f"LLM error ({distill_model}): {exc}\n")

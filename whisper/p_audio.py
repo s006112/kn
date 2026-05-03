@@ -281,11 +281,14 @@ def process_audio_queue(config, *_queues, processing_lock, done_folder_path):
     Failure modes:
     - Logs errors and continues.
     """
+    intervals = config.get("INTERVALS", {})
+    audio_idle_scan_seconds = intervals.get("AUDIO_IDLE_SCAN_SECONDS", 60)
+    pipeline_error_backoff_seconds = intervals.get("PIPELINE_ERROR_BACKOFF_SECONDS", 5)
     while True:
         try:
             scan_audio_files(config)
             if audio_queue.empty():
-                time.sleep(60)
+                time.sleep(audio_idle_scan_seconds)
                 continue
 
             file_path, folder_path = audio_queue.get()
@@ -302,4 +305,4 @@ def process_audio_queue(config, *_queues, processing_lock, done_folder_path):
 
         except Exception as exc:
             logging.error('Audio queue error: %s', exc)
-            time.sleep(5)
+            time.sleep(pipeline_error_backoff_seconds)

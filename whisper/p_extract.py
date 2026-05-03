@@ -181,6 +181,7 @@ def process(self, file_path, get_next_available_filename):
     try:
         content, enc = read_file_with_encodings(file_path)
         payload = f"《{base}》\n{content}"
+        intervals = self.config.get("INTERVALS", {})
 
         # Avoid repeated note selection so merges stay consistent across models.
         # For markdown-source triggers, write into the existing note with the same filename
@@ -210,6 +211,9 @@ def process(self, file_path, get_next_available_filename):
                     system_prompt=self.config['EXTRACT_PROMPT'],
                     user_text=payload,
                     file_path=file_path,
+                    max_retries=intervals.get("LLM_MAX_RETRIES", 2),
+                    timeout=intervals.get("LLM_TIMEOUT_SECONDS", 90),
+                    retry_delay=intervals.get("LLM_RETRY_DELAY_SECONDS", 10),
                 )
 
                 # Preserve raw output before merging to allow later audits.

@@ -269,6 +269,8 @@ def main(cfg: Optional[Dict[str, Any]] = None) -> None:
     logging.info("TTML: Independent subtitle file processing")
     logging.info("Text: Pretext → Extract/Premium Extract")
     logging.info("Download: x.txt URL processing")
+    intervals = handles.context.config.get("INTERVALS", {})
+    status_log_seconds = intervals.get("STATUS_LOG_SECONDS", 300)
 
     try:
         while True:
@@ -288,7 +290,7 @@ def main(cfg: Optional[Dict[str, Any]] = None) -> None:
                     ctx.premium_extract_queue.qsize(),
                 )
 
-            time.sleep(300)
+            time.sleep(status_log_seconds)
     except KeyboardInterrupt:
         stop_system(handles)
         logging.info("4-pipeline independent parallel system stopped")
