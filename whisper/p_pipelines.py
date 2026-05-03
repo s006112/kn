@@ -1,14 +1,15 @@
 """
 Responsibility:
-Run pipeline worker loops for pretext, extract, premium extract, audio, TTML,
-and wikilink cleanup; provide queue scanning and file lock coordination for the
-orchestrator.
+Run pipeline worker loops for torrent intake, pretext, extract, premium
+extract, audio, TTML, and wikilink cleanup; provide queue scanning and file
+lock coordination for the orchestrator.
 
 Used by:
 * whisper/p_orchestrator.py
 
 Pipelines:
 - scan -> enqueue -> lock -> process -> finalize
+- watch folder scan -> torrent detection -> file lock -> safe move -> whisper folder
 - audio watch -> audio queue -> wav convert -> transcribe -> text write -> audio archive
 - ttml watch -> ready check -> file lock -> ttml convert -> text write -> ttml archive
 - pretext watch -> pretext queue -> llm pretext -> write outputs -> pretext archive
@@ -234,13 +235,13 @@ def list_matching_files(folder: str, predicate: Callable[[str], bool]) -> set[st
 def scan_existing_files(ctx: PipelineContext) -> None:
     """
     Purpose:
-    Scan watch folders at startup and enqueue eligible files.
+    Scan watch folders at startup, move torrent files, and enqueue eligible files.
     Inputs:
     - ctx: PipelineContext with config and queues.
     Outputs:
     - None.
     Side effects:
-    - Renames files, enqueues work, and logs queue counts.
+    - Moves torrent files, renames files, enqueues work, and logs queue counts.
     Failure modes:
     - Logs rename errors and continues; may propagate other filesystem errors.
     """
@@ -303,13 +304,15 @@ def scan_existing_files(ctx: PipelineContext) -> None:
 def periodic_file_scanner(ctx: PipelineContext) -> None:
     """
     Purpose:
-    Periodically scan watch folders and enqueue newly discovered files.
+    Periodically scan watch folders, move torrent files, and enqueue newly
+    discovered files.
     Inputs:
     - ctx: PipelineContext with config and queues.
     Outputs:
     - None.
     Side effects:
-    - Scans directories, enqueues work, and sleeps between cycles.
+    - Moves torrent files, scans directories, enqueues work, and sleeps between
+      cycles.
     Failure modes:
     - Logs errors and continues.
     """
