@@ -40,7 +40,10 @@ X_FORMAT_ARGS = [
     "mp4",
 ]
 X_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-DOWNLOAD_URL_PREFIXES = ("https://x.com", "https://www.youtube.com")
+DOWNLOAD_URL_KEYWORDS    = (
+    "x.com",
+    "youtube.com",
+)
 
 
 def detect_js_runtime():
@@ -112,17 +115,17 @@ def resolve_download_url_list_file(list_file):
     return uppercase_path if uppercase_path.exists() else path
 
 
-def is_download_list_url(url):
-    return url.strip().startswith(DOWNLOAD_URL_PREFIXES)
-
-
 def read_next_download_url(list_file, skipped_urls):
     path = resolve_download_url_list_file(list_file)
     try:
         with path.open("r", encoding="utf-8", errors="replace") as f:
             for line in f:
                 url = line.strip()
-                if url and url not in skipped_urls and is_download_list_url(url):
+                if (
+                    url
+                    and url not in skipped_urls
+                    and any(segment in url for segment in DOWNLOAD_URL_KEYWORDS)
+                ):
                     return url, path
     except FileNotFoundError:
         return None, path
