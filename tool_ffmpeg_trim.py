@@ -50,6 +50,19 @@ def move_to_trash(file_path):
     except Exception as e:
         print(f"Error moving {file_path.name} to trash: {e}")
 
+def drop_root_ownership(file_path):
+    """
+    Makes root-created output owned by the watched folder owner.
+    """
+    if not hasattr(os, "geteuid") or os.geteuid() != 0:
+        return
+
+    try:
+        owner = file_path.parent.stat()
+        os.chown(file_path, owner.st_uid, owner.st_gid)
+    except OSError as e:
+        print(f"Error updating ownership for {file_path.name}: {e}")
+
 def process_file(file_path):
     print(f"[status] Detected file: {file_path.name}")
 
@@ -104,6 +117,7 @@ def process_file(file_path):
         )
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0 and output_path.exists():
+            drop_root_ownership(output_path)
             move_to_trash(file_path)
             print(f"[status] Completed: {output_path.name}")
         else:
