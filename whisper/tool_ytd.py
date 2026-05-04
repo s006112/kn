@@ -40,10 +40,29 @@ X_FORMAT_ARGS = [
     "mp4",
 ]
 X_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-DOWNLOAD_URL_KEYWORDS    = (
-    "x.com",
-    "youtube.com",
-)
+PLATFORM_X = "x/twitter"
+PLATFORM_YTDLP = "yt-dlp"
+X_DOMAINS = ("x.com", "twitter.com")
+YTDLP_DOMAINS = ("youtube.com", "youtube-nocookie.com", "youtu.be")
+
+
+def _host_matches(host, domain):
+    return host == domain or host.endswith(f".{domain}")
+
+
+def _url_host(url):
+    url = url.strip()
+    parsed = urlsplit(url if "://" in url else "https://" + url.lstrip("/"))
+    return parsed.netloc.lower().split(":", 1)[0]
+
+
+def classify_url(url):
+    host = _url_host(url)
+    if any(_host_matches(host, domain) for domain in X_DOMAINS):
+        return PLATFORM_X
+    if any(_host_matches(host, domain) for domain in YTDLP_DOMAINS):
+        return PLATFORM_YTDLP
+    return ""
 
 
 def detect_js_runtime():
@@ -56,28 +75,18 @@ def detect_js_runtime():
 
 
 def build_common_args(include_cookie_sources=True):
-    args = [
-        item
-        for flag, value in (
-            ("--js-runtimes", detect_js_runtime()),
-            ("--remote-components", os.getenv("YTD_REMOTE_COMPONENTS", "ejs:github").strip()),
-            ("--extractor-args", os.getenv("YTD_EXTRACTOR_ARGS", "youtube:player_client=default").strip()),
-            ("--cookies", os.getenv("YTD_COOKIES_FILE", "").strip()) if include_cookie_sources else ("", ""),
-            (
-                "--cookies-from-browser",
-                os.getenv("YTD_COOKIES_FROM_BROWSER", "").strip(),
-            )
-            if include_cookie_sources
-            else ("", ""),
-        )
-        if flag and value
-        for item in (flag, value)
+    pairs = [
+        ("--js-runtimes", detect_js_runtime()),
+        ("--remote-components", os.getenv("YTD_REMOTE_COMPONENTS", "ejs:github").strip()),
+        ("--extractor-args", os.getenv("YTD_EXTRACTOR_ARGS", "youtube:player_client=default").strip()),
     ]
+    if include_cookie_sources:
+        pairs += [
+            ("--cookies", os.getenv("YTD_COOKIES_FILE", "").strip()),
+            ("--cookies-from-browser", os.getenv("YTD_COOKIES_FROM_BROWSER", "").strip()),
+        ]
+    args = [item for flag, value in pairs if value for item in (flag, value)]
     return args + shlex.split(os.getenv("YTD_EXTRA_ARGS", ""))
-
-
-COMMON_ARGS = build_common_args()
-X_COMMON_ARGS = build_common_args(include_cookie_sources=False)
 
 
 def clean_url(url):
@@ -102,11 +111,6 @@ def clean_url(url):
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query, doseq=True), ""))
 
 
-def is_x_twitter_url(url):
-    host = urlsplit(url).netloc.lower().split(":", 1)[0]
-    return host == "x.com" or host.endswith(".x.com") or host == "twitter.com" or host.endswith(".twitter.com")
-
-
 def resolve_download_url_list_file(list_file):
     path = Path(list_file)
     if path.exists() or path.name != "x.txt":
@@ -121,11 +125,7 @@ def read_next_download_url(list_file, skipped_urls):
         with path.open("r", encoding="utf-8", errors="replace") as f:
             for line in f:
                 url = line.strip()
-                if (
-                    url
-                    and url not in skipped_urls
-                    and any(segment in url for segment in DOWNLOAD_URL_KEYWORDS)
-                ):
+                if url and url not in skipped_urls and classify_url(url):
                     return url, path
     except FileNotFoundError:
         return None, path
@@ -168,17 +168,38 @@ def create_x_cookie_file(temp_dir, auth_token, ct0):
         f".twitter.com\tTRUE\t/\tTRUE\t2000000000\tct0\t{ct0}\n"
     )
     try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            delete=False,
-            prefix="x_cookies_",
-            suffix=".txt",
-            encoding="utf-8",
-        ) as temp_cookie:
-            temp_cookie.write(cookie_content)
-            return temp_cookie.name
+        cookie_path = Path(temp_dir) / ".cookies" / "x_cookies.txt"
+        cookie_path.parent.mkdir(exist_ok=True)
+        cookie_path.write_text(cookie_content, encoding="utf-8")
+        return os.fspath(cookie_path)
     except OSError as exc:
         raise RuntimeError("创建 X/Twitter 临时 cookie 文件失败。") from exc
+
+
+def build_generic_yt_dlp_command(url, mode):
+    return [
+        "yt-dlp",
+        "--newline",
+        *FORMATS[mode],
+        "-o",
+        "%(title).50s.%(ext)s",
+        *build_common_args(),
+        url,
+    ]
+
+
+def build_x_yt_dlp_command(url, cookie_path):
+    return [
+        "yt-dlp",
+        "--newline",
+        *X_FORMAT_ARGS,
+        "-o",
+        "%(uploader)s_%(id)s.%(ext)s",
+        *build_common_args(include_cookie_sources=False),
+        "--cookies",
+        cookie_path,
+        url,
+    ]
 
 
 def run_yt_dlp(cmd, temp_dir):
@@ -234,14 +255,11 @@ def move_download_to_output_dir(path, temp_dir, output_dir):
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / path.name
-    if target.exists():
-        counter = 1
-        while True:
-            candidate = target_dir / f"{target.stem}_{counter}{target.suffix}"
-            if not candidate.exists():
-                target = candidate
-                break
-            counter += 1
+    stem, suffix = target.stem, target.suffix
+    counter = 1
+    while target.exists():
+        target = target_dir / f"{stem}_{counter}{suffix}"
+        counter += 1
 
     try:
         shutil.move(os.fspath(path), os.fspath(target))
@@ -249,9 +267,7 @@ def move_download_to_output_dir(path, temp_dir, output_dir):
         try:
             parent_stat = target_dir.stat()
             os.chown(target, parent_stat.st_uid, parent_stat.st_gid)
-        except PermissionError:
-            pass
-        except AttributeError:
+        except (PermissionError, AttributeError):
             pass
 
         try:
@@ -264,14 +280,18 @@ def move_download_to_output_dir(path, temp_dir, output_dir):
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def download_youtube(url, mode, output_dir=None):
+def download_with_yt_dlp(url, mode, output_dir=None):
     if mode not in FORMATS:
         raise RuntimeError("无效下载模式。")
     temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
-    cmd = ["yt-dlp", "--newline", *FORMATS[mode], "-o", "%(title).50s.%(ext)s", *COMMON_ARGS, url]
-    print(f"Download request: {url} ({mode})")
-    path, temp_dir = run_yt_dlp(cmd, temp_dir)
-    return move_download_to_output_dir(path, temp_dir, output_dir)
+    try:
+        cmd = build_generic_yt_dlp_command(url, mode)
+        print(f"Download request: {url} ({mode})")
+        path, temp_dir = run_yt_dlp(cmd, temp_dir)
+        return move_download_to_output_dir(path, temp_dir, output_dir)
+    except Exception:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
 
 
 def download_x_twitter(url, output_dir=None, resolve_timeout=20):
@@ -280,51 +300,43 @@ def download_x_twitter(url, output_dir=None, resolve_timeout=20):
         auth_token, ct0 = get_x_auth()
         resolved_url = resolve_x_url(url, auth_token, ct0, timeout=resolve_timeout)
         cookie_path = create_x_cookie_file(temp_dir, auth_token, ct0)
-        cmd = [
-            "yt-dlp",
-            "--newline",
-            *X_FORMAT_ARGS,
-            "-o",
-            "%(uploader)s_%(id)s.%(ext)s",
-            *X_COMMON_ARGS,
-            "--cookies",
-            cookie_path,
-            resolved_url,
-        ]
+        cmd = build_x_yt_dlp_command(resolved_url, cookie_path)
         print(f"Download request: {resolved_url} (x/twitter)")
-        try:
-            path, temp_dir = run_yt_dlp(cmd, temp_dir)
-            return move_download_to_output_dir(path, temp_dir, output_dir)
-        finally:
-            try:
-                os.remove(cookie_path)
-            except FileNotFoundError:
-                pass
+        path, temp_dir = run_yt_dlp(cmd, temp_dir)
+        return move_download_to_output_dir(path, temp_dir, output_dir)
     except Exception:
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise
 
 
 def download(url, mode, output_dir=None, resolve_timeout=20):
-    if is_x_twitter_url(url):
+    platform = classify_url(url)
+    if platform == PLATFORM_X:
         return download_x_twitter(
             url,
             output_dir=output_dir,
             resolve_timeout=resolve_timeout,
         )
-    return download_youtube(url, mode, output_dir=output_dir)
+    if platform == PLATFORM_YTDLP:
+        return download_with_yt_dlp(url, mode, output_dir=output_dir)
+    raise RuntimeError(f"Unsupported URL: {url}")
 
 
 def download_url_to_folder(url, output_dir, resolve_timeout=20):
     cleaned_url = clean_url(url)
     if not cleaned_url:
         raise RuntimeError(f"Invalid URL: {url}")
-    path, _ = download(
-        cleaned_url,
-        "720p",
-        output_dir=output_dir,
-        resolve_timeout=resolve_timeout,
-    )
+    platform = classify_url(cleaned_url)
+    if platform == PLATFORM_X:
+        path, _ = download_x_twitter(
+            cleaned_url,
+            output_dir=output_dir,
+            resolve_timeout=resolve_timeout,
+        )
+    elif platform == PLATFORM_YTDLP:
+        path, _ = download_with_yt_dlp(cleaned_url, "720p", output_dir=output_dir)
+    else:
+        raise RuntimeError(f"Unsupported URL: {url}")
     return cleaned_url, path
 
 
