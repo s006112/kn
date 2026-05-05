@@ -22,12 +22,12 @@ MODEL_DISTILL = "o3"
 MODEL_EXTRACT_MATRIX = {
     "EXTRACT_WATCH_FOLDER": [
         #"sonar",
-        #"gemini-3-pro-preview",
-        'gemini-3.1-flash-lite-preview',
+        #'gemini-3.1-flash-lite-preview',
         #"gemini-2.5-flash-lite-preview-09-2025",
         "gpt-5.4-mini",
         "grok-4.3",
         #"gpt-5.4"
+        "gemini-3.1-pro-preview",
 
     ],
     "PREMIUM_WATCH_FOLDER": [
