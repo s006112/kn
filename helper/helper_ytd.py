@@ -177,6 +177,7 @@ def _command(url, mode, temp_dir, resolve_timeout):
         return url, [
             "yt-dlp",
             "--newline",
+            "--no-playlist",
             *FORMATS[mode],
             "-o",
             "%(title).50s.%(ext)s",

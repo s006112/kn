@@ -318,7 +318,7 @@ def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
                     logging.info("XUrlDownloadPipeline: Downloading %s", url)
                     cleaned_url = clean_url(url)
                     output_path, _ = download(
-                        cleaned_url,
+                        url,
                         "720p",
                         output_dir=target_folder,
                         resolve_timeout=x_resolve_timeout_seconds,
