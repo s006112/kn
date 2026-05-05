@@ -50,12 +50,8 @@ from utils_unlink import clean_dead_links
 from utils_files import get_next_available_filename, safe_rename
 from utils_text import sanitize_and_trim_filename
 from helper.helper_llm import LLMPermanentFailure
-from helper.helper_ytd import (
-    download_url_to_folder,
-    read_next_download_url,
-    remove_download_url_line,
-    resolve_download_url_list_file,
-)
+from helper.helper_ytd import clean_url, classify_url, download
+
 from utils_lock_registry import (
     acquire_file_lock,
     release_file_lock,
@@ -241,6 +237,41 @@ def list_matching_files(folder: str, predicate: Callable[[str], bool]) -> set[st
     }
 
 
+def resolve_download_url_list_file(list_file):
+    path = Path(list_file)
+    if path.exists() or path.name != "x.txt":
+        return path
+    alt = path.with_name("X.txt")
+    return alt if alt.exists() else path
+
+
+def read_next_download_url(list_file, skipped_urls):
+    path = resolve_download_url_list_file(list_file)
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                url = line.strip()
+                if url and url not in skipped_urls and classify_url(url):
+                    return url, path
+    except FileNotFoundError:
+        pass
+    return None, path
+
+
+def remove_download_url_line(list_file, url):
+    path = resolve_download_url_list_file(list_file)
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+    except FileNotFoundError:
+        return False
+
+    for index, line in enumerate(lines):
+        if line.strip() == url:
+            del lines[index]
+            path.write_text("".join(lines), encoding="utf-8", newline="")
+            return True
+    return False
+
 def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
     current_thread = threading.current_thread()
     current_thread.name = "XUrlDownloadPipeline"
@@ -285,9 +316,11 @@ def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
 
                 try:
                     logging.info("XUrlDownloadPipeline: Downloading %s", url)
-                    cleaned_url, output_path = download_url_to_folder(
-                        url,
-                        target_folder,
+                    cleaned_url = clean_url(url)
+                    output_path, _ = download(
+                        cleaned_url,
+                        "720p",
+                        output_dir=target_folder,
                         resolve_timeout=x_resolve_timeout_seconds,
                     )
                 except Exception as exc:

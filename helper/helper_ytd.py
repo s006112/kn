@@ -116,28 +116,6 @@ def clean_url(url):
     ]
     return urlunsplit((scheme, parts.netloc, parts.path, urlencode(query, doseq=True), ""))
 
-
-def resolve_download_url_list_file(list_file):
-    path = Path(list_file)
-    if path.exists() or path.name != "x.txt":
-        return path
-    alt = path.with_name("X.txt")
-    return alt if alt.exists() else path
-
-
-def read_next_download_url(list_file, skipped_urls):
-    path = resolve_download_url_list_file(list_file)
-    try:
-        with path.open("r", encoding="utf-8", errors="replace") as f:
-            for line in f:
-                url = line.strip()
-                if url and url not in skipped_urls and classify_url(url):
-                    return url, path
-    except FileNotFoundError:
-        pass
-    return None, path
-
-
 def _x_auth():
     auth_token = os.getenv("X_AUTH_TOKEN", "").strip()
     ct0 = os.getenv("X_CT0", "").strip()
@@ -293,37 +271,7 @@ def _download(url, mode="720p", output_dir=None, resolve_timeout=20):
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise
 
-
-def download_with_yt_dlp(url, mode, output_dir=None):
-    _, path, temp_dir = _download(url, mode, output_dir=output_dir)
-    return path, temp_dir
-
-
-def download_x_twitter(url, output_dir=None, resolve_timeout=20):
-    _, path, temp_dir = _download(url, "720p", output_dir=output_dir, resolve_timeout=resolve_timeout)
-    return path, temp_dir
-
-
 def download(url, mode, output_dir=None, resolve_timeout=20):
     _, path, temp_dir = _download(url, mode, output_dir=output_dir, resolve_timeout=resolve_timeout)
     return path, temp_dir
 
-
-def download_url_to_folder(url, output_dir, resolve_timeout=20):
-    cleaned_url, path, _ = _download(url, "720p", output_dir=output_dir, resolve_timeout=resolve_timeout)
-    return cleaned_url, path
-
-
-def remove_download_url_line(list_file, url):
-    path = resolve_download_url_list_file(list_file)
-    try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
-    except FileNotFoundError:
-        return False
-
-    for index, line in enumerate(lines):
-        if line.strip() == url:
-            del lines[index]
-            path.write_text("".join(lines), encoding="utf-8", newline="")
-            return True
-    return False
