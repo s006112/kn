@@ -24,7 +24,11 @@ PLATFORM_X = "x/twitter"
 PLATFORM_YTDLP = "yt-dlp"
 X_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 X_DOMAINS = ("x.com", "twitter.com")
-YTDLP_DOMAINS = ("youtube.com", "youtube-nocookie.com", "youtu.be")
+YTDLP_DOMAINS = (
+    "youtube.com",
+    "facebook.com",
+    "instagram.com",
+)
 
 FORMATS = {
     "worst": ["-f", "(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst"],
@@ -33,7 +37,7 @@ FORMATS = {
         "(bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a])/"
         "(bestvideo[height=720]+bestaudio)/"
         "(bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a])/"
-        "(bestvideo[height<=720]+bestaudio)/best[height<=720]",
+        "(bestvideo[height<=720]+bestaudio)/best[height<=720]/best",
         "--merge-output-format",
         "mp4",
     ],
