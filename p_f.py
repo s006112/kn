@@ -36,7 +36,7 @@ from watchdog.observers import Observer
 sys.path.insert(0, os.fspath(Path(__file__).resolve().parent / "w"))
 
 # sonar $1, sonar-pro $15, sonar-reasoning-pro $8
-# gemini-2.5-flash-lite-preview-09-2025 $0.4, gemini-3.1-flash-lite-preview $1.5, gemini-3-pro-preview $12, 
+# gemini-2.5-flash-lite-preview-09-2025 $0.4, gemini-3.1-flash-lite-preview $1.5, gemini-3-pro-preview $12,
 # gpt-5-mini, gpt-5-nano, gpt-4.1-mini, gpt-4.1-nano, gpt-4o-mini, o1-mini, o3-mini, o4-mini,
 # gpt-5.4 $15, gpt-5.2 $14, gpt-5.1 $10, gpt-4.1 $8, gpt-4o, o1 $60, o3 $8,
 # grok-4-1-fast-reasoning $0.2, grok-4-1-fast-non-reasoning $0.2, grok-4.20-0309-non-reasoning $2.0
@@ -46,8 +46,7 @@ MODEL_EXTRACT_MATRIX = {
     "EXTRACT_WATCH_FOLDER": [
         "gpt-5.4-mini",
         "grok-4.3",
-        "gemini-3.1-pro-preview", #gemini-3.1-flash-lite-preview
-
+        "gemini-3.1-pro-preview",  # gemini-3.1-flash-lite-preview
     ],
     "PREMIUM_WATCH_FOLDER": [
         "gpt-5.4",
@@ -121,12 +120,12 @@ INTERVAL_CONFIG = {
 }
 
 PIPELINE_CONFIG = {
-    "TORRENT": True,
-    "AUDIO": True,
-    "TTML": True,
-    "PRETEXT": True,
-    "EXTRACT": True,
-    "NOTES": True,
+    "TORRENT": False,
+    "AUDIO": False,
+    "TTML": False,
+    "PRETEXT": False,
+    "EXTRACT": False,
+    "NOTES": False,
     "X_URL_DOWNLOAD": True,
 }
 
@@ -205,6 +204,8 @@ REQUIRED_DIR_KEYS = (
     "FAIL_FOLDER",
 )
 
+FALSE_VALUES = {"0", "false", "no", "off", "disable", "disabled"}
+
 
 class SystemHandles(NamedTuple):
     """Runtime handles returned by start_system."""
@@ -213,10 +214,46 @@ class SystemHandles(NamedTuple):
     observer: Any
 
 
+def as_bool(value: Any) -> bool:
+    """Accept bool-like strings so pipeline flags are easy to override."""
+    if isinstance(value, str):
+        return value.strip().lower() not in FALSE_VALUES
+    return bool(value)
+
+
+def pipeline_settings(cfg: dict[str, Any]) -> dict[str, bool]:
+    """Return complete pipeline flags, defaulting missing keys to enabled."""
+    raw = {**PIPELINE_CONFIG, **cfg.get("PIPELINES", {})}
+    return {key: as_bool(value) for key, value in raw.items()}
+
+
+def pipeline_enabled(cfg: dict[str, Any], key: str) -> bool:
+    """Check whether one pipeline is enabled."""
+    return pipeline_settings(cfg).get(key, True)
+
+
+def enabled_pipeline_names(cfg: dict[str, Any]) -> str:
+    """Return enabled pipeline names for startup logging."""
+    names = [key for key, enabled in pipeline_settings(cfg).items() if enabled]
+    return ", ".join(names) if names else "none"
+
+
 def ensure_directories(cfg: dict[str, Any]) -> None:
     """Create runtime folders required before workers start."""
     for key in REQUIRED_DIR_KEYS:
         Path(cfg[key]).mkdir(parents=True, exist_ok=True)
+
+
+def start_thread(
+    threads: dict[str, threading.Thread],
+    name: str,
+    target: Any,
+    args: tuple[Any, ...],
+) -> None:
+    """Create and start one daemon worker thread."""
+    thread = threading.Thread(target=target, args=args, daemon=True, name=name)
+    threads[name] = thread
+    thread.start()
 
 
 def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
@@ -226,6 +263,7 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
 
     cfg = {
         **cfg,
+        "PIPELINES": pipeline_settings(cfg),
         "PRETEXT_PROMPT": read_prompt_file("prompt_pretext.txt"),
         "EXTRACT_PROMPT": read_prompt_file("prompt_extract.txt"),
         "DISTILL_PROMPT": read_prompt_file("prompt_distill.txt"),
@@ -239,54 +277,78 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     global CURRENT_CONTEXT
     CURRENT_CONTEXT = ctx
 
-    (
-        pretext_handler,
-        pretext_processor,
-        extract_handler,
-        premium_extract_handler,
-    ) = create_pipeline_handlers(ctx)
+    text_enabled = pipeline_enabled(cfg, "PRETEXT") or pipeline_enabled(cfg, "EXTRACT")
+    pretext_handler = pretext_processor = extract_handler = premium_extract_handler = None
 
-    thread_specs = (
-        ("TTMLPipeline", process_ttml_pipeline, (ctx,)),
-        ("TextPipeline-Pretext", process_pretext_queue, (ctx, pretext_processor)),
-        ("TextPipeline-Extract", process_extract_queue, (ctx, extract_handler)),
+    if text_enabled:
         (
+            pretext_handler,
+            pretext_processor,
+            extract_handler,
+            premium_extract_handler,
+        ) = create_pipeline_handlers(ctx)
+
+    threads: dict[str, threading.Thread] = {}
+
+    if pipeline_enabled(cfg, "TTML"):
+        start_thread(threads, "TTMLPipeline", process_ttml_pipeline, (ctx,))
+
+    if pipeline_enabled(cfg, "PRETEXT"):
+        start_thread(
+            threads,
+            "TextPipeline-Pretext",
+            process_pretext_queue,
+            (ctx, pretext_processor),
+        )
+
+    if pipeline_enabled(cfg, "EXTRACT"):
+        start_thread(
+            threads,
+            "TextPipeline-Extract",
+            process_extract_queue,
+            (ctx, extract_handler),
+        )
+        start_thread(
+            threads,
             "TextPipeline-PremiumExtract",
             process_premium_extract_queue,
             (ctx, premium_extract_handler),
-        ),
-        ("AudioPipeline-GPU", process_audio_pipeline, (ctx,)),
-        ("PeriodicScanner", periodic_file_scanner, (ctx,)),
-        ("WikilinkCleaner", process_wikilink_cleaning, (ctx,)),
-        ("XUrlDownloadPipeline", process_x_url_download_pipeline, (ctx,)),
-    )
-
-    threads = {
-        name: threading.Thread(
-            target=target,
-            args=args,
-            daemon=True,
-            name=name,
         )
-        for name, target, args in thread_specs
-    }
 
-    for thread in threads.values():
-        thread.start()
+    if pipeline_enabled(cfg, "AUDIO"):
+        start_thread(threads, "AudioPipeline-GPU", process_audio_pipeline, (ctx,))
 
-    scan_existing_files(ctx)
+    if pipeline_enabled(cfg, "TORRENT"):
+        start_thread(threads, "PeriodicScanner", periodic_file_scanner, (ctx,))
 
-    observer = Observer()
-    watch_specs = (
-        (pretext_handler, "PRETEXT_WATCH_FOLDER"),
-        (extract_handler, "EXTRACT_WATCH_FOLDER"),
-        (premium_extract_handler, "PREMIUM_WATCH_FOLDER"),
-    )
+    if pipeline_enabled(cfg, "NOTES"):
+        start_thread(threads, "WikilinkCleaner", process_wikilink_cleaning, (ctx,))
 
-    for handler, folder_key in watch_specs:
-        observer.schedule(handler, os.fspath(cfg[folder_key]), recursive=False)
+    if pipeline_enabled(cfg, "X_URL_DOWNLOAD"):
+        start_thread(threads, "XUrlDownloadPipeline", process_x_url_download_pipeline, (ctx,))
 
-    observer.start()
+    if pipeline_enabled(cfg, "AUDIO") or pipeline_enabled(cfg, "TTML") or text_enabled:
+        scan_existing_files(ctx)
+
+    watch_specs = []
+    if pipeline_enabled(cfg, "PRETEXT"):
+        watch_specs.append((pretext_handler, "PRETEXT_WATCH_FOLDER"))
+    if pipeline_enabled(cfg, "EXTRACT"):
+        watch_specs.extend(
+            (
+                (extract_handler, "EXTRACT_WATCH_FOLDER"),
+                (premium_extract_handler, "PREMIUM_WATCH_FOLDER"),
+            )
+        )
+
+    observer = None
+    if watch_specs:
+        observer = Observer()
+        for handler, folder_key in watch_specs:
+            observer.schedule(handler, os.fspath(cfg[folder_key]), recursive=False)
+        observer.start()
+
+    logging.info("Enabled pipelines: %s", enabled_pipeline_names(cfg))
 
     return SystemHandles(context=ctx, threads=threads, observer=observer)
 
@@ -296,8 +358,9 @@ def stop_system(handles: SystemHandles) -> None:
     handles.context.shutdown_flag.set()
 
     try:
-        handles.observer.stop()
-        handles.observer.join()
+        if handles.observer is not None:
+            handles.observer.stop()
+            handles.observer.join()
     except Exception as exc:
         logging.warning("Failed to stop observer cleanly: %s", exc)
     finally:
@@ -306,12 +369,13 @@ def stop_system(handles: SystemHandles) -> None:
 
 
 def system_status() -> dict[str, Any]:
-    """Return queue sizes and wikilink cleaner counters for the active system."""
+    """Return pipeline flags, queue sizes, and wikilink cleaner counters."""
     if CURRENT_CONTEXT is None:
         raise RuntimeError("System context not initialized.")
 
     ctx = CURRENT_CONTEXT
     return {
+        "pipelines": pipeline_settings(ctx.config),
         "queues": {
             "pretext": ctx.pretext_queue.qsize(),
             "extract": ctx.extract_queue.qsize(),
@@ -328,15 +392,8 @@ def main(cfg: dict[str, Any] | None = None) -> None:
     """Start the system and keep the supervising process alive."""
     resolved_cfg = cfg or CONFIG
 
-    logging.info(
-        "Starting: TTML + Text + Audio + WikilinkCleaner + XUrlDownloadPipeline"
-    )
-
+    logging.info("Starting local file-processing system")
     handles = start_system(resolved_cfg)
-
-    logging.info("TTML: Independent subtitle file processing")
-    logging.info("Text: Pretext → Extract/Premium Extract")
-    logging.info("Download: X.txt URL processing")
 
     intervals = handles.context.config.get("INTERVALS", {})
     status_log_seconds = intervals.get("STATUS_LOG_SECONDS", 300)
@@ -367,7 +424,7 @@ def main(cfg: dict[str, Any] | None = None) -> None:
         pass
     finally:
         stop_system(handles)
-        logging.info("4-pipeline independent parallel system stopped")
+        logging.info("Local file-processing system stopped")
 
 
 if __name__ == "__main__":
