@@ -75,13 +75,13 @@ def route_email(subject: str, body: str) -> RouteResult:
     # -------------------------
     # category + risk
     # -------------------------
-    if re.search(r"\brita\b", text):
+    if re.search(r"\b(rita|ritasoo)\b", text):
         return RouteResult(
             category="rita",
             intent=intent,
             risk_level="medium",
             rationale="rita keyword",
-            confidence=0.9,
+            confidence=0.7,
         )
 
     if re.search(r"\b(iec|ul|en|ce|csa|certification|certificates?|compliance|standards?)\b", text):
