@@ -1,31 +1,27 @@
 """
 Responsibility:
-Run pipeline worker loops for torrent intake, ytd-dl URL downloads, pretext,
-extract, premium extract, audio, TTML, and wikilink cleanup; provide queue
-scanning and file lock coordination for the orchestrator.
+Run long-lived pipeline worker loops and startup scans for the orchestrator.
+This module wires the shared `PipelineContext` into torrent intake, X/ytd-dl
+URL downloads, pretext processing, extract and premium extract processing,
+audio transcription, TTML conversion, and wikilink cleanup.
 
 Used by:
 * p.py
 
 Pipelines:
-- scan -> enqueue -> lock -> process -> finalize
-- torrent watch folder scan -> torrent detection -> file lock -> safe move -> w folder
-- ytd-dl list watch -> URL classify -> list file lock -> clean/resolve URL -> yt-dlp download -> output move -> URL line remove
-- audio watch -> audio queue -> wav convert -> transcribe -> text write -> audio archive
-- ttml watch -> ready check -> file lock -> ttml convert -> text write -> ttml archive
-- pretext watch -> pretext queue -> llm pretext -> write outputs -> pretext archive
-- extract watch -> extract queue -> llm extract -> merge markdown -> distill -> extract archive
-- notes watch -> unlink clean -> link backup
-
-Invariants:
-- Queue consumers requeue files when file lock acquisition fails.
-- Queue workers do not impose cross-queue priority; each worker consumes its own queue as items appear.
-- `periodic_file_scanner()` and watchdog handlers can enqueue the same paths; `request_pretext_processing()` de-duplicates pretext jobs via `ctx.processed_files_global`.
-
-Out of scope:
-- Constructing PipelineContext or application configuration.
-- Implementing the underlying text/audio/TTML processing logic.
-- Enforcing that outputs from one stage are placed into another stage's watch folder; that is controlled by configuration and the producing modules.
+- Startup scan: move torrent files, normalize long pretext filenames, enqueue
+  existing pretext/extract/premium files.
+- Periodic scan: rescan watch folders and enqueue new files while avoiding
+  duplicate queue entries.
+- X URL download: watch `x.txt`/`X.txt`, classify and clean URLs, download via
+  yt-dlp, then remove only the completed URL line.
+- Text queues: acquire a file lock, invoke the requested handler method, and
+  continue on recoverable queue errors or permanent LLM failures.
+- Audio: process the audio queue through the shared GPU audio worker.
+- TTML: wait for subtitle file stability, lock each file, convert it, and
+  archive the original.
+- Wikilinks: periodically clean dead links in the configured sync folder with
+  backups enabled.
 """
 
 import logging
@@ -64,18 +60,6 @@ from utils_lock_registry import (
 def create_pipeline_handlers(
     ctx: PipelineContext,
 ) -> Tuple[PretextHandler, PretextProcessor, ExtractHandler, PremiumExtractHandler]:
-    """
-    Purpose:
-    Build and return pipeline handler instances that share the provided context.
-    Inputs:
-    - ctx: PipelineContext with config and queues.
-    Outputs:
-    - Tuple of (PretextHandler, PretextProcessor, ExtractHandler, PremiumExtractHandler).
-    Side effects:
-    - Instantiates handler objects.
-    Failure modes:
-    - Propagates exceptions from handler constructors.
-    """
     pretext_handler = PretextHandler(ctx)
     pretext_processor = PretextProcessor(ctx)
     extract_handler = ExtractHandler(ctx.config, ctx.extract_queue)
@@ -86,19 +70,6 @@ def create_pipeline_handlers(
 
 
 def enqueue_if_absent(queue: Queue, path: str) -> None:
-    """
-    Purpose:
-    Enqueue a path if it is not already present in the queue.
-    Inputs:
-    - queue: Queue instance to receive the path.
-    - path: File path to enqueue.
-    Outputs:
-    - None.
-    Side effects:
-    - May add an item to the queue.
-    Failure modes:
-    - Propagates exceptions from queue operations.
-    """
     if path not in list(queue.queue):
         queue.put(path)
 
@@ -109,21 +80,6 @@ def process_queue(
     handler: Any,
     method_name: str,
 ) -> None:
-    """
-    Purpose:
-    Consume a queue in a loop, applying file locking and invoking the handler method.
-    Inputs:
-    - ctx: PipelineContext with locks and queues.
-    - queue: Queue to consume.
-    - handler: Handler instance providing the target method.
-    - method_name: Name of the handler method to call.
-    Outputs:
-    - None.
-    Side effects:
-    - Calls handler methods, acquires file locks, logs errors, and sleeps between cycles.
-    Failure modes:
-    - Logs and continues on exceptions from processing or queue operations.
-    """
     process = getattr(handler, method_name)
     intervals = ctx.config.get("INTERVALS", {})
     queue_idle_seconds = intervals.get("TEXT_QUEUE_IDLE_SECONDS", 0.5)
@@ -165,72 +121,20 @@ def process_queue(
 
 
 def process_pretext_queue(ctx: PipelineContext, processor: PretextProcessor) -> None:
-    """
-    Purpose:
-    Run the pretext processing queue worker loop.
-    Inputs:
-    - ctx: PipelineContext with queues and locks.
-    - processor: PretextProcessor instance.
-    Outputs:
-    - None.
-    Side effects:
-    - Consumes ctx.pretext_queue and invokes processor logic.
-    Failure modes:
-    - Same as process_queue.
-    """
     process_queue(ctx, ctx.pretext_queue, processor, "process_pretext")
 
 
 def process_extract_queue(ctx: PipelineContext, handler: ExtractHandler) -> None:
-    """
-    Purpose:
-    Run the extract processing queue worker loop.
-    Inputs:
-    - ctx: PipelineContext with queues and locks.
-    - handler: ExtractHandler instance.
-    Outputs:
-    - None.
-    Side effects:
-    - Consumes ctx.extract_queue and invokes handler logic.
-    Failure modes:
-    - Same as process_queue.
-    """
     process_queue(ctx, ctx.extract_queue, handler, "process_extract")
 
 
 def process_premium_extract_queue(
     ctx: PipelineContext, handler: PremiumExtractHandler
 ) -> None:
-    """
-    Purpose:
-    Run the premium extract processing queue worker loop.
-    Inputs:
-    - ctx: PipelineContext with queues and locks.
-    - handler: PremiumExtractHandler instance.
-    Outputs:
-    - None.
-    Side effects:
-    - Consumes ctx.premium_extract_queue and invokes handler logic.
-    Failure modes:
-    - Same as process_queue.
-    """
     process_queue(ctx, ctx.premium_extract_queue, handler, "process_premium_extract")
 
 
 def list_matching_files(folder: str, predicate: Callable[[str], bool]) -> set[str]:
-    """
-    Purpose:
-    Return a set of file paths in a folder that match the provided predicate.
-    Inputs:
-    - folder: Directory path to scan.
-    - predicate: Function applied to each filename.
-    Outputs:
-    - Set of matching file paths.
-    Side effects:
-    - Reads the filesystem.
-    Failure modes:
-    - Propagates exceptions from os.listdir.
-    """
     if not os.path.exists(folder):
         return set()
     return {
@@ -262,7 +166,9 @@ def read_next_download_url(list_file, skipped_urls):
 def remove_download_url_line(list_file, url):
     path = resolve_download_url_list_file(list_file)
     try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines(
+            keepends=True
+        )
     except FileNotFoundError:
         return False
 
@@ -272,6 +178,7 @@ def remove_download_url_line(list_file, url):
             path.write_text("".join(lines), encoding="utf-8", newline="")
             return True
     return False
+
 
 def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
     current_thread = threading.current_thread()
@@ -361,18 +268,6 @@ def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
 
 
 def scan_existing_files(ctx: PipelineContext) -> None:
-    """
-    Purpose:
-    Scan watch folders at startup, move torrent files, and enqueue eligible files.
-    Inputs:
-    - ctx: PipelineContext with config and queues.
-    Outputs:
-    - None.
-    Side effects:
-    - Moves torrent files, renames files, enqueues work, and logs queue counts.
-    Failure modes:
-    - Logs rename errors and continues; may propagate other filesystem errors.
-    """
     scan_torrent_watch_folder(ctx.config)
 
     pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
@@ -430,20 +325,6 @@ def scan_existing_files(ctx: PipelineContext) -> None:
 
 
 def periodic_file_scanner(ctx: PipelineContext) -> None:
-    """
-    Purpose:
-    Periodically scan watch folders, move torrent files, and enqueue newly
-    discovered files.
-    Inputs:
-    - ctx: PipelineContext with config and queues.
-    Outputs:
-    - None.
-    Side effects:
-    - Moves torrent files, scans directories, enqueues work, and sleeps between
-      cycles.
-    Failure modes:
-    - Logs errors and continues.
-    """
     pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
     extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
     premium_watch_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
@@ -496,18 +377,6 @@ def periodic_file_scanner(ctx: PipelineContext) -> None:
 
 
 def process_audio_pipeline(ctx: PipelineContext) -> None:
-    """
-    Purpose:
-    Run the audio processing worker using the GPU pipeline.
-    Inputs:
-    - ctx: PipelineContext with config and queues.
-    Outputs:
-    - None.
-    Side effects:
-    - Renames the current thread and processes audio queue items.
-    Failure modes:
-    - Propagates exceptions from process_audio_queue.
-    """
     current_thread = threading.current_thread()
     current_thread.name = "AudioPipeline-GPU"
 
@@ -522,18 +391,6 @@ def process_audio_pipeline(ctx: PipelineContext) -> None:
 
 
 def process_ttml_pipeline(ctx: PipelineContext) -> None:
-    """
-    Purpose:
-    Run the TTML processing loop for subtitle files.
-    Inputs:
-    - ctx: PipelineContext with config and shutdown flag.
-    Outputs:
-    - None.
-    Side effects:
-    - Scans watch folder, acquires file locks, processes TTML files, and sleeps.
-    Failure modes:
-    - Logs errors and continues.
-    """
     watch_folder = os.fspath(ctx.config["TTML_WATCH_FOLDER"])
     original_folder = os.fspath(ctx.config["ORIGINAL_FOLDER"])
     intervals = ctx.config.get("INTERVALS", {})
@@ -584,18 +441,6 @@ def process_ttml_pipeline(ctx: PipelineContext) -> None:
 
 
 def process_wikilink_cleaning(ctx: PipelineContext) -> None:
-    """
-    Purpose:
-    Periodically clean dead wikilinks in the configured sync folder.
-    Inputs:
-    - ctx: PipelineContext with config and shutdown flag.
-    Outputs:
-    - None.
-    Side effects:
-    - Modifies files under the sync folder and may create backups.
-    Failure modes:
-    - Suppresses exceptions from clean_dead_links.
-    """
     intervals = ctx.config.get("INTERVALS", {})
     wikilink_clean_seconds = intervals.get("WIKILINK_CLEAN_SECONDS", 60)
     while not ctx.shutdown_flag.is_set():
