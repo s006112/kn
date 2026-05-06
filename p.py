@@ -6,30 +6,10 @@ import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, NamedTuple, Optional
-
 from watchdog.observers import Observer
 
-# Make w modules importable when running from repo root.
-PROJECT_DIR = Path(__file__).resolve().parent
-W_DIR = PROJECT_DIR / "w"
-sys.path.insert(0, os.fspath(PROJECT_DIR))
-sys.path.insert(0, os.fspath(W_DIR))
-
-from w.p_context import PipelineContext, create_pipeline_context
-from w.p_pipelines import (
-    create_pipeline_handlers,
-    periodic_file_scanner,
-    process_audio_pipeline,
-    process_extract_queue,
-    process_premium_extract_queue,
-    process_pretext_queue,
-    process_ttml_pipeline,
-    process_wikilink_cleaning,
-    process_x_url_download_pipeline,
-    scan_existing_files,
-)
-from w.utils_files import read_prompt_file
-from w.utils_unlink import setup_wikilink_cleaner_logging
+# Make legacy sibling imports inside w importable.
+sys.path.insert(0, os.fspath(Path(__file__).resolve().parent / "w"))
 
 # sonar $1, sonar-pro $15, sonar-reasoning-pro $8
 # gemini-2.5-flash-lite-preview-09-2025 $0.4, gemini-3.1-flash-lite-preview $1.5, gemini-3-pro-preview $12, 
@@ -37,22 +17,16 @@ from w.utils_unlink import setup_wikilink_cleaner_logging
 # gpt-5.4 $15, gpt-5.2 $14, gpt-5.1 $10, gpt-4.1 $8, gpt-4o, o1 $60, o3 $8,
 # grok-4-1-fast-reasoning $0.2, grok-4-1-fast-non-reasoning $0.2, grok-4.20-0309-non-reasoning $2.0
 MODEL_PRETEXT = "gpt-4.1-mini"
-#MODEL_PRETEXT = "sonar"
-#MODEL_DISTILL = "sonar-reasoning-pro"
 MODEL_DISTILL = "o3"
 MODEL_EXTRACT_MATRIX = {
     "EXTRACT_WATCH_FOLDER": [
-        #"sonar",
-        #'gemini-3.1-flash-lite-preview',
-        #"gemini-2.5-flash-lite-preview-09-2025",
         "gpt-5.4-mini",
         "grok-4.3",
-        #"gpt-5.4"
-        "gemini-3.1-pro-preview",
+        "gemini-3.1-pro-preview", #gemini-3.1-flash-lite-preview
 
     ],
     "PREMIUM_WATCH_FOLDER": [
-        "gpt-5.4",   # gpt-5.2, gpt-5.4
+        "gpt-5.4",
     ],
 }
 
@@ -138,6 +112,22 @@ CONFIG = {
 
 os.environ["PYTORCH_ALLOC_CONF"] = "max_split_size_mb:128,backend:native"
 os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "0"
+
+from w.utils_files import read_prompt_file
+from w.utils_unlink import setup_wikilink_cleaner_logging
+from w.p_context import PipelineContext, create_pipeline_context
+from w.p_pipelines import (
+    create_pipeline_handlers,
+    periodic_file_scanner,
+    process_audio_pipeline,
+    process_extract_queue,
+    process_premium_extract_queue,
+    process_pretext_queue,
+    process_ttml_pipeline,
+    process_wikilink_cleaning,
+    process_x_url_download_pipeline,
+    scan_existing_files,
+)
 
 
 class UTFStreamHandler(logging.StreamHandler):

@@ -1,15 +1,16 @@
 """
 Responsibility:
-Run pipeline worker loops for torrent intake, pretext, extract, premium
-extract, audio, TTML, and wikilink cleanup; provide queue scanning and file
-lock coordination for the orchestrator.
+Run pipeline worker loops for torrent intake, ytd-dl URL downloads, pretext,
+extract, premium extract, audio, TTML, and wikilink cleanup; provide queue
+scanning and file lock coordination for the orchestrator.
 
 Used by:
 * p.py
 
 Pipelines:
 - scan -> enqueue -> lock -> process -> finalize
-- watch folder scan -> torrent detection -> file lock -> safe move -> w folder
+- torrent watch folder scan -> torrent detection -> file lock -> safe move -> w folder
+- ytd-dl list watch -> URL classify -> list file lock -> clean/resolve URL -> yt-dlp download -> output move -> URL line remove
 - audio watch -> audio queue -> wav convert -> transcribe -> text write -> audio archive
 - ttml watch -> ready check -> file lock -> ttml convert -> text write -> ttml archive
 - pretext watch -> pretext queue -> llm pretext -> write outputs -> pretext archive
