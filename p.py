@@ -120,6 +120,16 @@ INTERVAL_CONFIG = {
     "STANDALONE_WIKILINK_CLEAN_SECONDS": 120,
 }
 
+PIPELINE_CONFIG = {
+    "TORRENT": True,
+    "AUDIO": True,
+    "TTML": True,
+    "PRETEXT": True,
+    "EXTRACT": True,
+    "NOTES": True,
+    "X_URL_DOWNLOAD": True,
+}
+
 CONFIG = {
     **PATH_CONFIG,
     "MODEL_PRETEXT": MODEL_PRETEXT,
@@ -128,6 +138,7 @@ CONFIG = {
     "PRETEXT_SUFFIX": ".txt",
     "EXTRACT_SUFFIX": ("_p.txt", ".md"),
     "INTERVALS": INTERVAL_CONFIG,
+    "PIPELINES": PIPELINE_CONFIG,
     # Prompt files are loaded at startup so importing CONFIG performs no prompt I/O.
     "PRETEXT_PROMPT": None,
     "EXTRACT_PROMPT": None,
