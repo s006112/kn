@@ -53,9 +53,28 @@ def rag_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalRes
     try:
         if engine_name not in _RAG_ENGINE_CACHE:
             _RAG_ENGINE_CACHE[engine_name] = get_rag_engine(engine_name)
-        answer, table_str = _RAG_ENGINE_CACHE[engine_name].answer_question(body)
+
+        query_parts = []
+        if subject:
+            query_parts.append(f"Subject: {subject}")
+        if body:
+            query_parts.append(body)
+
+        query = "\n\n".join(query_parts).strip()
+
+        if route.category == "rita":
+            query = (
+                f"{query}\n\n"
+                "Search intent: find relevant historical records from the selected source collection. "
+                "Prioritize matching context, participants, dates, content, attachments, "
+                "document formats, and previous handling instructions. "
+                "Digest the retrieved context and answer from the RAG data."
+            )
+
+        answer, table_str = _RAG_ENGINE_CACHE[engine_name].answer_question(query)
         if table_str:
             print(f"\n[RAG] FAISS similarity table:\n\n{table_str}\n")
+
     except Exception as e:
         print(f"RAG Retrieval or Generation failed: {e}")
         return RetrievalResult(used=False, context=None, source=None)
