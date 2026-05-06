@@ -1,3 +1,26 @@
+"""
+p.py
+
+Responsibility
+Start and supervise the local file-processing system that watches configured folders,
+loads prompts, creates pipeline context, starts queue workers, schedules watchdog
+handlers, exposes status, and shuts the system down.
+
+Used by:
+* w/tool_wikilink_cleaner.py
+
+Pipelines:
+- torrent watch folder scan -> torrent detection -> file lock -> safe move -> w folder
+- audio watch -> audio queue -> wav convert -> transcribe -> text write -> audio archive
+- ttml watch -> ready check -> file lock -> ttml convert -> text write -> ttml archive
+- pretext watch -> pretext queue -> llm pretext -> write outputs -> pretext archive
+- extract watch -> extract queue -> llm extract -> merge markdown -> distill -> extract archive
+- notes watch -> unlink clean -> link backup
+
+"""
+
+from __future__ import annotations
+
 import logging
 import os
 import sys
@@ -5,10 +28,11 @@ import threading
 import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, NamedTuple, Optional
+from typing import Any, NamedTuple
+
 from watchdog.observers import Observer
 
-# Make legacy sibling imports inside w importable.
+# The w package still contains modules that import sibling files by bare name.
 sys.path.insert(0, os.fspath(Path(__file__).resolve().parent / "w"))
 
 # sonar $1, sonar-pro $15, sonar-reasoning-pro $8
@@ -38,6 +62,7 @@ OBSIDIAN_SYNC_FOLDER = Path("/desktop/Obsidian/O_2025")
 TTML_WATCH_FOLDER = WATCH_FOLDER
 EXTRACT_WATCH_FOLDER = WATCH_FOLDER
 AUDIO_TRANSCRIBED_TXT_FOLDER = WATCH_FOLDER
+
 PATH_CONFIG = {
     "WATCH_FOLDER": WATCH_FOLDER,
     "WHISPER_FOLDER": WHISPER_FOLDER,
@@ -103,18 +128,15 @@ CONFIG = {
     "PRETEXT_SUFFIX": ".txt",
     "EXTRACT_SUFFIX": ("_p.txt", ".md"),
     "INTERVALS": INTERVAL_CONFIG,
-    # 由 orchestration 注入
+    # Prompt files are loaded at startup so importing CONFIG performs no prompt I/O.
     "PRETEXT_PROMPT": None,
     "EXTRACT_PROMPT": None,
     "DISTILL_PROMPT": None,
 }
 
-
 os.environ["PYTORCH_ALLOC_CONF"] = "max_split_size_mb:128,backend:native"
 os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "0"
 
-from w.utils_files import read_prompt_file
-from w.utils_unlink import setup_wikilink_cleaner_logging
 from w.p_context import PipelineContext, create_pipeline_context
 from w.p_pipelines import (
     create_pipeline_handlers,
@@ -128,10 +150,13 @@ from w.p_pipelines import (
     process_x_url_download_pipeline,
     scan_existing_files,
 )
+from w.utils_files import read_prompt_file
+from w.utils_unlink import setup_wikilink_cleaner_logging
 
 
 class UTFStreamHandler(logging.StreamHandler):
-    def emit(self, record):
+    """Write formatted log records to a byte stream using UTF-8."""
+    def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = self.format(record)
             stream = self.stream
@@ -144,7 +169,6 @@ class UTFStreamHandler(logging.StreamHandler):
 
 LOG_DIR = Path(__file__).resolve().parent / "log"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-
 
 logging.basicConfig(
     level=logging.INFO,
@@ -161,35 +185,46 @@ logging.basicConfig(
     ],
 )
 
+CURRENT_CONTEXT: PipelineContext | None = None
 
-CURRENT_CONTEXT: Optional[PipelineContext] = None
+REQUIRED_DIR_KEYS = (
+    "ORIGINAL_FOLDER",
+    "AUDIO_DONE_FOLDER",
+    "LINK_BACKUP_FOLDER",
+    "FAIL_FOLDER",
+)
 
 
 class SystemHandles(NamedTuple):
+    """Runtime handles returned by start_system."""
     context: PipelineContext
-    threads: Dict[str, threading.Thread]
+    threads: dict[str, threading.Thread]
     observer: Any
 
 
-def ensure_directories(cfg: Dict[str, Any]) -> None:
-    os.makedirs(cfg["ORIGINAL_FOLDER"], exist_ok=True)
-    os.makedirs(cfg["AUDIO_DONE_FOLDER"], exist_ok=True)
-    os.makedirs(cfg["LINK_BACKUP_FOLDER"], exist_ok=True)
-    os.makedirs(cfg["FAIL_FOLDER"], exist_ok=True)
+def ensure_directories(cfg: dict[str, Any]) -> None:
+    """Create runtime folders required before workers start."""
+    for key in REQUIRED_DIR_KEYS:
+        Path(cfg[key]).mkdir(parents=True, exist_ok=True)
 
 
-def start_system(cfg: Optional[Dict[str, Any]] = None) -> SystemHandles:
+def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
+    """Initialize prompts, context, workers, scans, and watchdog observers."""
     if cfg is None:
         raise ValueError("Configuration dictionary is required.")
 
-    cfg["PRETEXT_PROMPT"] = read_prompt_file("prompt_pretext.txt")
-    cfg["EXTRACT_PROMPT"] = read_prompt_file("prompt_extract.txt")
-    cfg["DISTILL_PROMPT"] = read_prompt_file("prompt_distill.txt")
+    cfg = {
+        **cfg,
+        "PRETEXT_PROMPT": read_prompt_file("prompt_pretext.txt"),
+        "EXTRACT_PROMPT": read_prompt_file("prompt_extract.txt"),
+        "DISTILL_PROMPT": read_prompt_file("prompt_distill.txt"),
+    }
 
     setup_wikilink_cleaner_logging(logging.getLogger())
     ensure_directories(cfg)
 
     ctx = create_pipeline_context(cfg)
+
     global CURRENT_CONTEXT
     CURRENT_CONTEXT = ctx
 
@@ -200,98 +235,70 @@ def start_system(cfg: Optional[Dict[str, Any]] = None) -> SystemHandles:
         premium_extract_handler,
     ) = create_pipeline_handlers(ctx)
 
-    threads: Dict[str, threading.Thread] = {
-        "TTMLPipeline": threading.Thread(
-            target=process_ttml_pipeline,
-            args=(ctx,),
-            daemon=True,
-            name="TTMLPipeline",
+    thread_specs = (
+        ("TTMLPipeline", process_ttml_pipeline, (ctx,)),
+        ("TextPipeline-Pretext", process_pretext_queue, (ctx, pretext_processor)),
+        ("TextPipeline-Extract", process_extract_queue, (ctx, extract_handler)),
+        (
+            "TextPipeline-PremiumExtract",
+            process_premium_extract_queue,
+            (ctx, premium_extract_handler),
         ),
-        "TextPipeline-Pretext": threading.Thread(
-            target=process_pretext_queue,
-            args=(ctx, pretext_processor),
+        ("AudioPipeline-GPU", process_audio_pipeline, (ctx,)),
+        ("PeriodicScanner", periodic_file_scanner, (ctx,)),
+        ("WikilinkCleaner", process_wikilink_cleaning, (ctx,)),
+        ("XUrlDownloadPipeline", process_x_url_download_pipeline, (ctx,)),
+    )
+
+    threads = {
+        name: threading.Thread(
+            target=target,
+            args=args,
             daemon=True,
-            name="TextPipeline-Pretext",
-        ),
-        "TextPipeline-Extract": threading.Thread(
-            target=process_extract_queue,
-            args=(ctx, extract_handler),
-            daemon=True,
-            name="TextPipeline-Extract",
-        ),
-        "TextPipeline-PremiumExtract": threading.Thread(
-            target=process_premium_extract_queue,
-            args=(ctx, premium_extract_handler),
-            daemon=True,
-            name="TextPipeline-PremiumExtract",
-        ),
-        "AudioPipeline-GPU": threading.Thread(
-            target=process_audio_pipeline,
-            args=(ctx,),
-            daemon=True,
-            name="AudioPipeline-GPU",
-        ),
-        "PeriodicScanner": threading.Thread(
-            target=periodic_file_scanner,
-            args=(ctx,),
-            daemon=True,
-            name="PeriodicScanner",
-        ),
-        "WikilinkCleaner": threading.Thread(
-            target=process_wikilink_cleaning,
-            args=(ctx,),
-            daemon=True,
-            name="WikilinkCleaner",
-        ),
-        "XUrlDownloadPipeline": threading.Thread(
-            target=process_x_url_download_pipeline,
-            args=(ctx,),
-            daemon=True,
-            name="XUrlDownloadPipeline",
-        ),
+            name=name,
+        )
+        for name, target, args in thread_specs
     }
 
-    for t in threads.values():
-        t.start()
+    for thread in threads.values():
+        thread.start()
 
     scan_existing_files(ctx)
 
     observer = Observer()
-    observer.schedule(
-        pretext_handler,
-        os.fspath(cfg["PRETEXT_WATCH_FOLDER"]),
-        recursive=False,
+    watch_specs = (
+        (pretext_handler, "PRETEXT_WATCH_FOLDER"),
+        (extract_handler, "EXTRACT_WATCH_FOLDER"),
+        (premium_extract_handler, "PREMIUM_WATCH_FOLDER"),
     )
-    observer.schedule(
-        extract_handler,
-        os.fspath(cfg["EXTRACT_WATCH_FOLDER"]),
-        recursive=False,
-    )
-    observer.schedule(
-        premium_extract_handler,
-        os.fspath(cfg["PREMIUM_WATCH_FOLDER"]),
-        recursive=False,
-    )
+
+    for handler, folder_key in watch_specs:
+        observer.schedule(handler, os.fspath(cfg[folder_key]), recursive=False)
+
     observer.start()
 
     return SystemHandles(context=ctx, threads=threads, observer=observer)
 
 
 def stop_system(handles: SystemHandles) -> None:
+    """Signal shutdown, stop the observer, and clear global context."""
     handles.context.shutdown_flag.set()
+
     try:
         handles.observer.stop()
         handles.observer.join()
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.warning("Failed to stop observer cleanly: %s", exc)
     finally:
         global CURRENT_CONTEXT
         CURRENT_CONTEXT = None
 
 
-def system_status() -> Dict[str, Any]:
+def system_status() -> dict[str, Any]:
+    """Return queue sizes and wikilink cleaner counters for the active system."""
     if CURRENT_CONTEXT is None:
         raise RuntimeError("System context not initialized.")
+
     ctx = CURRENT_CONTEXT
     return {
         "queues": {
@@ -306,16 +313,20 @@ def system_status() -> Dict[str, Any]:
     }
 
 
-def main(cfg: Optional[Dict[str, Any]] = None) -> None:
+def main(cfg: dict[str, Any] | None = None) -> None:
+    """Start the system and keep the supervising process alive."""
     resolved_cfg = cfg or CONFIG
+
     logging.info(
         "Starting: TTML + Text + Audio + WikilinkCleaner + XUrlDownloadPipeline"
     )
+
     handles = start_system(resolved_cfg)
 
     logging.info("TTML: Independent subtitle file processing")
     logging.info("Text: Pretext → Extract/Premium Extract")
     logging.info("Download: X.txt URL processing")
+
     intervals = handles.context.config.get("INTERVALS", {})
     status_log_seconds = intervals.get("STATUS_LOG_SECONDS", 300)
 
@@ -324,11 +335,13 @@ def main(cfg: Optional[Dict[str, Any]] = None) -> None:
             ctx = CURRENT_CONTEXT
             if ctx is None:
                 raise RuntimeError("System context not initialized.")
+
             total_queues = (
                 ctx.pretext_queue.qsize()
                 + ctx.extract_queue.qsize()
                 + ctx.premium_extract_queue.qsize()
             )
+
             if total_queues > 5:
                 logging.info(
                     "System Status - Text queues: Pretext: %d, Extract: %d, Premium Extract: %d",
@@ -338,7 +351,10 @@ def main(cfg: Optional[Dict[str, Any]] = None) -> None:
                 )
 
             time.sleep(status_log_seconds)
+
     except KeyboardInterrupt:
+        pass
+    finally:
         stop_system(handles)
         logging.info("4-pipeline independent parallel system stopped")
 
