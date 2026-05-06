@@ -329,8 +329,8 @@ def main():
                 "启动失败：端口已被占用（Address already in use）。\n"
                 f"- 当前尝试绑定：{args.host}:{args.port}\n"
                 "- 解决办法：\n"
-                "  1) 换一个端口：`python3 whisper/tool_ytd.py --port 8766`\n"
-                "  2) 或让系统自动选空闲端口：`python3 whisper/tool_ytd.py --port 0`\n"
+                "  1) 换一个端口：`python3 w/tool_ytd.py --port 8766`\n"
+                "  2) 或让系统自动选空闲端口：`python3 w/tool_ytd.py --port 0`\n"
                 "  3) 或查出是谁占用了端口并结束它：`ss -ltnp | rg ':8765'`（把 8765 换成你的端口）\n"
                 "- 也可能是你之前启动的同一个脚本还在后台运行。"
             )

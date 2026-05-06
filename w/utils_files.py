@@ -2,15 +2,15 @@
 Shared helpers for text file IO and filename management used by Whisper pipeline code.
 
 Used by:
-* whisper/p_audio.py
-* whisper/p_distill.py
-* whisper/p_extract.py
-* whisper/p_orchestrator.py
-* whisper/p_pipelines.py
-* whisper/p_pretext.py
-* whisper/p_ttml.py
-* whisper/utils_md.py
-* whisper/utils_unlink.py
+* w/p_audio.py
+* w/p_distill.py
+* w/p_extract.py
+* p.py
+* w/p_pipelines.py
+* w/p_pretext.py
+* w/p_ttml.py
+* w/utils_md.py
+* w/utils_unlink.py
 
 Pipelines:
 - file_path -> encoding_candidates -> open_attempts -> text

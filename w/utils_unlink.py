@@ -7,9 +7,9 @@ and removes broken Obsidian-style wikilinks from selected Markdown notes in the
 target directory.
 
 Used by:
-* whisper/p_orchestrator.py
-* whisper/p_pipelines.py
-* whisper/tool_wikilink_cleaner.py
+* p.py
+* w/p_pipelines.py
+* w/tool_wikilink_cleaner.py
 
 Pipelines:
 - target_dir -> detect_ontology -> move_ontology

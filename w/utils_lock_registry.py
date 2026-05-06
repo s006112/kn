@@ -2,7 +2,7 @@
 In-process registry of non-blocking per-path locks used by pipeline workers.
 
 Used by:
-* whisper/p_pipelines.py
+* w/p_pipelines.py
 
 Pipelines:
 - file_path -> registry_lookup -> acquire_nonblocking -> locked_bool

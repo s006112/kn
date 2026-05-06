@@ -6,7 +6,7 @@ defaults for running large models on constrained VRAM without CPU offloading.
 
 Used by:
 * tool/tool_real_time_transription.py
-* whisper/p_audio.py
+* w/p_audio.py
 
 Pipelines:
 - audio_input -> load_model -> whisper_transcribe -> text_output

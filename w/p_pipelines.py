@@ -5,11 +5,11 @@ extract, audio, TTML, and wikilink cleanup; provide queue scanning and file
 lock coordination for the orchestrator.
 
 Used by:
-* whisper/p_orchestrator.py
+* p.py
 
 Pipelines:
 - scan -> enqueue -> lock -> process -> finalize
-- watch folder scan -> torrent detection -> file lock -> safe move -> whisper folder
+- watch folder scan -> torrent detection -> file lock -> safe move -> w folder
 - audio watch -> audio queue -> wav convert -> transcribe -> text write -> audio archive
 - ttml watch -> ready check -> file lock -> ttml convert -> text write -> ttml archive
 - pretext watch -> pretext queue -> llm pretext -> write outputs -> pretext archive

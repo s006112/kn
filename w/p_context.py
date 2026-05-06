@@ -4,9 +4,9 @@ Centralizes pipeline shared state (queues, locks, processed sets, and shutdown f
 exposes a factory to build a fresh context for a given config.
 
 Used by:
-* whisper/p_pretext.py
-* whisper/p_pipelines.py
-* whisper/p_orchestrator.py
+* w/p_pretext.py
+* w/p_pipelines.py
+* p.py
 
 Pipelines:
 - config -> PipelineContext

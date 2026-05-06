@@ -2,11 +2,11 @@
 Text utilities for filename sanitization and chunking/merging long strings.
 
 Used by:
-* whisper/p_audio.py
-* whisper/p_distill.py
-* whisper/p_extract.py
-* whisper/p_pipelines.py
-* whisper/p_pretext.py
+* w/p_audio.py
+* w/p_distill.py
+* w/p_extract.py
+* w/p_pipelines.py
+* w/p_pretext.py
 
 Pipelines:
 - raw_name -> unicode_normalize -> char_filter -> whitespace_collapse -> safe_name

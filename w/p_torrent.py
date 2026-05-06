@@ -4,10 +4,10 @@ Detect `.torrent` files in the configured watch folder during scan flows and mov
 them into the configured Whisper folder.
 
 Used by:
-* whisper/p_pipelines.py
+* w/p_pipelines.py
 
 Pipelines:
-- watch folder scan -> torrent detection -> file lock -> safe move -> whisper folder
+- watch folder scan -> torrent detection -> file lock -> safe move -> w folder
 
 Invariants:
 - Only `.torrent` files are handled by this module.
