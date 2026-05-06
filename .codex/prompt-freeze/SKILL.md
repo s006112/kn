@@ -72,24 +72,11 @@ The generated prompt MUST contain the following sections in this exact order:
    - What is forbidden  
 
 6. Style Requirements  
-   - Concise  
-   - Professional  
-   - Conclusion-first  
    - No small talk  
    - No redundancy  
    - No decorative language  
 
-7. Language Rules  
-   - Default: use the same language as the input  
-   - Unless explicitly overridden  
-
-8. Missing Information Handling  
-   - If required data is missing:
-     - List missing inputs
-     - Do not fabricate
-     - Do not proceed blindly
-
-9. Execution Scope Lock  
+7. Execution Scope Lock  
    - Explicitly require:
      - Only this task is executed  
      - No extra extensions  

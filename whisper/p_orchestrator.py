@@ -1,34 +1,3 @@
-"""
-Responsibility:
-p_orchestrator.py 負責組裝與啟動； p_pipelines.py 負責做事。
-Coordinate pipeline startup and lifecycle by loading prompt strings into a config
-dict, creating a `PipelineContext`, starting worker threads, and running a
-watchdog `Observer` for file events that enqueue work into queues.
-
-Used by:
-* p.py
-
-Pipelines:
-- config -> read prompts -> create context -> start workers -> start watchdog -> enqueue -> process
-- audio -> transcribe -> text file
-- ttml -> convert -> text file
-- text file -> pretext -> pretext output
-- pretext file -> extract -> markdown
-- notes folder -> unlink clean -> backup
-
-Invariants:
-- `CURRENT_CONTEXT` is set by `start_system()` after context creation and cleared by `stop_system()`.
-- `start_system()` validates `cfg` is non-None and mutates it by setting `PRETEXT_PROMPT`, `EXTRACT_PROMPT`, and `DISTILL_PROMPT`.
-- Worker threads created here are started as daemon threads.
-- This module starts workers concurrently; sequencing between stages is determined by filesystem locations and queueing in other modules, not by this module.
-
-Out of scope:
-- Implementing pipeline worker logic (handled by `p_pipelines.py` and related modules).
-- Parsing or generating prompt content beyond reading prompt files.
-- Providing a process manager; shutdown is limited to setting a flag and stopping the observer.
-- Enforcing that audio/ttml outputs are placed into any particular downstream watch folder.
-"""
-
 import logging
 import os
 import threading
@@ -53,31 +22,16 @@ from utils_unlink import setup_wikilink_cleaner_logging
 from utils_files import read_prompt_file
 
 
-# Public API surface used by `p.py` and programmatic callers.
 CURRENT_CONTEXT: Optional[PipelineContext] = None
 
 
 class SystemHandles(NamedTuple):
-    """Holds runtime handles for stopping and status checks."""
-
     context: PipelineContext
     threads: Dict[str, threading.Thread]
     observer: Any
 
 
 def ensure_directories(cfg: Dict[str, Any]) -> None:
-    """
-    Purpose:
-    Ensure required output directories exist before starting pipelines.
-    Inputs:
-    cfg: Configuration dictionary containing required folder paths.
-    Outputs:
-    None.
-    Side effects:
-    Creates directories at `ORIGINAL_FOLDER`, `AUDIO_DONE_FOLDER`, `LINK_BACKUP_FOLDER`, `FAIL_FOLDER` if missing.
-    Failure modes:
-    KeyError if required keys are missing; OSError on filesystem failures.
-    """
     os.makedirs(cfg["ORIGINAL_FOLDER"], exist_ok=True)
     os.makedirs(cfg["AUDIO_DONE_FOLDER"], exist_ok=True)
     os.makedirs(cfg["LINK_BACKUP_FOLDER"], exist_ok=True)
@@ -85,18 +39,6 @@ def ensure_directories(cfg: Dict[str, Any]) -> None:
 
 
 def start_system(cfg: Optional[Dict[str, Any]] = None) -> SystemHandles:
-    """
-    Purpose:
-    Start all pipeline threads and watchdog observers and return runtime handles.
-    Inputs:
-    cfg: Configuration dictionary; must be non-None and include required folder keys used by this module.
-    Outputs:
-    `SystemHandles` containing the created `PipelineContext`, threads mapping, and watchdog observer.
-    Side effects:
-    Mutates `cfg` by setting `PRETEXT_PROMPT`, `EXTRACT_PROMPT`, `DISTILL_PROMPT`; creates directories; starts daemon threads; starts a watchdog observer; sets global `CURRENT_CONTEXT`.
-    Failure modes:
-    ValueError when `cfg` is None; KeyError for missing config keys; exceptions from prompt file reading, watchdog setup, or thread start.
-    """
     if cfg is None:
         raise ValueError("Configuration dictionary is required.")
 
@@ -196,18 +138,6 @@ def start_system(cfg: Optional[Dict[str, Any]] = None) -> SystemHandles:
 
 
 def stop_system(handles: SystemHandles) -> None:
-    """
-    Purpose:
-    Request a graceful shutdown by setting the shared shutdown flag and stopping the watchdog observer.
-    Inputs:
-    handles: `SystemHandles` returned by `start_system()`.
-    Outputs:
-    None.
-    Side effects:
-    Sets `handles.context.shutdown_flag`; attempts to stop/join the observer; clears global `CURRENT_CONTEXT`.
-    Failure modes:
-    AttributeError/TypeError if `handles` is invalid; observer stop/join errors are suppressed.
-    """
     handles.context.shutdown_flag.set()
     try:
         handles.observer.stop()
@@ -220,18 +150,6 @@ def stop_system(handles: SystemHandles) -> None:
 
 
 def system_status() -> Dict[str, Any]:
-    """
-    Purpose:
-    Report current queue sizes and wikilink cleaner stats for the running system.
-    Inputs:
-    None.
-    Outputs:
-    Dictionary with `queues` and `wikilink_cleaner` sections derived from `CURRENT_CONTEXT`.
-    Side effects:
-    None.
-    Failure modes:
-    RuntimeError when the system has not been started (`CURRENT_CONTEXT` is None).
-    """
     if CURRENT_CONTEXT is None:
         raise RuntimeError("System context not initialized.")
     ctx = CURRENT_CONTEXT
@@ -249,18 +167,6 @@ def system_status() -> Dict[str, Any]:
 
 
 def main(cfg: Optional[Dict[str, Any]] = None) -> None:
-    """
-    Purpose:
-    Run the orchestrator main loop: start the system and periodically log queue status until interrupted.
-    Inputs:
-    cfg: Configuration dictionary; must be non-None.
-    Outputs:
-    None.
-    Side effects:
-    Starts pipelines via `start_system()`; logs status; sleeps in a loop; on KeyboardInterrupt calls `stop_system()`.
-    Failure modes:
-    ValueError when `cfg` is None; RuntimeError if `CURRENT_CONTEXT` becomes None during monitoring.
-    """
     logging.info(
         "Starting: TTML + Text + Audio + WikilinkCleaner + XUrlDownloadPipeline"
     )
