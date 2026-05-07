@@ -3,7 +3,7 @@ pip3 install hyperliquid-python-sdk --break-system-packages
 
 # download apt
 apt update # update package lists
-apt-get install -y --download-only libreoffice-writer ghostscript tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra       # .deb 会进入：/var/cache/apt/archives
+apt-get install -y --download-only python-is-python3  # .deb 会进入：/var/cache/apt/archives
 cp /var/cache/apt/archives/*.deb /offline-deb/   # 复制到离线仓库 
 
 # Install deb 
@@ -12,6 +12,7 @@ apt-get -f install --no-download    # 解析依赖关系，重新配置正确顺
 
 #apt list
 python3-pip
+python-is-python3
 libreoffice-writer
 ghostscript
 tesseract-ocr
