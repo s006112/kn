@@ -15,9 +15,11 @@ for path in (ROOT_DIR, W_DIR):
         sys.path.insert(0, str(path))
 
 from p import CONFIG  # noqa: E402
+from p_pipelines import read_next_download_url, remove_download_url_line  # noqa: E402
 from p_torrent import scan_torrent_watch_folder  # noqa: E402
 from p_ttml import handle_ttml  # noqa: E402
 from utils_text import sanitize_and_trim_filename  # noqa: E402
+from utils_unlink import WikilinkCleaner  # noqa: E402
 
 
 OK = "✅"
@@ -114,6 +116,12 @@ def cleanup_files(paths: list[Path], test_id: str) -> None:
     print(f"\n🧹 cleanup: {deleted} clean, {leftover} leftover")
 
 
+def test_summary(results: list[bool]) -> None:
+    passed = sum(1 for result in results if result)
+    failed = len(results) - passed
+    print(f"✅ summary: {passed} ✅, {failed} ❌, {len(results)} total")
+
+
 def test_torrent_move(test_id: str) -> tuple[bool, list[Path]]:
     filename = f"{test_id}.torrent"
     source = PATHS.watch / filename
@@ -192,13 +200,100 @@ def test_ttml_convert(test_id: str) -> tuple[bool, list[Path]]:
     return passed, cleanup
 
 
+def test_x_url_list_remove_completed(test_id: str) -> tuple[bool, list[Path]]:
+    url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ&utm_source=evaluation"
+    next_url = "https://www.instagram.com/p/evaluation/"
+    source = PATHS.download_target / f"{test_id}_urls.txt"
+
+    cleanup = [source]
+
+    PATHS.download_target.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(
+        f"\nnot a url\n{url}\n{next_url}\n",
+        encoding="utf-8",
+    )
+
+    found_url, active_path = read_next_download_url(source, set())
+    removed = remove_download_url_line(source, found_url)
+    remaining = source.read_text(encoding="utf-8")
+
+    passed = (
+        found_url == url
+        and active_path == source
+        and removed
+        and url not in remaining
+        and "not a url" in remaining
+        and next_url in remaining
+    )
+
+    print_result(
+        "x url list remove completed",
+        passed,
+        {
+            "source": source,
+            "found_url": found_url,
+            "removed": removed,
+        },
+    )
+
+    return passed, cleanup
+
+
+def test_wikilink_cleaner_removes_broken_link(test_id: str) -> tuple[bool, list[Path]]:
+    valid_name = f"{test_id}_valid"
+    source = PATHS.obsidian / f"W {test_id}.md"
+    valid_note = PATHS.obsidian / f"{valid_name}.md"
+
+    cleanup = [source, valid_note]
+
+    PATHS.obsidian.mkdir(parents=True, exist_ok=True)
+
+    valid_note.write_text(f"valid note for {test_id}\n", encoding="utf-8")
+    source.write_text(
+        f"Keep [[{valid_name}]]\nRemove [[{test_id}_missing]] please\n",
+        encoding="utf-8",
+    )
+
+    cleaner = WikilinkCleaner(str(PATHS.obsidian), create_backup=False)
+    processed = cleaner.process_file(source)
+    updated = source.read_text(encoding="utf-8")
+    stats = cleaner.get_stats()
+
+    passed = (
+        processed
+        and f"[[{valid_name}]]" in updated
+        and f"[[{test_id}_missing]]" not in updated
+        and stats["files_processed"] == 1
+        and stats["broken_links_removed"] == 1
+        and stats["files_modified"] == 1
+    )
+
+    print_result(
+        "wikilink cleaner removes broken link",
+        passed,
+        {
+            "source": source,
+            "valid_note": valid_note,
+            "stats": stats,
+        },
+    )
+
+    return passed, cleanup
+
+
 def main() -> int:
     test_id = f"EVAL_{uuid.uuid4().hex[:8]}"
     all_cleanup: list[Path] = []
     results: list[bool] = []
 
     try:
-        for test in (test_torrent_move, test_ttml_convert):
+        for test in (
+            test_torrent_move,
+            test_ttml_convert,
+            test_x_url_list_remove_completed,
+            test_wikilink_cleaner_removes_broken_link,
+        ):
             passed, cleanup = test(test_id)
             results.append(passed)
             all_cleanup.extend(cleanup)
@@ -212,6 +307,7 @@ def main() -> int:
 
     finally:
         cleanup_files(all_cleanup, test_id)
+        test_summary(results)
 
 
 if __name__ == "__main__":
