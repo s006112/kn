@@ -1,0 +1,4 @@
+interface:
+  display_name: "Procedural Refactor"
+  short_description: "Simplify code into explicit procedural flow"
+  default_prompt: "Use $procedural-refactor to review this code and simplify it toward explicit low-abstraction procedural design."
