@@ -34,8 +34,6 @@ Key runtime inputs:
 - `CONSECUTIVE_READS`
 - `ALLOW_BUY_ONLY_WHEN_NO_BTC`
 - `ALLOW_SELL_ONLY_WHEN_NO_USDC`
-- `REANCHOR_BREAK`
-- `REANCHOR_BREAK_STEPS`
 - `MAX_RETRIES`
 - `RETRY_SEC`
 - `WAIT_NO_OPEN_ORDERS_INTERVAL_SEC`
@@ -44,7 +42,6 @@ Derived configuration:
 
 - `GRID_GAP = (BUY_GRID_FACTOR + SELL_GRID_FACTOR) * GRID_STEP`
 - `ORDER_ZONE`, derived from `GRID_GAP` in `grid_config.py`
-- `REANCHOR_DISTANCE = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP`
 
 ## Pipeline
 
@@ -98,7 +95,7 @@ Live classification states from `classify_order_mode(orders)`:
 - `SELL_ONLY`: `{"mode": SELL_ONLY_MODE, "sell_price": sell_price}`
 - `ABNORMAL`: `{"mode": ABNORMAL_MODE}`
 
-`classify_order_mode` returns `PAIR` only when there are exactly two orders, one `BUY`, one `SELL`, and `buy_price < sell_price`. It also calls `price_gap_matches(buy_price, sell_price, GRID_GAP)`, but that helper currently always returns `True`.
+`classify_order_mode` returns `PAIR` only when there are exactly two orders, one `BUY`, one `SELL`, `buy_price < sell_price`, and `price_gap_matches(buy_price, sell_price, GRID_GAP)` is true.
 
 If there is exactly one order, a lone `BUY` becomes `BUY_ONLY` and a lone `SELL` becomes `SELL_ONLY`. Any other shape becomes `ABNORMAL`.
 
@@ -146,9 +143,7 @@ A `PAIR` accepted directly by `bootstrap()` uses the live classification shape a
 
 `format_price(price)` returns `str(int(normalize_price(price)))`.
 
-`price_gap_matches(buy_price, sell_price, expected_gap)` currently always returns `True`.
-
-`price_distance_at_least(high_price, low_price, distance)` compares normalized prices and returns whether the normalized distance is at least `distance`.
+`price_gap_matches(buy_price, sell_price, expected_gap)` returns whether normalized `sell_price - buy_price` equals normalized `expected_gap`.
 
 `retry_read(name, fn, retries=MAX_RETRIES, delay=RETRY_SEC)` retries:
 
@@ -174,7 +169,6 @@ Possible `action` values:
 Possible `strategy` values:
 
 - `"done_deal"`
-- `"anchor_break"`
 - `None`
 
 When `saved_state["mode"] == PAIR_MODE`:
@@ -187,9 +181,7 @@ When `saved_state["mode"] == PAIR_MODE`:
 When `saved_state["mode"] == BUY_ONLY_MODE`:
 
 - Empty `live_snapshot["orders"]` returns `("rebuild", "done_deal", saved_state["buy_price"])`.
-- Live `BUY_ONLY` may trigger anchor-break rebuild only when `REANCHOR_BREAK` is enabled and `live_snapshot["btc_mid"]` is present and positive.
-- Anchor break returns `("rebuild", "anchor_break", None)` when `price_distance_at_least(live_snapshot["btc_mid"], live_snapshot["buy_price"], REANCHOR_DISTANCE)` is true.
-- Live `BUY_ONLY` without anchor break returns `("keep", None, None)`.
+- Live `BUY_ONLY` returns `("keep", None, None)`.
 - Any other non-empty live state returns `("abnormal", None, None)`.
 
 When `saved_state["mode"] == SELL_ONLY_MODE`:
@@ -232,7 +224,8 @@ Execution helpers are `build_pair`, `classify_order_result`, `place_limit_order`
 
 `rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None)`:
 
-- Uses the one-sided replacement path only when `strategy in ("done_deal", "anchor_break")` and `live_snapshot["mode"] in (BUY_ONLY_MODE, SELL_ONLY_MODE)`.
+- Uses the one-sided replacement path only when `strategy == "done_deal"` and `live_snapshot["mode"] in (BUY_ONLY_MODE, SELL_ONLY_MODE)`.
+- No other strategy uses the one-sided replacement path.
 - In that path, uses `rebuild_price` when provided, otherwise reads a fresh `read_btc_grid(info)`, and treats `live_snapshot["orders"][0]` as the remaining old order.
 - In the general path, cancels existing `live_snapshot["orders"]` when present, ignores explicit `rebuild_price`, reads a fresh `read_btc_grid(info)`, and rebuilds from that price.
 
@@ -279,7 +272,6 @@ The one-sided replacement path catches exceptions only around cancel and absence
 
 ## Known Limitations
 
-- `price_gap_matches` always returns `True`, so `classify_order_mode` does not currently enforce exact pair-gap equality beyond `buy_price < sell_price`.
 - `classify_order_mode` does not validate order size, symbol, `oid`, or notional.
 - `PAIR` residual one-sided decisions do not validate the remaining live one-sided price against `saved_state`.
 - `BUY_ONLY` keep does not validate live `buy_price` against `saved_state["buy_price"]`.
