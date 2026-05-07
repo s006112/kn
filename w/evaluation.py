@@ -15,9 +15,14 @@ for path in (ROOT_DIR, W_DIR):
         sys.path.insert(0, str(path))
 
 from p import CONFIG  # noqa: E402
+from p_audio import move_files_to_done  # noqa: E402
+from p_context import create_pipeline_context  # noqa: E402
+from p_distill import _collect_extracts  # noqa: E402
 from p_pipelines import read_next_download_url, remove_download_url_line  # noqa: E402
+from p_pretext import release_pretext_request, request_pretext_processing  # noqa: E402
 from p_torrent import scan_torrent_watch_folder  # noqa: E402
 from p_ttml import handle_ttml  # noqa: E402
+from utils_md import merge_to_markdown  # noqa: E402
 from utils_text import sanitize_and_trim_filename  # noqa: E402
 from utils_unlink import WikilinkCleaner  # noqa: E402
 
@@ -282,6 +287,169 @@ def test_wikilink_cleaner_removes_broken_link(test_id: str) -> tuple[bool, list[
     return passed, cleanup
 
 
+def test_markdown_merge_updates_index(test_id: str) -> tuple[bool, list[Path]]:
+    note = PATHS.download_target / f"{test_id}_note.md"
+    whisper_index = PATHS.download_target / f"{test_id}_Whisper_000000.md"
+
+    cleanup = [note, whisper_index]
+
+    PATHS.download_target.mkdir(parents=True, exist_ok=True)
+
+    note.write_text(f"# Existing\n\nbody for {test_id}\n", encoding="utf-8")
+    whisper_index.write_text("# Whisper\n---\n", encoding="utf-8")
+
+    merge_to_markdown(
+        str(note),
+        [f"extracted result for {test_id}"],
+        "",
+        ["evaluation-model"],
+        str(whisper_index),
+        note.stem,
+        True,
+    )
+
+    updated_note = note.read_text(encoding="utf-8")
+    updated_index = whisper_index.read_text(encoding="utf-8")
+    link = f"[[{note.stem}]]"
+
+    passed = (
+        note.is_file()
+        and whisper_index.is_file()
+        and updated_note.startswith("# evaluation-model\n\n")
+        and f"extracted result for {test_id}" in updated_note
+        and f"body for {test_id}" in updated_note
+        and link in updated_index
+        and updated_index.index(link) > updated_index.index("---")
+    )
+
+    print_result(
+        "markdown merge updates index",
+        passed,
+        {
+            "note": note,
+            "whisper_index": whisper_index,
+            "link": link,
+        },
+    )
+
+    return passed, cleanup
+
+
+def test_audio_move_to_done_removes_wav(test_id: str) -> tuple[bool, list[Path]]:
+    source = PATHS.download_target / f"{test_id}_audio.mp3"
+    wav = PATHS.download_target / f"{test_id}_audio.wav"
+    target = PATHS.audio_done / source.name
+
+    cleanup = [source, wav, target]
+
+    PATHS.download_target.mkdir(parents=True, exist_ok=True)
+    PATHS.audio_done.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(f"dummy audio source {test_id}\n", encoding="utf-8")
+    wav.write_text(f"dummy wav temp {test_id}\n", encoding="utf-8")
+
+    move_files_to_done(
+        str(source),
+        str(wav),
+        0,
+        str(PATHS.audio_done),
+        source.name,
+    )
+
+    passed = not source.exists() and not wav.exists() and target.is_file()
+
+    print_result(
+        "audio move to done removes wav",
+        passed,
+        {
+            "source": source,
+            "wav": wav,
+            "target": target,
+        },
+    )
+
+    return passed, cleanup
+
+
+def test_pretext_request_deduplicates_queue(test_id: str) -> tuple[bool, list[Path]]:
+    pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
+    source = PATHS.pretext_watch / f"{test_id}_pretext{pretext_suffix}"
+
+    cleanup = [source]
+
+    PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(f"dummy pretext queue source {test_id}\n", encoding="utf-8")
+
+    ctx = create_pipeline_context(CONFIG)
+    first = request_pretext_processing(ctx, str(source))
+    second = request_pretext_processing(ctx, str(source))
+    queued_path = ctx.pretext_queue.get_nowait()
+    release_pretext_request(ctx, str(source))
+
+    passed = (
+        first
+        and not second
+        and ctx.pretext_queue.empty()
+        and queued_path == str(source.resolve())
+        and str(source.resolve()) not in ctx.processed_files_global
+    )
+
+    print_result(
+        "pretext request deduplicates queue",
+        passed,
+        {
+            "source": source,
+            "first": first,
+            "second": second,
+            "queued_path": queued_path,
+        },
+    )
+
+    return passed, cleanup
+
+
+def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path]]:
+    pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
+    base_name = f"{test_id}_distill"
+    first = PATHS.extract / f"{base_name}_model-alpha{pretext_suffix}"
+    second = PATHS.extract / f"{base_name}_model-beta_1{pretext_suffix}"
+    ignored = PATHS.extract / f"{test_id}_other_model{pretext_suffix}"
+
+    cleanup = [first, second, ignored]
+
+    PATHS.extract.mkdir(parents=True, exist_ok=True)
+
+    first.write_text(f"alpha extract for {test_id}\n", encoding="utf-8")
+    second.write_text(f"beta extract for {test_id}\n", encoding="utf-8")
+    ignored.write_text(f"ignored extract for {test_id}\n", encoding="utf-8")
+
+    extracts = _collect_extracts(str(PATHS.extract), base_name, pretext_suffix)
+    labels = [label for label, _, _ in extracts]
+    contents = [content for _, content, _ in extracts]
+    paths = [Path(path) for _, _, path in extracts]
+
+    passed = (
+        len(extracts) == 2
+        and labels == ["model-alpha", "model-beta"]
+        and f"alpha extract for {test_id}" in contents[0]
+        and f"beta extract for {test_id}" in contents[1]
+        and paths == [first, second]
+    )
+
+    print_result(
+        "distill collects extract outputs",
+        passed,
+        {
+            "base_name": base_name,
+            "labels": labels,
+            "paths": paths,
+        },
+    )
+
+    return passed, cleanup
+
+
 def main() -> int:
     test_id = f"EVAL_{uuid.uuid4().hex[:8]}"
     all_cleanup: list[Path] = []
@@ -293,6 +461,10 @@ def main() -> int:
             test_ttml_convert,
             test_x_url_list_remove_completed,
             test_wikilink_cleaner_removes_broken_link,
+            test_markdown_merge_updates_index,
+            test_audio_move_to_done_removes_wav,
+            test_pretext_request_deduplicates_queue,
+            test_distill_collects_extract_outputs,
         ):
             passed, cleanup = test(test_id)
             results.append(passed)
