@@ -6,8 +6,6 @@ from grid_config import (
     SELL_ONLY_MODE,
     ABNORMAL_MODE,
     GRID_GAP,
-    REANCHOR_BREAK_STEPS,
-    BUY_GRID_FACTOR,
     ORDER_ZONE,
     TICK_COUNT,
     MAIN_LOOP_POLL_INTERVAL_SEC,
@@ -451,15 +449,6 @@ def run_red_team_eval():
         log_res("red-team: nonretry status calls", calls["read_func"], 1)
         log_res("red-team: nonretry status no sleep", calls["sleep"], 0)
 
-        # 这个更像“逻辑风险暴露”，不是 mismatch
-        state_b = buy_only_state(9800.0)
-        live_buy_drift = buy_only_orders(9000.0)
-        result = decide_cycle_action(
-            live_snapshot(live_buy_drift, 9000.0 + (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP - 1),
-            state_b,
-        )
-        log_note("red-team: BUY_ONLY drift still keep", result, "saved_state drift remains silent if anchor-break not triggered")
-
 def run_order_mode_classification_eval():
     print(f"🚀 Order Mode Classification Evaluation (GRID_STEP={GRID_STEP})")
 
@@ -521,10 +510,7 @@ def run_buy_only_eval():
         "no price validation",
     )
 
-    distance = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP
-    log_res("BUY_ONLY: break < threshold", decide_cycle_action(live_snapshot(live_buy, 9800.0 + distance - 1.0), state_b), ("keep", None, None))
-    log_res("BUY_ONLY: break == threshold", decide_cycle_action(live_snapshot(live_buy, 9800.0 + distance), state_b), ("rebuild", "anchor_break", None))
-    log_res("BUY_ONLY: break > threshold", decide_cycle_action(live_snapshot(live_buy, 9800.0 + distance + 1.0), state_b), ("rebuild", "anchor_break", None))
+    log_res("BUY_ONLY: far mid", decide_cycle_action(live_snapshot(live_buy, 19800.0), state_b), ("keep", None, None))
 
     log_res("BUY_ONLY: mid None", decide_cycle_action(live_snapshot(live_buy, None), state_b), ("keep", None, None))
     log_res("BUY_ONLY: mid <=0", decide_cycle_action(live_snapshot(live_buy, 0.0), state_b), ("keep", None, None))
@@ -1001,18 +987,6 @@ def run_execution_eval():
     log_res("rebuild: done_deal missing side first", calls["place_limit_order_args"], ["SELL", "BUY"])
     log_res("rebuild: done_deal cancel remaining", calls["cancel_args"], [(grid_exec.SYMBOL, 11)])
     log_res("rebuild: done_deal verify cancel", calls["wait_until"], 1)
-
-    anchor_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "price": 10400.0}
-    result, calls = run_rebuild_case(
-        [order("SELL", 10200.0, oid=22)],
-        rebuild_price_input=None,
-        computed_price=10400.0,
-        strategy="anchor_break",
-    )
-    log_res("rebuild: anchor_break fallback return", result, anchor_state)
-    log_res("rebuild: anchor_break fallback grid read", calls["read_btc_grid"], 1)
-    log_res("rebuild: anchor_break fallback build_pair arg", calls["build_pair_args"], [10400.0])
-    log_res("rebuild: anchor_break missing side first", calls["place_limit_order_args"], ["BUY", "SELL"])
 
 
 def run_execution_step4_eval():

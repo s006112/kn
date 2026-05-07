@@ -163,8 +163,8 @@ def finish_rebuild(info, trader, price, buy_action, sell_action, action, status)
 
 
 def rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None):
-    if (    # 如果是 done_deal 或 anchor_break 场景，并且当前状态是单边，那么尝试在原价位重建；否则直接清理所有订单，在当前价格重建
-        strategy in ("done_deal", "anchor_break")
+    if (    # 如果是 done_deal 场景，并且当前状态是单边，那么尝试在原价位重建；否则直接清理所有订单，在当前价格重建
+        strategy == "done_deal"
         and live_snapshot["mode"] in (BUY_ONLY_MODE, SELL_ONLY_MODE)
     ):
         price = rebuild_price if rebuild_price is not None else read_btc_grid(info)

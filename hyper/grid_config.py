@@ -34,10 +34,6 @@ ORDER_ZONE = GRID_GAP * 0.03 # 订单区间，价格偏移在网格间距的 xx%
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True  # 卖单因 BTC 不足下不出时，允许退化成仅挂买单
 ALLOW_SELL_ONLY_WHEN_NO_USDC = True  # 买单因 USDC 不足下不出时，允许退化成仅挂卖单
 
-REANCHOR_BREAK = True  # 启用 BUY_ONLY 模式下的重锚检测，偏离太远时整组重建
-REANCHOR_BREAK_STEPS = 2  # 与 BTC 中间价相差达到 N 格时，触发 anchor break 重挂
-REANCHOR_DISTANCE = (BUY_GRID_FACTOR + REANCHOR_BREAK_STEPS) * GRID_STEP    # 当 BTC mid 与当前 buy order 距离 >= REANCHOR_DISTANCE 时触发 anchor break
-
 WAIT_NO_OPEN_ORDERS_INTERVAL_SEC = 0.5  # 撤单后检查一次是否已无遗留挂单
 
 MAX_RETRIES = 4  # 读取接口最多重试 N 次，容忍短暂接口抖动
@@ -67,9 +63,6 @@ def format_price(price):
 def price_gap_matches(buy_price, sell_price, expected_gap):
     return normalize_price(sell_price) - normalize_price(buy_price) == normalize_price(expected_gap)
     #return True
-
-def price_distance_at_least(high_price, low_price, distance):
-    return normalize_price(high_price) - normalize_price(low_price) >= normalize_price(distance)
 
 # ============================================================================
 # logging helpers
