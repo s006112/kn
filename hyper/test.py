@@ -5,6 +5,7 @@ from grid_config import (
     BUY_ONLY_MODE,
     SELL_ONLY_MODE,
     ABNORMAL_MODE,
+    GRID_GAP,
     REANCHOR_BREAK_STEPS,
     BUY_GRID_FACTOR,
     ORDER_ZONE,
@@ -99,7 +100,9 @@ def order(side, price, size=None, oid=None):
     return o
 
 
-def pair_orders(buy_price=9800.0, sell_price=10200.0, buy_size=None, sell_size=None):
+def pair_orders(buy_price=9800.0, sell_price=None, buy_size=None, sell_size=None):
+    if sell_price is None:
+        sell_price = buy_price + GRID_GAP
     return [
         order("BUY", buy_price, buy_size),
         order("SELL", sell_price, sell_size),
@@ -122,7 +125,9 @@ def live_snapshot(orders, btc_mid=None):
     }
 
 
-def pair_state(buy_price=9800.0, sell_price=10200.0):
+def pair_state(buy_price=9800.0, sell_price=None):
+    if sell_price is None:
+        sell_price = buy_price + GRID_GAP
     return {
         "mode": PAIR_MODE,
         "buy_price": float(buy_price),
@@ -393,16 +398,16 @@ def run_red_team_eval():
     if grid_engine is None:
         log_note("red-team: bootstrap real import", "SKIPPED", "grid import failed")
     else:
-        inherited_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 10200.0}
+        inherited_state = {"mode": PAIR_MODE, "buy_price": 9800.0, "sell_price": 9800.0 + GRID_GAP}
 
         result, calls = run_bootstrap_saved_state_real_case(
-            orders=pair_orders(),
+            orders=pair_orders(inherited_state["buy_price"], inherited_state["sell_price"]),
             rebuild_state={"mode": "SHOULD_NOT_HAPPEN"},
         )
         log_res(
             "red-team: bootstrap real inherit",
             (result["mode"], result["buy_price"], result["sell_price"]),
-            (PAIR_MODE, 9800.0, 10200.0),
+            (inherited_state["mode"], inherited_state["buy_price"], inherited_state["sell_price"]),
         )
         log_res("red-team: bootstrap real no rebuild", calls["rebuild"], 0)
 
@@ -473,12 +478,12 @@ def run_order_mode_classification_eval():
     log_res("Order Mode: buy>=sell", mode_of_bootstrap(pair_orders(10200.0, 9800.0)), ABNORMAL_MODE)
     log_res("Order Mode: HOLD", mode_of_bootstrap([order("HOLD", 10200.0)]), ABNORMAL_MODE)
     log_res("Order Mode: sell", mode_of_bootstrap([order("sell", 10200.0)]), ABNORMAL_MODE)
-    log_res("Order Mode: Correct Gap", mode_of_bootstrap(pair_orders(9800.0, 10200.0)), PAIR_MODE)
+    log_res("Order Mode: Correct Gap", mode_of_bootstrap(pair_orders(9800.0, 9800.0 + GRID_GAP)), PAIR_MODE)
     log_res("Order Mode: Wrong Gap", mode_of_bootstrap(pair_orders(9900.0, 10000.0)), ABNORMAL_MODE)
 
     log_note(
         "Order Mode: Size Mismatch",
-        mode_of_bootstrap(pair_orders(9800.0, 10200.0, 1.0, 0.00001)),
+        mode_of_bootstrap(pair_orders(9800.0, 9800.0 + GRID_GAP, 1.0, 0.00001)),
         "no size validation",
     )
 
@@ -491,7 +496,7 @@ def run_pair_mode_eval():
     o_pair = pair_orders()
     state_p = pair_state()
 
-    log_res("PAIR: SELL filled", decide_cycle_action(live_snapshot(o_pair[:1]), state_p), ("rebuild", "done_deal", 10200.0))
+    log_res("PAIR: SELL filled", decide_cycle_action(live_snapshot(o_pair[:1]), state_p), ("rebuild", "done_deal", state_p["sell_price"]))
     log_res("PAIR: BUY filled", decide_cycle_action(live_snapshot(o_pair[1:]), state_p), ("rebuild", "done_deal", 9800.0))
     log_res("PAIR: Keep", decide_cycle_action(live_snapshot(o_pair), state_p), ("keep", None, None))
 

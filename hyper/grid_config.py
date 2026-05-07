@@ -65,8 +65,8 @@ def format_price(price):
     return str(int(normalize_price(price)))
 
 def price_gap_matches(buy_price, sell_price, expected_gap):
-    #return normalize_price(sell_price) - normalize_price(buy_price) == normalize_price(expected_gap)
-    return True
+    return normalize_price(sell_price) - normalize_price(buy_price) == normalize_price(expected_gap)
+    #return True
 
 def price_distance_at_least(high_price, low_price, distance):
     return normalize_price(high_price) - normalize_price(low_price) >= normalize_price(distance)
