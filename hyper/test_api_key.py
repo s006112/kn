@@ -1,5 +1,3 @@
-# test_api_key.py
-
 import os
 
 from dotenv import load_dotenv
@@ -12,6 +10,8 @@ load_dotenv()
 
 ACCOUNT_ADDRESS = os.getenv("HYPERLIQUID_ACCOUNT_ADDRESS")  # likely unchange unless you want to test with a different account
 API_WALLET_KEY = os.getenv("HYPERLIQUID_API_WALLET_KEY")    # hyperliquid only show 1 time
+SYMBOL = os.getenv("SYMBOL", "UBTC/USDC")
+
 
 def die(msg):
     raise SystemExit(f"ERROR: {msg}")
