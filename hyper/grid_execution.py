@@ -46,12 +46,30 @@ def build_pair(price):
 
 
 def classify_order_result(result):
-    statuses = result.get("response", {}).get("data", {}).get("statuses", [])
+    if not isinstance(result, dict):
+        log_msg(f"order failed: non-dict result: {result!r}")
+        return "error"
+
+    response = result.get("response")
+    if not isinstance(response, dict):
+        log_msg(f"order failed: bad response shape: {result!r}")
+        return "error"
+
+    data = response.get("data")
+    if not isinstance(data, dict):
+        log_msg(f"order failed: bad data shape: {result!r}")
+        return "error"
+
+    statuses = data.get("statuses", [])
     if not statuses:
-        log_msg(f"order failed: {result}")
+        log_msg(f"order failed: missing statuses: {result!r}")
         return "error"
 
     status = statuses[0]
+    if not isinstance(status, dict):
+        log_msg(f"order failed: bad status shape: {result!r}")
+        return "error"
+
     if "error" in status:
         error = status["error"]
         log_msg(f"order failed: {error}")
@@ -62,9 +80,8 @@ def classify_order_result(result):
     if "resting" in status or "filled" in status:
         return "ok"
 
-    log_msg(f"order failed: {result}")
+    log_msg(f"order failed: unknown status: {result!r}")
     return "error"
-
 
 def place_limit_order(trader, action):
     result = trader.order(
