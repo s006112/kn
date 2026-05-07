@@ -16,12 +16,14 @@ for path in (ROOT_DIR, W_DIR):
         sys.path.insert(0, str(path))
 
 from p import CONFIG  # noqa: E402
+import p_audio as audio_module  # noqa: E402
 from p_audio import audio_queue, move_files_to_done, scan_audio_files  # noqa: E402
 from p_context import create_pipeline_context  # noqa: E402
 from p_distill import _collect_extracts  # noqa: E402
-from p_extract import ExtractHandler  # noqa: E402
+from p_extract import ExtractHandler, PremiumExtractHandler  # noqa: E402
 import p_pipelines as pipelines  # noqa: E402
 from p_pipelines import read_next_download_url, remove_download_url_line  # noqa: E402
+import p_pretext as pretext_module  # noqa: E402
 from p_pretext import release_pretext_request, request_pretext_processing  # noqa: E402
 from p_torrent import move_torrent_to_whisper, scan_torrent_watch_folder  # noqa: E402
 from p_ttml import handle_ttml  # noqa: E402
@@ -255,6 +257,53 @@ def test_ttml_convert(test_id: str) -> tuple[bool, list[Path]]:
 
     return passed, cleanup
 
+def test_ttml_plain_text_branch_converts_and_archives(test_id: str) -> tuple[bool, list[Path]]:
+    filename = f"{test_id}_plain.ttml"
+    pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
+
+    source = PATHS.ttml_watch / filename
+    output = PATHS.ttml_watch / f"{test_id}_plain{pretext_suffix}"
+    archived = PATHS.original / filename
+
+    content = f"""plain subtitle line one {test_id}
+plain subtitle line two {test_id}
+"""
+
+    cleanup = [source, output, archived, source.with_suffix(".ttml.processing")]
+
+    PATHS.ttml_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.original.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(content, encoding="utf-8")
+
+    handle_ttml(
+        str(source),
+        str(PATHS.ttml_watch),
+        str(PATHS.original),
+        sanitize_and_trim_filename,
+        pretext_suffix,
+    )
+
+    output_text = output.read_text(encoding="utf-8") if output.exists() else ""
+
+    passed = (
+        not source.exists()
+        and output.is_file()
+        and archived.is_file()
+        and output_text == content
+    )
+
+    print_result(
+        "ttml plain text branch converts and archives",
+        passed,
+        {
+            "source": source,
+            "output": output,
+            "archived": archived,
+        },
+    )
+
+    return passed, cleanup
 
 def test_x_url_list_remove_completed(test_id: str) -> tuple[bool, list[Path]]:
     url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ&utm_source=evaluation"
@@ -295,6 +344,86 @@ def test_x_url_list_remove_completed(test_id: str) -> tuple[bool, list[Path]]:
 
     return passed, cleanup
 
+def test_x_url_download_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[bool, list[Path]]:
+    url = f"https://www.youtube.com/watch?v={test_id}"
+    list_file = PATHS.download_target / f"{test_id}_x_urls.txt"
+    output = PATHS.download_target / f"{test_id}_downloaded.mp4"
+
+    cleanup = [list_file, output]
+
+    PATHS.download_target.mkdir(parents=True, exist_ok=True)
+
+    list_file.write_text(f"\nnot a url\n{url}\n", encoding="utf-8")
+
+    config = {
+        **CONFIG,
+        "X_URL_LIST_FILE": list_file,
+        "DOWNLOAD_TARGET_FOLDER": PATHS.download_target,
+        "INTERVALS": {
+            **CONFIG["INTERVALS"],
+            "DOWNLOAD_SCAN_SECONDS": 0.05,
+            "X_RESOLVE_TIMEOUT_SECONDS": 0.05,
+        },
+    }
+
+    ctx = create_pipeline_context(config)
+    original_download = pipelines.download
+
+    try:
+        def fake_download(
+            _url: str,
+            _quality: str,
+            *,
+            output_dir: Path,
+            resolve_timeout: float,
+        ) -> tuple[str, None]:
+            output.write_text(f"fake download for {test_id}\n", encoding="utf-8")
+            return str(output), None
+
+        pipelines.download = fake_download
+
+        thread = threading.Thread(
+            target=pipelines.process_x_url_download_pipeline,
+            args=(ctx,),
+            daemon=True,
+        )
+        thread.start()
+
+        deadline = time.time() + 2
+        while time.time() < deadline:
+            remaining = list_file.read_text(encoding="utf-8") if list_file.exists() else ""
+            if output.exists() and url not in remaining:
+                break
+            time.sleep(0.05)
+
+        ctx.shutdown_flag.set()
+        thread.join(timeout=1)
+
+        remaining = list_file.read_text(encoding="utf-8") if list_file.exists() else ""
+
+        passed = (
+            output.is_file()
+            and url not in remaining
+            and "not a url" in remaining
+            and not thread.is_alive()
+        )
+
+        print_result(
+            "x url download pipeline mocked loop removes completed url",
+            passed,
+            {
+                "list_file": list_file,
+                "output": output,
+                "url_removed": url not in remaining,
+                "thread_alive": thread.is_alive(),
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        pipelines.download = original_download
+        ctx.shutdown_flag.set()
 
 def test_wikilink_cleaner_removes_broken_link(test_id: str) -> tuple[bool, list[Path]]:
     valid_name = f"{test_id}_valid"
@@ -459,6 +588,77 @@ def test_pretext_request_deduplicates_queue(test_id: str) -> tuple[bool, list[Pa
 
     return passed, cleanup
 
+def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) -> tuple[bool, list[Path]]:
+    pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
+    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+    base_name = f"{test_id}_pretext_full"
+
+    source = PATHS.pretext_watch / f"{base_name}{pretext_suffix}"
+    output = PATHS.pretext_watch / f"{base_name}{extract_suffix}"
+    archived = PATHS.original / f"{base_name}.txt"
+    whisper_index = PATHS.obsidian / "Whisper 000000.md"
+
+    cleanup = [source, output, archived]
+
+    PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.original.mkdir(parents=True, exist_ok=True)
+    PATHS.obsidian.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(f"dummy pretext source {test_id}\n", encoding="utf-8")
+
+    config = {
+        **CONFIG,
+        "MODEL_PRETEXT": "evaluation-model",
+        "PRETEXT_PROMPT": "evaluation pretext prompt",
+    }
+
+    original_call_llm = pretext_module.call_llm
+    index_existed = whisper_index.exists()
+    index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
+
+    try:
+        pretext_module.call_llm = lambda **_kwargs: f"mock pretext result {test_id}"
+
+        ctx = create_pipeline_context(config)
+        pretext_module.process_pretext_file(ctx, str(source))
+
+        notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
+        note = notes[-1] if notes else None
+        cleanup.extend(notes)
+
+        output_text = output.read_text(encoding="utf-8") if output.exists() else ""
+        note_text = note.read_text(encoding="utf-8") if note and note.exists() else ""
+
+        passed = (
+            not source.exists()
+            and archived.is_file()
+            and output.is_file()
+            and f"mock pretext result {test_id}" in output_text
+            and note is not None
+            and f"mock pretext result {test_id}" in note_text
+            and str(source.resolve()) not in ctx.processed_files_global
+        )
+
+        print_result(
+            "pretext full process writes pretext markdown and archive",
+            passed,
+            {
+                "source": source,
+                "output": output,
+                "markdown": note,
+                "archived": archived,
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        pretext_module.call_llm = original_call_llm
+
+        if index_before is not None:
+            whisper_index.write_text(index_before, encoding="utf-8")
+        elif not index_existed and whisper_index.exists():
+            whisper_index.unlink()
 
 def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
@@ -603,6 +803,155 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
                 "extract_output": extract_output,
                 "markdown": note,
                 "archived": archived,
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        extract_module.call_llm = original_call_llm
+
+        if index_before is not None:
+            whisper_index.write_text(index_before, encoding="utf-8")
+        elif not index_existed and whisper_index.exists():
+            whisper_index.unlink()
+
+def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[bool, list[Path]]:
+    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+    base_name = f"{test_id}_extract_fail"
+    model = "evaluation-failing-model"
+
+    source = PATHS.extract_watch / f"{base_name}{extract_suffix}"
+    failed = PATHS.fail / source.name
+
+    cleanup = [source, failed]
+
+    PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.fail.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(f"dummy extract failure source {test_id}\n", encoding="utf-8")
+
+    config = {
+        **CONFIG,
+        "MODEL_DISTILL": "",
+        "MODEL_EXTRACT_MATRIX": {
+            **CONFIG.get("MODEL_EXTRACT_MATRIX", {}),
+            "EXTRACT_WATCH_FOLDER": [model],
+        },
+    }
+
+    original_call_llm = extract_module.call_llm
+
+    try:
+        def fail_call_llm(**_kwargs):
+            raise RuntimeError(f"mock extract failure {test_id}")
+
+        extract_module.call_llm = fail_call_llm
+
+        ctx = create_pipeline_context(config)
+        handler = ExtractHandler(config, ctx.extract_queue)
+
+        raised = False
+        try:
+            handler.process_extract(str(source), get_next_available_filename)
+        except RuntimeError:
+            raised = True
+
+        error_files = sorted(PATHS.pretext_watch.glob(f"{base_name}*.error"))
+        cleanup.extend(error_files)
+
+        error_text = "\n".join(
+            path.read_text(encoding="utf-8") for path in error_files
+        )
+
+        passed = (
+            raised
+            and not source.exists()
+            and failed.is_file()
+            and len(error_files) >= 2
+            and f"mock extract failure {test_id}" in error_text
+        )
+
+        print_result(
+            "extract failure writes error and moves to fail",
+            passed,
+            {
+                "source": source,
+                "failed": failed,
+                "error_files": error_files,
+                "raised": raised,
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        extract_module.call_llm = original_call_llm
+
+def test_premium_extract_full_process_archives_to_archive_folder(test_id: str) -> tuple[bool, list[Path]]:
+    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+    base_name = f"{test_id}_premium_full"
+    model = "evaluation-premium-model"
+
+    source = PATHS.premium_watch / f"{base_name}{extract_suffix}"
+    extract_output = PATHS.extract / f"{base_name}_{model}.txt"
+    archived = PATHS.archive / source.name
+    whisper_index = PATHS.obsidian / "Whisper 000000.md"
+
+    cleanup = [source, extract_output, archived]
+
+    PATHS.premium_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.extract.mkdir(parents=True, exist_ok=True)
+    PATHS.archive.mkdir(parents=True, exist_ok=True)
+    PATHS.obsidian.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(f"dummy premium extract source {test_id}\n", encoding="utf-8")
+
+    config = {
+        **CONFIG,
+        "MODEL_EXTRACT_MATRIX": {
+            **CONFIG.get("MODEL_EXTRACT_MATRIX", {}),
+            "PREMIUM_WATCH_FOLDER": [model],
+        },
+    }
+
+    original_call_llm = extract_module.call_llm
+    index_existed = whisper_index.exists()
+    index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
+
+    try:
+        extract_module.call_llm = lambda **_kwargs: f"mock premium extract result {test_id}"
+
+        ctx = create_pipeline_context(config)
+        handler = PremiumExtractHandler(config, ctx.premium_extract_queue)
+        handler.process_premium_extract(str(source), get_next_available_filename)
+
+        notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
+        note = notes[-1] if notes else None
+        cleanup.extend(notes)
+
+        extract_text = extract_output.read_text(encoding="utf-8") if extract_output.exists() else ""
+        note_text = note.read_text(encoding="utf-8") if note and note.exists() else ""
+
+        passed = (
+            not source.exists()
+            and archived.is_file()
+            and extract_output.is_file()
+            and f"mock premium extract result {test_id}" in extract_text
+            and note is not None
+            and f"mock premium extract result {test_id}" in note_text
+        )
+
+        print_result(
+            "premium extract full process archives to archive folder",
+            passed,
+            {
+                "source": source,
+                "extract_output": extract_output,
+                "markdown": note,
+                "archived": archived,
+                "archive_folder": PATHS.archive,
             },
         )
 
@@ -827,6 +1176,74 @@ def test_audio_scan_enqueues_audio_file(test_id: str) -> tuple[bool, list[Path]]
 
     return passed, cleanup
 
+def test_audio_process_file_mocked_full_path(test_id: str) -> tuple[bool, list[Path]]:
+    folder = PATHS.audio_watch_folders[0]
+    base_name = f"{test_id}_audio_full"
+    source = folder / f"{base_name}.mp3"
+    wav = PATHS.watch / f"{base_name}.wav"
+    txt = PATHS.audio_transcribed / f"{base_name}{str(CONFIG['PRETEXT_SUFFIX']).lower()}"
+    target = PATHS.audio_done / source.name
+
+    cleanup = [source, wav, txt, target]
+
+    folder.mkdir(parents=True, exist_ok=True)
+    PATHS.watch.mkdir(parents=True, exist_ok=True)
+    PATHS.audio_transcribed.mkdir(parents=True, exist_ok=True)
+    PATHS.audio_done.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(f"dummy audio full source {test_id}\n", encoding="utf-8")
+
+    original_convert = audio_module.convert_audio_to_wav
+    original_get_service = audio_module.get_service
+
+    class MockService:
+        def transcribe_file(self, wav_path: str) -> str:
+            return f"mock transcription result {test_id} from {Path(wav_path).name}"
+
+    try:
+        def fake_convert(_folder_path: str, _audio_file: str) -> str:
+            wav.write_text(f"dummy wav for {test_id}\n", encoding="utf-8")
+            return str(wav)
+
+        audio_module.convert_audio_to_wav = fake_convert
+        audio_module.get_service = lambda: MockService()
+
+        success = audio_module.process_audio_file(
+            str(source),
+            str(folder),
+            CONFIG,
+            str(PATHS.audio_done),
+        )
+
+        txt_text = txt.read_text(encoding="utf-8") if txt.exists() else ""
+
+        passed = (
+            success
+            and not source.exists()
+            and not wav.exists()
+            and txt.is_file()
+            and target.is_file()
+            and f"mock transcription result {test_id}" in txt_text
+        )
+
+        print_result(
+            "audio process file mocked full path",
+            passed,
+            {
+                "source": source,
+                "wav": wav,
+                "txt": txt,
+                "target": target,
+                "success": success,
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        audio_module.convert_audio_to_wav = original_convert
+        audio_module.get_service = original_get_service
+
 def main() -> int:
     test_id = f"EVAL_{uuid.uuid4().hex[:8]}"
     all_cleanup: list[Path] = []
@@ -837,18 +1254,24 @@ def main() -> int:
             test_torrent_move,
             test_torrent_move_avoids_overwrite,
             test_ttml_convert,
+            test_ttml_plain_text_branch_converts_and_archives,
             test_x_url_list_remove_completed,
+            test_x_url_download_pipeline_mocked_loop_removes_completed_url,
             test_wikilink_cleaner_removes_broken_link,
             test_markdown_merge_updates_index,
             test_audio_move_to_done_removes_wav,
             test_pretext_request_deduplicates_queue,
+            test_pretext_full_process_writes_pretext_markdown_and_archive,
             test_distill_collects_extract_outputs,
             test_extract_handler_queues_candidate_once,
             test_extract_full_process_writes_extract_markdown_and_archive,
+            test_extract_failure_writes_error_and_moves_to_fail,
+            test_premium_extract_full_process_archives_to_archive_folder,
             test_list_matching_files_filters_suffixes,
             test_scan_existing_files_routes_text_inputs,
             test_periodic_file_scanner_routes_text_inputs,
             test_audio_scan_enqueues_audio_file,
+            test_audio_process_file_mocked_full_path,
         ):
             passed, cleanup = test(test_id)
             results.append(passed)
