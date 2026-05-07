@@ -1,9 +1,9 @@
 import time
 import logging
 import requests
-from clob_connect import get_poly_client
+from archive.polymarket.clob_connect import get_poly_client
 from py_clob_client.clob_types import OrderArgs
-import gamma
+import archive.polymarket.gamma as gamma
 
 # 設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
