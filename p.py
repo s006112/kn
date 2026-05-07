@@ -166,7 +166,7 @@ class UTFStreamHandler(logging.StreamHandler):
             self.handleError(record)
 
 
-LOG_DIR = Path(__file__).resolve().parent / "log"
+LOG_DIR = Path(__file__).resolve().parent / "data" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
