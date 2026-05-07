@@ -28,6 +28,8 @@ from p_ttml import handle_ttml  # noqa: E402
 from utils_md import merge_to_markdown  # noqa: E402
 from utils_text import sanitize_and_trim_filename  # noqa: E402
 from utils_unlink import WikilinkCleaner  # noqa: E402
+import p_extract as extract_module  # noqa: E402
+from utils_files import get_next_available_filename  # noqa: E402
 
 
 OK = "✅"
@@ -538,6 +540,82 @@ def test_extract_handler_queues_candidate_once(test_id: str) -> tuple[bool, list
 
     return passed, cleanup
 
+def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) -> tuple[bool, list[Path]]:
+    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+    base_name = f"{test_id}_extract_full"
+    model = "evaluation-model"
+
+    source = PATHS.extract_watch / f"{base_name}{extract_suffix}"
+    extract_output = PATHS.extract / f"{base_name}_{model}.txt"
+    archived = PATHS.pretext_done / source.name
+    whisper_index = PATHS.obsidian / "Whisper 000000.md"
+
+    cleanup = [source, extract_output, archived]
+
+    PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.extract.mkdir(parents=True, exist_ok=True)
+    PATHS.pretext_done.mkdir(parents=True, exist_ok=True)
+    PATHS.obsidian.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(f"dummy extract source {test_id}\n", encoding="utf-8")
+
+    config = {
+        **CONFIG,
+        "MODEL_DISTILL": "",
+        "MODEL_EXTRACT_MATRIX": {
+            **CONFIG.get("MODEL_EXTRACT_MATRIX", {}),
+            "EXTRACT_WATCH_FOLDER": [model],
+        },
+    }
+
+    original_call_llm = extract_module.call_llm
+    index_existed = whisper_index.exists()
+    index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
+
+    try:
+        extract_module.call_llm = lambda **_kwargs: f"mock extract result {test_id}"
+
+        ctx = create_pipeline_context(config)
+        handler = ExtractHandler(config, ctx.extract_queue)
+        handler.process_extract(str(source), get_next_available_filename)
+
+        notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
+        note = notes[-1] if notes else None
+        cleanup.extend(notes)
+
+        extract_text = extract_output.read_text(encoding="utf-8") if extract_output.exists() else ""
+        note_text = note.read_text(encoding="utf-8") if note and note.exists() else ""
+
+        passed = (
+            not source.exists()
+            and archived.is_file()
+            and extract_output.is_file()
+            and f"mock extract result {test_id}" in extract_text
+            and note is not None
+            and f"mock extract result {test_id}" in note_text
+        )
+
+        print_result(
+            "extract full process writes extract markdown and archive",
+            passed,
+            {
+                "source": source,
+                "extract_output": extract_output,
+                "markdown": note,
+                "archived": archived,
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        extract_module.call_llm = original_call_llm
+
+        if index_before is not None:
+            whisper_index.write_text(index_before, encoding="utf-8")
+        elif not index_existed and whisper_index.exists():
+            whisper_index.unlink()
+
 def test_list_matching_files_filters_suffixes(test_id: str) -> tuple[bool, list[Path]]:
     raw = PATHS.download_target / f"{test_id}_scan_raw.txt"
     extract = PATHS.download_target / f"{test_id}_scan_extract_p.txt"
@@ -766,6 +844,7 @@ def main() -> int:
             test_pretext_request_deduplicates_queue,
             test_distill_collects_extract_outputs,
             test_extract_handler_queues_candidate_once,
+            test_extract_full_process_writes_extract_markdown_and_archive,
             test_list_matching_files_filters_suffixes,
             test_scan_existing_files_routes_text_inputs,
             test_periodic_file_scanner_routes_text_inputs,
