@@ -17,7 +17,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from p import INTERVAL_CONFIG
-from utils_unlink import clean_dead_links, setup_wikilink_cleaner_logging
+from w.utils_unlink import clean_dead_links, setup_wikilink_cleaner_logging
 
 # -------------------------
 # Wikilink cleaner config
