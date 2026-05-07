@@ -28,15 +28,56 @@ FAIL = "❌"
 class EvalPaths:
     watch: Path
     whisper: Path
-    ttml_watch: Path
-    original: Path
 
+    ttml_watch: Path
+
+    pretext_watch: Path
+    pretext_done: Path
+    premium_watch: Path
+
+    extract_watch: Path
+    extract: Path
+
+    original: Path
+    archive: Path
+    fail: Path
+
+    audio_watch_folders: tuple[Path, ...]
+    audio_done: Path
+    audio_transcribed: Path
+
+    obsidian: Path
+    link_backup: Path
+
+    x_list: Path
+    download_target: Path
 
 PATHS = EvalPaths(
     watch=Path(CONFIG["WATCH_FOLDER"]),
     whisper=Path(CONFIG["WHISPER_FOLDER"]),
+
     ttml_watch=Path(CONFIG["TTML_WATCH_FOLDER"]),
+
+    pretext_watch=Path(CONFIG["PRETEXT_WATCH_FOLDER"]),
+    pretext_done=Path(CONFIG["PRETEXT_DONE_FOLDER"]),
+    premium_watch=Path(CONFIG["PREMIUM_WATCH_FOLDER"]),
+
+    extract_watch=Path(CONFIG["EXTRACT_WATCH_FOLDER"]),
+    extract=Path(CONFIG["EXTRACT_FOLDER"]),
+
     original=Path(CONFIG["ORIGINAL_FOLDER"]),
+    archive=Path(CONFIG["ARCHIVE_FOLDER"]),
+    fail=Path(CONFIG["FAIL_FOLDER"]),
+
+    audio_watch_folders=tuple(Path(p) for p in CONFIG["AUDIO_WATCH_FOLDERS"]),
+    audio_done=Path(CONFIG["AUDIO_DONE_FOLDER"]),
+    audio_transcribed=Path(CONFIG["AUDIO_TRANSCRIBED_TXT_FOLDER"]),
+
+    obsidian=Path(CONFIG["OBSIDIAN_SYNC_FOLDER"]),
+    link_backup=Path(CONFIG["LINK_BACKUP_FOLDER"]),
+
+    x_list=Path(CONFIG["X_URL_LIST_FILE"]),
+    download_target=Path(CONFIG["DOWNLOAD_TARGET_FOLDER"]),
 )
 
 
