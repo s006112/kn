@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -15,12 +16,14 @@ for path in (ROOT_DIR, W_DIR):
         sys.path.insert(0, str(path))
 
 from p import CONFIG  # noqa: E402
-from p_audio import move_files_to_done  # noqa: E402
+from p_audio import audio_queue, move_files_to_done, scan_audio_files  # noqa: E402
 from p_context import create_pipeline_context  # noqa: E402
 from p_distill import _collect_extracts  # noqa: E402
+from p_extract import ExtractHandler  # noqa: E402
+import p_pipelines as pipelines  # noqa: E402
 from p_pipelines import read_next_download_url, remove_download_url_line  # noqa: E402
 from p_pretext import release_pretext_request, request_pretext_processing  # noqa: E402
-from p_torrent import scan_torrent_watch_folder  # noqa: E402
+from p_torrent import move_torrent_to_whisper, scan_torrent_watch_folder  # noqa: E402
 from p_ttml import handle_ttml  # noqa: E402
 from utils_md import merge_to_markdown  # noqa: E402
 from utils_text import sanitize_and_trim_filename  # noqa: E402
@@ -152,6 +155,52 @@ def test_torrent_move(test_id: str) -> tuple[bool, list[Path]]:
             "source": source,
             "target": target,
             "moved_count": moved_count,
+        },
+    )
+
+    return passed, cleanup
+
+
+def test_torrent_move_avoids_overwrite(test_id: str) -> tuple[bool, list[Path]]:
+    filename = f"{test_id}_duplicate.torrent"
+    source = PATHS.watch / filename
+    existing_target = PATHS.whisper / filename
+    collision_target = PATHS.whisper / f"{test_id}_duplicate_1.torrent"
+
+    cleanup = [source, existing_target, collision_target]
+
+    PATHS.watch.mkdir(parents=True, exist_ok=True)
+    PATHS.whisper.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(f"new torrent source {test_id}\n", encoding="utf-8")
+    existing_target.write_text(f"existing torrent target {test_id}\n", encoding="utf-8")
+
+    moved = move_torrent_to_whisper(str(source), str(PATHS.whisper))
+
+    existing_content = existing_target.read_text(encoding="utf-8")
+    collision_content = (
+        collision_target.read_text(encoding="utf-8")
+        if collision_target.exists()
+        else ""
+    )
+
+    passed = (
+        moved
+        and not source.exists()
+        and existing_target.is_file()
+        and collision_target.is_file()
+        and f"existing torrent target {test_id}" in existing_content
+        and f"new torrent source {test_id}" in collision_content
+    )
+
+    print_result(
+        "torrent move avoids overwrite",
+        passed,
+        {
+            "source": source,
+            "existing_target": existing_target,
+            "collision_target": collision_target,
+            "moved": moved,
         },
     )
 
@@ -450,6 +499,256 @@ def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path
     return passed, cleanup
 
 
+def test_extract_handler_queues_candidate_once(test_id: str) -> tuple[bool, list[Path]]:
+    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+    source = PATHS.extract_watch / f"{test_id}_extract{extract_suffix}"
+    ignored = PATHS.download_target / f"{test_id}_ignored{extract_suffix}"
+
+    cleanup = [source, ignored]
+
+    PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.download_target.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(f"extract queue candidate {test_id}\n", encoding="utf-8")
+    ignored.write_text(f"wrong folder candidate {test_id}\n", encoding="utf-8")
+
+    ctx = create_pipeline_context(CONFIG)
+    handler = ExtractHandler(CONFIG, ctx.extract_queue)
+    handler._queue_file(str(source))
+    handler._queue_file(str(source))
+    handler._queue_file(str(ignored))
+
+    queued_paths = list(ctx.extract_queue.queue)
+
+    passed = (
+        queued_paths == [str(source)]
+        and str(source) in handler.processed_files
+        and str(ignored) not in handler.processed_files
+    )
+
+    print_result(
+        "extract handler queues candidate once",
+        passed,
+        {
+            "source": source,
+            "ignored": ignored,
+            "queued_paths": queued_paths,
+        },
+    )
+
+    return passed, cleanup
+
+def test_list_matching_files_filters_suffixes(test_id: str) -> tuple[bool, list[Path]]:
+    raw = PATHS.download_target / f"{test_id}_scan_raw.txt"
+    extract = PATHS.download_target / f"{test_id}_scan_extract_p.txt"
+    ignored = PATHS.download_target / f"{test_id}_scan_ignore.md"
+
+    cleanup = [raw, extract, ignored]
+
+    PATHS.download_target.mkdir(parents=True, exist_ok=True)
+
+    raw.write_text(f"raw scan candidate {test_id}\n", encoding="utf-8")
+    extract.write_text(f"extract scan candidate {test_id}\n", encoding="utf-8")
+    ignored.write_text(f"ignored scan candidate {test_id}\n", encoding="utf-8")
+
+    matches = pipelines.list_matching_files(
+        str(PATHS.download_target),
+        lambda name: name.lower().endswith(".txt")
+        and not name.lower().endswith("_p.txt"),
+    )
+
+    passed = str(raw) in matches and str(extract) not in matches and str(ignored) not in matches
+
+    print_result(
+        "list matching files filters suffixes",
+        passed,
+        {
+            "raw": raw,
+            "extract": extract,
+            "matches": len(matches),
+        },
+    )
+
+    return passed, cleanup
+
+
+def test_scan_existing_files_routes_text_inputs(test_id: str) -> tuple[bool, list[Path]]:
+    pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
+    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+
+    long_base = f"{test_id}_" + "x" * 70
+    raw = PATHS.pretext_watch / f"{long_base}{pretext_suffix}"
+    renamed = PATHS.pretext_watch / f"{sanitize_and_trim_filename(long_base)}{pretext_suffix}"
+    extract = PATHS.extract_watch / f"{test_id}_scan_existing{extract_suffix}"
+    premium = PATHS.premium_watch / f"{test_id}_scan_existing{extract_suffix}"
+
+    cleanup = [raw, renamed, extract, premium]
+
+    PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.premium_watch.mkdir(parents=True, exist_ok=True)
+
+    raw.write_text(f"startup scan raw {test_id}\n", encoding="utf-8")
+    extract.write_text(f"startup scan extract {test_id}\n", encoding="utf-8")
+    premium.write_text(f"startup scan premium {test_id}\n", encoding="utf-8")
+
+    ctx = create_pipeline_context(CONFIG)
+    original_scan_torrent = pipelines.scan_torrent_watch_folder
+
+    try:
+        pipelines.scan_torrent_watch_folder = lambda _config: 0
+        pipelines.scan_existing_files(ctx)
+    finally:
+        pipelines.scan_torrent_watch_folder = original_scan_torrent
+
+    pretext_paths = list(ctx.pretext_queue.queue)
+    extract_paths = list(ctx.extract_queue.queue)
+    premium_paths = list(ctx.premium_extract_queue.queue)
+
+    passed = (
+        not raw.exists()
+        and renamed.is_file()
+        and str(renamed.resolve()) in pretext_paths
+        and str(extract) in extract_paths
+        and str(premium) in premium_paths
+    )
+
+    print_result(
+        "scan existing files routes text inputs",
+        passed,
+        {
+            "renamed": renamed,
+            "pretext_queue": ctx.pretext_queue.qsize(),
+            "extract_queue": ctx.extract_queue.qsize(),
+            "premium_queue": ctx.premium_extract_queue.qsize(),
+        },
+    )
+
+    return passed, cleanup
+
+
+def test_periodic_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, list[Path]]:
+    pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
+    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+
+    raw = PATHS.pretext_watch / f"{test_id}_periodic_raw{pretext_suffix}"
+    extract = PATHS.extract_watch / f"{test_id}_periodic_extract{extract_suffix}"
+    premium = PATHS.premium_watch / f"{test_id}_periodic_premium{extract_suffix}"
+
+    cleanup = [raw, extract, premium]
+
+    PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.premium_watch.mkdir(parents=True, exist_ok=True)
+
+    raw.write_text(f"periodic scan raw {test_id}\n", encoding="utf-8")
+    extract.write_text(f"periodic scan extract {test_id}\n", encoding="utf-8")
+    premium.write_text(f"periodic scan premium {test_id}\n", encoding="utf-8")
+
+    config = {
+        **CONFIG,
+        "INTERVALS": {
+            **CONFIG["INTERVALS"],
+            "PERIODIC_SCAN_SECONDS": 0.05,
+            "SCAN_ERROR_BACKOFF_SECONDS": 0.05,
+        },
+    }
+
+    ctx = create_pipeline_context(config)
+    original_scan_torrent = pipelines.scan_torrent_watch_folder
+
+    try:
+        pipelines.scan_torrent_watch_folder = lambda _config: 0
+        thread = threading.Thread(
+            target=pipelines.periodic_file_scanner,
+            args=(ctx,),
+            daemon=True,
+        )
+        thread.start()
+
+        deadline = time.time() + 2
+        while time.time() < deadline:
+            pretext_paths = list(ctx.pretext_queue.queue)
+            extract_paths = list(ctx.extract_queue.queue)
+            premium_paths = list(ctx.premium_extract_queue.queue)
+
+            if (
+                str(raw.resolve()) in pretext_paths
+                and str(extract) in extract_paths
+                and str(premium) in premium_paths
+            ):
+                break
+
+            time.sleep(0.05)
+
+        pretext_paths = list(ctx.pretext_queue.queue)
+        extract_paths = list(ctx.extract_queue.queue)
+        premium_paths = list(ctx.premium_extract_queue.queue)
+
+        ctx.shutdown_flag.set()
+        thread.join(timeout=1)
+
+    finally:
+        pipelines.scan_torrent_watch_folder = original_scan_torrent
+        ctx.shutdown_flag.set()
+
+    passed = (
+        str(raw.resolve()) in pretext_paths
+        and str(extract) in extract_paths
+        and str(premium) in premium_paths
+        and not thread.is_alive()
+    )
+
+    print_result(
+        "periodic file scanner routes text inputs",
+        passed,
+        {
+            "raw": raw,
+            "extract": extract,
+            "premium": premium,
+            "thread_alive": thread.is_alive(),
+        },
+    )
+
+    return passed, cleanup
+
+
+def test_audio_scan_enqueues_audio_file(test_id: str) -> tuple[bool, list[Path]]:
+    folder = PATHS.audio_watch_folders[0]
+    source = folder / f"{test_id}_scan_audio.mp3"
+
+    cleanup = [source]
+
+    folder.mkdir(parents=True, exist_ok=True)
+
+    while not audio_queue.empty():
+        audio_queue.get_nowait()
+        audio_queue.task_done()
+
+    source.write_text(f"dummy audio scan source {test_id}\n", encoding="utf-8")
+    scan_audio_files(CONFIG)
+
+    queued_items = list(audio_queue.queue)
+    queued_paths = [item[0] for item in queued_items]
+
+    passed = str(source) in queued_paths
+
+    print_result(
+        "audio scan enqueues audio file",
+        passed,
+        {
+            "source": source,
+            "queued": passed,
+            "queue_size": audio_queue.qsize(),
+        },
+    )
+
+    while not audio_queue.empty():
+        audio_queue.get_nowait()
+        audio_queue.task_done()
+
+    return passed, cleanup
+
 def main() -> int:
     test_id = f"EVAL_{uuid.uuid4().hex[:8]}"
     all_cleanup: list[Path] = []
@@ -458,6 +757,7 @@ def main() -> int:
     try:
         for test in (
             test_torrent_move,
+            test_torrent_move_avoids_overwrite,
             test_ttml_convert,
             test_x_url_list_remove_completed,
             test_wikilink_cleaner_removes_broken_link,
@@ -465,6 +765,11 @@ def main() -> int:
             test_audio_move_to_done_removes_wav,
             test_pretext_request_deduplicates_queue,
             test_distill_collects_extract_outputs,
+            test_extract_handler_queues_candidate_once,
+            test_list_matching_files_filters_suffixes,
+            test_scan_existing_files_routes_text_inputs,
+            test_periodic_file_scanner_routes_text_inputs,
+            test_audio_scan_enqueues_audio_file,
         ):
             passed, cleanup = test(test_id)
             results.append(passed)
