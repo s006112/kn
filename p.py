@@ -102,8 +102,7 @@ INTERVAL_CONFIG = {
     # readiness / error backoff
     "FILE_READY_STABILITY_SECONDS": 1.0,  # TTML size stable check
     "PIPELINE_ERROR_BACKOFF_SECONDS": 5,  # audio/TTML error sleep
-    "SCAN_ERROR_BACKOFF_SECONDS": 60,     # periodic scanner error sleep
-
+    
     # monitoring only
     "STATUS_LOG_SECONDS": 300,            # orchestrator status log loop
 

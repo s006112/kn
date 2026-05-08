@@ -426,15 +426,11 @@ def file_scanner(ctx: PipelineContext) -> None:
 def periodic_file_scanner(ctx: PipelineContext) -> None:
     intervals = ctx.config.get("INTERVALS", {})
     periodic_scan_seconds = intervals.get("PERIODIC_SCAN_SECONDS", 60)
-    scan_error_backoff_seconds = intervals.get("SCAN_ERROR_BACKOFF_SECONDS", 60)
 
     while not ctx.shutdown_flag.is_set():
-        try:
-            time.sleep(periodic_scan_seconds)
-            file_scanner(ctx)
-        except Exception as e:
-            logging.error("Periodic scanner error: %s", e)
-            time.sleep(scan_error_backoff_seconds)
+        if ctx.shutdown_flag.wait(periodic_scan_seconds):
+            return
+        file_scanner(ctx)
 
 
 def process_audio_pipeline(ctx: PipelineContext) -> None:
