@@ -25,10 +25,14 @@ import p_distill as distill_module  # noqa: E402
 from p_distill import _collect_extracts  # noqa: E402
 from p_extract import ExtractHandler, PremiumExtractHandler  # noqa: E402
 import p_pipelines as pipelines  # noqa: E402
-from p_pipelines import read_next_download_url, remove_download_url_line  # noqa: E402
+from p_pipelines import (  # noqa: E402
+    move_torrent_to_whisper,
+    read_next_download_url,
+    remove_download_url_line,
+    scan_torrent_watch_folder,
+)
 import p_pretext as pretext_module  # noqa: E402
 from p_pretext import release_pretext_request, request_pretext_processing  # noqa: E402
-from p_torrent import move_torrent_to_whisper, scan_torrent_watch_folder  # noqa: E402
 from p_ttml import handle_ttml  # noqa: E402
 from utils_md import merge_to_markdown  # noqa: E402
 from utils_text import sanitize_and_trim_filename, sanitize_filename  # noqa: E402

@@ -126,7 +126,7 @@ PIPELINE_CONFIG = {
     "PRETEXT": True,
     "EXTRACT": True,
     "NOTES": True,
-    "X_URL_DOWNLOAD": False,
+    "X_URL_DOWNLOAD": True,
 }
 
 CONFIG = {
