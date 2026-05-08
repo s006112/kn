@@ -378,7 +378,7 @@ def test_x_url_download_pipeline_mocked_loop_removes_completed_url(test_id: str)
         "DOWNLOAD_TARGET_FOLDER": PATHS.download_target,
         "INTERVALS": {
             **CONFIG["INTERVALS"],
-            "DOWNLOAD_SCAN_SECONDS": 0.05,
+            "SCAN_SECONDS": 0.05,
             "X_RESOLVE_TIMEOUT_SECONDS": 0.05,
         },
     }
@@ -1059,7 +1059,7 @@ def test_periodic_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, l
         **CONFIG,
         "INTERVALS": {
             **CONFIG["INTERVALS"],
-            "PERIODIC_SCAN_SECONDS": 0.05,
+            "SCAN_SECONDS": 0.05,
             "SCAN_ERROR_BACKOFF_SECONDS": 0.05,
         },
     }
@@ -1811,7 +1811,7 @@ def test_x_url_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[
             "DOWNLOAD_TARGET_FOLDER": PATHS.download_target,
             "INTERVALS": {
                 **CONFIG["INTERVALS"],
-                "DOWNLOAD_SCAN_SECONDS": 0.05,
+                "SCAN_SECONDS": 0.05,
                 "X_RESOLVE_TIMEOUT_SECONDS": 0.05,
             },
         }

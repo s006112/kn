@@ -283,11 +283,11 @@ def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
     current_thread.name = "XUrlDownloadPipeline"
     logged_watch_path = None
     intervals = ctx.config.get("INTERVALS", {})
-    download_scan_seconds = intervals.get("DOWNLOAD_SCAN_SECONDS", 30)
+    scan_seconds = intervals.get("SCAN_SECONDS", 60)
     x_resolve_timeout_seconds = intervals.get("X_RESOLVE_TIMEOUT_SECONDS", 20)
 
     while not ctx.shutdown_flag.is_set():
-        wait_seconds = download_scan_seconds
+        wait_seconds = scan_seconds
         try:
             target_folder = Path(
                 ctx.config.get("DOWNLOAD_TARGET_FOLDER", ctx.config["WHISPER_FOLDER"])
@@ -441,7 +441,7 @@ def process_ttml_pipeline(ctx: PipelineContext) -> None:
     watch_folder = os.fspath(ctx.config["TTML_WATCH_FOLDER"])
     original_folder = os.fspath(ctx.config["ORIGINAL_FOLDER"])
     intervals = ctx.config.get("INTERVALS", {})
-    ttml_scan_seconds = intervals.get("TTML_SCAN_SECONDS", 2)
+    scan_seconds = intervals.get("SCAN_SECONDS", 60)
     file_ready_stability_seconds = intervals.get("FILE_READY_STABILITY_SECONDS", 1.0)
     pipeline_error_backoff_seconds = intervals.get("PIPELINE_ERROR_BACKOFF_SECONDS", 5)
 
@@ -480,7 +480,7 @@ def process_ttml_pipeline(ctx: PipelineContext) -> None:
                         release_file_lock(src)
                         cleanup_file_lock(src)
 
-            time.sleep(ttml_scan_seconds)
+            time.sleep(scan_seconds)
 
         except Exception as e:
             logging.error("TTML Pipeline: Error during scan: %s", e)
@@ -489,7 +489,7 @@ def process_ttml_pipeline(ctx: PipelineContext) -> None:
 
 def process_wikilink_cleaning(ctx: PipelineContext) -> None:
     intervals = ctx.config.get("INTERVALS", {})
-    wikilink_clean_seconds = intervals.get("WIKILINK_CLEAN_SECONDS", 60)
+    scan_seconds = intervals.get("SCAN_SECONDS", 60)
     while not ctx.shutdown_flag.is_set():
         try:
             clean_dead_links(
@@ -504,5 +504,5 @@ def process_wikilink_cleaning(ctx: PipelineContext) -> None:
         except Exception:
             pass  # Suppress errors for now, as logging is removed
 
-        if ctx.shutdown_flag.wait(wikilink_clean_seconds):
+        if ctx.shutdown_flag.wait(scan_seconds):
             return

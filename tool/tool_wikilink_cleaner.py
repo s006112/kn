@@ -16,13 +16,12 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from p import INTERVAL_CONFIG
 from w.utils_unlink import clean_dead_links, setup_wikilink_cleaner_logging
 
 # -------------------------
 # Wikilink cleaner config
 # -------------------------
-WIKILINK_CLEAN_INTERVAL_SECONDS = INTERVAL_CONFIG["STANDALONE_WIKILINK_CLEAN_SECONDS"]
+WIKILINK_CLEAN_INTERVAL_SECONDS = 60
 WIKILINK_CLEAN_TARGET_DIR = Path("/desktop/Obsidian/O_2025")
 WIKILINK_CLEAN_BACKUP_DIR: Path | None = None
 WIKILINK_CLEAN_MAX_FILES = 50

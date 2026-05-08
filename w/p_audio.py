@@ -174,13 +174,13 @@ def process_audio_file(file_path: str, folder_path: str, config: dict, done_fold
 def process_audio_queue(config, *_queues, processing_lock, done_folder_path):
     """Continuously scan for audio files and process the audio queue."""
     intervals = config.get("INTERVALS", {})
-    audio_idle_scan_seconds = intervals.get("AUDIO_IDLE_SCAN_SECONDS", 60)
+    scan_seconds = intervals.get("SCAN_SECONDS", 60)
     pipeline_error_backoff_seconds = intervals.get("PIPELINE_ERROR_BACKOFF_SECONDS", 5)
     while True:
         try:
             scan_audio_files(config)
             if audio_queue.empty():
-                time.sleep(audio_idle_scan_seconds)
+                time.sleep(scan_seconds)
                 continue
 
             file_path, folder_path = audio_queue.get()

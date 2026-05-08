@@ -88,11 +88,7 @@ PATH_CONFIG = {
 
 INTERVAL_CONFIG = {
     # folder / file scan intervals
-    "PERIODIC_SCAN_SECONDS": 60,          # pretext/extract/premium/torrent backup scan
-    "DOWNLOAD_SCAN_SECONDS": 30,          # x.txt / X.txt URL downloader scan
-    "AUDIO_IDLE_SCAN_SECONDS": 60,        # audio queue empty -> rescan later
-    "TTML_SCAN_SECONDS": 2,               # TTML folder polling
-    "WIKILINK_CLEAN_SECONDS": 60,         # main p.py wikilink cleaner
+    "SCAN_SECONDS": 60,                  # pretext/extract/premium/torrent/audio/download/TTML/wikilink/standalone cleaner scan
 
     # queue worker pacing
     "TEXT_QUEUE_IDLE_SECONDS": 0.5,       # pretext/extract/premium queue empty
@@ -114,8 +110,6 @@ INTERVAL_CONFIG = {
     # ytd / downloader network timing
     "X_RESOLVE_TIMEOUT_SECONDS": 20,
 
-    # standalone tool only, if we want it shared too
-    "STANDALONE_WIKILINK_CLEAN_SECONDS": 120,
 }
 
 PIPELINE_CONFIG = {
@@ -231,10 +225,10 @@ def start_thread(
 
 def run_periodic_file_scanner(ctx: PipelineContext) -> None:
     intervals = ctx.config.get("INTERVALS", {})
-    periodic_scan_seconds = intervals.get("PERIODIC_SCAN_SECONDS", 60)
+    scan_seconds = intervals.get("SCAN_SECONDS", 60)
 
     while not ctx.shutdown_flag.is_set():
-        if ctx.shutdown_flag.wait(periodic_scan_seconds):
+        if ctx.shutdown_flag.wait(scan_seconds):
             return
         file_scanner(ctx)
 
