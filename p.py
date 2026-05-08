@@ -25,7 +25,6 @@ import logging
 import os
 import sys
 import threading
-import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -89,8 +88,6 @@ PATH_CONFIG = {
 INTERVAL_CONFIG = {
     "SCAN_SECONDS": 60,                  # pretext/extract/premium/torrent/audio/download/TTML/wikilink/standalone cleaner scan
     "WAIT_SECONDS": 1.0,                 # queue idle / file retry / TTML stable / error backoff
-
-    "STATUS_LOG_SECONDS": 300,           # orchestrator status log loop
 
     "LLM_MAX_RETRIES": 2,
     "LLM_RETRY_DELAY_SECONDS": 10,
@@ -314,31 +311,8 @@ def main(cfg: dict[str, Any] | None = None) -> None:
     logging.info("Text: Pretext → Extract/Premium Extract")
     logging.info("Download: X.txt URL processing")
 
-    intervals = handles.context.config.get("INTERVALS", {})
-    status_log_seconds = intervals.get("STATUS_LOG_SECONDS", 300)
-
     try:
-        while True:
-            ctx = CURRENT_CONTEXT
-            if ctx is None:
-                raise RuntimeError("System context not initialized.")
-
-            total_queues = (
-                ctx.pretext_queue.qsize()
-                + ctx.extract_queue.qsize()
-                + ctx.premium_extract_queue.qsize()
-            )
-
-            if total_queues > 5:
-                logging.info(
-                    "System Status - Text queues: Pretext: %d, Extract: %d, Premium Extract: %d",
-                    ctx.pretext_queue.qsize(),
-                    ctx.extract_queue.qsize(),
-                    ctx.premium_extract_queue.qsize(),
-                )
-
-            time.sleep(status_log_seconds)
-
+        threading.Event().wait()
     except KeyboardInterrupt:
         pass
     finally:
