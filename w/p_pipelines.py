@@ -1,17 +1,17 @@
 """
 Responsibility:
-Run long-lived pipeline worker loops and file scans for the orchestrator.
+Run long-lived pipeline worker loops and scan-once file intake rules.
 This module wires the shared `PipelineContext` into torrent intake, X/ytd-dl
 URL downloads, pretext processing, extract and premium extract processing,
 audio transcription, TTML conversion, and wikilink cleanup.
 
 Used by:
 * p.py
+* p_h.py
 
 Pipelines:
 - File scanner: move torrent files, normalize long pretext filenames, enqueue
   existing pretext/extract/premium files when invoked by an orchestrator.
-- Periodic scan: sleep between scan-once runs and back off after scan errors.
 - X URL download: watch `x.txt`/`X.txt`, classify and clean URLs, download via
   yt-dlp, then remove only the completed URL line.
 - Text queues: acquire a file lock, invoke the requested handler method, and
@@ -421,16 +421,6 @@ def file_scanner(ctx: PipelineContext) -> None:
         ctx.extract_queue.qsize(),
         ctx.premium_extract_queue.qsize(),
     )
-
-
-def periodic_file_scanner(ctx: PipelineContext) -> None:
-    intervals = ctx.config.get("INTERVALS", {})
-    periodic_scan_seconds = intervals.get("PERIODIC_SCAN_SECONDS", 60)
-
-    while not ctx.shutdown_flag.is_set():
-        if ctx.shutdown_flag.wait(periodic_scan_seconds):
-            return
-        file_scanner(ctx)
 
 
 def process_audio_pipeline(ctx: PipelineContext) -> None:

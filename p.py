@@ -138,7 +138,7 @@ os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "0"
 from w.p_context import PipelineContext, create_pipeline_context
 from w.p_pipelines import (
     create_pipeline_handlers,
-    periodic_file_scanner,
+    file_scanner,
     process_audio_pipeline,
     process_extract_queue,
     process_premium_extract_queue,
@@ -146,7 +146,6 @@ from w.p_pipelines import (
     process_ttml_pipeline,
     process_wikilink_cleaning,
     process_x_url_download_pipeline,
-    file_scanner,
 )
 from w.utils_files import read_prompt_file
 from w.utils_unlink import setup_wikilink_cleaner_logging
@@ -206,6 +205,16 @@ def ensure_directories(cfg: dict[str, Any]) -> None:
         Path(cfg[key]).mkdir(parents=True, exist_ok=True)
 
 
+def run_periodic_file_scanner(ctx: PipelineContext) -> None:
+    intervals = ctx.config.get("INTERVALS", {})
+    periodic_scan_seconds = intervals.get("PERIODIC_SCAN_SECONDS", 60)
+
+    while not ctx.shutdown_flag.is_set():
+        if ctx.shutdown_flag.wait(periodic_scan_seconds):
+            return
+        file_scanner(ctx)
+
+
 def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     """Initialize prompts, context, workers, scans, and watchdog observers."""
     if cfg is None:
@@ -242,7 +251,7 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
             (ctx, premium_extract_handler),
         ),
         ("AudioPipeline-GPU", process_audio_pipeline, (ctx,)),
-        ("PeriodicScanner", periodic_file_scanner, (ctx,)),
+        ("PeriodicScanner", run_periodic_file_scanner, (ctx,)),
         ("WikilinkCleaner", process_wikilink_cleaning, (ctx,)),
         ("XUrlDownloadPipeline", process_x_url_download_pipeline, (ctx,)),
     )

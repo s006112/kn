@@ -148,7 +148,7 @@ os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "0"
 from w.p_context import PipelineContext, create_pipeline_context
 from w.p_pipelines import (
     create_pipeline_handlers,
-    periodic_file_scanner,
+    file_scanner,
     process_audio_pipeline,
     process_extract_queue,
     process_premium_extract_queue,
@@ -229,6 +229,16 @@ def start_thread(
     thread.start()
 
 
+def run_periodic_file_scanner(ctx: PipelineContext) -> None:
+    intervals = ctx.config.get("INTERVALS", {})
+    periodic_scan_seconds = intervals.get("PERIODIC_SCAN_SECONDS", 60)
+
+    while not ctx.shutdown_flag.is_set():
+        if ctx.shutdown_flag.wait(periodic_scan_seconds):
+            return
+        file_scanner(ctx)
+
+
 def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     """Initialize prompts, context, workers, scans, and watchdog observers."""
     if cfg is None:
@@ -299,7 +309,7 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     if pipelines["AUDIO"]:
         start_thread(threads, "AudioPipeline-GPU", process_audio_pipeline, (ctx,))
 
-    start_thread(threads, "PeriodicScanner", periodic_file_scanner, (ctx,))
+    start_thread(threads, "PeriodicScanner", run_periodic_file_scanner, (ctx,))
 
     if pipelines["NOTES"]:
         start_thread(threads, "WikilinkCleaner", process_wikilink_cleaning, (ctx,))
