@@ -36,17 +36,17 @@ from watchdog.observers import Observer
 sys.path.insert(0, os.fspath(Path(__file__).resolve().parent / "w"))
 
 # sonar $1, sonar-pro $15, sonar-reasoning-pro $8
-# gemini-2.5-flash-lite-preview-09-2025 $0.4, gemini-3.1-flash-lite-preview $1.5, gemini-3-pro-preview $12,
+# gemini-2.5-flash-lite-preview-09-2025 $0.4, gemini-3.1-flash-lite-preview $1.5, gemini-3-pro-preview $12, 
 # gpt-5-mini, gpt-5-nano, gpt-4.1-mini, gpt-4.1-nano, gpt-4o-mini, o1-mini, o3-mini, o4-mini,
 # gpt-5.4 $15, gpt-5.2 $14, gpt-5.1 $10, gpt-4.1 $8, gpt-4o, o1 $60, o3 $8,
-# grok-4-1-fast-reasoning $0.2, grok-4-1-fast-non-reasoning $0.2, grok-4.20-0309-non-reasoning $2.0
 MODEL_PRETEXT = "gpt-4.1-mini"
 MODEL_DISTILL = "o3"
 MODEL_EXTRACT_MATRIX = {
     "EXTRACT_WATCH_FOLDER": [
         "gpt-5.4-mini",
-        "grok-4.20-non-reasoning",
-        "gemini-3.1-pro-preview",  # gemini-3.1-flash-lite-preview
+        "grok-4.20-non-reasoning", # grok-4.3, grok-4-1-fast-non-reasoning
+        "gemini-3.1-pro-preview", # gemini-3.1-flash-lite-preview
+
     ],
     "PREMIUM_WATCH_FOLDER": [
         "gpt-5.4",
@@ -137,7 +137,7 @@ CONFIG = {
     "PRETEXT_SUFFIX": ".txt",
     "EXTRACT_SUFFIX": ("_p.txt", ".md"),
     "INTERVALS": INTERVAL_CONFIG,
-    "PIPELINES": PIPELINE_CONFIG,
+    "PIPELINES": dict(PIPELINE_CONFIG),
     # Prompt files are loaded at startup so importing CONFIG performs no prompt I/O.
     "PRETEXT_PROMPT": None,
     "EXTRACT_PROMPT": None,
@@ -214,30 +214,6 @@ class SystemHandles(NamedTuple):
     observer: Any
 
 
-def as_bool(value: Any) -> bool:
-    """Accept bool-like strings so pipeline flags are easy to override."""
-    if isinstance(value, str):
-        return value.strip().lower() not in FALSE_VALUES
-    return bool(value)
-
-
-def pipeline_settings(cfg: dict[str, Any]) -> dict[str, bool]:
-    """Return complete pipeline flags, defaulting missing keys to enabled."""
-    raw = {**PIPELINE_CONFIG, **cfg.get("PIPELINES", {})}
-    return {key: as_bool(value) for key, value in raw.items()}
-
-
-def pipeline_enabled(cfg: dict[str, Any], key: str) -> bool:
-    """Check whether one pipeline is enabled."""
-    return pipeline_settings(cfg).get(key, True)
-
-
-def enabled_pipeline_names(cfg: dict[str, Any]) -> str:
-    """Return enabled pipeline names for startup logging."""
-    names = [key for key, enabled in pipeline_settings(cfg).items() if enabled]
-    return ", ".join(names) if names else "none"
-
-
 def ensure_directories(cfg: dict[str, Any]) -> None:
     """Create runtime folders required before workers start."""
     for key in REQUIRED_DIR_KEYS:
@@ -261,9 +237,16 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     if cfg is None:
         raise ValueError("Configuration dictionary is required.")
 
+    pipeline_overrides = cfg.get("PIPELINES") or {}
+    pipelines = {
+        key: value.strip().lower() not in FALSE_VALUES
+        if isinstance(value, str)
+        else bool(value)
+        for key, value in {**PIPELINE_CONFIG, **pipeline_overrides}.items()
+    }
     cfg = {
         **cfg,
-        "PIPELINES": pipeline_settings(cfg),
+        "PIPELINES": pipelines,
         "PRETEXT_PROMPT": read_prompt_file("prompt_pretext.txt"),
         "EXTRACT_PROMPT": read_prompt_file("prompt_extract.txt"),
         "DISTILL_PROMPT": read_prompt_file("prompt_distill.txt"),
@@ -277,7 +260,7 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     global CURRENT_CONTEXT
     CURRENT_CONTEXT = ctx
 
-    text_enabled = pipeline_enabled(cfg, "PRETEXT") or pipeline_enabled(cfg, "EXTRACT")
+    text_enabled = pipelines["PRETEXT"] or pipelines["EXTRACT"]
     pretext_handler = extract_handler = premium_extract_handler = None
 
     if text_enabled:
@@ -289,10 +272,10 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
 
     threads: dict[str, threading.Thread] = {}
 
-    if pipeline_enabled(cfg, "TTML"):
+    if pipelines["TTML"]:
         start_thread(threads, "TTMLPipeline", process_ttml_pipeline, (ctx,))
 
-    if pipeline_enabled(cfg, "PRETEXT"):
+    if pipelines["PRETEXT"]:
         start_thread(
             threads,
             "TextPipeline-Pretext",
@@ -300,7 +283,7 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
             (ctx,),
         )
 
-    if pipeline_enabled(cfg, "EXTRACT"):
+    if pipelines["EXTRACT"]:
         start_thread(
             threads,
             "TextPipeline-Extract",
@@ -314,25 +297,25 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
             (ctx, premium_extract_handler),
         )
 
-    if pipeline_enabled(cfg, "AUDIO"):
+    if pipelines["AUDIO"]:
         start_thread(threads, "AudioPipeline-GPU", process_audio_pipeline, (ctx,))
 
-    if pipeline_enabled(cfg, "TORRENT"):
+    if pipelines["TORRENT"]:
         start_thread(threads, "PeriodicScanner", periodic_file_scanner, (ctx,))
 
-    if pipeline_enabled(cfg, "NOTES"):
+    if pipelines["NOTES"]:
         start_thread(threads, "WikilinkCleaner", process_wikilink_cleaning, (ctx,))
 
-    if pipeline_enabled(cfg, "X_URL_DOWNLOAD"):
+    if pipelines["X_URL_DOWNLOAD"]:
         start_thread(threads, "XUrlDownloadPipeline", process_x_url_download_pipeline, (ctx,))
 
-    if pipeline_enabled(cfg, "AUDIO") or pipeline_enabled(cfg, "TTML") or text_enabled:
+    if pipelines["AUDIO"] or pipelines["TTML"] or text_enabled:
         scan_existing_files(ctx)
 
     watch_specs = []
-    if pipeline_enabled(cfg, "PRETEXT"):
+    if pipelines["PRETEXT"]:
         watch_specs.append((pretext_handler, "PRETEXT_WATCH_FOLDER"))
-    if pipeline_enabled(cfg, "EXTRACT"):
+    if pipelines["EXTRACT"]:
         watch_specs.extend(
             (
                 (extract_handler, "EXTRACT_WATCH_FOLDER"),
@@ -347,7 +330,8 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
             observer.schedule(handler, os.fspath(cfg[folder_key]), recursive=False)
         observer.start()
 
-    logging.info("Enabled pipelines: %s", enabled_pipeline_names(cfg))
+    enabled_names = [key for key, enabled in pipelines.items() if enabled]
+    logging.info("Enabled pipelines: %s", ", ".join(enabled_names) if enabled_names else "none")
 
     return SystemHandles(context=ctx, threads=threads, observer=observer)
 
@@ -374,7 +358,7 @@ def system_status() -> dict[str, Any]:
 
     ctx = CURRENT_CONTEXT
     return {
-        "pipelines": pipeline_settings(ctx.config),
+        "pipelines": dict(ctx.config["PIPELINES"]),
         "queues": {
             "pretext": ctx.pretext_queue.qsize(),
             "extract": ctx.extract_queue.qsize(),
