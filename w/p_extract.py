@@ -1,4 +1,6 @@
 """
+p_extract.py: Watch extract folders, run model-based extraction for pretext files, merge results
+
 Responsibility:
 Watch extract folders, run model-based extraction for pretext files, merge results
 into markdown, and archive or fail files with distillation when configured.
@@ -39,27 +41,10 @@ from utils_md import (
 from utils_text import sanitize_filename
 
 class BaseExtractHandler(FileSystemEventHandler):
-    """
-    Base handler for extract pipelines with shared queueing and processing logic.
-    """
+    """Base handler for extract pipelines with shared queueing logic."""
 
     def __init__(self, config, queue, watch_folder_key, model_names, *, enable_distillation=True):
-        """
-        Purpose:
-        Initialize a handler for a specific extract watch folder and model list.
-        Inputs:
-        - config: Configuration mapping.
-        - queue: Queue to receive file paths.
-        - watch_folder_key: Config key for the watch folder.
-        - model_names: Iterable of model names to run.
-        - enable_distillation: Whether to run distillation after success.
-        Outputs:
-        - None.
-        Side effects:
-        - Stores configuration, queue, and model list.
-        Failure modes:
-        - Propagates exceptions from configuration access.
-        """
+        """Initialize an extract handler for one watch folder and model list."""
         self.config = config
         self.queue = queue
         self.watch_folder = config[watch_folder_key]
@@ -68,20 +53,7 @@ class BaseExtractHandler(FileSystemEventHandler):
         self.enable_distillation = enable_distillation
 
     def finalize_success(self, filename: str, base_name: str, md_path: str | None) -> None:
-        """
-        Purpose:
-        Optionally run distillation after successful extraction.
-        Inputs:
-        - filename: Source filename for logging.
-        - base_name: Base name used for distillation.
-        - md_path: Markdown path used by distillation.
-        Outputs:
-        - None.
-        Side effects:
-        - Logs and runs distillation when configured.
-        Failure modes:
-        - Propagates exceptions from distillation utilities.
-        """
+        """Run distillation after successful extraction when configured."""
         if getattr(self, "enable_distillation", True):
             distill_model = (self.config.get("MODEL_DISTILL") or "").strip()
             if distill_model:
@@ -106,18 +78,7 @@ class BaseExtractHandler(FileSystemEventHandler):
             )
 
     def _queue_file(self, file_path):
-        """
-        Purpose:
-        Queue a file path for processing if it is eligible and not already tracked.
-        Inputs:
-        - file_path: Path to the candidate file.
-        Outputs:
-        - None.
-        Side effects:
-        - Adds the file to the queue and processed set.
-        Failure modes:
-        - Propagates exceptions from queue operations.
-        """
+        """Queue an eligible file path when it is not already tracked."""
         extract_suffixes = tuple(
             str(s).lower() for s in self.config["EXTRACT_SUFFIX"] if str(s)
         )
@@ -135,18 +96,7 @@ class BaseExtractHandler(FileSystemEventHandler):
         logging.info(f"{self.__class__.__name__}: Queued {os.path.basename(file_path)}")
 
     def on_created(self, event):
-        """
-        Purpose:
-        Respond to watchdog file creation events by queueing eligible files.
-        Inputs:
-        - event: Filesystem event with the source path.
-        Outputs:
-        - None.
-        Side effects:
-        - Enqueues the file when eligible.
-        Failure modes:
-        - Logs and suppresses exceptions.
-        """
+        """Queue eligible files from watchdog creation events."""
         if event.is_directory:
             return
         try:
@@ -155,19 +105,7 @@ class BaseExtractHandler(FileSystemEventHandler):
             logging.error(f"Error in {self.__class__.__name__}.on_created: {e}")
 
 def process(self, file_path, get_next_available_filename):
-    """
-    Purpose:
-    Run extraction across configured models, merge results, and archive the source.
-    Inputs:
-    - file_path: Path to the pretext source file.
-    - get_next_available_filename: Callable to generate output filenames.
-    Outputs:
-    - None.
-    Side effects:
-    - Calls LLMs, writes extract and markdown files, moves sources on success/failure.
-    Failure modes:
-    - Raises exceptions for extraction failures or filesystem errors.
-    """
+    """Run configured extraction models, merge results, and archive the source."""
     filename = os.path.basename(file_path)
     logging.info(f"{self.__class__.__name__}: Start processing {filename}")
     extract_suffixes = tuple(
@@ -307,19 +245,7 @@ def process(self, file_path, get_next_available_filename):
 
 class ExtractHandler(BaseExtractHandler):
     def __init__(self, config, queue):
-        """
-        Purpose:
-        Initialize the standard extract handler using the extract model matrix.
-        Inputs:
-        - config: Configuration mapping.
-        - queue: Queue to receive file paths.
-        Outputs:
-        - None.
-        Side effects:
-        - Configures models and enables distillation.
-        Failure modes:
-        - Propagates exceptions from configuration access.
-        """
+        """Initialize the standard extract handler with distillation enabled."""
         model_matrix = config.get('MODEL_EXTRACT_MATRIX', {})
         models = model_matrix.get('EXTRACT_WATCH_FOLDER', [])
         super().__init__(config, queue, 'EXTRACT_WATCH_FOLDER', models, enable_distillation=True)
@@ -327,38 +253,13 @@ class ExtractHandler(BaseExtractHandler):
 
 class PremiumExtractHandler(BaseExtractHandler):
     def __init__(self, config, queue):
-        """
-        Purpose:
-        Initialize the premium extract handler using the premium model matrix.
-        Inputs:
-        - config: Configuration mapping.
-        - queue: Queue to receive file paths.
-        Outputs:
-        - None.
-        Side effects:
-        - Configures models and disables distillation.
-        Failure modes:
-        - Propagates exceptions from configuration access.
-        """
+        """Initialize the premium extract handler with distillation disabled."""
         model_matrix = config.get('MODEL_EXTRACT_MATRIX', {})
         models = model_matrix.get('PREMIUM_WATCH_FOLDER', [])
         super().__init__(config, queue, 'PREMIUM_WATCH_FOLDER', models, enable_distillation=False)
 
     def finalize_success(self, filename: str, base_name: str, md_path: str | None) -> None:
-        """
-        Purpose:
-        Override distillation to do nothing for premium extracts.
-        Inputs:
-        - filename: Source filename for logging.
-        - base_name: Base name for extraction output.
-        - md_path: Markdown path, unused.
-        Outputs:
-        - None.
-        Side effects:
-        - None.
-        Failure modes:
-        - None.
-        """
+        """Skip distillation for premium extracts."""
         return
 
     process_premium_extract = process

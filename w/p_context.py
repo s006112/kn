@@ -1,4 +1,6 @@
 """
+p_context.py
+
 Responsibility:
 Centralizes pipeline shared state (queues, locks, processed sets, and shutdown flag) and
 exposes a factory to build a fresh context for a given config.
@@ -28,22 +30,7 @@ from typing import Any, Dict, Set
 
 @dataclass
 class PipelineContext:
-    """
-    Purpose:
-    Hold shared state for pipeline stages in a single object.
-
-    Inputs:
-    config: Configuration mapping used by pipeline stages.
-
-    Outputs:
-    PipelineContext instance with queues, locks, and tracking state initialized.
-
-    Side effects:
-    Allocates new Queue, Lock, and Event objects.
-
-    Failure modes:
-    None.
-    """
+    """Hold shared queues, locks, config, and tracking state for pipeline stages."""
 
     config: Dict[str, Any]
     pretext_queue: Queue = field(default_factory=Queue)
@@ -60,20 +47,5 @@ class PipelineContext:
 
 
 def create_pipeline_context(cfg: Dict[str, Any]) -> PipelineContext:
-    """
-    Purpose:
-    Create a new PipelineContext for the provided configuration.
-
-    Inputs:
-    cfg: Configuration mapping to store in the context.
-
-    Outputs:
-    PipelineContext initialized with cfg and fresh queues, locks, and flags.
-
-    Side effects:
-    Allocates new Queue, Lock, and Event objects.
-
-    Failure modes:
-    None.
-    """
+    """Create a fresh pipeline context for the provided configuration."""
     return PipelineContext(config=cfg)

@@ -1,3 +1,28 @@
+"""
+p_ttml.py
+
+Responsibility
+Converts TTML or plain subtitle files into pretext text files and archives the originals.
+
+Used by:
+* w/evaluation.py
+* w/p_pipelines.py
+
+Pipelines:
+- ttml_file -> readiness -> conversion -> text_file -> archive
+
+Invariants:
+- XML-like inputs are parsed as TTML before text extraction.
+- Non-XML inputs are copied as plain text output.
+- Originals are archived with a sanitized `.ttml` filename.
+- Failed processing restores the temporary `.processing` file when possible.
+
+Out of scope:
+- Subtitle timing preservation.
+- TTML validation beyond XML parsing.
+- Queue scanning and file locking.
+"""
+
 import os
 import shutil
 import re
@@ -6,8 +31,9 @@ import logging
 from utils_files import release_text_file_permissions
 from xml.dom.minidom import parse
 
-# Recursively extract all text content from XML node and its children
+
 def extract_text(node):
+    """Recursively extract text content from an XML node tree."""
     text = ''
     if node.nodeType == node.TEXT_NODE and node.data.strip():
         text = node.data.strip() + '\n'
@@ -15,26 +41,27 @@ def extract_text(node):
         text += extract_text(child)
     return text
 
-# Normalize whitespace - remove all spaces for Chinese text, normalize for others
+
 def process_text(line):
+    """Normalize subtitle text spacing while preserving Chinese text continuity."""
     if re.search(r'[\u4e00-\u9fa5]', line):
         return re.sub(r'\s+', '', line)
     return re.sub(r'\s+', ' ', line.strip())
 
-# Check if file is ready for processing by verifying stable file size
+
 def is_file_ready(path, wait=1.0):
+    """Return whether a file size remains stable across the wait interval."""
     size1 = os.path.getsize(path)
     time.sleep(wait)
     return size1 == os.path.getsize(path)
 
-# Convert TTML subtitle file to plain text and archive the original
+
 def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename, pretext_suffix: str):
     """Convert a TTML file to plain text and archive the original."""
     lock = path + '.processing'
     filename = os.path.basename(path)
 
     try:
-        # Read file to get character count before processing
         with open(path, 'r', encoding='utf-8', errors='replace') as f:
             content = f.read()
         char_count = len(content)
@@ -42,12 +69,10 @@ def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename,
 
         os.rename(path, lock)
 
-        # Get first line to determine file type (XML/TTML vs plain text)
         first = content.split('\n')[0] if content else ''
         content_length = len(content)
 
         base_name = sanitize_and_trim_filename(os.path.splitext(filename)[0])
-        # Destination text file in watch folder
         out_txt = os.path.join(watch_folder, base_name + pretext_suffix)
 
         if not first.lstrip().startswith('<'):
@@ -68,7 +93,7 @@ def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename,
         output_filename = os.path.basename(out_txt)
         logging.info(f"TTML: Created {output_filename} ({output_length:,} characters)")
 
-        # Use sanitized base_name for consistent archive naming
+        # Keep archive names aligned with generated text names.
         archive_filename = base_name + '.ttml'
         archive_path = os.path.join(original_folder, archive_filename)
         shutil.move(lock, archive_path)

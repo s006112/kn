@@ -1,4 +1,5 @@
 """
+utils_md.py
 Helpers for creating and updating Markdown notes and a Whisper index note.
 
 Used by:
@@ -34,20 +35,7 @@ from utils_files import release_text_file_permissions
 
 
 def find_most_recent_md_by_prefix(folder, prefix):
-    """
-    Purpose:
-    - Find the most recent Markdown file in `folder` matching a `{prefix}_YYMMDD.md` pattern.
-    Inputs:
-    - folder: Directory to search.
-    - prefix: Filename prefix to match (case-insensitive).
-    Outputs:
-    - (md_path, datecode): Full path and the `YYMMDD` date code for the best match, or
-      `(None, None)` when no candidates exist.
-    Side effects:
-    - Reads directory entries via `os.listdir`.
-    Failure modes:
-    - Propagates `OSError` from `os.listdir`.
-    """
+    """Return the newest Markdown path matching `{prefix}_YYMMDD.md`."""
     pattern = re.compile(rf'^{re.escape(prefix)}_(\d{{6}})\.md$', re.IGNORECASE)
     candidates = (
         (fname, match.group(1))
@@ -63,22 +51,7 @@ def find_most_recent_md_by_prefix(folder, prefix):
 
 
 def create_or_find_note_for_base_name(config, base_name: str, *, allow_existing: bool):
-    """
-    Purpose:
-    - Resolve a Markdown note path for `base_name` under `config["OBSIDIAN_SYNC_FOLDER"]`.
-    Inputs:
-    - config: Mapping containing `OBSIDIAN_SYNC_FOLDER`.
-    - base_name: Base note name (prefix before the date code).
-    - allow_existing: When true, reuse the most recent existing matching note if present.
-    Outputs:
-    - (md_path, link_name, md_is_new): Full path, Obsidian link name (stem), and whether the
-      note is newly created (path selected for a new datecode) vs reused.
-    Side effects:
-    - Creates the sync folder if missing (`os.makedirs(..., exist_ok=True)`).
-    - May read directory entries when `allow_existing` is true.
-    Failure modes:
-    - Propagates `OSError` from `os.makedirs` and `os.listdir`.
-    """
+    """Resolve a dated Markdown note path and Obsidian link name for `base_name`."""
     folder = config["OBSIDIAN_SYNC_FOLDER"]
     os.makedirs(folder, exist_ok=True)
 
@@ -96,21 +69,7 @@ def create_or_find_note_for_base_name(config, base_name: str, *, allow_existing:
 
 
 def write_pretext_markdown(config, base_name: str, content: str) -> str:
-    """
-    Purpose:
-    - Create a new pretext Markdown note and insert its link into `Whisper 000000.md`.
-    Inputs:
-    - config: Mapping containing `OBSIDIAN_SYNC_FOLDER`.
-    - base_name: Base note name used to build `{base_name}_YYMMDD.md`.
-    - content: Markdown content to write to the note.
-    Outputs:
-    - The created note path.
-    Side effects:
-    - Writes the note file and updates its permissions.
-    - Updates `Whisper 000000.md` in the sync folder and updates its permissions.
-    Failure modes:
-    - Propagates `OSError` from file IO and directory operations.
-    """
+    """Create a pretext Markdown note and add it to the Whisper index."""
     md_path, link_name, _ = create_or_find_note_for_base_name(
         config, base_name, allow_existing=False
     )
@@ -126,26 +85,7 @@ def write_pretext_markdown(config, base_name: str, content: str) -> str:
 
 
 def merge_to_markdown(md_path, extracts, original_text, labels, whisper_md_path, whisper_link_name, md_is_new):
-    """
-    Purpose:
-    - Prepend extracted sections to a Markdown note and optionally link it from the Whisper index.
-    Inputs:
-    - md_path: Target Markdown note path to update.
-    - extracts: Iterable of extracted text blocks.
-    - original_text: Unused input kept for API compatibility.
-    - labels: Iterable of section labels aligned with `extracts`.
-    - whisper_md_path: Path to the Whisper index Markdown file.
-    - whisper_link_name: Link name to insert into the Whisper index.
-    - md_is_new: When true, insert the link into the Whisper index; otherwise skip.
-    Outputs:
-    - None.
-    Side effects:
-    - Reads/writes `md_path` and updates its permissions.
-    - When `md_is_new` is true, may read/write `whisper_md_path` and update its permissions.
-    Failure modes:
-    - Propagates `OSError` from IO for `md_path`.
-    - Logs and suppresses exceptions while updating `whisper_md_path`.
-    """
+    """Prepend extracted sections to a note and optionally link it from the Whisper index."""
     new_sections = []
     for label, extract in zip(labels, extracts):
         new_sections.append(f"# {label}\n\n{extract}")
@@ -191,20 +131,7 @@ def merge_to_markdown(md_path, extracts, original_text, labels, whisper_md_path,
 
 
 def update_whisper_index_for_pretext(whisper_md_path: str, note_name: str) -> None:
-    """
-    Purpose:
-    - Insert a note link line for a pretext note into `Whisper 000000.md`.
-    Inputs:
-    - whisper_md_path: Path to the Whisper index Markdown file.
-    - note_name: Obsidian link name to insert (without surrounding brackets).
-    Outputs:
-    - None.
-    Side effects:
-    - Reads/writes `whisper_md_path` and updates its permissions.
-    - Logs an error message on failure.
-    Failure modes:
-    - Logs and suppresses exceptions for all failures during index update.
-    """
+    """Insert a pretext note link into the Whisper index."""
     link_code = f"[[{note_name}]]\n"
     try:
         if os.path.exists(whisper_md_path):

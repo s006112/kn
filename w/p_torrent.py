@@ -1,4 +1,6 @@
 """
+p_torrent.py - Torrent file handling for Whisper
+
 Responsibility:
 Detect `.torrent` files in the configured watch folder during scan flows and move
 them into the configured Whisper folder.
@@ -35,20 +37,7 @@ TORRENT_SUFFIX = ".torrent"
 
 
 def _next_available_torrent_path(destination_folder: str, filename: str) -> str:
-    """
-    Purpose:
-    Build a destination path that preserves the torrent filename without overwriting
-    an existing file.
-    Inputs:
-    - destination_folder: Folder where the torrent should be moved.
-    - filename: Source filename, including extension.
-    Outputs:
-    - Full destination path that does not currently exist.
-    Side effects:
-    - Reads destination path existence from disk.
-    Failure modes:
-    - May loop until a non-existing filename is found.
-    """
+    """Return a non-existing torrent destination path for `filename`."""
     candidate = os.path.join(destination_folder, filename)
     if not os.path.exists(candidate):
         return candidate
@@ -65,21 +54,7 @@ def _next_available_torrent_path(destination_folder: str, filename: str) -> str:
 
 
 def move_torrent_to_whisper(file_path: str, whisper_folder: str) -> bool:
-    """
-    Purpose:
-    Move one torrent file into the Whisper folder.
-    Inputs:
-    - file_path: Full source path to a `.torrent` file.
-    - whisper_folder: Destination folder for torrent files.
-    Outputs:
-    - True when the file was moved, otherwise False.
-    Side effects:
-    - Creates the destination folder if missing.
-    - Renames the file on disk.
-    Failure modes:
-    - Returns False when the path is missing, not a torrent file, or locked.
-    - Logs and returns False when the move cannot be completed.
-    """
+    """Move one `.torrent` file into the Whisper folder."""
     normalized_path = os.path.abspath(os.fspath(file_path))
     destination_folder = os.path.abspath(os.fspath(whisper_folder))
 
@@ -109,20 +84,7 @@ def move_torrent_to_whisper(file_path: str, whisper_folder: str) -> bool:
 
 
 def scan_torrent_watch_folder(config: Dict[str, Any]) -> int:
-    """
-    Purpose:
-    Scan the configured watch folder and move any `.torrent` files into the
-    configured Whisper folder.
-    Inputs:
-    - config: Pipeline configuration containing `WATCH_FOLDER` and `WHISPER_FOLDER`.
-    Outputs:
-    - Count of torrent files moved during this scan.
-    Side effects:
-    - Reads the watch folder and may move matching files.
-    Failure modes:
-    - Returns 0 when the watch folder is missing; propagates unexpected filesystem
-      errors from directory listing.
-    """
+    """Scan the watch folder and move `.torrent` files into the Whisper folder."""
     watch_folder = os.path.abspath(os.fspath(config["WATCH_FOLDER"]))
     whisper_folder = os.path.abspath(os.fspath(config["WHISPER_FOLDER"]))
 

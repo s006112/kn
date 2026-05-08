@@ -1,4 +1,6 @@
 """
+p_distill.py - Distillation pipeline for expert extract outputs
+
 Responsibility:
 Collect extract outputs, distill them through an LLM prompt, persist the distilled
 result, and optionally merge it into a markdown note.
@@ -34,19 +36,7 @@ from utils_text import sanitize_filename
 
 
 def _derive_model_label(base_name: str, path: Path) -> str:
-    """
-    Purpose:
-    Derive a model label from an extract filename.
-    Inputs:
-    - base_name: Base filename prefix for the extract.
-    - path: Path to the extract file.
-    Outputs:
-    - Model label string inferred from the filename.
-    Side effects:
-    - None.
-    Failure modes:
-    - None.
-    """
+    """Derive a model label from an extract filename."""
     stem = path.stem
     suffix = stem[len(base_name) + 1 :] if stem.startswith(f"{base_name}_") else stem
     if "_" in suffix:
@@ -57,20 +47,7 @@ def _derive_model_label(base_name: str, path: Path) -> str:
 
 
 def _write_distill_error(extract_folder: str, base_name: str, message: str) -> None:
-    """
-    Purpose:
-    Write a distillation error marker file to the extract folder.
-    Inputs:
-    - extract_folder: Folder where extract outputs are stored.
-    - base_name: Base name used to build the error filename.
-    - message: Error message content to write.
-    Outputs:
-    - None.
-    Side effects:
-    - Creates directories and writes an error file.
-    Failure modes:
-    - Logs errors when writing fails.
-    """
+    """Write a distillation error marker file to the extract folder."""
     try:
         os.makedirs(extract_folder, exist_ok=True)
         err_path = os.path.join(extract_folder, f"{base_name}_e.distill.error")
@@ -82,19 +59,7 @@ def _write_distill_error(extract_folder: str, base_name: str, message: str) -> N
 
 
 def _collect_extracts(extract_folder: str, base_name: str, pretext_suffix: str) -> List[Tuple[str, str, str]]:
-    """
-    Purpose:
-    Collect extract contents and labels for a base name.
-    Inputs:
-    - extract_folder: Folder containing extract outputs.
-    - base_name: Base name prefix for extract files.
-    Outputs:
-    - List of tuples (label, content, path) for each extract.
-    Side effects:
-    - Reads extract files from disk.
-    Failure modes:
-    - Raises RuntimeError when any extract file cannot be read.
-    """
+    """Collect extract labels, contents, and paths for a base name."""
     if not os.path.isdir(extract_folder):
         return []
 
@@ -126,19 +91,7 @@ def _collect_extracts(extract_folder: str, base_name: str, pretext_suffix: str) 
 
 
 def _build_user_payload(base_name: str, extracts: List[Tuple[str, str, str]]) -> str:
-    """
-    Purpose:
-    Build the user payload for the distillation LLM prompt.
-    Inputs:
-    - base_name: Base name for the source.
-    - extracts: Extract tuples (label, content, path).
-    Outputs:
-    - Distillation payload string.
-    Side effects:
-    - None.
-    Failure modes:
-    - None.
-    """
+    """Build the user payload for the distillation LLM prompt."""
     lines = [
         f"《{base_name}》",
         "Below are outputs from multiple expert extraction models for the same source. "
@@ -153,20 +106,7 @@ def _build_user_payload(base_name: str, extracts: List[Tuple[str, str, str]]) ->
 
 
 def run_distillation(config, base_name: str, md_path: str | None = None) -> str | None:
-    """
-    Purpose:
-    Distill multiple extract outputs into a single result and persist it.
-    Inputs:
-    - config: Configuration mapping with distillation settings.
-    - base_name: Base name for extract lookup and output naming.
-    - md_path: Optional markdown path to merge distillation output.
-    Outputs:
-    - Path to the distilled output file, or None when skipped.
-    Side effects:
-    - Reads extracts, calls LLM, writes output files, and optionally merges markdown.
-    Failure modes:
-    - Raises on extract read failures or LLM errors after writing an error marker.
-    """
+    """Distill multiple extract outputs into a single persisted result."""
     extract_folder = os.fspath(config["EXTRACT_FOLDER"])
     distill_model = (config.get("MODEL_DISTILL") or "").strip()
     distill_suffix = f"_{sanitize_filename(distill_model)}" if distill_model else ""

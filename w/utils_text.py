@@ -1,4 +1,5 @@
 """
+utils_text.py
 Text utilities for filename sanitization and chunking/merging long strings.
 
 Used by:
@@ -48,34 +49,12 @@ _REPLACEMENT_CHAR = "・"
 
 
 def _normalize_unicode_name(name: str) -> str:
-    """
-    Purpose:
-    - Normalize Unicode text so visually distinct glyph variants collapse to a standard form.
-    Inputs:
-    - name: Input string to normalize.
-    Outputs:
-    - Normalized string using NFKC.
-    Side effects:
-    - None.
-    Failure modes:
-    - Propagates exceptions from `unicodedata.normalize` for non-string inputs.
-    """
+    """Normalize Unicode text to NFKC form."""
     return unicodedata.normalize("NFKC", name)
 
 
 def sanitize_filename(name: str) -> str:
-    """
-    Purpose:
-    - Convert an arbitrary string into a filesystem-friendly filename component.
-    Inputs:
-    - name: Candidate filename (without any required extension handling).
-    Outputs:
-    - Sanitized filename string.
-    Side effects:
-    - None.
-    Failure modes:
-    - Propagates unexpected exceptions from regex/Unicode helpers for invalid inputs.
-    """
+    """Convert arbitrary text into a filesystem-friendly filename component."""
     normalized = _normalize_unicode_name(name)
     normalized = _CONTROL_CHAR_PATTERN.sub(" ", normalized)
 
@@ -106,19 +85,7 @@ def sanitize_filename(name: str) -> str:
 
 
 def sanitize_and_trim_filename(base_name: str, max_length: int = 50) -> str:
-    """
-    Purpose:
-    - Sanitize a filename component and enforce a maximum length.
-    Inputs:
-    - base_name: Candidate filename component (typically without extension).
-    - max_length: Maximum number of characters to keep after sanitization.
-    Outputs:
-    - Sanitized and possibly truncated name.
-    Side effects:
-    - Logs an error when an unexpected exception occurs.
-    Failure modes:
-    - On exception, logs and returns the best-effort sanitized name.
-    """
+    """Sanitize a filename component and trim it to `max_length` characters."""
     sanitized_name = sanitize_filename(base_name)
     try:
         if len(sanitized_name) > max_length:
@@ -132,20 +99,7 @@ def sanitize_and_trim_filename(base_name: str, max_length: int = 50) -> str:
 
 
 def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 20):
-    """
-    Purpose:
-    - Split text into a list of chunks with fixed overlap between adjacent chunks.
-    Inputs:
-    - text: Input text to split.
-    - chunk_size: Target chunk size used to derive the number of chunks.
-    - overlap: Number of characters to overlap between adjacent chunks.
-    Outputs:
-    - List of chunk strings.
-    Side effects:
-    - None.
-    Failure modes:
-    - Raises `ZeroDivisionError` when `chunk_size` is 0.
-    """
+    """Split text into chunks with fixed overlap between adjacent chunks."""
     text_length = len(text)
     n_chunks = (text_length + chunk_size - 1) // chunk_size
     if n_chunks <= 1:
@@ -171,20 +125,7 @@ def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 20):
 
 
 def intelligent_merge_chunks(chunks, window: int = 30, min_len: int = 4) -> str:
-    """
-    Purpose:
-    - Merge a sequence of chunks by detecting overlaps using longest common substring.
-    Inputs:
-    - chunks: Sequence of chunk strings (typically produced by `chunk_text`).
-    - window: Maximum prefix/suffix window used for overlap detection per merge step.
-    - min_len: Minimum overlap length to accept when merging.
-    Outputs:
-    - Merged string.
-    Side effects:
-    - None.
-    Failure modes:
-    - May raise `MemoryError` for large windows due to dynamic programming allocation.
-    """
+    """Merge chunks by removing detected prefix and suffix overlaps."""
     if not chunks:
         return ""
     if len(chunks) == 1:
