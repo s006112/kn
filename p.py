@@ -229,14 +229,13 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
 
     (
         pretext_handler,
-        pretext_processor,
         extract_handler,
         premium_extract_handler,
     ) = create_pipeline_handlers(ctx)
 
     thread_specs = (
         ("TTMLPipeline", process_ttml_pipeline, (ctx,)),
-        ("TextPipeline-Pretext", process_pretext_queue, (ctx, pretext_processor)),
+        ("TextPipeline-Pretext", process_pretext_queue, (ctx,)),
         ("TextPipeline-Extract", process_extract_queue, (ctx, extract_handler)),
         (
             "TextPipeline-PremiumExtract",

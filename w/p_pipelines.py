@@ -39,7 +39,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from p_context import PipelineContext
-from p_pretext import PretextHandler, PretextProcessor, request_pretext_processing
+from p_pretext import PretextHandler, process_pretext_file, request_pretext_processing
 from p_extract import ExtractHandler, PremiumExtractHandler
 from p_ttml import handle_ttml, is_file_ready
 from p_audio import process_audio_queue
@@ -168,14 +168,13 @@ def scan_torrent_watch_folder(config: Dict[str, Any]) -> int:
 
 def create_pipeline_handlers(
     ctx: PipelineContext,
-) -> Tuple[PretextHandler, PretextProcessor, ExtractHandler, PremiumExtractHandler]:
+) -> Tuple[PretextHandler, ExtractHandler, PremiumExtractHandler]:
     pretext_handler = PretextHandler(ctx)
-    pretext_processor = PretextProcessor(ctx)
     extract_handler = ExtractHandler(ctx.config, ctx.extract_queue)
     premium_extract_handler = PremiumExtractHandler(
         ctx.config, ctx.premium_extract_queue
     )
-    return pretext_handler, pretext_processor, extract_handler, premium_extract_handler
+    return pretext_handler, extract_handler, premium_extract_handler
 
 
 def enqueue_if_absent(queue: Queue, path: str) -> None:
@@ -186,10 +185,10 @@ def enqueue_if_absent(queue: Queue, path: str) -> None:
 def process_queue(
     ctx: PipelineContext,
     queue: Queue,
-    handler: Any,
+    process: Callable[[str, Callable[..., str]], None],
     method_name: str,
+    processed_files: set[str] | None = None,
 ) -> None:
-    process = getattr(handler, method_name)
     intervals = ctx.config.get("INTERVALS", {})
     queue_idle_seconds = intervals.get("TEXT_QUEUE_IDLE_SECONDS", 0.5)
     queue_loop_seconds = intervals.get("TEXT_QUEUE_LOOP_SECONDS", 0.5)
@@ -208,9 +207,8 @@ def process_queue(
                     continue
                 try:
                     process(file_path, get_next_available_filename)
-                    processed = getattr(handler, "processed_files", None)
-                    if processed and file_path in processed:
-                        processed.discard(file_path)
+                    if processed_files and file_path in processed_files:
+                        processed_files.discard(file_path)
                 except LLMPermanentFailure as e:
                     logging.error(
                         "Resilient Queue: OpenAI API permanent failure for file %s "
@@ -229,18 +227,18 @@ def process_queue(
         time.sleep(queue_loop_seconds)
 
 
-def process_pretext_queue(ctx: PipelineContext, processor: PretextProcessor) -> None:
-    process_queue(ctx, ctx.pretext_queue, processor, "process_pretext")
+def process_pretext_queue(ctx: PipelineContext) -> None:
+    process_queue(ctx, ctx.pretext_queue, lambda path, _next: process_pretext_file(ctx, path), "process_pretext")
 
 
 def process_extract_queue(ctx: PipelineContext, handler: ExtractHandler) -> None:
-    process_queue(ctx, ctx.extract_queue, handler, "process_extract")
+    process_queue(ctx, ctx.extract_queue, handler.process_extract, "process_extract", handler.processed_files)
 
 
 def process_premium_extract_queue(
     ctx: PipelineContext, handler: PremiumExtractHandler
 ) -> None:
-    process_queue(ctx, ctx.premium_extract_queue, handler, "process_premium_extract")
+    process_queue(ctx, ctx.premium_extract_queue, handler.process_premium_extract, "process_premium_extract", handler.processed_files)
 
 
 def list_matching_files(folder: str, predicate: Callable[[str], bool]) -> set[str]:

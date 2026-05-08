@@ -1332,7 +1332,7 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
 
         stopped = False
         try:
-            pipelines.process_queue(ctx, ctx.pretext_queue, FakeHandler(), "process_pretext")
+            pipelines.process_queue(ctx, ctx.pretext_queue, FakeHandler().process_pretext, "process_pretext")
         except StopLoop:
             stopped = True
 

@@ -278,12 +278,11 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     CURRENT_CONTEXT = ctx
 
     text_enabled = pipeline_enabled(cfg, "PRETEXT") or pipeline_enabled(cfg, "EXTRACT")
-    pretext_handler = pretext_processor = extract_handler = premium_extract_handler = None
+    pretext_handler = extract_handler = premium_extract_handler = None
 
     if text_enabled:
         (
             pretext_handler,
-            pretext_processor,
             extract_handler,
             premium_extract_handler,
         ) = create_pipeline_handlers(ctx)
@@ -298,7 +297,7 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
             threads,
             "TextPipeline-Pretext",
             process_pretext_queue,
-            (ctx, pretext_processor),
+            (ctx,),
         )
 
     if pipeline_enabled(cfg, "EXTRACT"):

@@ -86,18 +86,6 @@ class PretextHandler(FileSystemEventHandler):
             logging.error("Error in PretextHandler.on_moved: %s", exc)
 
 
-class PretextProcessor:
-    """Business logic for turning raw text into pretext outputs."""
-
-    def __init__(self, ctx: PipelineContext):
-        """Initialize the processor with the pipeline context."""
-        self.ctx = ctx
-
-    def process_pretext(self, file_path, get_next_available_filename):  # signature kept for queue API
-        """Process a queued pretext file using the shared pipeline context."""
-        process_pretext_file(self.ctx, file_path)
-
-
 def request_pretext_processing(ctx: PipelineContext, file_path: str) -> bool:
     """Register and enqueue a pretext job once per normalized file path."""
     normalized = os.path.abspath(os.fspath(file_path))
