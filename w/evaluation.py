@@ -16,8 +16,8 @@ for path in (ROOT_DIR, W_DIR):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-import p as orchestrator_module  # noqa: E402
-from p import CONFIG  # noqa: E402
+import archive.p as orchestrator_module  # noqa: E402
+from archive.p import CONFIG  # noqa: E402
 import p_audio as audio_module  # noqa: E402
 from p_audio import audio_queue, move_files_to_done, scan_audio_files  # noqa: E402
 from p_context import create_pipeline_context  # noqa: E402
