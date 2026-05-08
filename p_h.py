@@ -120,7 +120,6 @@ INTERVAL_CONFIG = {
 }
 
 PIPELINE_CONFIG = {
-    "TORRENT": True,
     "AUDIO": True,
     "TTML": True,
     "PRETEXT": True,
@@ -158,7 +157,6 @@ from w.p_pipelines import (
     process_ttml_pipeline,
     process_wikilink_cleaning,
     process_x_url_download_pipeline,
-    scan_existing_files,
 )
 from w.utils_files import read_prompt_file
 from w.utils_unlink import setup_wikilink_cleaner_logging
@@ -238,12 +236,14 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
         raise ValueError("Configuration dictionary is required.")
 
     pipeline_overrides = cfg.get("PIPELINES") or {}
-    pipelines = {
-        key: value.strip().lower() not in FALSE_VALUES
-        if isinstance(value, str)
-        else bool(value)
-        for key, value in {**PIPELINE_CONFIG, **pipeline_overrides}.items()
-    }
+    pipelines = {}
+    for key, default in PIPELINE_CONFIG.items():
+        value = pipeline_overrides.get(key, default)
+        pipelines[key] = (
+            value.strip().lower() not in FALSE_VALUES
+            if isinstance(value, str)
+            else bool(value)
+        )
     cfg = {
         **cfg,
         "PIPELINES": pipelines,
@@ -300,17 +300,13 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     if pipelines["AUDIO"]:
         start_thread(threads, "AudioPipeline-GPU", process_audio_pipeline, (ctx,))
 
-    if pipelines["TORRENT"]:
-        start_thread(threads, "PeriodicScanner", periodic_file_scanner, (ctx,))
+    start_thread(threads, "PeriodicScanner", periodic_file_scanner, (ctx,))
 
     if pipelines["NOTES"]:
         start_thread(threads, "WikilinkCleaner", process_wikilink_cleaning, (ctx,))
 
     if pipelines["X_URL_DOWNLOAD"]:
         start_thread(threads, "XUrlDownloadPipeline", process_x_url_download_pipeline, (ctx,))
-
-    if pipelines["AUDIO"] or pipelines["TTML"] or text_enabled:
-        scan_existing_files(ctx)
 
     watch_specs = []
     if pipelines["PRETEXT"]:
