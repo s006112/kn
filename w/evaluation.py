@@ -982,41 +982,7 @@ def test_premium_extract_full_process_archives_to_archive_folder(test_id: str) -
         elif not index_existed and whisper_index.exists():
             whisper_index.unlink()
 
-def test_list_matching_files_filters_suffixes(test_id: str) -> tuple[bool, list[Path]]:
-    raw = PATHS.download_target / f"{test_id}_scan_raw.txt"
-    extract = PATHS.download_target / f"{test_id}_scan_extract_p.txt"
-    ignored = PATHS.download_target / f"{test_id}_scan_ignore.md"
-
-    cleanup = [raw, extract, ignored]
-
-    PATHS.download_target.mkdir(parents=True, exist_ok=True)
-
-    raw.write_text(f"raw scan candidate {test_id}\n", encoding="utf-8")
-    extract.write_text(f"extract scan candidate {test_id}\n", encoding="utf-8")
-    ignored.write_text(f"ignored scan candidate {test_id}\n", encoding="utf-8")
-
-    matches = pipelines.list_matching_files(
-        str(PATHS.download_target),
-        lambda name: name.lower().endswith(".txt")
-        and not name.lower().endswith("_p.txt"),
-    )
-
-    passed = str(raw) in matches and str(extract) not in matches and str(ignored) not in matches
-
-    print_result(
-        "list matching files filters suffixes",
-        passed,
-        {
-            "raw": raw,
-            "extract": extract,
-            "matches": len(matches),
-        },
-    )
-
-    return passed, cleanup
-
-
-def test_scan_existing_files_routes_text_inputs(test_id: str) -> tuple[bool, list[Path]]:
+def test_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
     extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
 
@@ -1041,7 +1007,7 @@ def test_scan_existing_files_routes_text_inputs(test_id: str) -> tuple[bool, lis
 
     try:
         pipelines.scan_torrent_watch_folder = lambda _config: 0
-        pipelines.scan_existing_files(ctx)
+        pipelines.file_scanner(ctx)
     finally:
         pipelines.scan_torrent_watch_folder = original_scan_torrent
 
@@ -1058,7 +1024,7 @@ def test_scan_existing_files_routes_text_inputs(test_id: str) -> tuple[bool, lis
     )
 
     print_result(
-        "scan existing files routes text inputs",
+        "file scanner routes text inputs",
         passed,
         {
             "renamed": renamed,
@@ -2135,7 +2101,7 @@ def test_start_system_creates_expected_threads_schedules_watchers_and_stop_clear
         "periodic_file_scanner": orchestrator_module.periodic_file_scanner,
         "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
         "process_x_url_download_pipeline": orchestrator_module.process_x_url_download_pipeline,
-        "scan_existing_files": orchestrator_module.scan_existing_files,
+        "file_scanner": orchestrator_module.file_scanner,
         "Observer": orchestrator_module.Observer,
         "read_prompt_file": orchestrator_module.read_prompt_file,
         "CURRENT_CONTEXT": orchestrator_module.CURRENT_CONTEXT,
@@ -2152,7 +2118,7 @@ def test_start_system_creates_expected_threads_schedules_watchers_and_stop_clear
         orchestrator_module.periodic_file_scanner = fake_worker
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_x_url_download_pipeline = fake_worker
-        orchestrator_module.scan_existing_files = lambda _ctx: None
+        orchestrator_module.file_scanner = lambda _ctx: None
         orchestrator_module.Observer = FakeObserver
         orchestrator_module.read_prompt_file = lambda filename: f"evaluation prompt {filename}"
 
@@ -2213,7 +2179,7 @@ def test_start_system_creates_expected_threads_schedules_watchers_and_stop_clear
         orchestrator_module.periodic_file_scanner = original_values["periodic_file_scanner"]
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
         orchestrator_module.process_x_url_download_pipeline = original_values["process_x_url_download_pipeline"]
-        orchestrator_module.scan_existing_files = original_values["scan_existing_files"]
+        orchestrator_module.file_scanner = original_values["file_scanner"]
         orchestrator_module.Observer = original_values["Observer"]
         orchestrator_module.read_prompt_file = original_values["read_prompt_file"]
         orchestrator_module.CURRENT_CONTEXT = original_values["CURRENT_CONTEXT"]
@@ -2241,8 +2207,7 @@ def main() -> int:
             test_extract_full_process_writes_extract_markdown_and_archive,
             test_extract_failure_writes_error_and_moves_to_fail,
             test_premium_extract_full_process_archives_to_archive_folder,
-            test_list_matching_files_filters_suffixes,
-            test_scan_existing_files_routes_text_inputs,
+            test_file_scanner_routes_text_inputs,
             test_periodic_file_scanner_routes_text_inputs,
             test_audio_scan_enqueues_audio_file,
             test_audio_process_file_mocked_full_path,

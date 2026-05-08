@@ -1,6 +1,6 @@
 """
 Responsibility:
-Run long-lived pipeline worker loops and startup scans for the orchestrator.
+Run long-lived pipeline worker loops and file scans for the orchestrator.
 This module wires the shared `PipelineContext` into torrent intake, X/ytd-dl
 URL downloads, pretext processing, extract and premium extract processing,
 audio transcription, TTML conversion, and wikilink cleanup.
@@ -9,10 +9,9 @@ Used by:
 * p.py
 
 Pipelines:
-- Startup scan: move torrent files, normalize long pretext filenames, enqueue
-  existing pretext/extract/premium files.
-- Periodic scan: rescan watch folders and enqueue new files while avoiding
-  duplicate queue entries.
+- File scanner: move torrent files, normalize long pretext filenames, enqueue
+  existing pretext/extract/premium files when invoked by an orchestrator.
+- Periodic scan: sleep between scan-once runs and back off after scan errors.
 - X URL download: watch `x.txt`/`X.txt`, classify and clean URLs, download via
   yt-dlp, then remove only the completed URL line.
 - Text queues: acquire a file lock, invoke the requested handler method, and
@@ -241,14 +240,6 @@ def process_premium_extract_queue(
     process_queue(ctx, ctx.premium_extract_queue, handler.process_premium_extract, "process_premium_extract", handler.processed_files)
 
 
-def list_matching_files(folder: str, predicate: Callable[[str], bool]) -> set[str]:
-    if not os.path.exists(folder):
-        return set()
-    return {
-        os.path.join(folder, fn) for fn in os.listdir(folder) if predicate(fn)
-    }
-
-
 def resolve_download_url_list_file(list_file):
     path = Path(list_file)
     if path.exists() or path.name != "x.txt":
@@ -374,7 +365,8 @@ def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
             return
 
 
-def scan_existing_files(ctx: PipelineContext) -> None:
+def file_scanner(ctx: PipelineContext) -> None:
+    """Run one file intake scan: torrent move, pretext normalize/request, extract enqueue, premium enqueue."""
     scan_torrent_watch_folder(ctx.config)
 
     pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
@@ -432,17 +424,6 @@ def scan_existing_files(ctx: PipelineContext) -> None:
 
 
 def periodic_file_scanner(ctx: PipelineContext) -> None:
-    pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
-    extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
-    premium_watch_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
-    pretext_suffix = str(ctx.config["PRETEXT_SUFFIX"]).lower()
-    extract_suffixes = tuple(
-        str(s).lower() for s in ctx.config["EXTRACT_SUFFIX"] if str(s)
-    )
-
-    processed = set()
-    extract_done = set()
-    premium_processed = set()
     intervals = ctx.config.get("INTERVALS", {})
     periodic_scan_seconds = intervals.get("PERIODIC_SCAN_SECONDS", 60)
     scan_error_backoff_seconds = intervals.get("SCAN_ERROR_BACKOFF_SECONDS", 60)
@@ -450,34 +431,7 @@ def periodic_file_scanner(ctx: PipelineContext) -> None:
     while not ctx.shutdown_flag.is_set():
         try:
             time.sleep(periodic_scan_seconds)
-
-            scan_torrent_watch_folder(ctx.config)
-
-            current = list_matching_files(
-                pretext_watch_folder,
-                lambda f: f.lower().endswith(pretext_suffix)
-                and not any(f.lower().endswith(s) for s in extract_suffixes),
-            )
-            for path in current - processed:
-                request_pretext_processing(ctx, path)
-            processed = current
-
-            extract_current = list_matching_files(
-                extract_watch_folder,
-                lambda f: any(f.lower().endswith(s) for s in extract_suffixes),
-            )
-            for path in extract_current - extract_done:
-                enqueue_if_absent(ctx.extract_queue, path)
-            extract_done = extract_current
-
-            premium_current = list_matching_files(
-                premium_watch_folder,
-                lambda f: any(f.lower().endswith(s) for s in extract_suffixes),
-            )
-            for path in premium_current - premium_processed:
-                enqueue_if_absent(ctx.premium_extract_queue, path)
-            premium_processed = premium_current
-
+            file_scanner(ctx)
         except Exception as e:
             logging.error("Periodic scanner error: %s", e)
             time.sleep(scan_error_backoff_seconds)

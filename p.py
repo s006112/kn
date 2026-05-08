@@ -147,7 +147,7 @@ from w.p_pipelines import (
     process_ttml_pipeline,
     process_wikilink_cleaning,
     process_x_url_download_pipeline,
-    scan_existing_files,
+    file_scanner,
 )
 from w.utils_files import read_prompt_file
 from w.utils_unlink import setup_wikilink_cleaner_logging
@@ -261,7 +261,7 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     for thread in threads.values():
         thread.start()
 
-    scan_existing_files(ctx)
+    file_scanner(ctx)
 
     observer = Observer()
     watch_specs = (
