@@ -189,20 +189,18 @@ def process_queue(
     processed_files: set[str] | None = None,
 ) -> None:
     intervals = ctx.config.get("INTERVALS", {})
-    queue_idle_seconds = intervals.get("TEXT_QUEUE_IDLE_SECONDS", 0.5)
-    queue_loop_seconds = intervals.get("TEXT_QUEUE_LOOP_SECONDS", 0.5)
-    file_lock_retry_seconds = intervals.get("FILE_LOCK_RETRY_SECONDS", 1)
+    wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
     while True:
         try:
             if queue.empty():
-                time.sleep(queue_idle_seconds)
+                time.sleep(wait_seconds)
                 continue
             file_path = queue.get()
             with file_lock(file_path) as locked:
                 if not locked:
                     queue.put(file_path)
                     queue.task_done()
-                    time.sleep(file_lock_retry_seconds)
+                    time.sleep(wait_seconds)
                     continue
                 try:
                     process(file_path, get_next_available_filename)
@@ -223,7 +221,7 @@ def process_queue(
         except Exception as e:
             logging.error("%s queue error (outer): %s", method_name, e)
             queue.task_done()
-        time.sleep(queue_loop_seconds)
+        time.sleep(wait_seconds)
 
 
 def process_pretext_queue(ctx: PipelineContext) -> None:
@@ -442,8 +440,7 @@ def process_ttml_pipeline(ctx: PipelineContext) -> None:
     original_folder = os.fspath(ctx.config["ORIGINAL_FOLDER"])
     intervals = ctx.config.get("INTERVALS", {})
     scan_seconds = intervals.get("SCAN_SECONDS", 60)
-    file_ready_stability_seconds = intervals.get("FILE_READY_STABILITY_SECONDS", 1.0)
-    pipeline_error_backoff_seconds = intervals.get("PIPELINE_ERROR_BACKOFF_SECONDS", 5)
+    wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
 
     while not ctx.shutdown_flag.is_set():
         try:
@@ -460,7 +457,7 @@ def process_ttml_pipeline(ctx: PipelineContext) -> None:
                     return
 
                 src = os.path.join(watch_folder, fn)
-                if not is_file_ready(src, wait=file_ready_stability_seconds):
+                if not is_file_ready(src, wait=wait_seconds):
                     continue
 
                 if acquire_file_lock(src):
@@ -484,7 +481,7 @@ def process_ttml_pipeline(ctx: PipelineContext) -> None:
 
         except Exception as e:
             logging.error("TTML Pipeline: Error during scan: %s", e)
-            time.sleep(pipeline_error_backoff_seconds)
+            time.sleep(wait_seconds)
 
 
 def process_wikilink_cleaning(ctx: PipelineContext) -> None:

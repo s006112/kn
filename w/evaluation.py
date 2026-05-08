@@ -1060,7 +1060,6 @@ def test_periodic_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, l
         "INTERVALS": {
             **CONFIG["INTERVALS"],
             "SCAN_SECONDS": 0.05,
-            "SCAN_ERROR_BACKOFF_SECONDS": 0.05,
         },
     }
 
@@ -1234,9 +1233,7 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
         **CONFIG,
         "INTERVALS": {
             **CONFIG["INTERVALS"],
-            "TEXT_QUEUE_IDLE_SECONDS": 0,
-            "TEXT_QUEUE_LOOP_SECONDS": 0,
-            "FILE_LOCK_RETRY_SECONDS": 0,
+            "WAIT_SECONDS": 0,
         },
     }
     ctx = create_pipeline_context(config)

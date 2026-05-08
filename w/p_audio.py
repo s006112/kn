@@ -175,7 +175,7 @@ def process_audio_queue(config, *_queues, processing_lock, done_folder_path):
     """Continuously scan for audio files and process the audio queue."""
     intervals = config.get("INTERVALS", {})
     scan_seconds = intervals.get("SCAN_SECONDS", 60)
-    pipeline_error_backoff_seconds = intervals.get("PIPELINE_ERROR_BACKOFF_SECONDS", 5)
+    wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
     while True:
         try:
             scan_audio_files(config)
@@ -197,4 +197,4 @@ def process_audio_queue(config, *_queues, processing_lock, done_folder_path):
 
         except Exception as exc:
             logging.error('Audio queue error: %s', exc)
-            time.sleep(pipeline_error_backoff_seconds)
+            time.sleep(wait_seconds)

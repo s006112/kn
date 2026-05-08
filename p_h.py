@@ -87,29 +87,16 @@ PATH_CONFIG = {
 }
 
 INTERVAL_CONFIG = {
-    # folder / file scan intervals
     "SCAN_SECONDS": 60,                  # pretext/extract/premium/torrent/audio/download/TTML/wikilink/standalone cleaner scan
+    "WAIT_SECONDS": 1.0,                 # queue idle / file retry / TTML stable / error backoff
 
-    # queue worker pacing
-    "TEXT_QUEUE_IDLE_SECONDS": 0.5,       # pretext/extract/premium queue empty
-    "TEXT_QUEUE_LOOP_SECONDS": 0.5,       # sleep after text queue loop
-    "FILE_LOCK_RETRY_SECONDS": 1,         # lock miss -> requeue delay
+    "STATUS_LOG_SECONDS": 300,           # orchestrator status log loop
 
-    # readiness / error backoff
-    "FILE_READY_STABILITY_SECONDS": 1.0,  # TTML size stable check
-    "PIPELINE_ERROR_BACKOFF_SECONDS": 5,  # audio/TTML error sleep
-
-    # monitoring only
-    "STATUS_LOG_SECONDS": 300,            # orchestrator status log loop
-
-    # LLM/API timing
-    "LLM_TIMEOUT_SECONDS": 90,
-    "LLM_RETRY_DELAY_SECONDS": 10,
     "LLM_MAX_RETRIES": 2,
-
-    # ytd / downloader network timing
-    "X_RESOLVE_TIMEOUT_SECONDS": 20,
-
+    "LLM_RETRY_DELAY_SECONDS": 10,
+    "LLM_TIMEOUT_SECONDS": 10,
+    
+    "X_RESOLVE_TIMEOUT_SECONDS": 10,     # ytd / downloader network timing
 }
 
 PIPELINE_CONFIG = {
