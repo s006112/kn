@@ -13,12 +13,35 @@ Pipelines:
 """
 
 from __future__ import annotations
-from pathlib import Path
+
+import codecs
+import logging
 import os
 import sys
+import threading
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from typing import Any, NamedTuple
+
+from watchdog.observers import Observer
 
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, os.fspath(BASE_DIR / "w"))
+
+from w.p_context import PipelineContext, create_pipeline_context
+from w.p_pipelines import (
+    create_pipeline_handlers,
+    file_scanner,
+    process_audio_pipeline,
+    process_extract_queue,
+    process_premium_extract_queue,
+    process_pretext_queue,
+    process_ttml_pipeline,
+    process_wikilink_cleaning,
+    process_x_url_download_pipeline,
+)
+from w.utils_files import read_prompt_file
+from w.utils_unlink import setup_wikilink_cleaner_logging
 
 LOG_DIR = BASE_DIR / "data" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -39,7 +62,6 @@ CONFIG = {
             "gpt-5.4",
         ],
     },
-
     "PIPELINES": {
         "AUDIO": True,
         "TTML": True,
@@ -48,7 +70,6 @@ CONFIG = {
         "NOTES": True,
         "X_URL_DOWNLOAD": True,
     },
-
     "INTERVALS": {
         "SCAN_SECONDS": 60,
         "WAIT_SECONDS": 1.0,
@@ -57,7 +78,6 @@ CONFIG = {
         "LLM_TIMEOUT_SECONDS": 60,
         "X_RESOLVE_TIMEOUT_SECONDS": 10,
     },
-
     "WATCH_FOLDER": WATCH_FOLDER,
     "WHISPER_FOLDER": WHISPER_FOLDER,
     "TTML_WATCH_FOLDER": WATCH_FOLDER,
@@ -79,48 +99,21 @@ CONFIG = {
     "OBSIDIAN_SYNC_FOLDER": Path("/desktop/Obsidian/O_2025"),
     "X_URL_LIST_FILE": WHISPER_FOLDER / "X" / "X.txt",
     "DOWNLOAD_TARGET_FOLDER": WHISPER_FOLDER / "X",
-
     "PRETEXT_SUFFIX": ".txt",
     "EXTRACT_SUFFIX": ("_p.txt", ".md"),
-
     "PRETEXT_PROMPT": None,
     "EXTRACT_PROMPT": None,
     "DISTILL_PROMPT": None,
 }
 
-import logging
-import threading
-from logging.handlers import RotatingFileHandler
-from typing import Any, NamedTuple
-from watchdog.observers import Observer
-from w.p_context import PipelineContext, create_pipeline_context
-from w.p_pipelines import (
-    create_pipeline_handlers,
-    file_scanner,
-    process_audio_pipeline,
-    process_extract_queue,
-    process_premium_extract_queue,
-    process_pretext_queue,
-    process_ttml_pipeline,
-    process_wikilink_cleaning,
-    process_x_url_download_pipeline,
+REQUIRED_DIR_KEYS = (
+    "ORIGINAL_FOLDER",
+    "AUDIO_DONE_FOLDER",
+    "LINK_BACKUP_FOLDER",
+    "FAIL_FOLDER",
 )
-from w.utils_files import read_prompt_file
-from w.utils_unlink import setup_wikilink_cleaner_logging
 
-class UTFStreamHandler(logging.StreamHandler):
-    """Write formatted log records to a byte stream using UTF-8."""
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            msg = self.format(record)
-            stream = self.stream
-            stream.buffer.write(msg.encode("utf-8"))
-            stream.buffer.write(self.terminator.encode("utf-8"))
-            self.flush()
-        except Exception:
-            self.handleError(record)
-
+FALSE_VALUES = {"0", "false", "no", "off", "disable", "disabled"}
 
 logging.basicConfig(
     level=logging.INFO,
@@ -133,20 +126,13 @@ logging.basicConfig(
             backupCount=2,
             encoding="utf-8",
         ),
-        UTFStreamHandler(sys.stdout),
+        logging.StreamHandler(
+            codecs.getwriter("utf-8")(sys.stdout.buffer)
+            if getattr(sys.stdout, "buffer", None) is not None
+            else sys.stdout
+        ),
     ],
 )
-
-CURRENT_CONTEXT: PipelineContext | None = None
-
-REQUIRED_DIR_KEYS = (
-    "ORIGINAL_FOLDER",
-    "AUDIO_DONE_FOLDER",
-    "LINK_BACKUP_FOLDER",
-    "FAIL_FOLDER",
-)
-
-FALSE_VALUES = {"0", "false", "no", "off", "disable", "disabled"}
 
 
 class SystemHandles(NamedTuple):
@@ -213,9 +199,6 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     ensure_directories(cfg)
 
     ctx = create_pipeline_context(cfg)
-
-    global CURRENT_CONTEXT
-    CURRENT_CONTEXT = ctx
 
     text_enabled = pipelines["PRETEXT"] or pipelines["EXTRACT"]
     pretext_handler = extract_handler = premium_extract_handler = None
@@ -299,7 +282,7 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
 
 
 def stop_system(handles: SystemHandles) -> None:
-    """Signal shutdown, stop the observer, and clear global context."""
+    """Signal shutdown and stop the observer."""
     handles.context.shutdown_flag.set()
 
     try:
@@ -308,17 +291,11 @@ def stop_system(handles: SystemHandles) -> None:
             handles.observer.join()
     except Exception as exc:
         logging.warning("Failed to stop observer cleanly: %s", exc)
-    finally:
-        global CURRENT_CONTEXT
-        CURRENT_CONTEXT = None
 
 
-def system_status() -> dict[str, Any]:
+def system_status(handles: SystemHandles) -> dict[str, Any]:
     """Return pipeline flags, queue sizes, and wikilink cleaner counters."""
-    if CURRENT_CONTEXT is None:
-        raise RuntimeError("System context not initialized.")
-
-    ctx = CURRENT_CONTEXT
+    ctx = handles.context
     return {
         "pipelines": dict(ctx.config["PIPELINES"]),
         "queues": {
