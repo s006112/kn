@@ -1,13 +1,7 @@
-"""
-p.py
-
-Responsibility
+""" p.py
 Start and supervise the local file-processing system that watches configured folders,
 loads prompts, creates pipeline context, starts queue workers, schedules watchdog
 handlers, exposes status, and shuts the system down.
-
-Used by:
-* w/tool_wikilink_cleaner.py
 
 Pipelines:
 - torrent watch folder scan -> torrent detection -> file lock -> safe move -> w folder
@@ -19,34 +13,13 @@ Pipelines:
 """
 
 from __future__ import annotations
-
-import logging
+from pathlib import Path
 import os
 import sys
-import threading
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
-from typing import Any, NamedTuple
 
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, os.fspath(BASE_DIR / "w"))
 
-from watchdog.observers import Observer
-
-from w.p_context import PipelineContext, create_pipeline_context
-from w.p_pipelines import (
-    create_pipeline_handlers,
-    file_scanner,
-    process_audio_pipeline,
-    process_extract_queue,
-    process_premium_extract_queue,
-    process_pretext_queue,
-    process_ttml_pipeline,
-    process_wikilink_cleaning,
-    process_x_url_download_pipeline,
-)
-from w.utils_files import read_prompt_file
-from w.utils_unlink import setup_wikilink_cleaner_logging
 LOG_DIR = BASE_DIR / "data" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -77,11 +50,11 @@ CONFIG = {
     },
 
     "INTERVALS": {
-        "SCAN_SECONDS": 10,
+        "SCAN_SECONDS": 60,
         "WAIT_SECONDS": 1.0,
         "LLM_MAX_RETRIES": 2,
         "LLM_RETRY_DELAY_SECONDS": 10,
-        "LLM_TIMEOUT_SECONDS": 10,
+        "LLM_TIMEOUT_SECONDS": 60,
         "X_RESOLVE_TIMEOUT_SECONDS": 10,
     },
 
@@ -115,9 +88,25 @@ CONFIG = {
     "DISTILL_PROMPT": None,
 }
 
-os.environ["PYTORCH_ALLOC_CONF"] = "max_split_size_mb:128,backend:native"
-os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "0"
-
+import logging
+import threading
+from logging.handlers import RotatingFileHandler
+from typing import Any, NamedTuple
+from watchdog.observers import Observer
+from w.p_context import PipelineContext, create_pipeline_context
+from w.p_pipelines import (
+    create_pipeline_handlers,
+    file_scanner,
+    process_audio_pipeline,
+    process_extract_queue,
+    process_premium_extract_queue,
+    process_pretext_queue,
+    process_ttml_pipeline,
+    process_wikilink_cleaning,
+    process_x_url_download_pipeline,
+)
+from w.utils_files import read_prompt_file
+from w.utils_unlink import setup_wikilink_cleaner_logging
 
 class UTFStreamHandler(logging.StreamHandler):
     """Write formatted log records to a byte stream using UTF-8."""
@@ -188,7 +177,7 @@ def start_thread(
 
 def run_periodic_file_scanner(ctx: PipelineContext) -> None:
     intervals = ctx.config.get("INTERVALS", {})
-    scan_seconds = intervals.get("SCAN_SECONDS", 60)
+    scan_seconds = intervals.get("SCAN_SECONDS")
 
     while not ctx.shutdown_flag.is_set():
         if ctx.shutdown_flag.wait(scan_seconds):
