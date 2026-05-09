@@ -10,3 +10,6 @@ Current concerns:
 - Avoid over-engineering
 - Avoid rule explosion
 - Prefer small reusable patterns
+- Avoid AI-generated helper/function/class inflation
+- Preserve explicit runtime boundaries
+- Keep code iteration focused on reducing cognitive load, not only reducing line count
