@@ -2165,7 +2165,9 @@ def test_start_system_creates_expected_threads_schedules_watchers_and_stop(test_
         orchestrator_module.Observer = FakeObserver
         orchestrator_module.read_prompt_file = lambda filename: f"evaluation prompt {filename}"
 
-        handles = orchestrator_module.start_system(CONFIG)
+        ctx = orchestrator_module.PipelineContext(CONFIG)
+        threads, observer = orchestrator_module.start_runtime(ctx)
+        handles = orchestrator_module.SystemHandles(ctx, threads, observer)
 
         deadline = time.time() + 2
         while time.time() < deadline and started_workers != expected_threads:
@@ -2341,7 +2343,9 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
                 },
             }
 
-            handles = orchestrator_module.start_system(config)
+            ctx = orchestrator_module.PipelineContext(config)
+            threads, observer = orchestrator_module.start_runtime(ctx)
+            handles = orchestrator_module.SystemHandles(ctx, threads, observer)
             handles_list.append(handles)
 
             deadline = time.time() + 2

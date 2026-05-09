@@ -32,12 +32,37 @@ Out of scope:
 - File locking, concurrency coordination, and permission ownership changes.
 """
 
+import codecs
 import logging
 import os
+import sys
+from logging.handlers import RotatingFileHandler
 from typing import Iterable, Tuple
 
 
 DEFAULT_ENCODINGS = ("utf-8", "gbk", "gb2312", "gb18030", "big5")
+
+
+def configure_logging(log_dir: str | os.PathLike[str]) -> None:
+    os.makedirs(log_dir, exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%H:%M:%S",
+        handlers=[
+            RotatingFileHandler(
+                os.path.join(log_dir, "script.log"),
+                maxBytes=1 * 1024 * 1024,
+                backupCount=2,
+                encoding="utf-8",
+            ),
+            logging.StreamHandler(
+                codecs.getwriter("utf-8")(sys.stdout.buffer)
+                if getattr(sys.stdout, "buffer", None) is not None
+                else sys.stdout
+            ),
+        ],
+    )
 
 
 def read_file_with_encodings(

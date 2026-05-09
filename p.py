@@ -1,25 +1,12 @@
-""" p.py
-Start and supervise the local file-processing system that watches configured folders,
-loads prompts, creates pipeline context, starts queue workers, schedules watchdog
-handlers, exposes status, and shuts the system down.
+# p.py
 
-Pipelines:
-- torrent watch folder scan -> torrent detection -> file lock -> safe move -> w folder
-- audio watch -> audio queue -> wav convert -> transcribe -> text write -> audio archive
-- ttml watch -> ready check -> file lock -> ttml convert -> text write -> ttml archive
-- pretext watch -> pretext queue -> llm pretext -> write outputs -> pretext archive
-- extract watch -> extract queue -> llm extract -> merge markdown -> distill -> extract archive
-- notes watch -> unlink clean -> link backup
-"""
 
 from __future__ import annotations
 
-import codecs
 import logging
 import os
 import sys
 import threading
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -40,10 +27,7 @@ from w.p_pipelines import (
     process_wikilink_cleaning,
     process_x_url_download_pipeline,
 )
-from w.utils_files import read_prompt_file
-
-LOG_DIR = BASE_DIR / "data" / "logs"
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+from w.utils_files import configure_logging, read_prompt_file
 
 WHISPER_FOLDER = Path("/desktop/Sync/Whisper")
 WATCH_FOLDER = Path("/desktop")
@@ -98,51 +82,22 @@ CONFIG = {
     "OBSIDIAN_SYNC_FOLDER": Path("/desktop/Obsidian/O_2025"),
     "X_URL_LIST_FILE": WHISPER_FOLDER / "X" / "X.txt",
     "DOWNLOAD_TARGET_FOLDER": WHISPER_FOLDER / "X",
+    "LOG_DIR": BASE_DIR / "data" / "logs",
     "PRETEXT_SUFFIX": ".txt",
     "EXTRACT_SUFFIX": ("_p.txt", ".md"),
-    "PRETEXT_PROMPT": None,
-    "EXTRACT_PROMPT": None,
-    "DISTILL_PROMPT": None,
+    "PRETEXT_PROMPT": read_prompt_file("prompt_pretext.txt"),
+    "EXTRACT_PROMPT": read_prompt_file("prompt_extract.txt"),
+    "DISTILL_PROMPT": read_prompt_file("prompt_distill.txt"),
 }
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%H:%M:%S",
-    handlers=[
-        RotatingFileHandler(
-            LOG_DIR / "script.log",
-            maxBytes=1 * 1024 * 1024,
-            backupCount=2,
-            encoding="utf-8",
-        ),
-        logging.StreamHandler(
-            codecs.getwriter("utf-8")(sys.stdout.buffer)
-            if getattr(sys.stdout, "buffer", None) is not None
-            else sys.stdout
-        ),
-    ],
-)
+configure_logging(CONFIG["LOG_DIR"])
 
 
 class SystemHandles(NamedTuple):
     """Runtime handles returned by start_system."""
-
     context: PipelineContext
     threads: dict[str, threading.Thread]
     observer: Any
-
-
-def start_thread(
-    threads: dict[str, threading.Thread],
-    name: str,
-    target: Any,
-    args: tuple[Any, ...],
-) -> None:
-    """Create and start one daemon worker thread."""
-    thread = threading.Thread(target=target, args=args, daemon=True, name=name)
-    threads[name] = thread
-    thread.start()
 
 
 def run_file_scanner(ctx: PipelineContext) -> None:
@@ -156,94 +111,46 @@ def run_file_scanner(ctx: PipelineContext) -> None:
         file_scanner(ctx)
 
 
-def load_prompt_config(cfg: dict[str, Any]) -> dict[str, Any]:
-    return {
-        **cfg,
-        "PRETEXT_PROMPT": read_prompt_file("prompt_pretext.txt"),
-        "EXTRACT_PROMPT": read_prompt_file("prompt_extract.txt"),
-        "DISTILL_PROMPT": read_prompt_file("prompt_distill.txt"),
-    }
-
-
-def create_runtime_handlers(ctx: PipelineContext) -> dict[str, Any]:
-    pretext, extract, premium_extract = create_pipeline_handlers(ctx)
-    return {
-        "pretext": pretext,
-        "extract": extract,
-        "premium_extract": premium_extract,
-    }
-
-
-def start_runtime_workers(
-    ctx: PipelineContext,
-    handlers: dict[str, Any],
-) -> dict[str, threading.Thread]:
+def start_runtime(ctx: PipelineContext) -> tuple[dict[str, threading.Thread], Any]:
+    pretext_handler, extract_handler, premium_extract_handler = create_pipeline_handlers(ctx)
     threads: dict[str, threading.Thread] = {}
 
-    specs = [
+    worker_specs = [
         ("TTML", "TTMLPipeline", process_ttml_pipeline, (ctx,)),
         ("PRETEXT", "TextPipeline-Pretext", process_pretext_queue, (ctx,)),
-        ("EXTRACT", "TextPipeline-Extract", process_extract_queue, (ctx, handlers.get("extract"))),
-        ("EXTRACT", "TextPipeline-PremiumExtract", process_premium_extract_queue, (ctx, handlers.get("premium_extract"))),
+        ("EXTRACT", "TextPipeline-Extract", process_extract_queue, (ctx, extract_handler)),
+        ("EXTRACT", "TextPipeline-PremiumExtract", process_premium_extract_queue, (ctx, premium_extract_handler)),
         ("AUDIO", "AudioPipeline-GPU", process_audio_pipeline, (ctx,)),
         (None, "PeriodicScanner", run_file_scanner, (ctx,)),
         ("NOTES", "WikilinkCleaner", process_wikilink_cleaning, (ctx,)),
         ("X_URL_DOWNLOAD", "XUrlDownloadPipeline", process_x_url_download_pipeline, (ctx,)),
     ]
 
-    for flag, name, target, args in specs:
+    for flag, name, target, args in worker_specs:
         if flag is None or ctx.config["PIPELINES"][flag]:
-            start_thread(threads, name, target, args)
-
-    return threads
-
-
-def start_runtime_observer(
-    ctx: PipelineContext,
-    handlers: dict[str, Any],
-) -> Any:
-    specs = [
-        ("PRETEXT", handlers.get("pretext"), "PRETEXT_WATCH_FOLDER"),
-        ("EXTRACT", handlers.get("extract"), "EXTRACT_WATCH_FOLDER"),
-        ("EXTRACT", handlers.get("premium_extract"), "PREMIUM_WATCH_FOLDER"),
-    ]
+            thread = threading.Thread(target=target, args=args, daemon=True, name=name)
+            threads[name] = thread
+            thread.start()
 
     watch_specs = [
-        (handler, folder_key)
-        for flag, handler, folder_key in specs
-        if ctx.config["PIPELINES"][flag] and handler is not None
+        ("PRETEXT", pretext_handler, "PRETEXT_WATCH_FOLDER"),
+        ("EXTRACT", extract_handler, "EXTRACT_WATCH_FOLDER"),
+        ("EXTRACT", premium_extract_handler, "PREMIUM_WATCH_FOLDER"),
     ]
 
-    if not watch_specs:
-        return None
+    observer = None
+    for flag, handler, folder_key in watch_specs:
+        if ctx.config["PIPELINES"][flag]:
+            if observer is None:
+                observer = Observer()
+            observer.schedule(handler, os.fspath(ctx.config[folder_key]), recursive=False)
+    if observer is not None:
+        observer.start()
 
-    observer = Observer()
-    for handler, folder_key in watch_specs:
-        observer.schedule(
-            handler,
-            os.fspath(ctx.config[folder_key]),
-            recursive=False,
-        )
-    observer.start()
-    return observer
-
-
-def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
-    """Initialize config, context, workers, scanner, and watchdog observer."""
-    cfg = load_prompt_config(cfg)
-    ctx = PipelineContext(cfg)
-
-    handlers = create_runtime_handlers(ctx)
-    threads = start_runtime_workers(ctx, handlers)
-    observer = start_runtime_observer(ctx, handlers)
-
-    logging.info("Enabled pipelines: %s", ", ".join(key for key, enabled in ctx.config["PIPELINES"].items() if enabled) or "none")
-
-    return SystemHandles(context=ctx, threads=threads, observer=observer)
+    return threads, observer
 
 
 def stop_system(handles: SystemHandles) -> None:
-    """Signal shutdown and stop the observer."""
     handles.context.shutdown_flag.set()
 
     if handles.observer is not None:
@@ -252,9 +159,10 @@ def stop_system(handles: SystemHandles) -> None:
 
 
 def main() -> None:
-    """Start the system and keep the supervising process alive."""
-    logging.info("Starting local file-processing system")
-    handles = start_system(CONFIG)
+    ctx = PipelineContext(CONFIG)
+    threads, observer = start_runtime(ctx)
+    handles = SystemHandles(context=ctx, threads=threads, observer=observer)
+    logging.info("Enabled pipelines: %s", ", ".join(key for key, enabled in ctx.config["PIPELINES"].items() if enabled) or "none")
 
     try:
         threading.Event().wait()
@@ -262,7 +170,6 @@ def main() -> None:
         pass
     finally:
         stop_system(handles)
-        logging.info("Local file-processing system stopped")
 
 if __name__ == "__main__":
     main()

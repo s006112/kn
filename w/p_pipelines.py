@@ -10,6 +10,12 @@ Used by:
 * p_h.py
 
 Pipelines:
+- torrent watch folder scan -> torrent detection -> file lock -> safe move -> w folder
+- audio watch -> audio queue -> wav convert -> transcribe -> text write -> audio archive
+- ttml watch -> ready check -> file lock -> ttml convert -> text write -> ttml archive
+- pretext watch -> pretext queue -> llm pretext -> write outputs -> pretext archive
+- extract watch -> extract queue -> llm extract -> merge markdown -> distill -> extract archive
+- notes watch -> unlink clean -> link backup
 - File scanner: move torrent files, normalize long pretext filenames, enqueue
   existing pretext/extract/premium files when invoked by an orchestrator.
 - X URL download: watch `x.txt`/`X.txt`, classify and clean URLs, download via
