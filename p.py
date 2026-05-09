@@ -245,14 +245,6 @@ def start_runtime_observer(
     return observer
 
 
-def log_enabled_pipelines(pipelines: dict[str, bool]) -> None:
-    enabled_names = [key for key, enabled in pipelines.items() if enabled]
-    logging.info(
-        "Enabled pipelines: %s",
-        ", ".join(enabled_names) if enabled_names else "none",
-    )
-
-
 def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     """Initialize config, context, workers, scanner, and watchdog observer."""
     cfg = prepare_runtime_config(cfg)
@@ -264,7 +256,7 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     threads = start_runtime_workers(ctx, handlers)
     observer = start_runtime_observer(ctx, handlers)
 
-    log_enabled_pipelines(ctx.config["PIPELINES"])
+    logging.info("Enabled pipelines: %s", ", ".join(key for key, enabled in ctx.config["PIPELINES"].items() if enabled) or "none")
 
     return SystemHandles(context=ctx, threads=threads, observer=observer)
 
