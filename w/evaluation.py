@@ -24,7 +24,7 @@ import w.p_distill as distill_module
 from w.p_distill import _collect_extracts
 
 import w.p_extract as extract_module
-from w.p_extract import ExtractHandler, PremiumExtractHandler
+from w.p_extract import ExtractProcessor, PremiumExtractProcessor
 
 import w.p_pipelines as pipelines
 from w.p_pipelines import (
@@ -756,35 +756,36 @@ def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path
     return passed, cleanup
 
 
-def test_extract_handler_queues_candidate_once(test_id: str) -> tuple[bool, list[Path]]:
+def test_file_scanner_queues_extract_candidate_once(test_id: str) -> tuple[bool, list[Path]]:
     extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
     source = PATHS.extract_watch / f"{test_id}_extract{extract_suffix}"
     ignored = PATHS.download_target / f"{test_id}_ignored{extract_suffix}"
 
     cleanup = [source, ignored]
 
+    PATHS.watch.mkdir(parents=True, exist_ok=True)
+    PATHS.ttml_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
     PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.premium_watch.mkdir(parents=True, exist_ok=True)
     PATHS.download_target.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"extract queue candidate {test_id}\n", encoding="utf-8")
     ignored.write_text(f"wrong folder candidate {test_id}\n", encoding="utf-8")
 
     ctx = pipelines.PipelineContext(CONFIG)
-    handler = ExtractHandler(CONFIG, ctx.extract_queue)
-    handler._queue_file(str(source))
-    handler._queue_file(str(source))
-    handler._queue_file(str(ignored))
+    pipelines.file_scanner(ctx)
+    pipelines.file_scanner(ctx)
 
     queued_paths = list(ctx.extract_queue.queue)
 
     passed = (
-        queued_paths == [str(source)]
-        and str(source) in handler.processed_files
-        and str(ignored) not in handler.processed_files
+        queued_paths.count(str(source)) == 1
+        and str(ignored) not in queued_paths
     )
 
     print_result(
-        "extract handler queues candidate once",
+        "file scanner queues extract candidate once",
         passed,
         {
             "source": source,
@@ -831,8 +832,8 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
         extract_module.call_llm = lambda **_kwargs: f"mock extract result {test_id}"
 
         ctx = pipelines.PipelineContext(config)
-        handler = ExtractHandler(config, ctx.extract_queue)
-        handler.process_extract(str(source), get_next_available_filename)
+        processor = ExtractProcessor(config)
+        processor.process_extract(str(source), get_next_available_filename)
 
         notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
         note = notes[-1] if notes else None
@@ -905,11 +906,11 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
         extract_module.call_llm = fail_call_llm
 
         ctx = pipelines.PipelineContext(config)
-        handler = ExtractHandler(config, ctx.extract_queue)
+        processor = ExtractProcessor(config)
 
         raised = False
         try:
-            handler.process_extract(str(source), get_next_available_filename)
+            processor.process_extract(str(source), get_next_available_filename)
         except RuntimeError:
             raised = True
 
@@ -979,8 +980,8 @@ def test_premium_extract_full_process_archives_to_archive_folder(test_id: str) -
         extract_module.call_llm = lambda **_kwargs: f"mock premium extract result {test_id}"
 
         ctx = pipelines.PipelineContext(config)
-        handler = PremiumExtractHandler(config, ctx.premium_extract_queue)
-        handler.process_premium_extract(str(source), get_next_available_filename)
+        processor = PremiumExtractProcessor(config)
+        processor.process_premium_extract(str(source), get_next_available_filename)
 
         notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
         note = notes[-1] if notes else None
@@ -1493,11 +1494,11 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
         extract_module.call_llm = fake_call_llm
 
         ctx = pipelines.PipelineContext(config)
-        handler = ExtractHandler(config, ctx.extract_queue)
+        processor = ExtractProcessor(config)
 
         raised = False
         try:
-            handler.process_extract(str(source), get_next_available_filename)
+            processor.process_extract(str(source), get_next_available_filename)
         except RuntimeError:
             raised = True
 
@@ -2361,7 +2362,7 @@ def main() -> int:
             test_pretext_request_deduplicates_queue,
             test_pretext_full_process_writes_pretext_markdown_and_archive,
             test_distill_collects_extract_outputs,
-            test_extract_handler_queues_candidate_once,
+            test_file_scanner_queues_extract_candidate_once,
             test_extract_full_process_writes_extract_markdown_and_archive,
             test_extract_failure_writes_error_and_moves_to_fail,
             test_premium_extract_full_process_archives_to_archive_folder,

@@ -10,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 from w.p_pipelines import (
     PipelineContext,
-    create_pipeline_handlers,
+    create_extract_processors,
     file_scanner,
     process_audio_pipeline,
     process_extract_queue,
@@ -103,14 +103,14 @@ def run_file_scanner(ctx: PipelineContext) -> None:
 
 
 def start_runtime(ctx: PipelineContext) -> dict[str, threading.Thread]:
-    _, extract_handler, premium_extract_handler = create_pipeline_handlers(ctx)
+    extract_processor, premium_extract_processor = create_extract_processors(ctx)
     threads: dict[str, threading.Thread] = {}
 
     thread_specs = [
         (ctx.config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (ctx,)),
         (ctx.config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_pretext_queue, (ctx,)),
-        (ctx.config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_extract_queue, (ctx, extract_handler)),
-        (ctx.config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_premium_extract_queue, (ctx, premium_extract_handler)),
+        (ctx.config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_extract_queue, (ctx, extract_processor)),
+        (ctx.config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_premium_extract_queue, (ctx, premium_extract_processor)),
         (ctx.config["PIPELINES"]["AUDIO"], "AudioPipeline-GPU", process_audio_pipeline, (ctx,)),
         (True, "PeriodicScanner", run_file_scanner, (ctx,)),
         (ctx.config["PIPELINES"]["NOTES"], "WikilinkCleaner", process_wikilink_cleaning, (ctx,)),

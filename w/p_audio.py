@@ -168,7 +168,7 @@ def process_audio_file(file_path: str, folder_path: str, config: dict, done_fold
     return True
 
 
-def process_audio_queue(config, audio_queue: Queue, *_queues, processing_lock, done_folder_path):
+def process_audio_queue(config, audio_queue: Queue, *, processing_lock, done_folder_path):
     """Continuously wait for and process queued audio files."""
     intervals = config.get("INTERVALS", {})
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)

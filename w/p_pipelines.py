@@ -10,17 +10,17 @@ Used by:
 * p_h.py
 
 Pipelines:
-- torrent watch folder scan -> torrent detection -> file lock -> safe move -> w folder
-- audio watch -> audio queue -> wav convert -> transcribe -> text write -> audio archive
-- ttml watch -> ready check -> file lock -> ttml convert -> text write -> ttml archive
-- pretext watch -> pretext queue -> llm pretext -> write outputs -> pretext archive
-- extract watch -> extract queue -> llm extract -> merge markdown -> distill -> extract archive
+- torrent scan -> torrent detection -> file lock -> safe move -> w folder
+- audio scan -> audio queue -> wav convert -> transcribe -> text write -> audio archive
+- ttml scan -> ttml queue -> ready check -> file lock -> ttml convert -> text write -> ttml archive
+- pretext scan -> pretext queue -> llm pretext -> write outputs -> pretext archive
+- extract scan -> extract queue -> llm extract -> merge markdown -> distill -> extract archive
 - notes watch -> unlink clean -> link backup
 - File scanner: move torrent files, normalize long pretext filenames, enqueue
   existing pretext/extract/premium files when invoked by an orchestrator.
-- X URL download: watch `x.txt`/`X.txt`, classify and clean URLs, download via
+- X URL download: scan `x.txt`/`X.txt`, classify and clean URLs, download via
   yt-dlp, then remove only the completed URL line.
-- Text queues: acquire a file lock, invoke the requested handler method, and
+- Text queues: acquire a file lock, invoke the requested processor method, and
   continue on recoverable queue errors or permanent LLM failures.
 - Audio: process the audio queue through the shared GPU audio worker.
 - TTML: wait for subtitle file stability, lock each file, convert it, and
@@ -39,8 +39,8 @@ from queue import Empty, Queue
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Set
 
-from .p_pretext import PretextHandler, process_pretext_file, request_pretext_processing
-from .p_extract import ExtractHandler, PremiumExtractHandler
+from .p_pretext import process_pretext_file, request_pretext_processing
+from .p_extract import ExtractProcessor, PremiumExtractProcessor
 from .p_ttml import handle_ttml, is_file_ready
 from .p_audio import process_audio_queue, scan_audio_files
 from .utils_unlink import clean_dead_links
@@ -182,18 +182,10 @@ def scan_torrent_watch_folder(config: Dict[str, Any]) -> int:
     return moved_count
 
 
-def create_pipeline_handlers(ctx: PipelineContext):
-    pretext_handler = PretextHandler(
-        ctx.config,
-        ctx.pretext_queue,
-        ctx.processed_files_global,
-        ctx.processed_files_lock,
-    )
-    extract_handler = ExtractHandler(ctx.config, ctx.extract_queue)
-    premium_extract_handler = PremiumExtractHandler(
-        ctx.config, ctx.premium_extract_queue
-    )
-    return pretext_handler, extract_handler, premium_extract_handler
+def create_extract_processors(ctx: PipelineContext):
+    extract_processor = ExtractProcessor(ctx.config)
+    premium_extract_processor = PremiumExtractProcessor(ctx.config)
+    return extract_processor, premium_extract_processor
 
 def enqueue_if_absent(queue: Queue, path: str) -> None:
     if path not in list(queue.queue):
@@ -205,7 +197,6 @@ def process_queue(
     queue: Queue,
     process: Callable[[str, Callable[..., str]], None],
     method_name: str,
-    processed_files: set[str] | None = None,
 ) -> None:
     intervals = ctx.config.get("INTERVALS", {})
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
@@ -223,8 +214,6 @@ def process_queue(
                     continue
                 try:
                     process(file_path, get_next_available_filename)
-                    if processed_files and file_path in processed_files:
-                        processed_files.discard(file_path)
                 except LLMPermanentFailure as e:
                     logging.error(
                         "Resilient Queue: OpenAI API permanent failure for file %s "
@@ -247,14 +236,14 @@ def process_pretext_queue(ctx: PipelineContext) -> None:
     process_queue(ctx, ctx.pretext_queue, lambda path, _next: process_pretext_file(ctx.config, path, ctx.processed_files_global, ctx.processed_files_lock), "process_pretext")
 
 
-def process_extract_queue(ctx: PipelineContext, handler: ExtractHandler) -> None:
-    process_queue(ctx, ctx.extract_queue, handler.process_extract, "process_extract", handler.processed_files)
+def process_extract_queue(ctx: PipelineContext, processor: ExtractProcessor) -> None:
+    process_queue(ctx, ctx.extract_queue, processor.process_extract, "process_extract")
 
 
 def process_premium_extract_queue(
-    ctx: PipelineContext, handler: PremiumExtractHandler
+    ctx: PipelineContext, processor: PremiumExtractProcessor
 ) -> None:
-    process_queue(ctx, ctx.premium_extract_queue, handler.process_premium_extract, "process_premium_extract", handler.processed_files)
+    process_queue(ctx, ctx.premium_extract_queue, processor.process_premium_extract, "process_premium_extract")
 
 
 def resolve_download_url_list_file(list_file):
@@ -445,9 +434,6 @@ def process_audio_pipeline(ctx: PipelineContext) -> None:
     process_audio_queue(
         ctx.config,
         ctx.audio_queue,
-        ctx.pretext_queue,
-        ctx.extract_queue,
-        ctx.premium_extract_queue,
         processing_lock=ctx.audio_processing_lock,
         done_folder_path=os.fspath(ctx.config["AUDIO_DONE_FOLDER"]),
     )

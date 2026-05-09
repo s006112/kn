@@ -1,12 +1,12 @@
 """
-p_extract.py: Watch extract folders, run model-based extraction for pretext files, merge results
+p_extract.py: Process scan-queued extract files and merge model outputs
 
 Responsibility:
-Watch extract folders, run model-based extraction for pretext files, merge results
-into markdown, and archive or fail files with distillation when configured.
+Run model-based extraction for scan-queued pretext files, merge results into
+markdown, and archive or fail files with distillation when configured.
 
 Pipelines:
-- watch -> queue -> read -> extract -> merge -> distill -> archive
+- scan -> queue -> read -> extract -> merge -> distill -> archive
 
 Invariants:
 - Extract jobs only accept `_p.txt` files in the configured watch folders.
@@ -22,7 +22,6 @@ import logging
 import shutil
 import sys
 from pathlib import Path
-from watchdog.events import FileSystemEventHandler
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -40,16 +39,13 @@ from .utils_md import (
 )
 from .utils_text import sanitize_filename
 
-class BaseExtractHandler(FileSystemEventHandler):
-    """Base handler for extract pipelines with shared queueing logic."""
+class BaseExtractProcessor:
+    """Base processor for extract pipelines."""
 
-    def __init__(self, config, queue, watch_folder_key, model_names, *, enable_distillation=True):
-        """Initialize an extract handler for one watch folder and model list."""
+    def __init__(self, config, model_names, *, enable_distillation=True):
+        """Initialize an extract processor for one model list."""
         self.config = config
-        self.queue = queue
-        self.watch_folder = config[watch_folder_key]
         self.models = list(model_names or [])
-        self.processed_files = set()
         self.enable_distillation = enable_distillation
 
     def finalize_success(self, filename: str, base_name: str, md_path: str | None) -> None:
@@ -77,33 +73,6 @@ class BaseExtractHandler(FileSystemEventHandler):
                 f"Extract: Bypassed for {filename} (premium pipeline)"
             )
 
-    def _queue_file(self, file_path):
-        """Queue an eligible file path when it is not already tracked."""
-        extract_suffixes = tuple(
-            str(s).lower() for s in self.config["EXTRACT_SUFFIX"] if str(s)
-        )
-
-        cond = (
-            os.path.abspath(os.path.dirname(file_path)) == os.path.abspath(self.watch_folder)
-            and any(file_path.lower().endswith(s) for s in extract_suffixes)
-            and file_path not in self.processed_files
-            and file_path not in list(self.queue.queue)
-        )
-        if not cond:
-            return
-        self.queue.put(file_path)
-        self.processed_files.add(file_path)
-        logging.info(f"Extract: Queued {os.path.basename(file_path)}")
-
-    def on_created(self, event):
-        """Queue eligible files from watchdog creation events."""
-        if event.is_directory:
-            return
-        try:
-            self._queue_file(event.src_path)
-        except Exception as e:
-            logging.error(f"Error in Extract.on_created: {e}")
-
 def process(self, file_path, get_next_available_filename):
     """Run configured extraction models, merge results, and archive the source."""
     filename = os.path.basename(file_path)
@@ -117,7 +86,7 @@ def process(self, file_path, get_next_available_filename):
     base = filename[: -len(matched_suffix)] if matched_suffix else os.path.splitext(filename)[0]
 
     try:
-        content, enc = read_file_with_encodings(file_path)
+        content, _ = read_file_with_encodings(file_path)
         payload = f"《{base}》\n{content}"
         intervals = self.config.get("INTERVALS", {})
 
@@ -243,20 +212,20 @@ def process(self, file_path, get_next_available_filename):
         raise
 
 
-class ExtractHandler(BaseExtractHandler):
-    def __init__(self, config, queue):
-        """Initialize the standard extract handler with distillation enabled."""
+class ExtractProcessor(BaseExtractProcessor):
+    def __init__(self, config):
+        """Initialize the standard extract processor with distillation enabled."""
         model_matrix = config.get('MODEL_EXTRACT_MATRIX', {})
         models = model_matrix.get('EXTRACT_WATCH_FOLDER', [])
-        super().__init__(config, queue, 'EXTRACT_WATCH_FOLDER', models, enable_distillation=True)
+        super().__init__(config, models, enable_distillation=True)
     process_extract = process
 
-class PremiumExtractHandler(BaseExtractHandler):
-    def __init__(self, config, queue):
-        """Initialize the premium extract handler with distillation disabled."""
+class PremiumExtractProcessor(BaseExtractProcessor):
+    def __init__(self, config):
+        """Initialize the premium extract processor with distillation disabled."""
         model_matrix = config.get('MODEL_EXTRACT_MATRIX', {})
         models = model_matrix.get('PREMIUM_WATCH_FOLDER', [])
-        super().__init__(config, queue, 'PREMIUM_WATCH_FOLDER', models, enable_distillation=False)
+        super().__init__(config, models, enable_distillation=False)
 
     def finalize_success(self, filename: str, base_name: str, md_path: str | None) -> None:
         """Skip distillation for premium extracts."""

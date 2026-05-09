@@ -1,12 +1,12 @@
 """
-p_pretext.py - Pretext processing for text files in the watch folder.
+p_pretext.py - Pretext processing for requested text files.
 
 Responsibility:
-Watch pretext folders, queue new text files, run LLM pretext generation, and
-write pretext outputs and archives.
+Accept scan-requested pretext files, run LLM pretext generation, and write
+pretext outputs and archives.
 
 Pipelines:
-- watch -> queue -> read -> chunk -> llm -> merge -> write -> archive
+- scan -> request -> queue -> read -> chunk -> llm -> merge -> write -> archive
 
 Invariants:
 - Queued pretext paths are normalized to absolute paths and de-duplicated.
@@ -22,9 +22,6 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Optional
-
-from watchdog.events import FileSystemEventHandler
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -34,53 +31,6 @@ from helper.helper_llm import call_llm
 from .utils_files import read_file_with_encodings, release_text_file_permissions
 from .utils_md import write_pretext_markdown
 from .utils_text import chunk_text, intelligent_merge_chunks, sanitize_and_trim_filename
-
-
-class PretextHandler(FileSystemEventHandler):
-    """Watch pretext folder events and queue eligible files."""
-
-    def __init__(self, config, queue, processed_files, processed_files_lock):
-        self.config = config
-        self.queue = queue
-        self.processed_files = processed_files
-        self.processed_files_lock = processed_files_lock
-        self.watch_folder = os.path.abspath(os.fspath(config["PRETEXT_WATCH_FOLDER"]))
-
-    def _handle_path(self, path: str) -> None:
-        pretext_suffix = str(self.config["PRETEXT_SUFFIX"]).lower()
-        extract_suffixes = tuple(
-            str(s).lower() for s in self.config["EXTRACT_SUFFIX"] if str(s)
-        )
-        if not _is_pretext_candidate(
-            path,
-            self.watch_folder,
-            pretext_suffix=pretext_suffix,
-            extract_suffixes=extract_suffixes,
-        ):
-            return
-        if request_pretext_processing(
-            self.queue,
-            self.processed_files,
-            self.processed_files_lock,
-            path,
-        ):
-            logging.info("Pretext: Queued %s", os.path.basename(path))
-
-    def on_created(self, event):
-        if event.is_directory:
-            return
-        try:
-            self._handle_path(event.src_path)
-        except Exception as exc:
-            logging.error("Error in PretextHandler.on_created: %s", exc)
-
-    def on_moved(self, event):
-        if event.is_directory:
-            return
-        try:
-            self._handle_path(event.dest_path)
-        except Exception as exc:
-            logging.error("Error in PretextHandler.on_moved: %s", exc)
 
 
 def request_pretext_processing(queue, processed_files, processed_files_lock, file_path: str) -> bool:
@@ -97,24 +47,6 @@ def release_pretext_request(processed_files, processed_files_lock, file_path: st
     normalized = os.path.abspath(os.fspath(file_path))
     with processed_files_lock:
         processed_files.discard(normalized)
-
-
-def _is_pretext_candidate(
-    path: Optional[str],
-    watch_folder: str,
-    *,
-    pretext_suffix: str,
-    extract_suffixes,
-) -> bool:
-    if not path:
-        return False
-    normalized = os.path.abspath(os.fspath(path))
-    if os.path.dirname(normalized) != watch_folder:
-        return False
-    name = os.path.basename(normalized).lower()
-    return name.endswith(pretext_suffix.lower()) and not any(
-        name.endswith(s) for s in extract_suffixes
-    )
 
 
 def process_pretext_file(config, file_path, processed_files, processed_files_lock) -> None:
