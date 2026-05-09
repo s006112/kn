@@ -126,7 +126,6 @@ from w.p_pipelines import (
     process_x_url_download_pipeline,
 )
 from w.utils_files import read_prompt_file
-from w.utils_unlink import setup_wikilink_cleaner_logging
 
 
 class UTFStreamHandler(logging.StreamHandler):
@@ -205,7 +204,6 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
         "DISTILL_PROMPT": read_prompt_file("prompt_distill.txt"),
     }
 
-    setup_wikilink_cleaner_logging(logging.getLogger())
     ensure_directories(cfg)
 
     ctx = create_pipeline_context(cfg)

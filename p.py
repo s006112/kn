@@ -41,7 +41,6 @@ from w.p_pipelines import (
     process_x_url_download_pipeline,
 )
 from w.utils_files import read_prompt_file
-from w.utils_unlink import setup_wikilink_cleaner_logging
 
 LOG_DIR = BASE_DIR / "data" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -250,8 +249,6 @@ def start_runtime_observer(
 def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     """Initialize config, context, workers, scanner, and watchdog observer."""
     cfg = prepare_runtime_config(cfg)
-
-    setup_wikilink_cleaner_logging(logging.getLogger())
     ctx = create_pipeline_context(cfg)
 
     handlers = create_runtime_handlers(ctx)

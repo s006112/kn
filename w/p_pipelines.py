@@ -279,7 +279,6 @@ def remove_download_url_line(list_file, url):
 def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
     current_thread = threading.current_thread()
     current_thread.name = "XUrlDownloadPipeline"
-    logged_watch_path = None
     intervals = ctx.config.get("INTERVALS", {})
     scan_seconds = intervals.get("SCAN_SECONDS", 60)
     x_resolve_timeout_seconds = intervals.get("X_RESOLVE_TIMEOUT_SECONDS", 20)
@@ -290,20 +289,10 @@ def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
             target_folder = Path(
                 ctx.config.get("DOWNLOAD_TARGET_FOLDER", ctx.config["WHISPER_FOLDER"])
             )
-            list_file = Path(
-                ctx.config.get("X_URL_LIST_FILE", target_folder / "x.txt")
-            )
+            list_file = Path(ctx.config["X_URL_LIST_FILE"])
             active_list_file = resolve_download_url_list_file(list_file)
             target_folder.mkdir(parents=True, exist_ok=True)
             skipped_urls: set[str] = set()
-
-            if active_list_file != logged_watch_path:
-                logging.info(
-                    "YTD: %s -> %s",
-                    active_list_file,
-                    target_folder,
-                )
-                logged_watch_path = active_list_file
 
             while not ctx.shutdown_flag.is_set():
                 list_path = os.fspath(active_list_file)

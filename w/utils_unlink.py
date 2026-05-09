@@ -43,7 +43,7 @@ from typing import Dict, List, Set, Tuple
 from utils_files import release_text_file_permissions
 
 
-_shared_logger = None
+logger = logging.getLogger(__name__)
 _cleaning_stats = {
     "files_processed": 0,
     "broken_links_found": 0,
@@ -52,12 +52,6 @@ _cleaning_stats = {
     "last_run": None,
     "errors": 0,
 }
-
-
-def setup_wikilink_cleaner_logging(existing_logger: logging.Logger) -> None:
-    """Configure the wikilink cleaner to use an external logger."""
-    global _shared_logger
-    _shared_logger = existing_logger
 
 
 def get_cleaning_stats() -> Dict[str, any]:
@@ -74,7 +68,7 @@ def clean_dead_links(
     file_lock_functions: Dict | None = None,
 ) -> Dict[str, any]:
     """Move ontology notes and clean broken wikilinks from selected Markdown files."""
-    global _cleaning_stats, _shared_logger
+    global _cleaning_stats
 
     run_stats = {
         "files_processed": 0,
@@ -108,10 +102,7 @@ def clean_dead_links(
     except Exception as e:
         run_stats["errors"] += 1
         _cleaning_stats["errors"] += 1
-        if _shared_logger:
-            _shared_logger.error(
-                "WikilinkCleaner: Error during cleaning cycle: %s", str(e)
-            )
+        logger.error("WikilinkCleaner: Error during cleaning cycle: %s", str(e))
         return run_stats
 
 
@@ -137,7 +128,7 @@ class WikilinkCleaner:
         self.backup_enabled = create_backup
         self.dry_run = dry_run
         self.max_files = max_files
-        self.logger = _shared_logger
+        self.logger = logger
         self.file_lock_functions = file_lock_functions or {}
         self.stats = {
             "files_processed": 0,
