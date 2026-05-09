@@ -1,15 +1,10 @@
 # p.py
-
-
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from pathlib import Path
-from typing import Any, NamedTuple
-
-from watchdog.observers import Observer
+from typing import NamedTuple
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -92,16 +87,14 @@ configure_logging(CONFIG["LOG_DIR"])
 
 
 class SystemHandles(NamedTuple):
-    """Runtime handles returned by start_system."""
     context: PipelineContext
     threads: dict[str, threading.Thread]
-    observer: Any
 
 
 def run_file_scanner(ctx: PipelineContext) -> None:
     scan_seconds = ctx.config["INTERVALS"]["SCAN_SECONDS"]
 
-    file_scanner(ctx)  # Initial scan on startup
+    file_scanner(ctx)
 
     while not ctx.shutdown_flag.is_set():
         if ctx.shutdown_flag.wait(scan_seconds):
@@ -109,11 +102,11 @@ def run_file_scanner(ctx: PipelineContext) -> None:
         file_scanner(ctx)
 
 
-def start_runtime(ctx: PipelineContext) -> tuple[dict[str, threading.Thread], Any]:
-    pretext_handler, extract_handler, premium_extract_handler = create_pipeline_handlers(ctx)
+def start_runtime(ctx: PipelineContext) -> dict[str, threading.Thread]:
+    _, extract_handler, premium_extract_handler = create_pipeline_handlers(ctx)
     threads: dict[str, threading.Thread] = {}
 
-    worker_specs = [
+    thread_specs = [
         (ctx.config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (ctx,)),
         (ctx.config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_pretext_queue, (ctx,)),
         (ctx.config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_extract_queue, (ctx, extract_handler)),
@@ -124,43 +117,28 @@ def start_runtime(ctx: PipelineContext) -> tuple[dict[str, threading.Thread], An
         (ctx.config["PIPELINES"]["X_URL_DOWNLOAD"], "XUrlDownloadPipeline", process_x_url_download_pipeline, (ctx,)),
     ]
 
-    for enabled, name, target, args in worker_specs:
+    for enabled, name, target, args in thread_specs:
         if enabled:
             thread = threading.Thread(target=target, args=args, daemon=True, name=name)
             threads[name] = thread
             thread.start()
 
-    watch_specs = [
-        ("PRETEXT", pretext_handler, "PRETEXT_WATCH_FOLDER"),
-        ("EXTRACT", extract_handler, "EXTRACT_WATCH_FOLDER"),
-        ("EXTRACT", premium_extract_handler, "PREMIUM_WATCH_FOLDER"),
-    ]
-
-    observer = None
-    for flag, handler, folder_key in watch_specs:
-        if ctx.config["PIPELINES"][flag]:
-            if observer is None:
-                observer = Observer()
-            observer.schedule(handler, os.fspath(ctx.config[folder_key]), recursive=False)
-    if observer is not None:
-        observer.start()
-
-    return threads, observer
+    return threads
 
 
 def stop_system(handles: SystemHandles) -> None:
     handles.context.shutdown_flag.set()
 
-    if handles.observer is not None:
-        handles.observer.stop()
-        handles.observer.join()
-
 
 def main() -> None:
     ctx = PipelineContext(CONFIG)
-    threads, observer = start_runtime(ctx)
-    handles = SystemHandles(context=ctx, threads=threads, observer=observer)
-    logging.info("Enabled pipelines: %s", ", ".join(key for key, enabled in ctx.config["PIPELINES"].items() if enabled) or "none")
+    threads = start_runtime(ctx)
+    handles = SystemHandles(context=ctx, threads=threads)
+
+    logging.info(
+        "Enabled pipelines: %s",
+        ", ".join(key for key, enabled in ctx.config["PIPELINES"].items() if enabled) or "none",
+    )
 
     try:
         threading.Event().wait()
@@ -168,6 +146,7 @@ def main() -> None:
         pass
     finally:
         stop_system(handles)
+
 
 if __name__ == "__main__":
     main()

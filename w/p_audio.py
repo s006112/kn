@@ -41,9 +41,6 @@ SORT_ORDER = False  # Process smallest files first to reduce time-to-first-resul
 DESKTOP_PATH = '/desktop'
 #DESKTOP_PATH = '/mnt/c/Users/KN/Desktop'
 
-audio_queue = Queue()
-
-
 def find_audio_files_in_folder(path: str) -> bool:
     """Return whether a folder contains supported audio files."""
     if not os.path.exists(path):
@@ -119,7 +116,7 @@ def move_files_to_done(
     logging.info(f'Audio processed in {process_time:.2f}s')
 
 
-def scan_audio_files(config: dict) -> None:
+def scan_audio_files(config: dict, audio_queue: Queue) -> None:
     """Scan watch folders and enqueue audio files not already queued."""
     for current_folder in update_folder_path(config):
         for audio_file in get_audio_files_sorted_by_size(current_folder):
@@ -171,26 +168,20 @@ def process_audio_file(file_path: str, folder_path: str, config: dict, done_fold
     return True
 
 
-def process_audio_queue(config, *_queues, processing_lock, done_folder_path):
-    """Continuously scan for audio files and process the audio queue."""
+def process_audio_queue(config, audio_queue: Queue, *_queues, processing_lock, done_folder_path):
+    """Continuously wait for and process queued audio files."""
     intervals = config.get("INTERVALS", {})
-    scan_seconds = intervals.get("SCAN_SECONDS", 60)
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
     while True:
+        queued_item = None
         try:
-            scan_audio_files(config)
-            if audio_queue.empty():
-                time.sleep(scan_seconds)
-                continue
-
-            file_path, folder_path = audio_queue.get()
+            queued_item = audio_queue.get()
+            file_path, folder_path = queued_item
             if not os.path.exists(file_path):
-                audio_queue.task_done()
                 continue
 
             with processing_lock:
                 success = process_audio_file(file_path, folder_path, config, done_folder_path)
-                audio_queue.task_done()
 
             if success:
                 logging.info('Audio processed successfully')
@@ -198,3 +189,6 @@ def process_audio_queue(config, *_queues, processing_lock, done_folder_path):
         except Exception as exc:
             logging.error('Audio queue error: %s', exc)
             time.sleep(wait_seconds)
+        finally:
+            if queued_item is not None:
+                audio_queue.task_done()

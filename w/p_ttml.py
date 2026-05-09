@@ -93,7 +93,6 @@ def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename,
         output_filename = os.path.basename(out_txt)
         logging.info(f"TTML: Created {output_filename} ({output_length:,} characters)")
 
-        # Keep archive names aligned with generated text names.
         archive_filename = base_name + '.ttml'
         archive_path = os.path.join(original_folder, archive_filename)
         shutil.move(lock, archive_path)
