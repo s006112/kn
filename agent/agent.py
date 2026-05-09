@@ -1,4 +1,4 @@
-# python agent/agent.py agent/task.md
+# python agent/agent.py agent/task.md --dry-context
 from __future__ import annotations
 
 import os
@@ -22,6 +22,7 @@ POS_FILES = (
 
 DEFAULT_MODEL = "gpt-5.4-mini"
 PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_plan.txt"
+LAST_PROMPT_PATH = REPO_ROOT / "agent" / "last_prompt.md"
 LAST_PLAN_PATH = REPO_ROOT / "agent" / "last_plan.md"
 
 def read_text(path: Path) -> str:
@@ -94,10 +95,17 @@ def main() -> None:
         print(f"  - {file_path}")
     print()
 
+    prompt_text = build_prompt(task_text, pos_context, file_context)
+    LAST_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
+
+    if "--dry-context" in sys.argv:
+        print(f"Saved prompt: {LAST_PROMPT_PATH}")
+        return
+
     output = call_llm(
         DEFAULT_MODEL,
         system_prompt="You are a strict minimal-change repo planning agent.",
-        user_text=build_prompt(task_text, pos_context, file_context),
+        user_text=prompt_text,
         file_path=str(task_path),
         max_retries=2,
         timeout=120,
