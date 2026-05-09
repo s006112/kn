@@ -1,6 +1,6 @@
 # Task
 
-Review whether p_pipeline.py should keep or move a specific responsibility.
+Review whether p_pipelines.py should keep or move a specific responsibility.
 
 ## Goal
 
@@ -19,7 +19,7 @@ Produce a minimal patch plan only. Do not edit files yet.
 
 ## Allowed files
 
-- w/p_pipeline.py
+- w/p_pipelines.py
 - w/p_ttml.py
 - w/p_audio.py
 - w/evaluation.py
