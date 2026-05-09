@@ -114,18 +114,18 @@ def start_runtime(ctx: PipelineContext) -> tuple[dict[str, threading.Thread], An
     threads: dict[str, threading.Thread] = {}
 
     worker_specs = [
-        ("TTML", "TTMLPipeline", process_ttml_pipeline, (ctx,)),
-        ("PRETEXT", "TextPipeline-Pretext", process_pretext_queue, (ctx,)),
-        ("EXTRACT", "TextPipeline-Extract", process_extract_queue, (ctx, extract_handler)),
-        ("EXTRACT", "TextPipeline-PremiumExtract", process_premium_extract_queue, (ctx, premium_extract_handler)),
-        ("AUDIO", "AudioPipeline-GPU", process_audio_pipeline, (ctx,)),
-        (None, "PeriodicScanner", run_file_scanner, (ctx,)),
-        ("NOTES", "WikilinkCleaner", process_wikilink_cleaning, (ctx,)),
-        ("X_URL_DOWNLOAD", "XUrlDownloadPipeline", process_x_url_download_pipeline, (ctx,)),
+        (ctx.config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (ctx,)),
+        (ctx.config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_pretext_queue, (ctx,)),
+        (ctx.config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_extract_queue, (ctx, extract_handler)),
+        (ctx.config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_premium_extract_queue, (ctx, premium_extract_handler)),
+        (ctx.config["PIPELINES"]["AUDIO"], "AudioPipeline-GPU", process_audio_pipeline, (ctx,)),
+        (True, "PeriodicScanner", run_file_scanner, (ctx,)),
+        (ctx.config["PIPELINES"]["NOTES"], "WikilinkCleaner", process_wikilink_cleaning, (ctx,)),
+        (ctx.config["PIPELINES"]["X_URL_DOWNLOAD"], "XUrlDownloadPipeline", process_x_url_download_pipeline, (ctx,)),
     ]
 
-    for flag, name, target, args in worker_specs:
-        if flag is None or ctx.config["PIPELINES"][flag]:
+    for enabled, name, target, args in worker_specs:
+        if enabled:
             thread = threading.Thread(target=target, args=args, daemon=True, name=name)
             threads[name] = thread
             thread.start()
