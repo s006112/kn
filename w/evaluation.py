@@ -40,7 +40,7 @@ from w.p_pretext import release_pretext_request, request_pretext_processing
 from w.p_ttml import handle_ttml
 from w.helper_md import merge_to_markdown
 from w.helper_text import sanitize_and_trim_filename, sanitize_filename
-from w.utils_unlink import WikilinkCleaner, clean_dead_links
+from w.helper_unlink import WikilinkCleaner, clean_dead_links
 from w.helper_files import (
     get_next_available_filename,
     read_file_with_encodings,
