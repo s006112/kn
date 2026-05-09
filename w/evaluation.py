@@ -154,8 +154,7 @@ def test_summary(results: list[bool]) -> None:
     print(f"✅ summary: {passed} ✅, {failed} ❌, {len(results)} total")
 
 
-def system_status(handles) -> dict:
-    ctx = handles.context
+def system_status(ctx) -> dict:
     return {
         "pipelines": dict(ctx.config["PIPELINES"]),
         "queues": {
@@ -2127,7 +2126,8 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         "read_prompt_file": orchestrator_module.read_prompt_file,
     }
 
-    handles = None
+    ctx = None
+    threads = {}
 
     try:
         orchestrator_module.process_ttml_pipeline = fake_worker
@@ -2142,26 +2142,25 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
 
         ctx = orchestrator_module.PipelineContext(CONFIG)
         threads = orchestrator_module.start_runtime(ctx)
-        handles = orchestrator_module.SystemHandles(ctx, threads)
 
         deadline = time.time() + 2
         while time.time() < deadline and started_workers != expected_threads:
             time.sleep(0.01)
 
-        thread_names = set(handles.threads)
-        status = system_status(handles)
+        thread_names = set(threads)
+        status = system_status(ctx)
 
-        orchestrator_module.stop_system(handles)
+        ctx.shutdown_flag.set()
 
-        for thread in handles.threads.values():
+        for thread in threads.values():
             thread.join(timeout=1)
 
         passed = (
             thread_names == expected_threads
             and started_workers == expected_threads
             and status["pipelines"] == CONFIG["PIPELINES"]
-            and handles.context.shutdown_flag.is_set()
-            and all(not thread.is_alive() for thread in handles.threads.values())
+            and ctx.shutdown_flag.is_set()
+            and all(not thread.is_alive() for thread in threads.values())
         )
 
         print_result(
@@ -2170,10 +2169,10 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
             {
                 "thread_names": sorted(thread_names),
                 "started_workers": sorted(started_workers),
-                "shutdown": handles.context.shutdown_flag.is_set(),
+                "shutdown": ctx.shutdown_flag.is_set(),
                 "threads_alive": [
                     name
-                    for name, thread in handles.threads.items()
+                    for name, thread in threads.items()
                     if thread.is_alive()
                 ],
             },
@@ -2182,10 +2181,10 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         return passed, cleanup
 
     finally:
-        if handles is not None and not handles.context.shutdown_flag.is_set():
-            orchestrator_module.stop_system(handles)
-            for thread in handles.threads.values():
-                thread.join(timeout=1)
+        if ctx is not None and not ctx.shutdown_flag.is_set():
+            ctx.shutdown_flag.set()
+        for thread in threads.values():
+            thread.join(timeout=1)
 
         orchestrator_module.process_ttml_pipeline = original_values["process_ttml_pipeline"]
         orchestrator_module.process_pretext_queue = original_values["process_pretext_queue"]
@@ -2252,7 +2251,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         "read_prompt_file": orchestrator_module.read_prompt_file,
     }
 
-    handles_list = []
+    runtimes = []
     results = []
 
     try:
@@ -2280,19 +2279,18 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
 
             ctx = orchestrator_module.PipelineContext(config)
             threads = orchestrator_module.start_runtime(ctx)
-            handles = orchestrator_module.SystemHandles(ctx, threads)
-            handles_list.append(handles)
+            runtimes.append((ctx, threads))
 
             deadline = time.time() + 2
             while time.time() < deadline and started_workers != expected_threads:
                 time.sleep(0.01)
 
-            thread_names = set(handles.threads)
-            status = system_status(handles)
+            thread_names = set(threads)
+            status = system_status(ctx)
 
-            orchestrator_module.stop_system(handles)
+            ctx.shutdown_flag.set()
 
-            for thread in handles.threads.values():
+            for thread in threads.values():
                 thread.join(timeout=1)
 
             case_passed = (
@@ -2300,8 +2298,8 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
                 and started_workers == expected_threads
                 and status["pipelines"]["PRETEXT"] is pretext_enabled
                 and status["pipelines"]["EXTRACT"] is extract_enabled
-                and handles.context.shutdown_flag.is_set()
-                and all(not thread.is_alive() for thread in handles.threads.values())
+                and ctx.shutdown_flag.is_set()
+                and all(not thread.is_alive() for thread in threads.values())
             )
 
             results.append(
@@ -2326,10 +2324,10 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         return passed, cleanup
 
     finally:
-        for handles in handles_list:
-            if not handles.context.shutdown_flag.is_set():
-                orchestrator_module.stop_system(handles)
-            for thread in handles.threads.values():
+        for ctx, threads in runtimes:
+            if not ctx.shutdown_flag.is_set():
+                ctx.shutdown_flag.set()
+            for thread in threads.values():
                 thread.join(timeout=1)
 
         orchestrator_module.process_ttml_pipeline = original_values["process_ttml_pipeline"]
@@ -2341,7 +2339,6 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
         orchestrator_module.process_x_url_download_pipeline = original_values["process_x_url_download_pipeline"]
         orchestrator_module.read_prompt_file = original_values["read_prompt_file"]
-
 
 def main() -> int:
     test_id = f"EVAL_{uuid.uuid4().hex[:8]}"

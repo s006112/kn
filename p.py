@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import NamedTuple
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -86,11 +85,6 @@ CONFIG = {
 configure_logging(CONFIG["LOG_DIR"])
 
 
-class SystemHandles(NamedTuple):
-    context: PipelineContext
-    threads: dict[str, threading.Thread]
-
-
 def run_file_scanner(ctx: PipelineContext) -> None:
     scan_seconds = ctx.config["INTERVALS"]["SCAN_SECONDS"]
 
@@ -126,14 +120,9 @@ def start_runtime(ctx: PipelineContext) -> dict[str, threading.Thread]:
     return threads
 
 
-def stop_system(handles: SystemHandles) -> None:
-    handles.context.shutdown_flag.set()
-
-
 def main() -> None:
-    ctx = PipelineContext(CONFIG)
-    threads = start_runtime(ctx)
-    handles = SystemHandles(context=ctx, threads=threads)
+    runtime = PipelineContext(CONFIG)
+    start_runtime(runtime)
 
     logging.info(
         "Enabled pipelines: %s",
@@ -145,8 +134,7 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        stop_system(handles)
-
+        ctx.shutdown_flag.set()
 
 if __name__ == "__main__":
     main()

@@ -15,7 +15,7 @@ Pipelines:
 - ttml scan -> ttml queue -> ready check -> file lock -> ttml convert -> text write -> ttml archive
 - pretext scan -> pretext queue -> llm pretext -> write outputs -> pretext archive
 - extract scan -> extract queue -> llm extract -> merge markdown -> distill -> extract archive
-- notes watch -> unlink clean -> link backup
+- notes periodic clean -> unlink clean -> link backup
 - File scanner: move torrent files, normalize long pretext filenames, enqueue
   existing pretext/extract/premium files when invoked by an orchestrator.
 - X URL download: scan `x.txt`/`X.txt`, classify and clean URLs, download via
@@ -201,6 +201,7 @@ def process_queue(
     intervals = ctx.config.get("INTERVALS", {})
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
     while True:
+        file_path = None
         try:
             if queue.empty():
                 time.sleep(wait_seconds)
@@ -210,6 +211,7 @@ def process_queue(
                 if not locked:
                     queue.put(file_path)
                     queue.task_done()
+                    file_path = None
                     time.sleep(wait_seconds)
                     continue
                 try:
@@ -226,9 +228,11 @@ def process_queue(
                     logging.error("%s queue error: %s", method_name, e)
                 finally:
                     queue.task_done()
+                    file_path = None
         except Exception as e:
             logging.error("%s queue error (outer): %s", method_name, e)
-            queue.task_done()
+            if file_path is not None:
+                queue.task_done()
         time.sleep(wait_seconds)
 
 
