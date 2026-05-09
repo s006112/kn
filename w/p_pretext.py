@@ -31,9 +31,9 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from helper.helper_llm import call_llm
-from utils_files import read_file_with_encodings, release_text_file_permissions
-from utils_md import write_pretext_markdown
-from utils_text import chunk_text, intelligent_merge_chunks, sanitize_and_trim_filename
+from .utils_files import read_file_with_encodings, release_text_file_permissions
+from .utils_md import write_pretext_markdown
+from .utils_text import chunk_text, intelligent_merge_chunks, sanitize_and_trim_filename
 
 
 class PretextHandler(FileSystemEventHandler):

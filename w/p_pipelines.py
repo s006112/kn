@@ -31,7 +31,6 @@ Pipelines:
 
 import logging
 import os
-import sys
 import threading
 import time
 from contextlib import contextmanager
@@ -40,17 +39,13 @@ from queue import Queue
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Tuple, Set
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
-
-from p_pretext import PretextHandler, process_pretext_file, request_pretext_processing
-from p_extract import ExtractHandler, PremiumExtractHandler
-from p_ttml import handle_ttml, is_file_ready
-from p_audio import process_audio_queue
-from utils_unlink import clean_dead_links
-from utils_files import get_next_available_filename, safe_rename
-from utils_text import sanitize_and_trim_filename
+from .p_pretext import PretextHandler, process_pretext_file, request_pretext_processing
+from .p_extract import ExtractHandler, PremiumExtractHandler
+from .p_ttml import handle_ttml, is_file_ready
+from .p_audio import process_audio_queue
+from .utils_unlink import clean_dead_links
+from .utils_files import get_next_available_filename, safe_rename
+from .utils_text import sanitize_and_trim_filename
 from helper.helper_llm import LLMPermanentFailure
 from helper.helper_ytd import clean_url, classify_url, download
 

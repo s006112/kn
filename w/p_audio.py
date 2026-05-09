@@ -26,8 +26,8 @@ import sys
 from queue import Queue
 from pathlib import Path
 
-from utils_files import release_text_file_permissions
-from utils_text import sanitize_and_trim_filename
+from .utils_files import release_text_file_permissions
+from .utils_text import sanitize_and_trim_filename
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:

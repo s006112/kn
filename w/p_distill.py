@@ -25,14 +25,14 @@ import os
 from pathlib import Path
 from typing import List, Tuple
 
-from utils_files import (
+from .utils_files import (
     get_next_available_filename,
     release_text_file_permissions,
     read_file_with_encodings,
 )
 from helper.helper_llm import call_llm
-from utils_md import merge_to_markdown
-from utils_text import sanitize_filename
+from .utils_md import merge_to_markdown
+from .utils_text import sanitize_filename
 
 
 def _derive_model_label(base_name: str, path: Path) -> str:

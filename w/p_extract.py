@@ -28,17 +28,17 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from p_distill import run_distillation
-from utils_files import (
+from .p_distill import run_distillation
+from .utils_files import (
     release_text_file_permissions,
     read_file_with_encodings,
 )
 from helper.helper_llm import call_llm
-from utils_md import (
+from .utils_md import (
     merge_to_markdown,
     create_or_find_note_for_base_name,
 )
-from utils_text import sanitize_filename
+from .utils_text import sanitize_filename
 
 class BaseExtractHandler(FileSystemEventHandler):
     """Base handler for extract pipelines with shared queueing logic."""

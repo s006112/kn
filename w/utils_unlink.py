@@ -40,7 +40,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
-from utils_files import release_text_file_permissions
+from .utils_files import release_text_file_permissions
 
 
 logger = logging.getLogger(__name__)

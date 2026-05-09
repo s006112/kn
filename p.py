@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import threading
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -13,7 +12,6 @@ from typing import Any, NamedTuple
 from watchdog.observers import Observer
 
 BASE_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, os.fspath(BASE_DIR / "w"))
 
 from w.p_pipelines import (
     PipelineContext,

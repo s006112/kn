@@ -10,39 +10,42 @@ from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-W_DIR = Path(__file__).resolve().parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
-for path in (ROOT_DIR, W_DIR):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
+import p as orchestrator_module
+from p import CONFIG
 
-import p as orchestrator_module  # noqa: E402
-from p import CONFIG  # noqa: E402
-import p_audio as audio_module  # noqa: E402
-from p_audio import audio_queue, move_files_to_done, scan_audio_files  # noqa: E402
-import p_distill as distill_module  # noqa: E402
-from p_distill import _collect_extracts  # noqa: E402
-from p_extract import ExtractHandler, PremiumExtractHandler  # noqa: E402
-import p_pipelines as pipelines  # noqa: E402
-from p_pipelines import (  # noqa: E402
+import w.p_audio as audio_module
+from w.p_audio import audio_queue, move_files_to_done, scan_audio_files
+
+import w.p_distill as distill_module
+from w.p_distill import _collect_extracts
+
+import w.p_extract as extract_module
+from w.p_extract import ExtractHandler, PremiumExtractHandler
+
+import w.p_pipelines as pipelines
+from w.p_pipelines import (
     move_torrent_to_whisper,
     read_next_download_url,
     remove_download_url_line,
     scan_torrent_watch_folder,
 )
-import p_pretext as pretext_module  # noqa: E402
-from p_pretext import release_pretext_request, request_pretext_processing  # noqa: E402
-from p_ttml import handle_ttml  # noqa: E402
-from utils_md import merge_to_markdown  # noqa: E402
-from utils_text import sanitize_and_trim_filename, sanitize_filename  # noqa: E402
-from utils_unlink import WikilinkCleaner, clean_dead_links  # noqa: E402
-import p_extract as extract_module  # noqa: E402
-from utils_files import (  # noqa: E402
+
+import w.p_pretext as pretext_module
+from w.p_pretext import release_pretext_request, request_pretext_processing
+
+from w.p_ttml import handle_ttml
+from w.utils_md import merge_to_markdown
+from w.utils_text import sanitize_and_trim_filename, sanitize_filename
+from w.utils_unlink import WikilinkCleaner, clean_dead_links
+from w.utils_files import (
     get_next_available_filename,
     read_file_with_encodings,
     safe_rename,
 )
-from helper.helper_llm import LLMPermanentFailure  # noqa: E402
+from helper.helper_llm import LLMPermanentFailure
 
 
 OK = "✅"
