@@ -42,7 +42,7 @@ CONFIG = {
         "TTML": True,
         "PRETEXT": True,
         "EXTRACT": True,
-        "NOTES": True,
+        "WIKI": True,
         "YTD": True,
     },
     "INTERVALS": {
@@ -104,7 +104,7 @@ def start_runtime(ctx: PipelineContext) -> dict[str, threading.Thread]:
         (ctx.config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_extract_queue, (ctx, extract_processor)),
         (ctx.config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_premium_extract_queue, (ctx, premium_extract_processor)),
         (ctx.config["PIPELINES"]["AUDIO"], "AudioPipeline-GPU", process_audio_pipeline, (ctx,)),
-        (ctx.config["PIPELINES"]["NOTES"], "WikilinkCleaner", process_wikilink_cleaning, (ctx,)),
+        (ctx.config["PIPELINES"]["WIKI"], "WikilinkCleaner", process_wikilink_cleaning, (ctx,)),
         (ctx.config["PIPELINES"]["YTD"], "YTDPipeline", process_ytd_pipeline, (ctx,)),
     ]
 

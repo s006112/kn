@@ -1,32 +1,17 @@
-"""
-Responsibility:
-Run long-lived pipeline worker loops and scan-once file intake rules.
-This module wires the shared `PipelineContext` into torrent intake, YTD
-URL downloads, pretext processing, extract and premium extract processing,
-audio transcription, TTML conversion, and wikilink cleanup.
+""" p_pipelines.py -
+Runtime pipeline orchestration.
 
 Used by:
-* p.py
-* p_h.py
+- p.py
+- p_h.py
 
-Pipelines:
-- torrent scan -> torrent detection -> file lock -> safe move -> w folder
-- audio scan -> audio queue -> wav convert -> transcribe -> text write -> audio archive
-- ttml scan -> ttml queue -> ready check -> file lock -> ttml convert -> text write -> ttml archive
-- pretext scan -> pretext queue -> llm pretext -> write outputs -> pretext archive
-- extract scan -> extract queue -> llm extract -> merge markdown -> distill -> extract archive
-- notes periodic clean -> unlink clean -> link backup
-- File scanner: move torrent files, normalize long pretext filenames, enqueue
-  existing pretext/extract/premium files when invoked by an orchestrator.
-- YTD download: scan `x.txt`/`X.txt`, classify and clean URLs, download via
-  yt-dlp, then remove only the completed URL line.
-- Text queues: acquire a file lock, invoke the requested processor method, and
-  continue on recoverable queue errors or permanent LLM failures.
-- Audio: process the audio queue through the shared GPU audio worker.
-- TTML: wait for subtitle file stability, lock each file, convert it, and
-  archive the original.
-- Wikilinks: periodically clean dead links in the configured sync folder with
-  backups enabled.
+Flows:
+- scanner -> torrent / audio / ttml / pretext / extract intake
+- text queue -> file lock -> processor -> archive / fail
+- audio queue -> gpu worker -> archive
+- ttml queue -> ready check -> convert -> archive
+- ytd worker -> read X.txt -> download -> remove completed URL
+- wikilink worker -> clean dead links -> backup
 """
 
 import logging
@@ -34,7 +19,6 @@ import os
 import threading
 import time
 from contextlib import contextmanager
-from pathlib import Path
 from queue import Empty, Queue
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Set
@@ -43,12 +27,11 @@ from .p_pretext import process_pretext_file, request_pretext_processing
 from .p_extract import ExtractProcessor, PremiumExtractProcessor
 from .p_ttml import handle_ttml, is_file_ready
 from .p_audio import process_audio_queue, scan_audio_files
+from .p_ytd import process_ytd_pipeline
 from .utils_unlink import clean_dead_links
 from .utils_files import get_next_available_filename, safe_rename
 from .utils_text import sanitize_and_trim_filename
 from helper.helper_llm import LLMPermanentFailure
-from helper.helper_ytd import clean_url, classify_url, download
-
 
 _file_locks: Dict[str, threading.Lock] = {}
 _file_locks_mutex = threading.Lock()
@@ -248,120 +231,6 @@ def process_premium_extract_queue(
     ctx: PipelineContext, processor: PremiumExtractProcessor
 ) -> None:
     process_queue(ctx, ctx.premium_extract_queue, processor.process_premium_extract, "process_premium_extract")
-
-
-def resolve_download_url_list_file(list_file):
-    path = Path(list_file)
-    if path.exists() or path.name != "x.txt":
-        return path
-    alt = path.with_name("X.txt")
-    return alt if alt.exists() else path
-
-
-def read_next_download_url(list_file, skipped_urls):
-    path = resolve_download_url_list_file(list_file)
-    try:
-        with path.open("r", encoding="utf-8", errors="replace") as f:
-            for line in f:
-                url = line.strip()
-                if url and url not in skipped_urls and classify_url(url):
-                    return url, path
-    except FileNotFoundError:
-        pass
-    return None, path
-
-
-def remove_download_url_line(list_file, url):
-    path = resolve_download_url_list_file(list_file)
-    try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines(
-            keepends=True
-        )
-    except FileNotFoundError:
-        return False
-
-    for index, line in enumerate(lines):
-        if line.strip() == url:
-            del lines[index]
-            path.write_text("".join(lines), encoding="utf-8", newline="")
-            return True
-    return False
-
-
-def process_ytd_pipeline(ctx: PipelineContext) -> None:
-    current_thread = threading.current_thread()
-    current_thread.name = "YTDPipeline"
-    intervals = ctx.config.get("INTERVALS", {})
-    scan_seconds = intervals.get("SCAN_SECONDS", 60)
-    ytd_resolve_timeout_seconds = intervals.get("YTD_RESOLVE_TIMEOUT_SECONDS", 20)
-
-    while not ctx.shutdown_flag.is_set():
-        wait_seconds = scan_seconds
-        try:
-            target_folder = Path(
-                ctx.config.get("DOWNLOAD_TARGET_FOLDER", ctx.config["WHISPER_FOLDER"])
-            )
-            list_file = Path(ctx.config["YTD_LIST_FILE"])
-            active_list_file = resolve_download_url_list_file(list_file)
-            target_folder.mkdir(parents=True, exist_ok=True)
-            skipped_urls: set[str] = set()
-
-            while not ctx.shutdown_flag.is_set():
-                list_path = os.fspath(active_list_file)
-                with file_lock(list_path) as locked:
-                    if not locked:
-                        break
-                    url, active_list_file = read_next_download_url(
-                        active_list_file,
-                        skipped_urls,
-                    )
-
-                if not url:
-                    break
-
-                try:
-                    logging.info("YTDPipeline: Downloading %s", url)
-                    cleaned_url = clean_url(url)
-                    output_path, _ = download(
-                        url,
-                        "720p",
-                        output_dir=target_folder,
-                        resolve_timeout=ytd_resolve_timeout_seconds,
-                    )
-                except Exception as exc:
-                    logging.error(
-                        "YTDPipeline: Download failed for %s: %s",
-                        url,
-                        exc,
-                    )
-                    skipped_urls.add(url)
-                    continue
-
-                with file_lock(os.fspath(active_list_file)) as locked:
-                    removed = (
-                        remove_download_url_line(active_list_file, url)
-                        if locked
-                        else False
-                    )
-
-                if removed:
-                    logging.info(
-                        "YTDPipeline: Downloaded %s -> %s",
-                        cleaned_url,
-                        output_path,
-                    )
-                else:
-                    logging.warning(
-                        "YTDPipeline: Downloaded %s but URL line was not removed",
-                        url,
-                    )
-                    skipped_urls.add(url)
-
-        except Exception as exc:
-            logging.error("YTDPipeline: Error during scan: %s", exc)
-
-        if ctx.shutdown_flag.wait(wait_seconds):
-            return
 
 
 def file_scanner(ctx: PipelineContext) -> None:
