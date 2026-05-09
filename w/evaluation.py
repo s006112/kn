@@ -1085,7 +1085,7 @@ def test_periodic_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, l
     try:
         pipelines.scan_torrent_watch_folder = lambda _config: 0
         thread = threading.Thread(
-            target=orchestrator_module.run_periodic_file_scanner,
+            target=orchestrator_module.run_file_scanner,
             args=(ctx,),
             daemon=True,
         )
@@ -2116,7 +2116,7 @@ def test_start_system_creates_expected_threads_schedules_watchers_and_stop(test_
         "process_extract_queue": orchestrator_module.process_extract_queue,
         "process_premium_extract_queue": orchestrator_module.process_premium_extract_queue,
         "process_audio_pipeline": orchestrator_module.process_audio_pipeline,
-        "run_periodic_file_scanner": orchestrator_module.run_periodic_file_scanner,
+        "run_file_scanner": orchestrator_module.run_file_scanner,
         "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
         "process_x_url_download_pipeline": orchestrator_module.process_x_url_download_pipeline,
         "Observer": orchestrator_module.Observer,
@@ -2131,7 +2131,7 @@ def test_start_system_creates_expected_threads_schedules_watchers_and_stop(test_
         orchestrator_module.process_extract_queue = fake_worker
         orchestrator_module.process_premium_extract_queue = fake_worker
         orchestrator_module.process_audio_pipeline = fake_worker
-        orchestrator_module.run_periodic_file_scanner = fake_worker
+        orchestrator_module.run_file_scanner = fake_worker
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_x_url_download_pipeline = fake_worker
         orchestrator_module.Observer = FakeObserver
@@ -2195,7 +2195,7 @@ def test_start_system_creates_expected_threads_schedules_watchers_and_stop(test_
         orchestrator_module.process_extract_queue = original_values["process_extract_queue"]
         orchestrator_module.process_premium_extract_queue = original_values["process_premium_extract_queue"]
         orchestrator_module.process_audio_pipeline = original_values["process_audio_pipeline"]
-        orchestrator_module.run_periodic_file_scanner = original_values["run_periodic_file_scanner"]
+        orchestrator_module.run_file_scanner = original_values["run_file_scanner"]
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
         orchestrator_module.process_x_url_download_pipeline = original_values["process_x_url_download_pipeline"]
         orchestrator_module.Observer = original_values["Observer"]
@@ -2279,7 +2279,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         "process_extract_queue": orchestrator_module.process_extract_queue,
         "process_premium_extract_queue": orchestrator_module.process_premium_extract_queue,
         "process_audio_pipeline": orchestrator_module.process_audio_pipeline,
-        "run_periodic_file_scanner": orchestrator_module.run_periodic_file_scanner,
+        "run_file_scanner": orchestrator_module.run_file_scanner,
         "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
         "process_x_url_download_pipeline": orchestrator_module.process_x_url_download_pipeline,
         "Observer": orchestrator_module.Observer,
@@ -2295,7 +2295,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         orchestrator_module.process_extract_queue = fake_worker
         orchestrator_module.process_premium_extract_queue = fake_worker
         orchestrator_module.process_audio_pipeline = fake_worker
-        orchestrator_module.run_periodic_file_scanner = fake_worker
+        orchestrator_module.run_file_scanner = fake_worker
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_x_url_download_pipeline = fake_worker
         orchestrator_module.Observer = FakeObserver
@@ -2390,7 +2390,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         orchestrator_module.process_extract_queue = original_values["process_extract_queue"]
         orchestrator_module.process_premium_extract_queue = original_values["process_premium_extract_queue"]
         orchestrator_module.process_audio_pipeline = original_values["process_audio_pipeline"]
-        orchestrator_module.run_periodic_file_scanner = original_values["run_periodic_file_scanner"]
+        orchestrator_module.run_file_scanner = original_values["run_file_scanner"]
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
         orchestrator_module.process_x_url_download_pipeline = original_values["process_x_url_download_pipeline"]
         orchestrator_module.Observer = original_values["Observer"]

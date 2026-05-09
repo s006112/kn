@@ -146,9 +146,11 @@ def start_thread(
     thread.start()
 
 
-def run_periodic_file_scanner(ctx: PipelineContext) -> None:
+def run_file_scanner(ctx: PipelineContext) -> None:
     intervals = ctx.config.get("INTERVALS", {})
     scan_seconds = intervals.get("SCAN_SECONDS")
+
+    file_scanner(ctx)  # Initial scan on startup
 
     while not ctx.shutdown_flag.is_set():
         if ctx.shutdown_flag.wait(scan_seconds):
@@ -201,7 +203,7 @@ def start_runtime_workers(
         ("EXTRACT", "TextPipeline-Extract", process_extract_queue, (ctx, handlers.get("extract"))),
         ("EXTRACT", "TextPipeline-PremiumExtract", process_premium_extract_queue, (ctx, handlers.get("premium_extract"))),
         ("AUDIO", "AudioPipeline-GPU", process_audio_pipeline, (ctx,)),
-        (None, "PeriodicScanner", run_periodic_file_scanner, (ctx,)),
+        (None, "PeriodicScanner", run_file_scanner, (ctx,)),
         ("NOTES", "WikilinkCleaner", process_wikilink_cleaning, (ctx,)),
         ("X_URL_DOWNLOAD", "XUrlDownloadPipeline", process_x_url_download_pipeline, (ctx,)),
     ]
@@ -266,12 +268,9 @@ def stop_system(handles: SystemHandles) -> None:
     """Signal shutdown and stop the observer."""
     handles.context.shutdown_flag.set()
 
-    try:
-        if handles.observer is not None:
-            handles.observer.stop()
-            handles.observer.join()
-    except Exception as exc:
-        logging.warning("Failed to stop observer cleanly: %s", exc)
+    if handles.observer is not None:
+        handles.observer.stop()
+        handles.observer.join()
 
 
 def main(cfg: dict[str, Any] | None = None) -> None:
