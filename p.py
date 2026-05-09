@@ -146,8 +146,7 @@ def start_thread(
 
 
 def run_file_scanner(ctx: PipelineContext) -> None:
-    intervals = ctx.config.get("INTERVALS", {})
-    scan_seconds = intervals.get("SCAN_SECONDS")
+    scan_seconds = ctx.config["INTERVALS"]["SCAN_SECONDS"]
 
     file_scanner(ctx)  # Initial scan on startup
 
@@ -157,19 +156,9 @@ def run_file_scanner(ctx: PipelineContext) -> None:
         file_scanner(ctx)
 
 
-def prepare_runtime_config(cfg: dict[str, Any] | None) -> dict[str, Any]:
-    if cfg is None:
-        raise ValueError("Configuration dictionary is required.")
-
-    overrides = cfg.get("PIPELINES") or {}
-    pipelines = {
-        key: bool(overrides.get(key, default))
-        for key, default in CONFIG["PIPELINES"].items()
-    }
-
+def load_prompt_config(cfg: dict[str, Any]) -> dict[str, Any]:
     return {
         **cfg,
-        "PIPELINES": pipelines,
         "PRETEXT_PROMPT": read_prompt_file("prompt_pretext.txt"),
         "EXTRACT_PROMPT": read_prompt_file("prompt_extract.txt"),
         "DISTILL_PROMPT": read_prompt_file("prompt_distill.txt"),
@@ -177,10 +166,6 @@ def prepare_runtime_config(cfg: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def create_runtime_handlers(ctx: PipelineContext) -> dict[str, Any]:
-    pipelines = ctx.config["PIPELINES"]
-    if not (pipelines["PRETEXT"] or pipelines["EXTRACT"]):
-        return {}
-
     pretext, extract, premium_extract = create_pipeline_handlers(ctx)
     return {
         "pretext": pretext,
@@ -193,7 +178,6 @@ def start_runtime_workers(
     ctx: PipelineContext,
     handlers: dict[str, Any],
 ) -> dict[str, threading.Thread]:
-    pipelines = ctx.config["PIPELINES"]
     threads: dict[str, threading.Thread] = {}
 
     specs = [
@@ -208,7 +192,7 @@ def start_runtime_workers(
     ]
 
     for flag, name, target, args in specs:
-        if flag is None or pipelines[flag]:
+        if flag is None or ctx.config["PIPELINES"][flag]:
             start_thread(threads, name, target, args)
 
     return threads
@@ -218,8 +202,6 @@ def start_runtime_observer(
     ctx: PipelineContext,
     handlers: dict[str, Any],
 ) -> Any:
-    pipelines = ctx.config["PIPELINES"]
-
     specs = [
         ("PRETEXT", handlers.get("pretext"), "PRETEXT_WATCH_FOLDER"),
         ("EXTRACT", handlers.get("extract"), "EXTRACT_WATCH_FOLDER"),
@@ -229,7 +211,7 @@ def start_runtime_observer(
     watch_specs = [
         (handler, folder_key)
         for flag, handler, folder_key in specs
-        if pipelines[flag] and handler is not None
+        if ctx.config["PIPELINES"][flag] and handler is not None
     ]
 
     if not watch_specs:
@@ -248,7 +230,7 @@ def start_runtime_observer(
 
 def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     """Initialize config, context, workers, scanner, and watchdog observer."""
-    cfg = prepare_runtime_config(cfg)
+    cfg = load_prompt_config(cfg)
     ctx = PipelineContext(cfg)
 
     handlers = create_runtime_handlers(ctx)
