@@ -17,7 +17,7 @@ from w.p_pipelines import (
     process_pretext_queue,
     process_ttml_pipeline,
     process_wikilink_cleaning,
-    process_x_url_download_pipeline,
+    process_ytd_pipeline,
 )
 from w.utils_files import configure_logging, read_prompt_file
 
@@ -43,7 +43,7 @@ CONFIG = {
         "PRETEXT": True,
         "EXTRACT": True,
         "NOTES": True,
-        "X_URL_DOWNLOAD": True,
+        "YTD": True,
     },
     "INTERVALS": {
         "SCAN_SECONDS": 60,
@@ -51,7 +51,7 @@ CONFIG = {
         "LLM_MAX_RETRIES": 2,
         "LLM_RETRY_DELAY_SECONDS": 10,
         "LLM_TIMEOUT_SECONDS": 60,
-        "X_RESOLVE_TIMEOUT_SECONDS": 10,
+        "YTD_RESOLVE_TIMEOUT_SECONDS": 10,
     },
     "WATCH_FOLDER": WATCH_FOLDER,
     "WHISPER_FOLDER": WHISPER_FOLDER,
@@ -72,7 +72,7 @@ CONFIG = {
     "LINK_BACKUP_FOLDER": WHISPER_FOLDER / "_p" / "link_backup",
     "FAIL_FOLDER": WHISPER_FOLDER / "Fail",
     "OBSIDIAN_SYNC_FOLDER": Path("/desktop/Obsidian/O_2025"),
-    "X_URL_LIST_FILE": WHISPER_FOLDER / "X" / "X.txt",
+    "YTD_LIST_FILE": WHISPER_FOLDER / "X" / "X.txt",
     "DOWNLOAD_TARGET_FOLDER": WHISPER_FOLDER / "X",
     "LOG_DIR": BASE_DIR / "data" / "logs",
     "PRETEXT_SUFFIX": ".txt",
@@ -81,9 +81,6 @@ CONFIG = {
     "EXTRACT_PROMPT": read_prompt_file("prompt_extract.txt"),
     "DISTILL_PROMPT": read_prompt_file("prompt_distill.txt"),
 }
-
-configure_logging(CONFIG["LOG_DIR"])
-
 
 def run_file_scanner(ctx: PipelineContext) -> None:
     scan_seconds = ctx.config["INTERVALS"]["SCAN_SECONDS"]
@@ -101,14 +98,14 @@ def start_runtime(ctx: PipelineContext) -> dict[str, threading.Thread]:
     threads: dict[str, threading.Thread] = {}
 
     thread_specs = [
+        (True, "PeriodicScanner", run_file_scanner, (ctx,)),
         (ctx.config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (ctx,)),
         (ctx.config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_pretext_queue, (ctx,)),
         (ctx.config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_extract_queue, (ctx, extract_processor)),
         (ctx.config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_premium_extract_queue, (ctx, premium_extract_processor)),
         (ctx.config["PIPELINES"]["AUDIO"], "AudioPipeline-GPU", process_audio_pipeline, (ctx,)),
-        (True, "PeriodicScanner", run_file_scanner, (ctx,)),
         (ctx.config["PIPELINES"]["NOTES"], "WikilinkCleaner", process_wikilink_cleaning, (ctx,)),
-        (ctx.config["PIPELINES"]["X_URL_DOWNLOAD"], "XUrlDownloadPipeline", process_x_url_download_pipeline, (ctx,)),
+        (ctx.config["PIPELINES"]["YTD"], "YTDPipeline", process_ytd_pipeline, (ctx,)),
     ]
 
     for enabled, name, target, args in thread_specs:
@@ -121,13 +118,12 @@ def start_runtime(ctx: PipelineContext) -> dict[str, threading.Thread]:
 
 
 def main() -> None:
+    configure_logging(CONFIG["LOG_DIR"])
+
     runtime = PipelineContext(CONFIG)
     start_runtime(runtime)
 
-    logging.info(
-        "Enabled pipelines: %s",
-        ", ".join(key for key, enabled in runtime.config["PIPELINES"].items() if enabled) or "none",
-    )
+    logging.info("Enabled pipelines: %s", ", ".join(key for key, enabled in runtime.config["PIPELINES"].items() if enabled) or "none")
 
     try:
         threading.Event().wait()

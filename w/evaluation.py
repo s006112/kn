@@ -78,7 +78,7 @@ class EvalPaths:
     obsidian: Path
     link_backup: Path
 
-    x_list: Path
+    ytd_list: Path
     download_target: Path
 
 PATHS = EvalPaths(
@@ -105,7 +105,7 @@ PATHS = EvalPaths(
     obsidian=Path(CONFIG["OBSIDIAN_SYNC_FOLDER"]),
     link_backup=Path(CONFIG["LINK_BACKUP_FOLDER"]),
 
-    x_list=Path(CONFIG["X_URL_LIST_FILE"]),
+    ytd_list=Path(CONFIG["YTD_LIST_FILE"]),
     download_target=Path(CONFIG["DOWNLOAD_TARGET_FOLDER"]),
 )
 
@@ -340,7 +340,7 @@ plain subtitle line two {test_id}
 
     return passed, cleanup
 
-def test_x_url_list_remove_completed(test_id: str) -> tuple[bool, list[Path]]:
+def test_ytd_list_remove_completed(test_id: str) -> tuple[bool, list[Path]]:
     url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ&utm_source=evaluation"
     next_url = "https://www.instagram.com/p/evaluation/"
     source = PATHS.download_target / f"{test_id}_urls.txt"
@@ -368,7 +368,7 @@ def test_x_url_list_remove_completed(test_id: str) -> tuple[bool, list[Path]]:
     )
 
     print_result(
-        "x url list remove completed",
+        "ytd list remove completed",
         passed,
         {
             "source": source,
@@ -379,9 +379,9 @@ def test_x_url_list_remove_completed(test_id: str) -> tuple[bool, list[Path]]:
 
     return passed, cleanup
 
-def test_x_url_download_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[bool, list[Path]]:
+def test_ytd_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[bool, list[Path]]:
     url = f"https://www.youtube.com/watch?v={test_id}"
-    list_file = PATHS.download_target / f"{test_id}_x_urls.txt"
+    list_file = PATHS.download_target / f"{test_id}_ytd_urls.txt"
     output = PATHS.download_target / f"{test_id}_downloaded.mp4"
 
     cleanup = [list_file, output]
@@ -392,12 +392,12 @@ def test_x_url_download_pipeline_mocked_loop_removes_completed_url(test_id: str)
 
     config = {
         **CONFIG,
-        "X_URL_LIST_FILE": list_file,
+        "YTD_LIST_FILE": list_file,
         "DOWNLOAD_TARGET_FOLDER": PATHS.download_target,
         "INTERVALS": {
             **CONFIG["INTERVALS"],
             "SCAN_SECONDS": 0.05,
-            "X_RESOLVE_TIMEOUT_SECONDS": 0.05,
+            "YTD_RESOLVE_TIMEOUT_SECONDS": 0.05,
         },
     }
 
@@ -418,7 +418,7 @@ def test_x_url_download_pipeline_mocked_loop_removes_completed_url(test_id: str)
         pipelines.download = fake_download
 
         thread = threading.Thread(
-            target=pipelines.process_x_url_download_pipeline,
+            target=pipelines.process_ytd_pipeline,
             args=(ctx,),
             daemon=True,
         )
@@ -444,7 +444,7 @@ def test_x_url_download_pipeline_mocked_loop_removes_completed_url(test_id: str)
         )
 
         print_result(
-            "x url download pipeline mocked loop removes completed url",
+            "ytd pipeline mocked loop removes completed url",
             passed,
             {
                 "list_file": list_file,
@@ -1823,13 +1823,13 @@ def test_ttml_invalid_xml_restores_source_and_chinese_normalizes(test_id: str) -
     return passed, cleanup
 
 
-def test_x_url_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[bool, list[Path]]:
-    fallback_dir = PATHS.download_target / f"{test_id}_x_fallback"
+def test_ytd_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[bool, list[Path]]:
+    fallback_dir = PATHS.download_target / f"{test_id}_ytd_fallback"
     fallback_missing = fallback_dir / "x.txt"
     fallback_active = fallback_dir / "X.txt"
-    failure_list = PATHS.download_target / f"{test_id}_x_download_fail.txt"
-    remove_fail_list = PATHS.download_target / f"{test_id}_x_remove_fail.txt"
-    output = PATHS.download_target / f"{test_id}_x_remove_fail.mp4"
+    failure_list = PATHS.download_target / f"{test_id}_ytd_download_fail.txt"
+    remove_fail_list = PATHS.download_target / f"{test_id}_ytd_remove_fail.txt"
+    output = PATHS.download_target / f"{test_id}_ytd_remove_fail.mp4"
 
     cleanup = [fallback_active, fallback_missing, fallback_dir, failure_list, remove_fail_list, output]
 
@@ -1849,12 +1849,12 @@ def test_x_url_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[
     def run_download_loop(list_file: Path, fake_download, remove_line=None) -> tuple[str, bool]:
         config = {
             **CONFIG,
-            "X_URL_LIST_FILE": list_file,
+            "YTD_LIST_FILE": list_file,
             "DOWNLOAD_TARGET_FOLDER": PATHS.download_target,
             "INTERVALS": {
                 **CONFIG["INTERVALS"],
                 "SCAN_SECONDS": 0.05,
-                "X_RESOLVE_TIMEOUT_SECONDS": 0.05,
+                "YTD_RESOLVE_TIMEOUT_SECONDS": 0.05,
             },
         }
         ctx = pipelines.PipelineContext(config)
@@ -1866,7 +1866,7 @@ def test_x_url_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[
                 pipelines.remove_download_url_line = remove_line
 
             thread = threading.Thread(
-                target=pipelines.process_x_url_download_pipeline,
+                target=pipelines.process_ytd_pipeline,
                 args=(ctx,),
                 daemon=True,
             )
@@ -1907,7 +1907,7 @@ def test_x_url_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[
     )
 
     print_result(
-        "x url failure fallback and remove failure paths",
+        "ytd failure fallback and remove failure paths",
         passed,
         {
             "fallback_active": active_path,
@@ -2105,7 +2105,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         "AudioPipeline-GPU",
         "PeriodicScanner",
         "WikilinkCleaner",
-        "XUrlDownloadPipeline",
+        "YTDPipeline",
     }
 
     started_workers: set[str] = set()
@@ -2122,7 +2122,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         "process_audio_pipeline": orchestrator_module.process_audio_pipeline,
         "run_file_scanner": orchestrator_module.run_file_scanner,
         "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
-        "process_x_url_download_pipeline": orchestrator_module.process_x_url_download_pipeline,
+        "process_ytd_pipeline": orchestrator_module.process_ytd_pipeline,
         "read_prompt_file": orchestrator_module.read_prompt_file,
     }
 
@@ -2137,7 +2137,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         orchestrator_module.process_audio_pipeline = fake_worker
         orchestrator_module.run_file_scanner = fake_worker
         orchestrator_module.process_wikilink_cleaning = fake_worker
-        orchestrator_module.process_x_url_download_pipeline = fake_worker
+        orchestrator_module.process_ytd_pipeline = fake_worker
         orchestrator_module.read_prompt_file = lambda filename: f"evaluation prompt {filename}"
 
         ctx = orchestrator_module.PipelineContext(CONFIG)
@@ -2193,7 +2193,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         orchestrator_module.process_audio_pipeline = original_values["process_audio_pipeline"]
         orchestrator_module.run_file_scanner = original_values["run_file_scanner"]
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
-        orchestrator_module.process_x_url_download_pipeline = original_values["process_x_url_download_pipeline"]
+        orchestrator_module.process_ytd_pipeline = original_values["process_ytd_pipeline"]
         orchestrator_module.read_prompt_file = original_values["read_prompt_file"]
 
 def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool, list[Path]]:
@@ -2204,7 +2204,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         "AudioPipeline-GPU",
         "PeriodicScanner",
         "WikilinkCleaner",
-        "XUrlDownloadPipeline",
+        "YTDPipeline",
     }
 
     cases = [
@@ -2247,7 +2247,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         "process_audio_pipeline": orchestrator_module.process_audio_pipeline,
         "run_file_scanner": orchestrator_module.run_file_scanner,
         "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
-        "process_x_url_download_pipeline": orchestrator_module.process_x_url_download_pipeline,
+        "process_ytd_pipeline": orchestrator_module.process_ytd_pipeline,
         "read_prompt_file": orchestrator_module.read_prompt_file,
     }
 
@@ -2262,7 +2262,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         orchestrator_module.process_audio_pipeline = fake_worker
         orchestrator_module.run_file_scanner = fake_worker
         orchestrator_module.process_wikilink_cleaning = fake_worker
-        orchestrator_module.process_x_url_download_pipeline = fake_worker
+        orchestrator_module.process_ytd_pipeline = fake_worker
         orchestrator_module.read_prompt_file = lambda filename: f"evaluation prompt {filename}"
 
         for pretext_enabled, extract_enabled, expected_threads in cases:
@@ -2337,7 +2337,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         orchestrator_module.process_audio_pipeline = original_values["process_audio_pipeline"]
         orchestrator_module.run_file_scanner = original_values["run_file_scanner"]
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
-        orchestrator_module.process_x_url_download_pipeline = original_values["process_x_url_download_pipeline"]
+        orchestrator_module.process_ytd_pipeline = original_values["process_ytd_pipeline"]
         orchestrator_module.read_prompt_file = original_values["read_prompt_file"]
 
 def main() -> int:
@@ -2351,8 +2351,8 @@ def main() -> int:
             test_torrent_move_avoids_overwrite,
             test_ttml_convert,
             test_ttml_plain_text_branch_converts_and_archives,
-            test_x_url_list_remove_completed,
-            test_x_url_download_pipeline_mocked_loop_removes_completed_url,
+            test_ytd_list_remove_completed,
+            test_ytd_pipeline_mocked_loop_removes_completed_url,
             test_wikilink_cleaner_removes_broken_link,
             test_markdown_merge_updates_index,
             test_audio_move_to_done_removes_wav,
@@ -2373,7 +2373,7 @@ def main() -> int:
             test_pretext_multichunk_and_failure_release_request,
             test_audio_failure_paths_archive_or_cleanup,
             test_ttml_invalid_xml_restores_source_and_chinese_normalizes,
-            test_x_url_failure_fallback_and_remove_failure_paths,
+            test_ytd_failure_fallback_and_remove_failure_paths,
             test_wikilink_cleaner_run_level_backup_dry_run_lock_and_ontology,
             test_utils_files_and_text_boundaries,
             test_start_system_creates_expected_threads_and_stop,

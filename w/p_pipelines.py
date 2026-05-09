@@ -1,7 +1,7 @@
 """
 Responsibility:
 Run long-lived pipeline worker loops and scan-once file intake rules.
-This module wires the shared `PipelineContext` into torrent intake, X/ytd-dl
+This module wires the shared `PipelineContext` into torrent intake, YTD
 URL downloads, pretext processing, extract and premium extract processing,
 audio transcription, TTML conversion, and wikilink cleanup.
 
@@ -18,7 +18,7 @@ Pipelines:
 - notes periodic clean -> unlink clean -> link backup
 - File scanner: move torrent files, normalize long pretext filenames, enqueue
   existing pretext/extract/premium files when invoked by an orchestrator.
-- X URL download: scan `x.txt`/`X.txt`, classify and clean URLs, download via
+- YTD download: scan `x.txt`/`X.txt`, classify and clean URLs, download via
   yt-dlp, then remove only the completed URL line.
 - Text queues: acquire a file lock, invoke the requested processor method, and
   continue on recoverable queue errors or permanent LLM failures.
@@ -288,12 +288,12 @@ def remove_download_url_line(list_file, url):
     return False
 
 
-def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
+def process_ytd_pipeline(ctx: PipelineContext) -> None:
     current_thread = threading.current_thread()
-    current_thread.name = "XUrlDownloadPipeline"
+    current_thread.name = "YTDPipeline"
     intervals = ctx.config.get("INTERVALS", {})
     scan_seconds = intervals.get("SCAN_SECONDS", 60)
-    x_resolve_timeout_seconds = intervals.get("X_RESOLVE_TIMEOUT_SECONDS", 20)
+    ytd_resolve_timeout_seconds = intervals.get("YTD_RESOLVE_TIMEOUT_SECONDS", 20)
 
     while not ctx.shutdown_flag.is_set():
         wait_seconds = scan_seconds
@@ -301,7 +301,7 @@ def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
             target_folder = Path(
                 ctx.config.get("DOWNLOAD_TARGET_FOLDER", ctx.config["WHISPER_FOLDER"])
             )
-            list_file = Path(ctx.config["X_URL_LIST_FILE"])
+            list_file = Path(ctx.config["YTD_LIST_FILE"])
             active_list_file = resolve_download_url_list_file(list_file)
             target_folder.mkdir(parents=True, exist_ok=True)
             skipped_urls: set[str] = set()
@@ -320,17 +320,17 @@ def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
                     break
 
                 try:
-                    logging.info("XUrlDownloadPipeline: Downloading %s", url)
+                    logging.info("YTDPipeline: Downloading %s", url)
                     cleaned_url = clean_url(url)
                     output_path, _ = download(
                         url,
                         "720p",
                         output_dir=target_folder,
-                        resolve_timeout=x_resolve_timeout_seconds,
+                        resolve_timeout=ytd_resolve_timeout_seconds,
                     )
                 except Exception as exc:
                     logging.error(
-                        "XUrlDownloadPipeline: Download failed for %s: %s",
+                        "YTDPipeline: Download failed for %s: %s",
                         url,
                         exc,
                     )
@@ -346,19 +346,19 @@ def process_x_url_download_pipeline(ctx: PipelineContext) -> None:
 
                 if removed:
                     logging.info(
-                        "XUrlDownloadPipeline: Downloaded %s -> %s",
+                        "YTDPipeline: Downloaded %s -> %s",
                         cleaned_url,
                         output_path,
                     )
                 else:
                     logging.warning(
-                        "XUrlDownloadPipeline: Downloaded %s but URL line was not removed",
+                        "YTDPipeline: Downloaded %s but URL line was not removed",
                         url,
                     )
                     skipped_urls.add(url)
 
         except Exception as exc:
-            logging.error("XUrlDownloadPipeline: Error during scan: %s", exc)
+            logging.error("YTDPipeline: Error during scan: %s", exc)
 
         if ctx.shutdown_flag.wait(wait_seconds):
             return
