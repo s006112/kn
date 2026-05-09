@@ -125,8 +125,6 @@ from w.p_pipelines import (
     process_wikilink_cleaning,
     process_x_url_download_pipeline,
 )
-from w.utils_files import read_prompt_file
-
 
 class UTFStreamHandler(logging.StreamHandler):
     """Write formatted log records to a byte stream using UTF-8."""
@@ -199,9 +197,9 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
 
     cfg = {
         **cfg,
-        "PRETEXT_PROMPT": read_prompt_file("prompt_pretext.txt"),
-        "EXTRACT_PROMPT": read_prompt_file("prompt_extract.txt"),
-        "DISTILL_PROMPT": read_prompt_file("prompt_distill.txt"),
+        "PRETEXT_PROMPT": (Path(__file__).resolve().parent.parent / "w" / "prompt_pretext.txt").read_text(encoding="utf-8").strip(),
+        "EXTRACT_PROMPT": (Path(__file__).resolve().parent.parent / "w" / "prompt_extract.txt").read_text(encoding="utf-8").strip(),
+        "DISTILL_PROMPT": (Path(__file__).resolve().parent.parent / "w" / "prompt_distill.txt").read_text(encoding="utf-8").strip(),
     }
 
     ensure_directories(cfg)

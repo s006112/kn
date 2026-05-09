@@ -4,9 +4,7 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parent
-
+from w.utils_files import configure_logging
 from w.p_pipelines import (
     PipelineContext,
     create_extract_processors,
@@ -19,8 +17,8 @@ from w.p_pipelines import (
     process_wikilink_cleaning,
     process_ytd_pipeline,
 )
-from w.utils_files import configure_logging, read_prompt_file
 
+BASE_DIR = Path(__file__).resolve().parent
 WHISPER_FOLDER = Path("/desktop/Sync/Whisper")
 WATCH_FOLDER = Path("/desktop")
 
@@ -77,9 +75,9 @@ CONFIG = {
     "LOG_DIR": BASE_DIR / "data" / "logs",
     "PRETEXT_SUFFIX": ".txt",
     "EXTRACT_SUFFIX": ("_p.txt", ".md"),
-    "PRETEXT_PROMPT": read_prompt_file("prompt_pretext.txt"),
-    "EXTRACT_PROMPT": read_prompt_file("prompt_extract.txt"),
-    "DISTILL_PROMPT": read_prompt_file("prompt_distill.txt"),
+    "PRETEXT_PROMPT": (BASE_DIR / "prompt" / "prompt_pretext.txt").read_text(encoding="utf-8").strip(),
+    "EXTRACT_PROMPT": (BASE_DIR / "prompt" / "prompt_extract.txt").read_text(encoding="utf-8").strip(),
+    "DISTILL_PROMPT": (BASE_DIR / "prompt" / "prompt_distill.txt").read_text(encoding="utf-8").strip(),
 }
 
 def run_file_scanner(ctx: PipelineContext) -> None:

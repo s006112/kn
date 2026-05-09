@@ -15,13 +15,11 @@ Used by:
 
 Pipelines:
 - file_path -> encoding_candidates -> open_attempts -> text
-- filename -> script_dir -> prompt_path -> text
 - base_name -> candidate_path -> existence_check -> numbered_path
 - file_path -> stat -> mode_or -> chmod
 
 Invariants:
 - `read_file_with_encodings` only retries on `UnicodeDecodeError`.
-- `read_prompt_file` reads from this module's directory and strips outer whitespace.
 - `get_next_available_filename` always returns a path ending in `.txt`.
 - `safe_rename` never overwrites an existing destination path.
 - `release_text_file_permissions` only changes mode bits for `.txt` and `.md` paths.
@@ -77,20 +75,6 @@ def read_file_with_encodings(
         except UnicodeDecodeError:
             continue
     raise ValueError(f"Unable to read file: {file_path}")
-
-
-def read_prompt_file(filename: str) -> str:
-    """Load and strip a UTF-8 prompt file located beside this module."""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    prompt_path = os.path.join(script_dir, filename)
-    try:
-        with open(prompt_path, "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except Exception as exc:
-        logging.error("Error reading prompt file %s: %s", filename, exc)
-        raise ValueError(
-            f"Failed to load {filename}. Ensure the file exists in the script directory."
-        ) from exc
 
 
 def get_next_available_filename(

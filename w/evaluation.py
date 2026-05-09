@@ -29,10 +29,10 @@ from w.p_extract import ExtractProcessor, PremiumExtractProcessor
 import w.p_pipelines as pipelines
 from w.p_pipelines import (
     move_torrent_to_whisper,
-    read_next_download_url,
-    remove_download_url_line,
     scan_torrent_watch_folder,
 )
+import w.p_ytd as ytd_module
+from w.p_ytd import read_next_download_url, remove_download_url_line
 
 import w.p_pretext as pretext_module
 from w.p_pretext import release_pretext_request, request_pretext_processing
@@ -402,7 +402,7 @@ def test_ytd_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[b
     }
 
     ctx = pipelines.PipelineContext(config)
-    original_download = pipelines.download
+    original_download = ytd_module.download
 
     try:
         def fake_download(
@@ -415,7 +415,7 @@ def test_ytd_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[b
             output.write_text(f"fake download for {test_id}\n", encoding="utf-8")
             return str(output), None
 
-        pipelines.download = fake_download
+        ytd_module.download = fake_download
 
         thread = threading.Thread(
             target=pipelines.process_ytd_pipeline,
@@ -457,7 +457,7 @@ def test_ytd_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[b
         return passed, cleanup
 
     finally:
-        pipelines.download = original_download
+        ytd_module.download = original_download
         ctx.shutdown_flag.set()
 
 def test_wikilink_cleaner_removes_broken_link(test_id: str) -> tuple[bool, list[Path]]:
@@ -1844,7 +1844,7 @@ def test_ytd_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[bo
     failure_list.write_text(f"{failure_url}\n", encoding="utf-8")
     remove_fail_list.write_text(f"{remove_fail_url}\n", encoding="utf-8")
 
-    found_url, active_path = pipelines.read_next_download_url(fallback_missing, set())
+    found_url, active_path = read_next_download_url(fallback_missing, set())
 
     def run_download_loop(list_file: Path, fake_download, remove_line=None) -> tuple[str, bool]:
         config = {
@@ -1858,12 +1858,12 @@ def test_ytd_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[bo
             },
         }
         ctx = pipelines.PipelineContext(config)
-        original_download = pipelines.download
-        original_remove_line = pipelines.remove_download_url_line
+        original_download = ytd_module.download
+        original_remove_line = ytd_module.remove_download_url_line
         try:
-            pipelines.download = fake_download
+            ytd_module.download = fake_download
             if remove_line is not None:
-                pipelines.remove_download_url_line = remove_line
+                ytd_module.remove_download_url_line = remove_line
 
             thread = threading.Thread(
                 target=pipelines.process_ytd_pipeline,
@@ -1877,8 +1877,8 @@ def test_ytd_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[bo
             remaining = list_file.read_text(encoding="utf-8") if list_file.exists() else ""
             return remaining, thread.is_alive()
         finally:
-            pipelines.download = original_download
-            pipelines.remove_download_url_line = original_remove_line
+            ytd_module.download = original_download
+            ytd_module.remove_download_url_line = original_remove_line
             ctx.shutdown_flag.set()
 
     def fail_download(*_args, **_kwargs):
@@ -2123,7 +2123,6 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         "run_file_scanner": orchestrator_module.run_file_scanner,
         "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
         "process_ytd_pipeline": orchestrator_module.process_ytd_pipeline,
-        "read_prompt_file": orchestrator_module.read_prompt_file,
     }
 
     ctx = None
@@ -2138,7 +2137,6 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         orchestrator_module.run_file_scanner = fake_worker
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_ytd_pipeline = fake_worker
-        orchestrator_module.read_prompt_file = lambda filename: f"evaluation prompt {filename}"
 
         ctx = orchestrator_module.PipelineContext(CONFIG)
         threads = orchestrator_module.start_runtime(ctx)
@@ -2194,7 +2192,6 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         orchestrator_module.run_file_scanner = original_values["run_file_scanner"]
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
         orchestrator_module.process_ytd_pipeline = original_values["process_ytd_pipeline"]
-        orchestrator_module.read_prompt_file = original_values["read_prompt_file"]
 
 def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool, list[Path]]:
     cleanup: list[Path] = []
@@ -2248,7 +2245,6 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         "run_file_scanner": orchestrator_module.run_file_scanner,
         "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
         "process_ytd_pipeline": orchestrator_module.process_ytd_pipeline,
-        "read_prompt_file": orchestrator_module.read_prompt_file,
     }
 
     runtimes = []
@@ -2263,7 +2259,6 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         orchestrator_module.run_file_scanner = fake_worker
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_ytd_pipeline = fake_worker
-        orchestrator_module.read_prompt_file = lambda filename: f"evaluation prompt {filename}"
 
         for pretext_enabled, extract_enabled, expected_threads in cases:
             started_workers.clear()
@@ -2338,7 +2333,6 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         orchestrator_module.run_file_scanner = original_values["run_file_scanner"]
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
         orchestrator_module.process_ytd_pipeline = original_values["process_ytd_pipeline"]
-        orchestrator_module.read_prompt_file = original_values["read_prompt_file"]
 
 def main() -> int:
     test_id = f"EVAL_{uuid.uuid4().hex[:8]}"
