@@ -11,7 +11,7 @@ python agent/agent.py agent/task.md --check-ready
 python agent/agent.py agent/task.md --show-commands
 python agent/agent.py agent/task.md --make-patch
 python agent/agent.py agent/task.md --check-patch
-python agent/agent.py agent/task.md --check-ready
+python agent/agent.py agent/task.md --apply-patch
 '''
 
 from __future__ import annotations
@@ -245,18 +245,7 @@ def build_patch_prompt(
     )
 
 
-def check_patch(task_path: Path) -> None:
-    if not LAST_PATCH_PATH.exists():
-        print("No patch found.")
-        return
-
-    patch_text = read_text(LAST_PATCH_PATH)
-    if patch_text.strip() == "PATCH_NOT_SAFE":
-        print("PATCH_NOT_SAFE")
-        return
-
-    task_text = read_text(task_path) if task_path.exists() else ""
-    allowed_files = set(parse_allowed_files(task_text))
+def parse_patch_blocks(patch_text: str) -> tuple[list[tuple[str, str, str]], list[str]]:
     lines = patch_text.splitlines()
     blocks: list[tuple[str, str, str]] = []
     errors: list[str] = []
@@ -304,6 +293,14 @@ def check_patch(task_path: Path) -> None:
     if not blocks:
         errors.append("no patch blocks found")
 
+    return blocks, errors
+
+
+def validate_patch_blocks(task_path: Path, blocks: list[tuple[str, str, str]]) -> list[str]:
+    task_text = read_text(task_path) if task_path.exists() else ""
+    allowed_files = set(parse_allowed_files(task_text))
+    errors: list[str] = []
+
     for rel, search, _replace in blocks:
         path = REPO_ROOT / rel
 
@@ -323,6 +320,22 @@ def check_patch(task_path: Path) -> None:
         if count != 1:
             errors.append(f"SEARCH match count for {rel}: {count}")
 
+    return errors
+
+
+def check_patch(task_path: Path) -> None:
+    if not LAST_PATCH_PATH.exists():
+        print("No patch found.")
+        return
+
+    patch_text = read_text(LAST_PATCH_PATH)
+    if patch_text.strip() == "PATCH_NOT_SAFE":
+        print("PATCH_NOT_SAFE")
+        return
+
+    blocks, errors = parse_patch_blocks(patch_text)
+    errors.extend(validate_patch_blocks(task_path, blocks))
+
     if errors:
         print("PATCH_INVALID")
         for error in errors:
@@ -330,6 +343,33 @@ def check_patch(task_path: Path) -> None:
         return
 
     print("PATCH_OK")
+
+
+def apply_patch(task_path: Path) -> None:
+    if not LAST_PATCH_PATH.exists():
+        print("No patch found.")
+        return
+
+    patch_text = read_text(LAST_PATCH_PATH)
+    if patch_text.strip() == "PATCH_NOT_SAFE":
+        print("PATCH_NOT_SAFE")
+        return
+
+    blocks, errors = parse_patch_blocks(patch_text)
+    errors.extend(validate_patch_blocks(task_path, blocks))
+
+    if errors:
+        print("PATCH_INVALID")
+        for error in errors:
+            print(error)
+        return
+
+    for rel, search, replace in blocks:
+        path = REPO_ROOT / rel
+        text = read_text(path)
+        path.write_text(text.replace(search, replace, 1), encoding="utf-8")
+
+    print("PATCH_APPLIED")
 
 
 
@@ -370,6 +410,10 @@ def main() -> None:
     
     if "--check-patch" in sys.argv:
         check_patch(task_path)
+        return
+
+    if "--apply-patch" in sys.argv:
+        apply_patch(task_path)
         return
 
     task_text = read_text(task_path)

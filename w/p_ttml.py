@@ -26,7 +26,6 @@ Out of scope:
 import os
 import shutil
 import re
-import time
 import logging
 from .helper_files import release_text_file_permissions
 from xml.dom.minidom import parse
@@ -47,13 +46,6 @@ def process_text(line):
     if re.search(r'[\u4e00-\u9fa5]', line):
         return re.sub(r'\s+', '', line)
     return re.sub(r'\s+', ' ', line.strip())
-
-
-def is_file_ready(path, wait=1.0):
-    """Return whether a file size remains stable across the wait interval."""
-    size1 = os.path.getsize(path)
-    time.sleep(wait)
-    return size1 == os.path.getsize(path)
 
 
 def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename, pretext_suffix: str):

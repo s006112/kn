@@ -25,7 +25,7 @@ from typing import Any, Callable, Dict, Set
 
 from .p_pretext import process_pretext_file, request_pretext_processing
 from .p_extract import ExtractProcessor, PremiumExtractProcessor
-from .p_ttml import handle_ttml, is_file_ready
+from .p_ttml import handle_ttml
 from .p_audio import process_audio_queue, scan_audio_files
 from .p_ytd import process_ytd_pipeline
 from .helper_unlink import clean_dead_links
@@ -169,6 +169,12 @@ def create_extract_processors(ctx: PipelineContext):
     extract_processor = ExtractProcessor(ctx.config)
     premium_extract_processor = PremiumExtractProcessor(ctx.config)
     return extract_processor, premium_extract_processor
+
+def _is_file_ready(path, wait=1.0):
+    """Return whether a file size remains stable across the wait interval."""
+    size1 = os.path.getsize(path)
+    time.sleep(wait)
+    return size1 == os.path.getsize(path)
 
 def enqueue_if_absent(queue: Queue, path: str) -> None:
     if path not in list(queue.queue):
@@ -333,7 +339,7 @@ def process_ttml_pipeline(ctx: PipelineContext) -> None:
                 or os.path.dirname(src) != watch_folder
             ):
                 continue
-            if not is_file_ready(src, wait=wait_seconds):
+            if not _is_file_ready(src, wait=wait_seconds):
                 enqueue_if_absent(ctx.ttml_queue, src)
                 continue
 
