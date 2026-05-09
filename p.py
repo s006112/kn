@@ -126,7 +126,7 @@ def main() -> None:
 
     logging.info(
         "Enabled pipelines: %s",
-        ", ".join(key for key, enabled in ctx.config["PIPELINES"].items() if enabled) or "none",
+        ", ".join(key for key, enabled in runtime.config["PIPELINES"].items() if enabled) or "none",
     )
 
     try:
@@ -134,7 +134,7 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        ctx.shutdown_flag.set()
+        runtime.shutdown_flag.set()
 
 if __name__ == "__main__":
     main()
