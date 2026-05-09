@@ -9,6 +9,8 @@ python agent/agent.py agent/task.md --clear-trace
 python agent/agent.py agent/task.md --show-final
 python agent/agent.py agent/task.md --check-ready
 python agent/agent.py agent/task.md --show-commands
+python agent/agent.py agent/task.md --make-patch
+python agent/agent.py agent/task.md --check-patch
 '''
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -36,11 +39,16 @@ DEFAULT_MODEL = "gpt-5.4-mini"
 PLAN_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_plan.txt"
 REVIEW_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_review.txt"
 REVISE_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_revise.txt"
+PATCH_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_patch.txt"
+LAST_PATCH_PATH = REPO_ROOT / "agent" / "last_patch.diff"
+
 LAST_PROMPT_PATH = REPO_ROOT / "agent" / "last_prompt.md"
 LAST_PLAN_PATH = REPO_ROOT / "agent" / "last_plan.md"
 LAST_REVIEW_PATH = REPO_ROOT / "agent" / "last_review.md"
 LAST_REVISED_PLAN_PATH = REPO_ROOT / "agent" / "last_revised_plan.md"
 FINAL_PLAN_PATH = REPO_ROOT / "agent" / "final_plan.md"
+
+
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -223,6 +231,46 @@ def show_commands() -> None:
     for command in commands:
         print(command)
 
+def build_patch_prompt(
+    task_text: str,
+    final_plan_text: str,
+    allowed_files: list[str],
+    file_context: str,
+) -> str:
+    template = read_text(PATCH_PROMPT_PATH)
+    return template.format(
+        task_text=task_text,
+        final_plan_text=final_plan_text,
+        allowed_files_text="\n".join(f"- {p}" for p in allowed_files),
+        file_context=file_context,
+    )
+
+
+def check_patch() -> None:
+    if not LAST_PATCH_PATH.exists():
+        print("No patch found.")
+        return
+
+    result = subprocess.run(
+        ["git", "apply", "--check", str(LAST_PATCH_PATH)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+    )
+
+    if result.returncode == 0:
+        print("PATCH_OK")
+        return
+
+    print("PATCH_INVALID")
+    if result.stderr:
+        print(result.stderr.strip())
+    if result.stdout:
+        print(result.stdout.strip())
+
+
+
+
 def main() -> None:
     task_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("task.md")
     if not task_path.is_absolute():
@@ -257,6 +305,10 @@ def main() -> None:
         show_commands()
         return
     
+    if "--check-patch" in sys.argv:
+        check_patch()
+        return
+
     task_text = read_text(task_path)
 
     # LLM refinement modes: read previous artifacts and produce next artifact.
@@ -290,7 +342,37 @@ def main() -> None:
         print(revised)
         print(f"\nSaved revised plan: {LAST_REVISED_PLAN_PATH}")
         return
-    
+
+    if "--make-patch" in sys.argv:
+        if not FINAL_PLAN_PATH.exists():
+            print("No final plan found.")
+            return
+
+        task_text = read_text(task_path)
+        allowed_files = parse_allowed_files(task_text)
+        file_context = load_allowed_file_context(allowed_files)
+        final_plan_text = read_text(FINAL_PLAN_PATH)
+
+        patch = call_llm(
+            DEFAULT_MODEL,
+            system_prompt="You are a strict minimal-change unified diff patch generator.",
+            user_text=build_patch_prompt(
+                task_text=task_text,
+                final_plan_text=final_plan_text,
+                allowed_files=allowed_files,
+                file_context=file_context,
+            ),
+            file_path=str(FINAL_PLAN_PATH),
+            max_retries=2,
+            timeout=120,
+        )
+
+        LAST_PATCH_PATH.write_text(patch, encoding="utf-8")
+        print(f"Saved patch: {LAST_PATCH_PATH}")
+        print("Next: python agent/agent.py agent/task.md --check-patch")
+        return  
+
+
     # Default mode: build context and generate the first plan.
     allowed_files = parse_allowed_files(task_text)
     pos_context = load_pos_context()
