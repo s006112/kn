@@ -33,11 +33,11 @@ from .helper_files import (
     read_file_with_encodings,
 )
 from helper.helper_llm import call_llm
-from .utils_md import (
+from .helper_md import (
     merge_to_markdown,
     create_or_find_note_for_base_name,
 )
-from .utils_text import sanitize_filename
+from .helper_text import sanitize_filename
 
 class BaseExtractProcessor:
     """Base processor for extract pipelines."""

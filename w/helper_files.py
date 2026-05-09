@@ -10,8 +10,8 @@ Used by:
 * w/p_pipelines.py
 * w/p_pretext.py
 * w/p_ttml.py
-* w/utils_md.py
-* w/utils_unlink.py
+* w/helper_md.py
+* w/helper_unlink.py
 
 Pipelines:
 - file_path -> encoding_candidates -> open_attempts -> text

@@ -22,7 +22,7 @@ POS_FILES = (
 
 DEFAULT_MODEL = "gpt-5.4-mini"
 PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_plan.txt"
-
+LAST_PLAN_PATH = REPO_ROOT / "agent" / "last_plan.md"
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -103,7 +103,9 @@ def main() -> None:
         timeout=120,
     )
 
+    LAST_PLAN_PATH.write_text(output, encoding="utf-8")
     print(output)
+    print(f"\nSaved plan: {LAST_PLAN_PATH}")
 
 
 if __name__ == "__main__":

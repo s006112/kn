@@ -1,21 +1,20 @@
 # Task
 
-Review whether p_pipelines.py should keep or move a specific responsibility.
+Evaluate where `is_file_ready()` should live.
 
-## Goal
+## Question
 
-Produce a minimal patch plan only. Do not edit files yet.
+Should TTML file readiness / file size stability checking stay in `w/p_ttml.py`,
+move into `w/p_pipelines.py`, or become a generic helper?
 
-## Constraints
+## Decision criteria
 
-- Minimal necessary changes only
-- Preserve existing behavior
-- Do not add new files
-- Do not output complete full code
-- Do not increase abstraction
-- Prefer removing redundant helpers
-- Keep boundaries clear
-- Stop at planning stage
+- Distinguish file readiness from TTML format conversion.
+- Distinguish readiness checking from queue scanning and file locking.
+- Prefer local ownership if only one real caller exists.
+- Do not extract a shared helper unless at least two real call sites need it.
+- Preserve current behavior.
+- Produce a plan only. Do not edit files.
 
 ## Allowed files
 
@@ -26,7 +25,7 @@ Produce a minimal patch plan only. Do not edit files yet.
 
 ## Success criteria
 
-- Clear judgment on what should move or stay
-- Clear minimal patch plan
-- No code modification yet
-- Evaluation command identified
+- Clear ownership decision for `is_file_ready()`
+- Explicit boundary between pipeline orchestration and TTML conversion
+- No premature helper extraction
+- Minimal patch plan only

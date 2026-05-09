@@ -31,8 +31,8 @@ from .helper_files import (
     read_file_with_encodings,
 )
 from helper.helper_llm import call_llm
-from .utils_md import merge_to_markdown
-from .utils_text import sanitize_filename
+from .helper_md import merge_to_markdown
+from .helper_text import sanitize_filename
 
 
 def _derive_model_label(base_name: str, path: Path) -> str:

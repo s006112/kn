@@ -29,8 +29,8 @@ if str(ROOT_DIR) not in sys.path:
 
 from helper.helper_llm import call_llm
 from .helper_files import read_file_with_encodings, release_text_file_permissions
-from .utils_md import write_pretext_markdown
-from .utils_text import chunk_text, intelligent_merge_chunks, sanitize_and_trim_filename
+from .helper_md import write_pretext_markdown
+from .helper_text import chunk_text, intelligent_merge_chunks, sanitize_and_trim_filename
 
 
 def request_pretext_processing(queue, processed_files, processed_files_lock, file_path: str) -> bool:
