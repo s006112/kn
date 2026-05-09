@@ -28,8 +28,8 @@ from watchdog.observers import Observer
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, os.fspath(BASE_DIR / "w"))
 
-from w.p_context import PipelineContext, create_pipeline_context
 from w.p_pipelines import (
+    PipelineContext,
     create_pipeline_handlers,
     file_scanner,
     process_audio_pipeline,
@@ -249,7 +249,7 @@ def start_runtime_observer(
 def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     """Initialize config, context, workers, scanner, and watchdog observer."""
     cfg = prepare_runtime_config(cfg)
-    ctx = create_pipeline_context(cfg)
+    ctx = PipelineContext(cfg)
 
     handlers = create_runtime_handlers(ctx)
     threads = start_runtime_workers(ctx, handlers)

@@ -20,7 +20,6 @@ import p as orchestrator_module  # noqa: E402
 from p import CONFIG  # noqa: E402
 import p_audio as audio_module  # noqa: E402
 from p_audio import audio_queue, move_files_to_done, scan_audio_files  # noqa: E402
-from p_context import create_pipeline_context  # noqa: E402
 import p_distill as distill_module  # noqa: E402
 from p_distill import _collect_extracts  # noqa: E402
 from p_extract import ExtractHandler, PremiumExtractHandler  # noqa: E402
@@ -399,7 +398,7 @@ def test_x_url_download_pipeline_mocked_loop_removes_completed_url(test_id: str)
         },
     }
 
-    ctx = create_pipeline_context(config)
+    ctx = pipelines.PipelineContext(config)
     original_download = pipelines.download
 
     try:
@@ -594,11 +593,25 @@ def test_pretext_request_deduplicates_queue(test_id: str) -> tuple[bool, list[Pa
 
     source.write_text(f"dummy pretext queue source {test_id}\n", encoding="utf-8")
 
-    ctx = create_pipeline_context(CONFIG)
-    first = request_pretext_processing(ctx, str(source))
-    second = request_pretext_processing(ctx, str(source))
+    ctx = pipelines.PipelineContext(CONFIG)
+    first = request_pretext_processing(
+        ctx.pretext_queue,
+        ctx.processed_files_global,
+        ctx.processed_files_lock,
+        str(source),
+    )
+    second = request_pretext_processing(
+        ctx.pretext_queue,
+        ctx.processed_files_global,
+        ctx.processed_files_lock,
+        str(source),
+    )
     queued_path = ctx.pretext_queue.get_nowait()
-    release_pretext_request(ctx, str(source))
+    release_pretext_request(
+        ctx.processed_files_global,
+        ctx.processed_files_lock,
+        str(source),
+    )
 
     passed = (
         first
@@ -652,8 +665,13 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
     try:
         pretext_module.call_llm = lambda **_kwargs: f"mock pretext result {test_id}"
 
-        ctx = create_pipeline_context(config)
-        pretext_module.process_pretext_file(ctx, str(source))
+        ctx = pipelines.PipelineContext(config)
+        pretext_module.process_pretext_file(
+            ctx.config,
+            str(source),
+            ctx.processed_files_global,
+            ctx.processed_files_lock,
+        )
 
         notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
         note = notes[-1] if notes else None
@@ -747,7 +765,7 @@ def test_extract_handler_queues_candidate_once(test_id: str) -> tuple[bool, list
     source.write_text(f"extract queue candidate {test_id}\n", encoding="utf-8")
     ignored.write_text(f"wrong folder candidate {test_id}\n", encoding="utf-8")
 
-    ctx = create_pipeline_context(CONFIG)
+    ctx = pipelines.PipelineContext(CONFIG)
     handler = ExtractHandler(CONFIG, ctx.extract_queue)
     handler._queue_file(str(source))
     handler._queue_file(str(source))
@@ -808,7 +826,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
     try:
         extract_module.call_llm = lambda **_kwargs: f"mock extract result {test_id}"
 
-        ctx = create_pipeline_context(config)
+        ctx = pipelines.PipelineContext(config)
         handler = ExtractHandler(config, ctx.extract_queue)
         handler.process_extract(str(source), get_next_available_filename)
 
@@ -882,7 +900,7 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
 
         extract_module.call_llm = fail_call_llm
 
-        ctx = create_pipeline_context(config)
+        ctx = pipelines.PipelineContext(config)
         handler = ExtractHandler(config, ctx.extract_queue)
 
         raised = False
@@ -956,7 +974,7 @@ def test_premium_extract_full_process_archives_to_archive_folder(test_id: str) -
     try:
         extract_module.call_llm = lambda **_kwargs: f"mock premium extract result {test_id}"
 
-        ctx = create_pipeline_context(config)
+        ctx = pipelines.PipelineContext(config)
         handler = PremiumExtractHandler(config, ctx.premium_extract_queue)
         handler.process_premium_extract(str(source), get_next_available_filename)
 
@@ -1018,7 +1036,7 @@ def test_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, list[Path]
     extract.write_text(f"startup scan extract {test_id}\n", encoding="utf-8")
     premium.write_text(f"startup scan premium {test_id}\n", encoding="utf-8")
 
-    ctx = create_pipeline_context(CONFIG)
+    ctx = pipelines.PipelineContext(CONFIG)
     original_scan_torrent = pipelines.scan_torrent_watch_folder
 
     try:
@@ -1079,7 +1097,7 @@ def test_periodic_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, l
         },
     }
 
-    ctx = create_pipeline_context(config)
+    ctx = pipelines.PipelineContext(config)
     original_scan_torrent = pipelines.scan_torrent_watch_folder
 
     try:
@@ -1252,7 +1270,7 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
             "WAIT_SECONDS": 0,
         },
     }
-    ctx = create_pipeline_context(config)
+    ctx = pipelines.PipelineContext(config)
 
     lock_retry = f"{test_id}_queue_lock_retry"
     transient_error = f"{test_id}_queue_transient_error"
@@ -1473,7 +1491,7 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
 
         extract_module.call_llm = fake_call_llm
 
-        ctx = create_pipeline_context(config)
+        ctx = pipelines.PipelineContext(config)
         handler = ExtractHandler(config, ctx.extract_queue)
 
         raised = False
@@ -1569,9 +1587,14 @@ def test_pretext_multichunk_and_failure_release_request(test_id: str) -> tuple[b
             return chunk_results[call_count - 1]
 
         pretext_module.call_llm = success_call_llm
-        success_ctx = create_pipeline_context(config)
+        success_ctx = pipelines.PipelineContext(config)
         success_ctx.processed_files_global.add(str(success_source.resolve()))
-        pretext_module.process_pretext_file(success_ctx, str(success_source))
+        pretext_module.process_pretext_file(
+            success_ctx.config,
+            str(success_source),
+            success_ctx.processed_files_global,
+            success_ctx.processed_files_lock,
+        )
 
         notes = sorted(PATHS.obsidian.glob(f"{success_base}_*.md"))
         note = notes[-1] if notes else None
@@ -1584,12 +1607,17 @@ def test_pretext_multichunk_and_failure_release_request(test_id: str) -> tuple[b
             return ""
 
         pretext_module.call_llm = empty_call_llm
-        failure_ctx = create_pipeline_context(config)
+        failure_ctx = pipelines.PipelineContext(config)
         failure_ctx.processed_files_global.add(str(failure_source.resolve()))
 
         failure_raised = False
         try:
-            pretext_module.process_pretext_file(failure_ctx, str(failure_source))
+            pretext_module.process_pretext_file(
+                failure_ctx.config,
+                str(failure_source),
+                failure_ctx.processed_files_global,
+                failure_ctx.processed_files_lock,
+            )
         except ValueError:
             failure_raised = True
 
@@ -1828,7 +1856,7 @@ def test_x_url_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[
                 "X_RESOLVE_TIMEOUT_SECONDS": 0.05,
             },
         }
-        ctx = create_pipeline_context(config)
+        ctx = pipelines.PipelineContext(config)
         original_download = pipelines.download
         original_remove_line = pipelines.remove_download_url_line
         try:

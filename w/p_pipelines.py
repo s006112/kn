@@ -31,13 +31,13 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from queue import Queue
-from typing import Any, Callable, Dict, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, Tuple, Set
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from p_context import PipelineContext
 from p_pretext import PretextHandler, process_pretext_file, request_pretext_processing
 from p_extract import ExtractHandler, PremiumExtractHandler
 from p_ttml import handle_ttml, is_file_ready
@@ -53,6 +53,20 @@ _file_locks: Dict[str, threading.Lock] = {}
 _file_locks_mutex = threading.Lock()
 TORRENT_SUFFIX = ".torrent"
 
+@dataclass
+class PipelineContext:
+    config: Dict[str, Any]
+    pretext_queue: Queue = field(default_factory=Queue)
+    extract_queue: Queue = field(default_factory=Queue)
+    premium_extract_queue: Queue = field(default_factory=Queue)
+    text_processing_lock: threading.Lock = field(default_factory=threading.Lock)
+    audio_processing_lock: threading.Lock = field(default_factory=threading.Lock)
+    processed_files_global: Set[str] = field(default_factory=set)
+    processed_files_lock: threading.Lock = field(default_factory=threading.Lock)
+    wikilink_cleaning_stats: Dict[str, Any] = field(
+        default_factory=lambda: {"last_run": None, "cycle_count": 0}
+    )
+    shutdown_flag: threading.Event = field(default_factory=threading.Event)
 
 def acquire_file_lock(file_path: str) -> bool:
     """Acquire a non-blocking in-process lock for `file_path`."""
@@ -165,16 +179,18 @@ def scan_torrent_watch_folder(config: Dict[str, Any]) -> int:
     return moved_count
 
 
-def create_pipeline_handlers(
-    ctx: PipelineContext,
-) -> Tuple[PretextHandler, ExtractHandler, PremiumExtractHandler]:
-    pretext_handler = PretextHandler(ctx)
+def create_pipeline_handlers(ctx: PipelineContext):
+    pretext_handler = PretextHandler(
+        ctx.config,
+        ctx.pretext_queue,
+        ctx.processed_files_global,
+        ctx.processed_files_lock,
+    )
     extract_handler = ExtractHandler(ctx.config, ctx.extract_queue)
     premium_extract_handler = PremiumExtractHandler(
         ctx.config, ctx.premium_extract_queue
     )
     return pretext_handler, extract_handler, premium_extract_handler
-
 
 def enqueue_if_absent(queue: Queue, path: str) -> None:
     if path not in list(queue.queue):
@@ -225,7 +241,7 @@ def process_queue(
 
 
 def process_pretext_queue(ctx: PipelineContext) -> None:
-    process_queue(ctx, ctx.pretext_queue, lambda path, _next: process_pretext_file(ctx, path), "process_pretext")
+    process_queue(ctx, ctx.pretext_queue, lambda path, _next: process_pretext_file(ctx.config, path, ctx.processed_files_global, ctx.processed_files_lock), "process_pretext")
 
 
 def process_extract_queue(ctx: PipelineContext, handler: ExtractHandler) -> None:
@@ -388,7 +404,7 @@ def file_scanner(ctx: PipelineContext) -> None:
         if filename_lower.endswith(pretext_suffix) and not any(
             filename_lower.endswith(s) for s in extract_suffixes
         ):
-            request_pretext_processing(ctx, file_path)
+            request_pretext_processing(ctx.pretext_queue, ctx.processed_files_global, ctx.processed_files_lock, file_path)
 
     for filename in os.listdir(extract_watch_folder):
         filename_lower = filename.lower()
