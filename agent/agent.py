@@ -2,6 +2,9 @@
 python agent/agent.py agent/task.md
 python agent/agent.py agent/task.md --review-last
 python agent/agent.py agent/task.md --revise-last
+python agent/agent.py agent/task.md --status
+python agent/agent.py agent/task.md --show-last
+python agent/agent.py agent/task.md --accept-last
 '''
 
 from __future__ import annotations
@@ -33,7 +36,7 @@ LAST_PROMPT_PATH = REPO_ROOT / "agent" / "last_prompt.md"
 LAST_PLAN_PATH = REPO_ROOT / "agent" / "last_plan.md"
 LAST_REVIEW_PATH = REPO_ROOT / "agent" / "last_review.md"
 LAST_REVISED_PLAN_PATH = REPO_ROOT / "agent" / "last_revised_plan.md"
-
+FINAL_PLAN_PATH = REPO_ROOT / "agent" / "final_plan.md"
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -100,10 +103,59 @@ def build_revise_prompt(task_text: str, plan_text: str, review_text: str) -> str
         review_text=review_text,
     )
 
+def print_status(task_path: Path) -> None:
+    paths = {
+        "task": task_path,
+        "last_prompt": LAST_PROMPT_PATH,
+        "last_plan": LAST_PLAN_PATH,
+        "last_review": LAST_REVIEW_PATH,
+        "last_revised_plan": LAST_REVISED_PLAN_PATH,
+    }
+
+    print("=== Agent Trace Status ===")
+    for name, path in paths.items():
+        status = "exists" if path.exists() else "missing"
+        print(f"{name}: {status} - {path}")
+
+def show_last_plan() -> None:
+    path = LAST_REVISED_PLAN_PATH if LAST_REVISED_PLAN_PATH.exists() else LAST_PLAN_PATH
+    if not path.exists():
+        print("No plan found.")
+        return
+
+    print("=== Last Agent Plan ===")
+    print(f"source: {path}\n")
+    print(read_text(path))
+
+def accept_last_plan() -> None:
+    source = LAST_REVISED_PLAN_PATH if LAST_REVISED_PLAN_PATH.exists() else LAST_PLAN_PATH
+    if not source.exists():
+        print("No plan found to accept.")
+        return
+
+    content = read_text(source)
+    FINAL_PLAN_PATH.write_text(
+        f"# Final Accepted Plan\n\nSource: `{source}`\n\n---\n\n{content}",
+        encoding="utf-8",
+    )
+    print(f"Accepted plan: {FINAL_PLAN_PATH}")
+
 def main() -> None:
     task_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("task.md")
     if not task_path.is_absolute():
         task_path = Path.cwd() / task_path
+
+    if "--status" in sys.argv:
+        print_status(task_path)
+        return
+
+    if "--show-last" in sys.argv:
+        show_last_plan()
+        return
+
+    if "--accept-last" in sys.argv:
+        accept_last_plan()
+        return
 
     task_text = read_text(task_path)
 
