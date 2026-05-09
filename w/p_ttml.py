@@ -28,7 +28,7 @@ import shutil
 import re
 import time
 import logging
-from .utils_files import release_text_file_permissions
+from .helper_files import release_text_file_permissions
 from xml.dom.minidom import parse
 
 

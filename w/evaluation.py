@@ -41,7 +41,7 @@ from w.p_ttml import handle_ttml
 from w.utils_md import merge_to_markdown
 from w.utils_text import sanitize_and_trim_filename, sanitize_filename
 from w.utils_unlink import WikilinkCleaner, clean_dead_links
-from w.utils_files import (
+from w.helper_files import (
     get_next_available_filename,
     read_file_with_encodings,
     safe_rename,
@@ -2029,7 +2029,7 @@ def test_wikilink_cleaner_run_level_backup_dry_run_lock_and_ontology(test_id: st
     return passed, cleanup
 
 
-def test_utils_files_and_text_boundaries(test_id: str) -> tuple[bool, list[Path]]:
+def test_helper_files_and_text_boundaries(test_id: str) -> tuple[bool, list[Path]]:
     folder = PATHS.download_target / f"{test_id}_utils"
     gbk_file = folder / f"{test_id}_gbk.txt"
     rename_source = folder / f"{test_id}_rename_source.txt"
@@ -2369,7 +2369,7 @@ def main() -> int:
             test_ttml_invalid_xml_restores_source_and_chinese_normalizes,
             test_ytd_failure_fallback_and_remove_failure_paths,
             test_wikilink_cleaner_run_level_backup_dry_run_lock_and_ontology,
-            test_utils_files_and_text_boundaries,
+            test_helper_files_and_text_boundaries,
             test_start_system_creates_expected_threads_and_stop,
             test_start_system_pretext_extract_toggle_matrix,
         ):

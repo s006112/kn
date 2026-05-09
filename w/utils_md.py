@@ -31,7 +31,7 @@ import logging
 import re
 from datetime import datetime
 
-from .utils_files import release_text_file_permissions
+from .helper_files import release_text_file_permissions
 
 
 def find_most_recent_md_by_prefix(folder, prefix):

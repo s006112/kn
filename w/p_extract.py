@@ -28,7 +28,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from .p_distill import run_distillation
-from .utils_files import (
+from .helper_files import (
     release_text_file_permissions,
     read_file_with_encodings,
 )

@@ -22,3 +22,33 @@ Reason:
 - They are useful but still need repeated validation across more code work.
 - Avoid prematurely expanding approved rules.
 - Keep assets stable and proposals experimental.
+
+## 2026-05-09
+
+Decision:
+- Do not extract small agent-specific helpers prematurely into a shared helper file.
+- Keep agent workflow helpers inside `agent/agent.py` while the agent is still small and read-only.
+- Only extract helpers when real repeated usage appears across at least two call sites.
+- Generic file IO helpers may belong in `helper/helper_files.py`, but agent-specific parsing, POS loading, and prompt assembly should stay near the agent workflow.
+
+Reason:
+- Avoid creating a vague helper collection file.
+- Preserve local readability of the agent running flow.
+- Prevent helper sprawl caused by visual tidiness rather than real reuse.
+- Keep shared helpers limited to stable, generic, low-context operations.
+- Extracting too early increases navigation cost and hides important workflow logic.
+
+Boundary:
+- Good helper extraction:
+  - generic text file read/write
+  - optional file read
+  - safe filename/path handling
+  - repeated low-context utilities used by multiple modules
+- Bad helper extraction:
+  - `parse_allowed_files()` before another real caller exists
+  - `load_pos_context()` because it is agent/POS-specific
+  - `build_prompt()` because it is prompt assembly logic
+  - any helper that requires many parameters or hides workflow decisions
+
+Rule:
+- Extract from real repetition, not imagined future reuse.

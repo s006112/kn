@@ -25,7 +25,7 @@ import os
 from pathlib import Path
 from typing import List, Tuple
 
-from .utils_files import (
+from .helper_files import (
     get_next_available_filename,
     release_text_file_permissions,
     read_file_with_encodings,

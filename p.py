@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from w.utils_files import configure_logging
+from w.helper_files import configure_logging
 from w.p_pipelines import (
     PipelineContext,
     create_extract_processors,
