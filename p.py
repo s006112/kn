@@ -106,15 +106,6 @@ CONFIG = {
     "DISTILL_PROMPT": None,
 }
 
-REQUIRED_DIR_KEYS = (
-    "ORIGINAL_FOLDER",
-    "AUDIO_DONE_FOLDER",
-    "LINK_BACKUP_FOLDER",
-    "FAIL_FOLDER",
-)
-
-FALSE_VALUES = {"0", "false", "no", "off", "disable", "disabled"}
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -141,12 +132,6 @@ class SystemHandles(NamedTuple):
     context: PipelineContext
     threads: dict[str, threading.Thread]
     observer: Any
-
-
-def ensure_directories(cfg: dict[str, Any]) -> None:
-    """Create runtime folders required before workers start."""
-    for key in REQUIRED_DIR_KEYS:
-        Path(cfg[key]).mkdir(parents=True, exist_ok=True)
 
 
 def start_thread(
@@ -182,7 +167,8 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     for key, default in CONFIG["PIPELINES"].items():
         value = pipeline_overrides.get(key, default)
         pipelines[key] = (
-            value.strip().lower() not in FALSE_VALUES
+            value.strip().lower()
+            not in {"0", "false", "no", "off", "disable", "disabled"}
             if isinstance(value, str)
             else bool(value)
         )
@@ -196,8 +182,6 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     }
 
     setup_wikilink_cleaner_logging(logging.getLogger())
-    ensure_directories(cfg)
-
     ctx = create_pipeline_context(cfg)
 
     text_enabled = pipelines["PRETEXT"] or pipelines["EXTRACT"]
