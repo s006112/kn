@@ -5,6 +5,10 @@ python agent/agent.py agent/task.md --revise-last
 python agent/agent.py agent/task.md --status
 python agent/agent.py agent/task.md --show-last
 python agent/agent.py agent/task.md --accept-last
+python agent/agent.py agent/task.md --clear-trace
+python agent/agent.py agent/task.md --show-final
+python agent/agent.py agent/task.md --check-ready
+python agent/agent.py agent/task.md --show-commands
 '''
 
 from __future__ import annotations
@@ -140,11 +144,91 @@ def accept_last_plan() -> None:
     )
     print(f"Accepted plan: {FINAL_PLAN_PATH}")
 
+def clear_trace() -> None:
+    paths = (
+        LAST_PROMPT_PATH,
+        LAST_PLAN_PATH,
+        LAST_REVIEW_PATH,
+        LAST_REVISED_PLAN_PATH,
+    )
+
+    for path in paths:
+        if path.exists():
+            path.unlink()
+            print(f"removed: {path}")
+        else:
+            print(f"missing: {path}")
+
+    print("Trace cleared. final_plan.md preserved.")
+
+def show_final_plan() -> None:
+    if not FINAL_PLAN_PATH.exists():
+        print("No final plan found.")
+        return
+
+    print("=== Final Accepted Plan ===")
+    print(f"source: {FINAL_PLAN_PATH}\n")
+    print(read_text(FINAL_PLAN_PATH))
+
+def check_ready(task_path: Path) -> None:
+    checks = []
+
+    checks.append(("task exists", task_path.exists()))
+    checks.append(("final_plan exists", FINAL_PLAN_PATH.exists()))
+
+    task_text = read_text(task_path) if task_path.exists() else ""
+    allowed_files = parse_allowed_files(task_text) if task_text else []
+
+    checks.append(("allowed files declared", bool(allowed_files)))
+
+    for rel in allowed_files:
+        checks.append((f"allowed file exists: {rel}", (REPO_ROOT / rel).exists()))
+
+    final_text = read_text(FINAL_PLAN_PATH) if FINAL_PLAN_PATH.exists() else ""
+    checks.append(("final plan has evaluation command", "Evaluation command" in final_text or "evaluation" in final_text.lower()))
+    checks.append(("final plan has stop condition", "Stop condition" in final_text or "停止条件" in final_text))
+
+    print("=== Agent Ready Check ===")
+    ok = True
+    for name, passed in checks:
+        mark = "OK" if passed else "MISSING"
+        print(f"{mark}: {name}")
+        ok = ok and passed
+
+    print()
+    print("READY" if ok else "NOT READY")
+
+def show_commands() -> None:
+    if not FINAL_PLAN_PATH.exists():
+        print("No final plan found.")
+        return
+
+    text = read_text(FINAL_PLAN_PATH)
+    commands: list[str] = []
+    in_bash = False
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_bash = stripped in ("```bash", "```sh", "```shell")
+            continue
+        if in_bash and stripped:
+            commands.append(stripped)
+
+    print("=== Final Plan Commands ===")
+    if not commands:
+        print("No commands found.")
+        return
+
+    for command in commands:
+        print(command)
+
 def main() -> None:
     task_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("task.md")
     if not task_path.is_absolute():
         task_path = Path.cwd() / task_path
 
+    # Inspection / state-management modes: no LLM call.
     if "--status" in sys.argv:
         print_status(task_path)
         return
@@ -156,9 +240,26 @@ def main() -> None:
     if "--accept-last" in sys.argv:
         accept_last_plan()
         return
+    
+    if "--clear-trace" in sys.argv:
+        clear_trace()
+        return    
 
+    if "--show-final" in sys.argv:
+        show_final_plan()
+        return
+
+    if "--check-ready" in sys.argv:
+        check_ready(task_path)
+        return
+
+    if "--show-commands" in sys.argv:
+        show_commands()
+        return
+    
     task_text = read_text(task_path)
 
+    # LLM refinement modes: read previous artifacts and produce next artifact.
     if "--review-last" in sys.argv:
         plan_text = read_text(LAST_PLAN_PATH)
         review = call_llm(
@@ -190,6 +291,7 @@ def main() -> None:
         print(f"\nSaved revised plan: {LAST_REVISED_PLAN_PATH}")
         return
     
+    # Default mode: build context and generate the first plan.
     allowed_files = parse_allowed_files(task_text)
     pos_context = load_pos_context()
     file_context = load_allowed_file_context(allowed_files)
