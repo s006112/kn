@@ -151,6 +151,22 @@ def test_summary(results: list[bool]) -> None:
     print(f"✅ summary: {passed} ✅, {failed} ❌, {len(results)} total")
 
 
+def system_status(handles) -> dict:
+    ctx = handles.context
+    return {
+        "pipelines": dict(ctx.config["PIPELINES"]),
+        "queues": {
+            "pretext": ctx.pretext_queue.qsize(),
+            "extract": ctx.extract_queue.qsize(),
+            "premium_extract": ctx.premium_extract_queue.qsize(),
+        },
+        "wikilink_cleaner": {
+            "last_run": ctx.wikilink_cleaning_stats["last_run"],
+            "cycle_count": ctx.wikilink_cleaning_stats["cycle_count"],
+        },
+    }
+
+
 def test_torrent_move(test_id: str) -> tuple[bool, list[Path]]:
     filename = f"{test_id}.torrent"
     source = PATHS.watch / filename
@@ -2130,7 +2146,7 @@ def test_start_system_creates_expected_threads_schedules_watchers_and_stop(test_
         thread_names = set(handles.threads)
         scheduled_paths = [path for _, path, _ in handles.observer.scheduled]
         scheduled_recursive = [recursive for _, _, recursive in handles.observer.scheduled]
-        status = orchestrator_module.system_status(handles)
+        status = system_status(handles)
 
         orchestrator_module.stop_system(handles)
 
@@ -2317,7 +2333,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
                 else []
             )
 
-            status = orchestrator_module.system_status(handles)
+            status = system_status(handles)
 
             orchestrator_module.stop_system(handles)
 

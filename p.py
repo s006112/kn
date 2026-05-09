@@ -282,23 +282,6 @@ def stop_system(handles: SystemHandles) -> None:
         logging.warning("Failed to stop observer cleanly: %s", exc)
 
 
-def system_status(handles: SystemHandles) -> dict[str, Any]:
-    """Return pipeline flags, queue sizes, and wikilink cleaner counters."""
-    ctx = handles.context
-    return {
-        "pipelines": dict(ctx.config["PIPELINES"]),
-        "queues": {
-            "pretext": ctx.pretext_queue.qsize(),
-            "extract": ctx.extract_queue.qsize(),
-            "premium_extract": ctx.premium_extract_queue.qsize(),
-        },
-        "wikilink_cleaner": {
-            "last_run": ctx.wikilink_cleaning_stats["last_run"],
-            "cycle_count": ctx.wikilink_cleaning_stats["cycle_count"],
-        },
-    }
-
-
 def main(cfg: dict[str, Any] | None = None) -> None:
     """Start the system and keep the supervising process alive."""
     resolved_cfg = cfg or CONFIG
