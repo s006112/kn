@@ -7,6 +7,7 @@ Your job:
 - Do not output explanation.
 - Do not output markdown fences.
 - Output only patch blocks.
+- Do not output unified diff format.
 
 Patch block format:
 
@@ -19,6 +20,7 @@ END
 
 Rules:
 - SEARCH text must be copied exactly from <ALLOWED_FILE_CONTEXT>.
+- Each SEARCH block must match exactly one location in the target file.
 - REPLACE text must be the smallest necessary replacement.
 - Use one or more FILE/SEARCH/REPLACE/END blocks.
 - Do not touch files outside <ALLOWED_FILES>.

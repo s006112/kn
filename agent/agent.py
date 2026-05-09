@@ -11,14 +11,13 @@ python agent/agent.py agent/task.md --check-ready
 python agent/agent.py agent/task.md --show-commands
 python agent/agent.py agent/task.md --make-patch
 python agent/agent.py agent/task.md --check-patch
+python agent/agent.py agent/task.md --check-ready
 '''
 
 from __future__ import annotations
 
-import os
 import re
 import sys
-import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -40,7 +39,7 @@ PLAN_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_plan.txt"
 REVIEW_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_review.txt"
 REVISE_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_revise.txt"
 PATCH_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_patch.txt"
-LAST_PATCH_PATH = REPO_ROOT / "agent" / "last_patch.diff"
+LAST_PATCH_PATH = REPO_ROOT / "agent" / "last_patch.txt"
 
 LAST_PROMPT_PATH = REPO_ROOT / "agent" / "last_prompt.md"
 LAST_PLAN_PATH = REPO_ROOT / "agent" / "last_plan.md"
@@ -246,27 +245,91 @@ def build_patch_prompt(
     )
 
 
-def check_patch() -> None:
+def check_patch(task_path: Path) -> None:
     if not LAST_PATCH_PATH.exists():
         print("No patch found.")
         return
 
-    result = subprocess.run(
-        ["git", "apply", "--check", str(LAST_PATCH_PATH)],
-        cwd=REPO_ROOT,
-        text=True,
-        capture_output=True,
-    )
-
-    if result.returncode == 0:
-        print("PATCH_OK")
+    patch_text = read_text(LAST_PATCH_PATH)
+    if patch_text.strip() == "PATCH_NOT_SAFE":
+        print("PATCH_NOT_SAFE")
         return
 
-    print("PATCH_INVALID")
-    if result.stderr:
-        print(result.stderr.strip())
-    if result.stdout:
-        print(result.stdout.strip())
+    task_text = read_text(task_path) if task_path.exists() else ""
+    allowed_files = set(parse_allowed_files(task_text))
+    lines = patch_text.splitlines()
+    blocks: list[tuple[str, str, str]] = []
+    errors: list[str] = []
+    index = 0
+
+    while index < len(lines):
+        if not lines[index].strip():
+            index += 1
+            continue
+
+        if not lines[index].startswith("FILE: "):
+            errors.append(f"expected FILE at line {index + 1}")
+            break
+
+        rel = lines[index][len("FILE: "):].strip()
+        index += 1
+
+        if index >= len(lines) or lines[index] != "SEARCH:":
+            errors.append(f"expected SEARCH after FILE: {rel}")
+            break
+        index += 1
+
+        search_lines: list[str] = []
+        while index < len(lines) and lines[index] != "REPLACE:":
+            search_lines.append(lines[index])
+            index += 1
+
+        if index >= len(lines):
+            errors.append(f"missing REPLACE for FILE: {rel}")
+            break
+        index += 1
+
+        replace_lines: list[str] = []
+        while index < len(lines) and lines[index] != "END":
+            replace_lines.append(lines[index])
+            index += 1
+
+        if index >= len(lines):
+            errors.append(f"missing END for FILE: {rel}")
+            break
+        index += 1
+
+        blocks.append((rel, "\n".join(search_lines), "\n".join(replace_lines)))
+
+    if not blocks:
+        errors.append("no patch blocks found")
+
+    for rel, search, _replace in blocks:
+        path = REPO_ROOT / rel
+
+        if rel not in allowed_files:
+            errors.append(f"file not allowed: {rel}")
+            continue
+
+        if not path.exists():
+            errors.append(f"file not found: {rel}")
+            continue
+
+        if not search:
+            errors.append(f"empty SEARCH block: {rel}")
+            continue
+
+        count = read_text(path).count(search)
+        if count != 1:
+            errors.append(f"SEARCH match count for {rel}: {count}")
+
+    if errors:
+        print("PATCH_INVALID")
+        for error in errors:
+            print(error)
+        return
+
+    print("PATCH_OK")
 
 
 
@@ -306,7 +369,7 @@ def main() -> None:
         return
     
     if "--check-patch" in sys.argv:
-        check_patch()
+        check_patch(task_path)
         return
 
     task_text = read_text(task_path)
@@ -355,7 +418,7 @@ def main() -> None:
 
         patch = call_llm(
             DEFAULT_MODEL,
-            system_prompt="You are a strict minimal-change unified diff patch generator.",
+            system_prompt="You are a strict minimal-change SEARCH/REPLACE patch generator.",
             user_text=build_patch_prompt(
                 task_text=task_text,
                 final_plan_text=final_plan_text,
