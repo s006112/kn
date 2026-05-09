@@ -58,7 +58,7 @@ class BaseExtractHandler(FileSystemEventHandler):
             distill_model = (self.config.get("MODEL_DISTILL") or "").strip()
             if distill_model:
                 logging.info(
-                    f"Extract: Distillation with {distill_model} for {filename}"
+                    f"Extract: Model {distill_model} for {filename}"
                 )
                 distill_path = run_distillation(
                     self.config,
@@ -66,15 +66,15 @@ class BaseExtractHandler(FileSystemEventHandler):
                     md_path=md_path,
                 )
                 logging.info(
-                    f"Extract: Distillation completed for {filename} ({distill_path or 'skipped'})"
+                    f"Extract: Completed for {filename} ({distill_path or 'skipped'})"
                 )
             else:
                 logging.info(
-                    f"Extract: Distillation skipped for {filename} (MODEL_DISTILL disabled)"
+                    f"Extract: Skipped for {filename} (MODEL_DISTILL disabled)"
                 )
         else:
             logging.info(
-                f"Extract: Distillation bypassed for {filename} (premium pipeline)"
+                f"Extract: Bypassed for {filename} (premium pipeline)"
             )
 
     def _queue_file(self, file_path):
@@ -179,7 +179,7 @@ def process(self, file_path, get_next_available_filename):
 
             except Exception as e:
                 any_failure = True
-                logging.error(f"Extract: model {model} failed for {filename}: {e}")
+                logging.error(f"Extract: Model {model} failed for {filename}: {e}")
                 # Write a per-model error file (best-effort)
                 try:
                     os.makedirs(self.config['PRETEXT_WATCH_FOLDER'], exist_ok=True)
