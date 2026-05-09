@@ -1,4 +1,4 @@
-# python agent/agent.py agent/task.md --dry-context
+# python agent/agent.py agent/task.md --review-last --dry-context
 from __future__ import annotations
 
 import os
@@ -21,9 +21,11 @@ POS_FILES = (
 )
 
 DEFAULT_MODEL = "gpt-5.4-mini"
-PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_plan.txt"
+PLAN_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_plan.txt"
+REVIEW_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_review.txt"
 LAST_PROMPT_PATH = REPO_ROOT / "agent" / "last_prompt.md"
 LAST_PLAN_PATH = REPO_ROOT / "agent" / "last_plan.md"
+LAST_REVIEW_PATH = REPO_ROOT / "agent" / "last_review.md"
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -67,14 +69,20 @@ def load_allowed_file_context(file_paths: list[str]) -> str:
     return "\n\n---\n\n".join(parts)
 
 
-def build_prompt(task_text: str, pos_context: str, file_context: str) -> str:
-    template = read_text(PROMPT_PATH)
+def build_plan_prompt(task_text: str, pos_context: str, file_context: str) -> str:
+    template = read_text(PLAN_PROMPT_PATH)
     return template.format(
         task_text=task_text,
         pos_context=pos_context,
         file_context=file_context,
     )
 
+def build_review_prompt(task_text: str, plan_text: str) -> str:
+    template = read_text(REVIEW_PROMPT_PATH)
+    return template.format(
+        task_text=task_text,
+        plan_text=plan_text,
+    )
 
 def main() -> None:
     task_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("task.md")
@@ -82,20 +90,36 @@ def main() -> None:
         task_path = Path.cwd() / task_path
 
     task_text = read_text(task_path)
+
+    if "--review-last" in sys.argv:
+        plan_text = read_text(LAST_PLAN_PATH)
+        review = call_llm(
+            DEFAULT_MODEL,
+            system_prompt="You are a strict minimal-change repo plan reviewer.",
+            user_text=build_review_prompt(task_text, plan_text),
+            file_path=str(LAST_PLAN_PATH),
+            max_retries=2,
+            timeout=120,
+        )
+        LAST_REVIEW_PATH.write_text(review, encoding="utf-8")
+        print(review)
+        print(f"\nSaved review: {LAST_REVIEW_PATH}")
+        return 
+
     allowed_files = parse_allowed_files(task_text)
     pos_context = load_pos_context()
     file_context = load_allowed_file_context(allowed_files)
 
     print("=== Repo Planning Agent ===")
     print(f"task: {task_path}")
-    print(f"prompt: {PROMPT_PATH}")
+    print(f"prompt: {PLAN_PROMPT_PATH}")
     print(f"model: {DEFAULT_MODEL}")
     print("allowed files:")
     for file_path in allowed_files or ["<none>"]:
         print(f"  - {file_path}")
     print()
 
-    prompt_text = build_prompt(task_text, pos_context, file_context)
+    prompt_text = build_plan_prompt(task_text, pos_context, file_context)
     LAST_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
 
     if "--dry-context" in sys.argv:
