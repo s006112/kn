@@ -1,4 +1,9 @@
-# python agent/agent.py agent/task.md --review-last --dry-context
+'''
+python agent/agent.py agent/task.md
+python agent/agent.py agent/task.md --review-last
+python agent/agent.py agent/task.md --revise-last
+'''
+
 from __future__ import annotations
 
 import os
@@ -23,9 +28,12 @@ POS_FILES = (
 DEFAULT_MODEL = "gpt-5.4-mini"
 PLAN_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_plan.txt"
 REVIEW_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_review.txt"
+REVISE_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_revise.txt"
 LAST_PROMPT_PATH = REPO_ROOT / "agent" / "last_prompt.md"
 LAST_PLAN_PATH = REPO_ROOT / "agent" / "last_plan.md"
 LAST_REVIEW_PATH = REPO_ROOT / "agent" / "last_review.md"
+LAST_REVISED_PLAN_PATH = REPO_ROOT / "agent" / "last_revised_plan.md"
+
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -84,6 +92,14 @@ def build_review_prompt(task_text: str, plan_text: str) -> str:
         plan_text=plan_text,
     )
 
+def build_revise_prompt(task_text: str, plan_text: str, review_text: str) -> str:
+    template = read_text(REVISE_PROMPT_PATH)
+    return template.format(
+        task_text=task_text,
+        plan_text=plan_text,
+        review_text=review_text,
+    )
+
 def main() -> None:
     task_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("task.md")
     if not task_path.is_absolute():
@@ -106,6 +122,22 @@ def main() -> None:
         print(f"\nSaved review: {LAST_REVIEW_PATH}")
         return 
 
+    if "--revise-last" in sys.argv:
+        plan_text = read_text(LAST_PLAN_PATH)
+        review_text = read_text(LAST_REVIEW_PATH)
+        revised = call_llm(
+            DEFAULT_MODEL,
+            system_prompt="You are a strict minimal-change repo plan revision agent.",
+            user_text=build_revise_prompt(task_text, plan_text, review_text),
+            file_path=str(LAST_REVIEW_PATH),
+            max_retries=2,
+            timeout=120,
+        )
+        LAST_REVISED_PLAN_PATH.write_text(revised, encoding="utf-8")
+        print(revised)
+        print(f"\nSaved revised plan: {LAST_REVISED_PLAN_PATH}")
+        return
+    
     allowed_files = parse_allowed_files(task_text)
     pos_context = load_pos_context()
     file_context = load_allowed_file_context(allowed_files)
