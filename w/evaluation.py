@@ -16,8 +16,8 @@ for path in (ROOT_DIR, W_DIR):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-import archive.p as orchestrator_module  # noqa: E402
-from archive.p import CONFIG  # noqa: E402
+import p as orchestrator_module  # noqa: E402
+from p import CONFIG  # noqa: E402
 import p_audio as audio_module  # noqa: E402
 from p_audio import audio_queue, move_files_to_done, scan_audio_files  # noqa: E402
 from p_context import create_pipeline_context  # noqa: E402
@@ -2049,8 +2049,9 @@ def test_utils_files_and_text_boundaries(test_id: str) -> tuple[bool, list[Path]
     return passed, cleanup
 
 
-def test_start_system_creates_expected_threads_schedules_watchers_and_stop_clears_context(test_id: str) -> tuple[bool, list[Path]]:
+def test_start_system_creates_expected_threads_schedules_watchers_and_stop(test_id: str) -> tuple[bool, list[Path]]:
     cleanup: list[Path] = []
+
     expected_threads = {
         "TTMLPipeline",
         "TextPipeline-Pretext",
@@ -2061,6 +2062,7 @@ def test_start_system_creates_expected_threads_schedules_watchers_and_stop_clear
         "WikilinkCleaner",
         "XUrlDownloadPipeline",
     }
+
     expected_watch_paths = [
         str(CONFIG["PRETEXT_WATCH_FOLDER"]),
         str(CONFIG["EXTRACT_WATCH_FOLDER"]),
@@ -2086,7 +2088,10 @@ def test_start_system_creates_expected_threads_schedules_watchers_and_stop_clear
         def join(self) -> None:
             self.joined = True
 
+    started_workers: set[str] = set()
+
     def fake_worker(ctx, *_args) -> None:
+        started_workers.add(threading.current_thread().name)
         ctx.shutdown_flag.wait(5)
 
     original_values = {
@@ -2098,10 +2103,8 @@ def test_start_system_creates_expected_threads_schedules_watchers_and_stop_clear
         "run_periodic_file_scanner": orchestrator_module.run_periodic_file_scanner,
         "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
         "process_x_url_download_pipeline": orchestrator_module.process_x_url_download_pipeline,
-        "file_scanner": orchestrator_module.file_scanner,
         "Observer": orchestrator_module.Observer,
         "read_prompt_file": orchestrator_module.read_prompt_file,
-        "CURRENT_CONTEXT": orchestrator_module.CURRENT_CONTEXT,
     }
 
     handles = None
@@ -2115,48 +2118,51 @@ def test_start_system_creates_expected_threads_schedules_watchers_and_stop_clear
         orchestrator_module.run_periodic_file_scanner = fake_worker
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_x_url_download_pipeline = fake_worker
-        orchestrator_module.file_scanner = lambda _ctx: None
         orchestrator_module.Observer = FakeObserver
         orchestrator_module.read_prompt_file = lambda filename: f"evaluation prompt {filename}"
 
         handles = orchestrator_module.start_system(CONFIG)
+
+        deadline = time.time() + 2
+        while time.time() < deadline and started_workers != expected_threads:
+            time.sleep(0.01)
+
         thread_names = set(handles.threads)
         scheduled_paths = [path for _, path, _ in handles.observer.scheduled]
         scheduled_recursive = [recursive for _, _, recursive in handles.observer.scheduled]
-        context_was_set = orchestrator_module.CURRENT_CONTEXT is handles.context
-        status = orchestrator_module.system_status()
+        status = orchestrator_module.system_status(handles)
 
         orchestrator_module.stop_system(handles)
+
         for thread in handles.threads.values():
             thread.join(timeout=1)
 
         passed = (
-            handles is not None
-            and thread_names == expected_threads
+            thread_names == expected_threads
+            and started_workers == expected_threads
             and handles.observer.started
             and handles.observer.stopped
             and handles.observer.joined
             and scheduled_paths == expected_watch_paths
             and scheduled_recursive == [False, False, False]
-            and context_was_set
-            and status["queues"] == {
-                "pretext": 0,
-                "extract": 0,
-                "premium_extract": 0,
-            }
+            and status["pipelines"] == CONFIG["PIPELINES"]
             and handles.context.shutdown_flag.is_set()
-            and orchestrator_module.CURRENT_CONTEXT is None
+            and all(not thread.is_alive() for thread in handles.threads.values())
         )
 
         print_result(
-            "start system creates expected threads schedules watchers and stop clears context",
+            "start system creates expected threads schedules watchers and stop",
             passed,
             {
                 "thread_names": sorted(thread_names),
+                "started_workers": sorted(started_workers),
                 "scheduled_paths": scheduled_paths,
-                "context_was_set": context_was_set,
                 "shutdown": handles.context.shutdown_flag.is_set(),
-                "current_context": orchestrator_module.CURRENT_CONTEXT,
+                "threads_alive": [
+                    name
+                    for name, thread in handles.threads.items()
+                    if thread.is_alive()
+                ],
             },
         )
 
@@ -2176,10 +2182,204 @@ def test_start_system_creates_expected_threads_schedules_watchers_and_stop_clear
         orchestrator_module.run_periodic_file_scanner = original_values["run_periodic_file_scanner"]
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
         orchestrator_module.process_x_url_download_pipeline = original_values["process_x_url_download_pipeline"]
-        orchestrator_module.file_scanner = original_values["file_scanner"]
         orchestrator_module.Observer = original_values["Observer"]
         orchestrator_module.read_prompt_file = original_values["read_prompt_file"]
-        orchestrator_module.CURRENT_CONTEXT = original_values["CURRENT_CONTEXT"]
+
+def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool, list[Path]]:
+    cleanup: list[Path] = []
+
+    base_threads = {
+        "TTMLPipeline",
+        "AudioPipeline-GPU",
+        "PeriodicScanner",
+        "WikilinkCleaner",
+        "XUrlDownloadPipeline",
+    }
+
+    cases = [
+        (False, False, base_threads, []),
+        (
+            True,
+            False,
+            base_threads | {"TextPipeline-Pretext"},
+            [str(CONFIG["PRETEXT_WATCH_FOLDER"])],
+        ),
+        (
+            False,
+            True,
+            base_threads | {
+                "TextPipeline-Extract",
+                "TextPipeline-PremiumExtract",
+            },
+            [
+                str(CONFIG["EXTRACT_WATCH_FOLDER"]),
+                str(CONFIG["PREMIUM_WATCH_FOLDER"]),
+            ],
+        ),
+        (
+            True,
+            True,
+            base_threads | {
+                "TextPipeline-Pretext",
+                "TextPipeline-Extract",
+                "TextPipeline-PremiumExtract",
+            },
+            [
+                str(CONFIG["PRETEXT_WATCH_FOLDER"]),
+                str(CONFIG["EXTRACT_WATCH_FOLDER"]),
+                str(CONFIG["PREMIUM_WATCH_FOLDER"]),
+            ],
+        ),
+    ]
+
+    class FakeObserver:
+        def __init__(self):
+            self.scheduled: list[tuple[object, str, bool]] = []
+            self.started = False
+            self.stopped = False
+            self.joined = False
+
+        def schedule(self, handler, path: str, recursive: bool = False) -> None:
+            self.scheduled.append((handler, path, recursive))
+
+        def start(self) -> None:
+            self.started = True
+
+        def stop(self) -> None:
+            self.stopped = True
+
+        def join(self) -> None:
+            self.joined = True
+
+    started_workers: set[str] = set()
+
+    def fake_worker(ctx, *_args) -> None:
+        started_workers.add(threading.current_thread().name)
+        ctx.shutdown_flag.wait(5)
+
+    original_values = {
+        "process_ttml_pipeline": orchestrator_module.process_ttml_pipeline,
+        "process_pretext_queue": orchestrator_module.process_pretext_queue,
+        "process_extract_queue": orchestrator_module.process_extract_queue,
+        "process_premium_extract_queue": orchestrator_module.process_premium_extract_queue,
+        "process_audio_pipeline": orchestrator_module.process_audio_pipeline,
+        "run_periodic_file_scanner": orchestrator_module.run_periodic_file_scanner,
+        "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
+        "process_x_url_download_pipeline": orchestrator_module.process_x_url_download_pipeline,
+        "Observer": orchestrator_module.Observer,
+        "read_prompt_file": orchestrator_module.read_prompt_file,
+    }
+
+    handles_list = []
+    results = []
+
+    try:
+        orchestrator_module.process_ttml_pipeline = fake_worker
+        orchestrator_module.process_pretext_queue = fake_worker
+        orchestrator_module.process_extract_queue = fake_worker
+        orchestrator_module.process_premium_extract_queue = fake_worker
+        orchestrator_module.process_audio_pipeline = fake_worker
+        orchestrator_module.run_periodic_file_scanner = fake_worker
+        orchestrator_module.process_wikilink_cleaning = fake_worker
+        orchestrator_module.process_x_url_download_pipeline = fake_worker
+        orchestrator_module.Observer = FakeObserver
+        orchestrator_module.read_prompt_file = lambda filename: f"evaluation prompt {filename}"
+
+        for pretext_enabled, extract_enabled, expected_threads, expected_watch_paths in cases:
+            started_workers.clear()
+
+            config = {
+                **CONFIG,
+                "PIPELINES": {
+                    **CONFIG["PIPELINES"],
+                    "PRETEXT": pretext_enabled,
+                    "EXTRACT": extract_enabled,
+                },
+            }
+
+            handles = orchestrator_module.start_system(config)
+            handles_list.append(handles)
+
+            deadline = time.time() + 2
+            while time.time() < deadline and started_workers != expected_threads:
+                time.sleep(0.01)
+
+            thread_names = set(handles.threads)
+            observer = handles.observer
+            scheduled_paths = (
+                [path for _, path, _ in observer.scheduled]
+                if observer is not None
+                else []
+            )
+            scheduled_recursive = (
+                [recursive for _, _, recursive in observer.scheduled]
+                if observer is not None
+                else []
+            )
+
+            status = orchestrator_module.system_status(handles)
+
+            orchestrator_module.stop_system(handles)
+
+            for thread in handles.threads.values():
+                thread.join(timeout=1)
+
+            case_passed = (
+                thread_names == expected_threads
+                and started_workers == expected_threads
+                and scheduled_paths == expected_watch_paths
+                and scheduled_recursive == [False] * len(expected_watch_paths)
+                and status["pipelines"]["PRETEXT"] is pretext_enabled
+                and status["pipelines"]["EXTRACT"] is extract_enabled
+                and handles.context.shutdown_flag.is_set()
+                and all(not thread.is_alive() for thread in handles.threads.values())
+                and (
+                    observer is None
+                    if not expected_watch_paths
+                    else observer.started and observer.stopped and observer.joined
+                )
+            )
+
+            results.append(
+                {
+                    "pretext": pretext_enabled,
+                    "extract": extract_enabled,
+                    "passed": case_passed,
+                    "threads": sorted(thread_names),
+                    "watch_paths": scheduled_paths,
+                }
+            )
+
+        passed = all(item["passed"] for item in results)
+
+        print_result(
+            "start system pretext extract toggle matrix",
+            passed,
+            {
+                "cases": results,
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        for handles in handles_list:
+            if not handles.context.shutdown_flag.is_set():
+                orchestrator_module.stop_system(handles)
+            for thread in handles.threads.values():
+                thread.join(timeout=1)
+
+        orchestrator_module.process_ttml_pipeline = original_values["process_ttml_pipeline"]
+        orchestrator_module.process_pretext_queue = original_values["process_pretext_queue"]
+        orchestrator_module.process_extract_queue = original_values["process_extract_queue"]
+        orchestrator_module.process_premium_extract_queue = original_values["process_premium_extract_queue"]
+        orchestrator_module.process_audio_pipeline = original_values["process_audio_pipeline"]
+        orchestrator_module.run_periodic_file_scanner = original_values["run_periodic_file_scanner"]
+        orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
+        orchestrator_module.process_x_url_download_pipeline = original_values["process_x_url_download_pipeline"]
+        orchestrator_module.Observer = original_values["Observer"]
+        orchestrator_module.read_prompt_file = original_values["read_prompt_file"]
+
 
 def main() -> int:
     test_id = f"EVAL_{uuid.uuid4().hex[:8]}"
@@ -2217,7 +2417,8 @@ def main() -> int:
             test_x_url_failure_fallback_and_remove_failure_paths,
             test_wikilink_cleaner_run_level_backup_dry_run_lock_and_ontology,
             test_utils_files_and_text_boundaries,
-            test_start_system_creates_expected_threads_schedules_watchers_and_stop_clears_context,
+            test_start_system_creates_expected_threads_schedules_watchers_and_stop,
+            test_start_system_pretext_extract_toggle_matrix,
         ):
             passed, cleanup = test(test_id)
             results.append(passed)

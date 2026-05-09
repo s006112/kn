@@ -156,24 +156,17 @@ def run_periodic_file_scanner(ctx: PipelineContext) -> None:
         file_scanner(ctx)
 
 
-def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
-    """Initialize prompts, context, workers, scans, and watchdog observers."""
+def prepare_runtime_config(cfg: dict[str, Any] | None) -> dict[str, Any]:
     if cfg is None:
         raise ValueError("Configuration dictionary is required.")
 
-    pipeline_overrides = cfg.get("PIPELINES") or {}
-    pipelines = {}
+    overrides = cfg.get("PIPELINES") or {}
+    pipelines = {
+        key: bool(overrides.get(key, default))
+        for key, default in CONFIG["PIPELINES"].items()
+    }
 
-    for key, default in CONFIG["PIPELINES"].items():
-        value = pipeline_overrides.get(key, default)
-        pipelines[key] = (
-            value.strip().lower()
-            not in {"0", "false", "no", "off", "disable", "disabled"}
-            if isinstance(value, str)
-            else bool(value)
-        )
-
-    cfg = {
+    return {
         **cfg,
         "PIPELINES": pipelines,
         "PRETEXT_PROMPT": read_prompt_file("prompt_pretext.txt"),
@@ -181,88 +174,100 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
         "DISTILL_PROMPT": read_prompt_file("prompt_distill.txt"),
     }
 
-    setup_wikilink_cleaner_logging(logging.getLogger())
-    ctx = create_pipeline_context(cfg)
 
-    text_enabled = pipelines["PRETEXT"] or pipelines["EXTRACT"]
-    pretext_handler = extract_handler = premium_extract_handler = None
+def create_runtime_handlers(ctx: PipelineContext) -> dict[str, Any]:
+    pipelines = ctx.config["PIPELINES"]
+    if not (pipelines["PRETEXT"] or pipelines["EXTRACT"]):
+        return {}
 
-    if text_enabled:
-        (
-            pretext_handler,
-            extract_handler,
-            premium_extract_handler,
-        ) = create_pipeline_handlers(ctx)
+    pretext, extract, premium_extract = create_pipeline_handlers(ctx)
+    return {
+        "pretext": pretext,
+        "extract": extract,
+        "premium_extract": premium_extract,
+    }
 
+
+def start_runtime_workers(
+    ctx: PipelineContext,
+    handlers: dict[str, Any],
+) -> dict[str, threading.Thread]:
+    pipelines = ctx.config["PIPELINES"]
     threads: dict[str, threading.Thread] = {}
 
-    if pipelines["TTML"]:
-        start_thread(threads, "TTMLPipeline", process_ttml_pipeline, (ctx,))
+    specs = [
+        ("TTML", "TTMLPipeline", process_ttml_pipeline, (ctx,)),
+        ("PRETEXT", "TextPipeline-Pretext", process_pretext_queue, (ctx,)),
+        ("EXTRACT", "TextPipeline-Extract", process_extract_queue, (ctx, handlers.get("extract"))),
+        ("EXTRACT", "TextPipeline-PremiumExtract", process_premium_extract_queue, (ctx, handlers.get("premium_extract"))),
+        ("AUDIO", "AudioPipeline-GPU", process_audio_pipeline, (ctx,)),
+        (None, "PeriodicScanner", run_periodic_file_scanner, (ctx,)),
+        ("NOTES", "WikilinkCleaner", process_wikilink_cleaning, (ctx,)),
+        ("X_URL_DOWNLOAD", "XUrlDownloadPipeline", process_x_url_download_pipeline, (ctx,)),
+    ]
 
-    if pipelines["PRETEXT"]:
-        start_thread(
-            threads,
-            "TextPipeline-Pretext",
-            process_pretext_queue,
-            (ctx,),
+    for flag, name, target, args in specs:
+        if flag is None or pipelines[flag]:
+            start_thread(threads, name, target, args)
+
+    return threads
+
+
+def start_runtime_observer(
+    ctx: PipelineContext,
+    handlers: dict[str, Any],
+) -> Any:
+    pipelines = ctx.config["PIPELINES"]
+
+    specs = [
+        ("PRETEXT", handlers.get("pretext"), "PRETEXT_WATCH_FOLDER"),
+        ("EXTRACT", handlers.get("extract"), "EXTRACT_WATCH_FOLDER"),
+        ("EXTRACT", handlers.get("premium_extract"), "PREMIUM_WATCH_FOLDER"),
+    ]
+
+    watch_specs = [
+        (handler, folder_key)
+        for flag, handler, folder_key in specs
+        if pipelines[flag] and handler is not None
+    ]
+
+    if not watch_specs:
+        return None
+
+    observer = Observer()
+    for handler, folder_key in watch_specs:
+        observer.schedule(
+            handler,
+            os.fspath(ctx.config[folder_key]),
+            recursive=False,
         )
+    observer.start()
+    return observer
 
-    if pipelines["EXTRACT"]:
-        start_thread(
-            threads,
-            "TextPipeline-Extract",
-            process_extract_queue,
-            (ctx, extract_handler),
-        )
-        start_thread(
-            threads,
-            "TextPipeline-PremiumExtract",
-            process_premium_extract_queue,
-            (ctx, premium_extract_handler),
-        )
 
-    if pipelines["AUDIO"]:
-        start_thread(threads, "AudioPipeline-GPU", process_audio_pipeline, (ctx,))
-
-    start_thread(threads, "PeriodicScanner", run_periodic_file_scanner, (ctx,))
-
-    if pipelines["NOTES"]:
-        start_thread(threads, "WikilinkCleaner", process_wikilink_cleaning, (ctx,))
-
-    if pipelines["X_URL_DOWNLOAD"]:
-        start_thread(
-            threads,
-            "XUrlDownloadPipeline",
-            process_x_url_download_pipeline,
-            (ctx,),
-        )
-
-    watch_specs = []
-    if pipelines["PRETEXT"]:
-        watch_specs.append((pretext_handler, "PRETEXT_WATCH_FOLDER"))
-
-    if pipelines["EXTRACT"]:
-        watch_specs.extend(
-            (
-                (extract_handler, "EXTRACT_WATCH_FOLDER"),
-                (premium_extract_handler, "PREMIUM_WATCH_FOLDER"),
-            )
-        )
-
-    observer = None
-    if watch_specs:
-        observer = Observer()
-        for handler, folder_key in watch_specs:
-            observer.schedule(handler, os.fspath(cfg[folder_key]), recursive=False)
-        observer.start()
-
+def log_enabled_pipelines(pipelines: dict[str, bool]) -> None:
     enabled_names = [key for key, enabled in pipelines.items() if enabled]
     logging.info(
         "Enabled pipelines: %s",
         ", ".join(enabled_names) if enabled_names else "none",
     )
 
+
+def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
+    """Initialize config, context, workers, scanner, and watchdog observer."""
+    cfg = prepare_runtime_config(cfg)
+
+    setup_wikilink_cleaner_logging(logging.getLogger())
+    ctx = create_pipeline_context(cfg)
+
+    handlers = create_runtime_handlers(ctx)
+    threads = start_runtime_workers(ctx, handlers)
+    observer = start_runtime_observer(ctx, handlers)
+
+    log_enabled_pipelines(ctx.config["PIPELINES"])
+
     return SystemHandles(context=ctx, threads=threads, observer=observer)
+
 
 
 def stop_system(handles: SystemHandles) -> None:
