@@ -58,7 +58,7 @@ class BaseExtractHandler(FileSystemEventHandler):
             distill_model = (self.config.get("MODEL_DISTILL") or "").strip()
             if distill_model:
                 logging.info(
-                    f"{self.__class__.__name__}: Distillation with {distill_model} for {filename}"
+                    f"Extract: Distillation with {distill_model} for {filename}"
                 )
                 distill_path = run_distillation(
                     self.config,
@@ -66,15 +66,15 @@ class BaseExtractHandler(FileSystemEventHandler):
                     md_path=md_path,
                 )
                 logging.info(
-                    f"{self.__class__.__name__}: Distillation completed for {filename} ({distill_path or 'skipped'})"
+                    f"Extract: Distillation completed for {filename} ({distill_path or 'skipped'})"
                 )
             else:
                 logging.info(
-                    f"{self.__class__.__name__}: Distillation skipped for {filename} (MODEL_DISTILL disabled)"
+                    f"Extract: Distillation skipped for {filename} (MODEL_DISTILL disabled)"
                 )
         else:
             logging.info(
-                f"{self.__class__.__name__}: Distillation bypassed for {filename} (premium pipeline)"
+                f"Extract: Distillation bypassed for {filename} (premium pipeline)"
             )
 
     def _queue_file(self, file_path):
@@ -93,7 +93,7 @@ class BaseExtractHandler(FileSystemEventHandler):
             return
         self.queue.put(file_path)
         self.processed_files.add(file_path)
-        logging.info(f"{self.__class__.__name__}: Queued {os.path.basename(file_path)}")
+        logging.info(f"Extract: Queued {os.path.basename(file_path)}")
 
     def on_created(self, event):
         """Queue eligible files from watchdog creation events."""
@@ -102,12 +102,12 @@ class BaseExtractHandler(FileSystemEventHandler):
         try:
             self._queue_file(event.src_path)
         except Exception as e:
-            logging.error(f"Error in {self.__class__.__name__}.on_created: {e}")
+            logging.error(f"Error in Extract.on_created: {e}")
 
 def process(self, file_path, get_next_available_filename):
     """Run configured extraction models, merge results, and archive the source."""
     filename = os.path.basename(file_path)
-    logging.info(f"{self.__class__.__name__}: Start processing {filename}")
+    logging.info(f"Extract: Start processing {filename}")
     extract_suffixes = tuple(
         str(s).lower() for s in self.config["EXTRACT_SUFFIX"] if str(s)
     )
@@ -139,7 +139,7 @@ def process(self, file_path, get_next_available_filename):
         for model in self.models:
             if not model:
                 logging.info(
-                    f"{self.__class__.__name__}: Skipping model entry (not configured)"
+                    f"Extract: Skipping model entry (not configured)"
                 )
                 continue
             try:
@@ -173,13 +173,13 @@ def process(self, file_path, get_next_available_filename):
                 any_success = True
                 result_chars = len(result)
                 logging.info(
-                    f"{self.__class__.__name__}: {filename} "
+                    f"Extract: {filename} "
                     f"({model} : {result_chars:,})"
                 )
 
             except Exception as e:
                 any_failure = True
-                logging.error(f"{self.__class__.__name__}: model {model} failed for {filename}: {e}")
+                logging.error(f"Extract: model {model} failed for {filename}: {e}")
                 # Write a per-model error file (best-effort)
                 try:
                     os.makedirs(self.config['PRETEXT_WATCH_FOLDER'], exist_ok=True)
@@ -214,7 +214,7 @@ def process(self, file_path, get_next_available_filename):
         # If the source file is already moved/missing (common with duplicate queue events),
         # treat it as benign and exit quietly.
         if isinstance(e, FileNotFoundError) or not os.path.exists(file_path):
-            logging.info(f"{self.__class__.__name__}: Skipping stale item (source missing): {filename}")
+            logging.info(f"Extract: Skipping stale item (source missing): {filename}")
             return
 
         logging.error(f"Error processing {filename}: {e}")

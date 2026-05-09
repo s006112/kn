@@ -260,7 +260,6 @@ def start_system(cfg: dict[str, Any] | None = None) -> SystemHandles:
     return SystemHandles(context=ctx, threads=threads, observer=observer)
 
 
-
 def stop_system(handles: SystemHandles) -> None:
     """Signal shutdown and stop the observer."""
     handles.context.shutdown_flag.set()
@@ -270,12 +269,10 @@ def stop_system(handles: SystemHandles) -> None:
         handles.observer.join()
 
 
-def main(cfg: dict[str, Any] | None = None) -> None:
+def main() -> None:
     """Start the system and keep the supervising process alive."""
-    resolved_cfg = cfg or CONFIG
-
     logging.info("Starting local file-processing system")
-    handles = start_system(resolved_cfg)
+    handles = start_system(CONFIG)
 
     try:
         threading.Event().wait()
@@ -284,7 +281,6 @@ def main(cfg: dict[str, Any] | None = None) -> None:
     finally:
         stop_system(handles)
         logging.info("Local file-processing system stopped")
-
 
 if __name__ == "__main__":
     main()
