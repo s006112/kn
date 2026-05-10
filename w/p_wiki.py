@@ -1,5 +1,5 @@
 """
-utils_unlink.py
+p_wiki.py
 
 Responsibility
 This module moves ontology instance Markdown files into the ontology subdirectory
@@ -7,9 +7,11 @@ and removes broken Obsidian-style wikilinks from selected Markdown notes in the
 target directory.
 
 Used by:
-* w/p_pipelines.py
+* p.py
+* w/evaluation.py
 
 Pipelines:
+- wikilink worker -> clean dead links -> backup
 - target_dir -> detect_ontology -> move_ontology
 - target_dir -> select_files -> process_file -> stats
 - markdown -> find_wikilinks -> check_targets -> remove_links -> write
@@ -19,6 +21,7 @@ Pipelines:
 """
 
 import logging
+import os
 import re
 import shutil
 from datetime import datetime
@@ -26,6 +29,7 @@ from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
 from .helper_files import release_text_file_permissions
+from .p_pipelines import get_file_lock_functions
 
 
 logger = logging.getLogger(__name__)
@@ -42,6 +46,27 @@ _cleaning_stats = {
 def get_cleaning_stats() -> Dict[str, any]:
     """Return a snapshot of aggregated cleaning statistics."""
     return _cleaning_stats.copy()
+
+
+def process_wikilink_cleaning(ctx) -> None:
+    intervals = ctx.config.get("INTERVALS", {})
+    scan_seconds = intervals.get("SCAN_SECONDS", 60)
+    while not ctx.shutdown_flag.is_set():
+        try:
+            clean_dead_links(
+                target_dir=os.fspath(ctx.config["OBSIDIAN_SYNC_FOLDER"]),
+                backup_dir=os.fspath(ctx.config["LINK_BACKUP_FOLDER"]),
+                create_backup=True,
+                dry_run=False,
+                max_files=50,
+                file_lock_functions=get_file_lock_functions(),
+            )
+
+        except Exception:
+            pass
+
+        if ctx.shutdown_flag.wait(scan_seconds):
+            return
 
 
 def clean_dead_links(

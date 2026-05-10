@@ -12,8 +12,8 @@ from w.p_pipelines import (
     process_extract_queue,
     process_premium_extract_queue,
     process_pretext_queue,
-    process_wikilink_cleaning,
 )
+from w.p_wiki import process_wikilink_cleaning
 from w.p_audio import process_audio_pipeline
 from w.p_torrent import process_torrent_pipeline
 from w.p_ttml import process_ttml_pipeline

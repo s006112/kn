@@ -10,7 +10,6 @@ Flows:
 - text queue -> file lock -> processor -> archive / fail
 - audio queue -> gpu worker -> archive
 - ytd worker -> read X.txt -> download -> remove completed URL
-- wikilink worker -> clean dead links -> backup
 """
 
 import logging
@@ -24,7 +23,6 @@ from typing import Any, Callable, Dict, Set
 
 from .p_pretext import process_pretext_file, request_pretext_processing
 from .p_extract import ExtractProcessor, PremiumExtractProcessor
-from .helper_unlink import clean_dead_links
 from .helper_files import get_next_available_filename, safe_rename
 from .helper_text import sanitize_and_trim_filename
 from helper.helper_llm import LLMPermanentFailure
@@ -208,24 +206,3 @@ def file_scanner(ctx: PipelineContext) -> None:
         if any(filename_lower.endswith(s) for s in extract_suffixes):
             file_path = os.path.join(premium_watch_folder, filename)
             enqueue_if_absent(ctx.premium_extract_queue, file_path)
-
-
-def process_wikilink_cleaning(ctx: PipelineContext) -> None:
-    intervals = ctx.config.get("INTERVALS", {})
-    scan_seconds = intervals.get("SCAN_SECONDS", 60)
-    while not ctx.shutdown_flag.is_set():
-        try:
-            clean_dead_links(
-                target_dir=os.fspath(ctx.config["OBSIDIAN_SYNC_FOLDER"]),
-                backup_dir=os.fspath(ctx.config["LINK_BACKUP_FOLDER"]),
-                create_backup=True,
-                dry_run=False,
-                max_files=50,
-                file_lock_functions=get_file_lock_functions(),
-            )
-
-        except Exception:
-            pass
-
-        if ctx.shutdown_flag.wait(scan_seconds):
-            return
