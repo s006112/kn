@@ -6,10 +6,9 @@ Used by:
 - p_h.py
 
 Flows:
-- scanner -> torrent / audio / ttml / pretext / extract intake
+- scanner -> torrent / audio / pretext / extract intake
 - text queue -> file lock -> processor -> archive / fail
 - audio queue -> gpu worker -> archive
-- ttml queue -> ready check -> convert -> archive
 - ytd worker -> read X.txt -> download -> remove completed URL
 - wikilink worker -> clean dead links -> backup
 """
@@ -19,15 +18,13 @@ import os
 import threading
 import time
 from contextlib import contextmanager
-from queue import Empty, Queue
+from queue import Queue
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Set
 
 from .p_pretext import process_pretext_file, request_pretext_processing
 from .p_extract import ExtractProcessor, PremiumExtractProcessor
-from .p_ttml import handle_ttml
 from .p_audio import process_audio_queue, scan_audio_files
-from .p_ytd import process_ytd_pipeline
 from .helper_unlink import clean_dead_links
 from .helper_files import get_next_available_filename, safe_rename
 from .helper_text import sanitize_and_trim_filename
@@ -170,12 +167,6 @@ def create_extract_processors(ctx: PipelineContext):
     premium_extract_processor = PremiumExtractProcessor(ctx.config)
     return extract_processor, premium_extract_processor
 
-def _is_file_ready(path, wait=1.0):
-    """Return whether a file size remains stable across the wait interval."""
-    size1 = os.path.getsize(path)
-    time.sleep(wait)
-    return size1 == os.path.getsize(path)
-
 def enqueue_if_absent(queue: Queue, path: str) -> None:
     if path not in list(queue.queue):
         queue.put(path)
@@ -240,15 +231,9 @@ def process_premium_extract_queue(
 
 
 def file_scanner(ctx: PipelineContext) -> None:
-    """Run one file intake scan: torrent move, audio enqueue, ttml enqueue, pretext normalize/request, extract enqueue, premium enqueue."""
+    """Run one file intake scan: torrent move, audio enqueue, pretext normalize/request, extract enqueue, premium enqueue."""
     scan_torrent_watch_folder(ctx.config)
     scan_audio_files(ctx.config, ctx.audio_queue)
-
-    ttml_watch_folder = os.fspath(ctx.config["TTML_WATCH_FOLDER"])
-    if os.path.exists(ttml_watch_folder):
-        for filename in os.listdir(ttml_watch_folder):
-            if filename.lower().endswith(".ttml"):
-                enqueue_if_absent(ctx.ttml_queue, os.path.join(ttml_watch_folder, filename))
 
     pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
     extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
@@ -297,12 +282,11 @@ def file_scanner(ctx: PipelineContext) -> None:
             enqueue_if_absent(ctx.premium_extract_queue, file_path)
 
     logging.info(
-        "Queued: %d pretext, %d extract, %d premium, %d audio, %d ttml",
+        "Queued: %d pretext, %d extract, %d premium, %d audio",
         ctx.pretext_queue.qsize(),
         ctx.extract_queue.qsize(),
         ctx.premium_extract_queue.qsize(),
         ctx.audio_queue.qsize(),
-        ctx.ttml_queue.qsize(),
     )
 
 
@@ -319,56 +303,9 @@ def process_audio_pipeline(ctx: PipelineContext) -> None:
 
 
 def process_ttml_pipeline(ctx: PipelineContext) -> None:
-    watch_folder = os.path.abspath(os.fspath(ctx.config["TTML_WATCH_FOLDER"]))
-    original_folder = os.fspath(ctx.config["ORIGINAL_FOLDER"])
-    intervals = ctx.config.get("INTERVALS", {})
-    wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
+    from .p_ttml import process_ttml_pipeline as _process_ttml_pipeline
 
-    while not ctx.shutdown_flag.is_set():
-        try:
-            src = ctx.ttml_queue.get(timeout=wait_seconds)
-        except Empty:
-            continue
-
-        try:
-            src = os.path.abspath(os.fspath(src))
-            if not os.path.exists(src):
-                continue
-            if (
-                not src.lower().endswith(".ttml")
-                or os.path.dirname(src) != watch_folder
-            ):
-                continue
-            if not _is_file_ready(src, wait=wait_seconds):
-                enqueue_if_absent(ctx.ttml_queue, src)
-                continue
-
-            if not acquire_file_lock(src):
-                enqueue_if_absent(ctx.ttml_queue, src)
-                continue
-
-            try:
-                handle_ttml(
-                    src,
-                    watch_folder,
-                    original_folder,
-                    sanitize_and_trim_filename,
-                    str(ctx.config["PRETEXT_SUFFIX"]),
-                )
-            except Exception as e:
-                logging.error(
-                    "TTML Pipeline: Error processing %s: %s",
-                    os.path.basename(src),
-                    e,
-                )
-            finally:
-                release_file_lock(src)
-                cleanup_file_lock(src)
-
-        except Exception as e:
-            logging.error("TTML Pipeline: Error processing queued file: %s", e)
-        finally:
-            ctx.ttml_queue.task_done()
+    _process_ttml_pipeline(ctx)
 
 
 def process_wikilink_cleaning(ctx: PipelineContext) -> None:

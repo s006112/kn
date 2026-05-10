@@ -13,10 +13,10 @@ from w.p_pipelines import (
     process_extract_queue,
     process_premium_extract_queue,
     process_pretext_queue,
-    process_ttml_pipeline,
     process_wikilink_cleaning,
-    process_ytd_pipeline,
 )
+from w.p_ttml import process_ttml_pipeline
+from w.p_ytd import process_ytd_pipeline
 
 BASE_DIR = Path(__file__).resolve().parent
 WHISPER_FOLDER = Path("/desktop/Sync/Whisper")

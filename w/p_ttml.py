@@ -9,14 +9,18 @@ Used by:
 * w/p_pipelines.py
 
 Pipelines:
-- ttml_file -> readiness -> conversion -> text_file -> archive
+- scanner -> ttml queue -> readiness -> conversion -> text_file -> archive
 """
 
 import os
 import shutil
 import re
 import logging
+import time
+from queue import Empty
 from .helper_files import release_text_file_permissions
+from .helper_text import sanitize_and_trim_filename
+from .p_pipelines import enqueue_if_absent, file_lock
 from xml.dom.minidom import parse
 
 
@@ -35,6 +39,73 @@ def process_text(line):
     if re.search(r'[\u4e00-\u9fa5]', line):
         return re.sub(r'\s+', '', line)
     return re.sub(r'\s+', ' ', line.strip())
+
+
+def _is_file_ready(path, wait=1.0):
+    """Return whether a file size remains stable across the wait interval."""
+    size1 = os.path.getsize(path)
+    time.sleep(wait)
+    return size1 == os.path.getsize(path)
+
+
+def process_ttml_pipeline(ctx):
+    ttml_watch_folder = os.path.abspath(os.fspath(ctx.config["TTML_WATCH_FOLDER"]))
+    pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
+    original_folder = os.fspath(ctx.config["ORIGINAL_FOLDER"])
+    intervals = ctx.config.get("INTERVALS", {})
+    wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
+
+    while not ctx.shutdown_flag.is_set():
+        if os.path.exists(ttml_watch_folder):
+            for filename in os.listdir(ttml_watch_folder):
+                if filename.lower().endswith(".ttml"):
+                    enqueue_if_absent(
+                        ctx.ttml_queue,
+                        os.path.join(ttml_watch_folder, filename),
+                    )
+
+        try:
+            src = ctx.ttml_queue.get(timeout=wait_seconds)
+        except Empty:
+            continue
+
+        try:
+            src = os.path.abspath(os.fspath(src))
+            if not os.path.exists(src):
+                continue
+            if (
+                not src.lower().endswith(".ttml")
+                or os.path.dirname(src) != ttml_watch_folder
+            ):
+                continue
+            if not _is_file_ready(src, wait=wait_seconds):
+                enqueue_if_absent(ctx.ttml_queue, src)
+                continue
+
+            with file_lock(src) as locked:
+                if not locked:
+                    enqueue_if_absent(ctx.ttml_queue, src)
+                    continue
+
+                try:
+                    handle_ttml(
+                        src,
+                        pretext_watch_folder,
+                        original_folder,
+                        sanitize_and_trim_filename,
+                        str(ctx.config["PRETEXT_SUFFIX"]),
+                    )
+                except Exception as e:
+                    logging.error(
+                        "TTML Pipeline: Error processing %s: %s",
+                        os.path.basename(src),
+                        e,
+                    )
+
+        except Exception as e:
+            logging.error("TTML Pipeline: Error processing queued file: %s", e)
+        finally:
+            ctx.ttml_queue.task_done()
 
 
 def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename, pretext_suffix: str):

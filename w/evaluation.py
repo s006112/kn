@@ -32,7 +32,11 @@ from w.p_pipelines import (
     scan_torrent_watch_folder,
 )
 import w.p_ytd as ytd_module
-from w.p_ytd import read_next_download_url, remove_download_url_line
+from w.p_ytd import (
+    process_ytd_pipeline,
+    read_next_download_url,
+    remove_download_url_line,
+)
 
 import w.p_pretext as pretext_module
 from w.p_pretext import release_pretext_request, request_pretext_processing
@@ -418,7 +422,7 @@ def test_ytd_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[b
         ytd_module.download = fake_download
 
         thread = threading.Thread(
-            target=pipelines.process_ytd_pipeline,
+            target=process_ytd_pipeline,
             args=(ctx,),
             daemon=True,
         )
@@ -1866,7 +1870,7 @@ def test_ytd_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[bo
                 ytd_module.remove_download_url_line = remove_line
 
             thread = threading.Thread(
-                target=pipelines.process_ytd_pipeline,
+                target=process_ytd_pipeline,
                 args=(ctx,),
                 daemon=True,
             )
