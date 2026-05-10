@@ -138,3 +138,102 @@ Store Location:
 
 Status:
 - pending
+
+## Proposal 007
+
+Pattern:
+- Adding a useful feature before the foundation is clean can increase long-term complexity.
+
+Suggested Rule:
+- Fix extension surfaces before adding extension features.
+
+Criteria:
+- New feature requires a new route, queue, processor, model group, folder, or runtime thread.
+- Existing architecture has unclear ownership boundaries.
+- The new feature would copy an existing special case instead of following a clean template.
+
+Boundary:
+- Do not block small bug fixes.
+- Do not use foundation cleanup as an excuse for unlimited refactor.
+- Feature pause is justified only when the feature exposes real structural debt.
+
+Store Location:
+- assets.md / Code Iteration Principles
+
+Status:
+- pending
+
+## Proposal 008
+
+Pattern:
+- Runtime services, file routes, workers, processors, and model policies are often mixed into one layer.
+
+Suggested Rule:
+- Separate pipeline system concepts before optimizing code shape.
+
+Criteria:
+- Runtime service: long-lived loop or scheduler.
+- File route: intake path from folder/file type to queue.
+- Worker: queue consumer.
+- Processor: single-job executor.
+- Model policy: model list and distillation/merge behavior.
+
+Boundary:
+- Do not create heavy framework abstractions.
+- Do not split files only for visual neatness.
+- Separation can be conceptual first, then reflected in code when useful.
+
+Store Location:
+- assets.md / Code Iteration Principles
+
+Status:
+- pending
+
+## Proposal 009
+
+Pattern:
+- Misnamed components cause repeated design confusion even when the code works.
+
+Suggested Rule:
+- Rename components when the current name describes mechanism instead of responsibility.
+
+Criteria:
+- The name forces repeated explanation.
+- The component is mistaken for another architectural layer.
+- The name hides ownership, boundary, or lifecycle.
+- A better name reduces future patch risk.
+
+Boundary:
+- Do not rename stable public APIs casually.
+- Do not rename only for style preference.
+- Rename when semantic clarity improves future maintenance.
+
+Store Location:
+- assets.md / Code Iteration Principles
+
+Status:
+- pending
+
+## Proposal 010
+
+Pattern:
+- A scanner that ignores pipeline toggles creates hidden work and unclear system state.
+
+Suggested Rule:
+- Intake should respect route enablement.
+
+Criteria:
+- Disabled worker means its intake route should normally stop enqueueing new work.
+- Scanner should not keep creating backlog for disabled routes unless explicitly intended.
+- Toggle behavior should match the operator's mental model.
+
+Boundary:
+- A dedicated backlog-building mode can be introduced deliberately.
+- Some runtime services may remain always-on if their purpose is independent of route processing.
+- The rule applies to intake routes, not necessarily all background services.
+
+Store Location:
+- assets.md / Code Iteration Principles
+
+Status:
+- pending

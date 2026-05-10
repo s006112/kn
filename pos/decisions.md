@@ -3,19 +3,19 @@
 ## 2026-05-08
 
 Decision:
-- Start pos inside existing private repo instead of creating a new repository.
+- Start `pos` inside the existing private repo instead of creating a new repository.
 
 Reason:
 - Minimize friction.
-- Easier to start immediately
-- Avoid premature architecture
+- Easier to start immediately.
+- Avoid premature architecture.
 - Prioritize real usage over architecture purity.
 - Allow slow evolution through real tasks.
 
 ## 2026-05-09
 
 Decision:
-- Capture code iteration principles from real p.py refactor into proposals, not directly into stable assets.
+- Capture code iteration principles from real `p.py` refactor into proposals, not directly into stable assets.
 
 Reason:
 - The principles came from actual code review and cleanup.
@@ -90,3 +90,47 @@ Boundary:
 
 Rule:
 - Do not add execution automation until the planning loop consistently produces clean, bounded, verifiable plans.
+
+## 2026-05-10
+
+Decision:
+- Pause the planned GOSSIP extraction shortcut.
+- Clean the pipeline foundation first.
+- Treat route expansion as blocked until the intake / queue / worker / processor boundaries are clearer.
+
+Reason:
+- The GOSSIP shortcut is directionally useful, but adding it now would increase structural debt.
+- The current runtime mixes scanner service, file intake routes, processing workers, queue ownership, and model policy.
+- Adding a new route before cleaning the foundation would create another special case instead of a reusable extension pattern.
+- Long-term extensibility is more valuable than one more working feature.
+
+Boundary:
+- Do not add GOSSIP routing yet.
+- Do not change pretext/extract/audio/ttml processing internals as part of the foundation cleanup.
+- First clarify orchestration, scanner semantics, route enablement, and naming.
+- Feature routes may resume after the foundation can absorb them cleanly.
+
+Rule:
+- Build the extension foundation before adding extension features.
+
+## 2026-05-10
+
+Decision:
+- Treat `PeriodicScanner` as a misnamed runtime service, not a business pipeline.
+- Reframe it as file intake and queue routing.
+
+Reason:
+- It is a thread, but it supplies multiple pipelines instead of processing one business route.
+- Disabling processing workers while the scanner still enqueues files creates semantic mismatch.
+- The name describes timing behavior, not responsibility.
+- Future routes such as GOSSIP need a clear intake location.
+
+Boundary:
+- Rename conceptually toward `FileIntakeScanner`.
+- Scanner should only discover files and enqueue enabled routes.
+- Workers should only consume queues.
+- Processors should only process jobs.
+- Do not make the scanner a processor.
+
+Rule:
+- Name runtime components by responsibility, not by scheduling mechanism.
