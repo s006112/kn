@@ -27,7 +27,7 @@ import w.p_extract as extract_module
 from w.p_extract import ExtractProcessor, PremiumExtractProcessor
 
 import w.p_pipelines as pipelines
-from w.p_pipelines import (
+from w.p_torrent import (
     move_torrent_to_whisper,
     scan_torrent_watch_folder,
 )
@@ -1045,13 +1045,7 @@ def test_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, list[Path]
     premium.write_text(f"startup scan premium {test_id}\n", encoding="utf-8")
 
     ctx = pipelines.PipelineContext(CONFIG)
-    original_scan_torrent = pipelines.scan_torrent_watch_folder
-
-    try:
-        pipelines.scan_torrent_watch_folder = lambda _config: 0
-        pipelines.file_scanner(ctx)
-    finally:
-        pipelines.scan_torrent_watch_folder = original_scan_torrent
+    pipelines.file_scanner(ctx)
 
     pretext_paths = list(ctx.pretext_queue.queue)
     extract_paths = list(ctx.extract_queue.queue)
@@ -1073,6 +1067,62 @@ def test_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, list[Path]
             "pretext_queue": ctx.pretext_queue.qsize(),
             "extract_queue": ctx.extract_queue.qsize(),
             "premium_queue": ctx.premium_extract_queue.qsize(),
+        },
+    )
+
+    return passed, cleanup
+
+
+def test_file_scanner_skips_torrent_and_torrent_scan_moves_it(test_id: str) -> tuple[bool, list[Path]]:
+    watch_dir = ROOT_DIR / f"{test_id}_torrent_watch"
+    whisper_dir = ROOT_DIR / f"{test_id}_torrent_whisper"
+    pretext_dir = ROOT_DIR / f"{test_id}_pretext_watch"
+    extract_dir = ROOT_DIR / f"{test_id}_extract_watch"
+    premium_dir = ROOT_DIR / f"{test_id}_premium_watch"
+
+    filename = f"{test_id}_ownership.torrent"
+    source = watch_dir / filename
+    target = whisper_dir / filename
+
+    cleanup = [watch_dir, whisper_dir, pretext_dir, extract_dir, premium_dir]
+
+    for folder in (watch_dir, whisper_dir, pretext_dir, extract_dir, premium_dir):
+        folder.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(f"torrent ownership source {test_id}\n", encoding="utf-8")
+
+    config = {
+        **CONFIG,
+        "WATCH_FOLDER": watch_dir,
+        "WHISPER_FOLDER": whisper_dir,
+        "PRETEXT_WATCH_FOLDER": pretext_dir,
+        "EXTRACT_WATCH_FOLDER": extract_dir,
+        "PREMIUM_WATCH_FOLDER": premium_dir,
+    }
+
+    ctx = pipelines.PipelineContext(config)
+    pipelines.file_scanner(ctx)
+
+    file_scanner_left_source = source.is_file()
+    file_scanner_left_target_empty = not target.exists()
+    moved_count = scan_torrent_watch_folder(config)
+
+    passed = (
+        file_scanner_left_source
+        and file_scanner_left_target_empty
+        and moved_count == 1
+        and not source.exists()
+        and target.is_file()
+    )
+
+    print_result(
+        "file scanner skips torrent and torrent scan moves it",
+        passed,
+        {
+            "source_after_file_scanner": file_scanner_left_source,
+            "target_after_file_scanner": file_scanner_left_target_empty,
+            "moved_count": moved_count,
+            "target": target,
         },
     )
 
@@ -1106,17 +1156,14 @@ def test_periodic_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, l
     }
 
     ctx = pipelines.PipelineContext(config)
-    original_scan_torrent = pipelines.scan_torrent_watch_folder
+    thread = threading.Thread(
+        target=orchestrator_module.run_file_scanner,
+        args=(ctx,),
+        daemon=True,
+    )
+    thread.start()
 
     try:
-        pipelines.scan_torrent_watch_folder = lambda _config: 0
-        thread = threading.Thread(
-            target=orchestrator_module.run_file_scanner,
-            args=(ctx,),
-            daemon=True,
-        )
-        thread.start()
-
         deadline = time.time() + 2
         while time.time() < deadline:
             pretext_paths = list(ctx.pretext_queue.queue)
@@ -1138,9 +1185,7 @@ def test_periodic_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, l
 
         ctx.shutdown_flag.set()
         thread.join(timeout=1)
-
     finally:
-        pipelines.scan_torrent_watch_folder = original_scan_torrent
         ctx.shutdown_flag.set()
 
     passed = (
@@ -1212,14 +1257,12 @@ def test_file_scanner_skips_audio_and_audio_pipeline_scans(test_id: str) -> tupl
     source.write_text(f"audio ownership scan source {test_id}\n", encoding="utf-8")
 
     scanner_ctx = pipelines.PipelineContext(CONFIG)
-    original_scan_torrent = pipelines.scan_torrent_watch_folder
     original_process_audio_queue = audio_module.process_audio_queue
     queued_by_audio_pipeline: list[str] = []
     audio_ctx = None
     thread = None
 
     try:
-        pipelines.scan_torrent_watch_folder = lambda _config: 0
         pipelines.file_scanner(scanner_ctx)
         scanner_left_audio_empty = scanner_ctx.audio_queue.empty()
 
@@ -1280,7 +1323,6 @@ def test_file_scanner_skips_audio_and_audio_pipeline_scans(test_id: str) -> tupl
             audio_ctx.shutdown_flag.set()
         if thread is not None:
             thread.join(timeout=1)
-        pipelines.scan_torrent_watch_folder = original_scan_torrent
         audio_module.process_audio_queue = original_process_audio_queue
 
 
@@ -2189,6 +2231,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
     cleanup: list[Path] = []
 
     expected_threads = {
+        "TorrentPipeline",
         "TTMLPipeline",
         "TextPipeline-Pretext",
         "TextPipeline-Extract",
@@ -2206,6 +2249,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         ctx.shutdown_flag.wait(5)
 
     original_values = {
+        "process_torrent_pipeline": orchestrator_module.process_torrent_pipeline,
         "process_ttml_pipeline": orchestrator_module.process_ttml_pipeline,
         "process_pretext_queue": orchestrator_module.process_pretext_queue,
         "process_extract_queue": orchestrator_module.process_extract_queue,
@@ -2220,6 +2264,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
     threads = {}
 
     try:
+        orchestrator_module.process_torrent_pipeline = fake_worker
         orchestrator_module.process_ttml_pipeline = fake_worker
         orchestrator_module.process_pretext_queue = fake_worker
         orchestrator_module.process_extract_queue = fake_worker
@@ -2275,6 +2320,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         for thread in threads.values():
             thread.join(timeout=1)
 
+        orchestrator_module.process_torrent_pipeline = original_values["process_torrent_pipeline"]
         orchestrator_module.process_ttml_pipeline = original_values["process_ttml_pipeline"]
         orchestrator_module.process_pretext_queue = original_values["process_pretext_queue"]
         orchestrator_module.process_extract_queue = original_values["process_extract_queue"]
@@ -2288,6 +2334,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
     cleanup: list[Path] = []
 
     base_threads = {
+        "TorrentPipeline",
         "TTMLPipeline",
         "AudioPipeline-GPU",
         "PeriodicScanner",
@@ -2328,6 +2375,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         ctx.shutdown_flag.wait(5)
 
     original_values = {
+        "process_torrent_pipeline": orchestrator_module.process_torrent_pipeline,
         "process_ttml_pipeline": orchestrator_module.process_ttml_pipeline,
         "process_pretext_queue": orchestrator_module.process_pretext_queue,
         "process_extract_queue": orchestrator_module.process_extract_queue,
@@ -2342,6 +2390,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
     results = []
 
     try:
+        orchestrator_module.process_torrent_pipeline = fake_worker
         orchestrator_module.process_ttml_pipeline = fake_worker
         orchestrator_module.process_pretext_queue = fake_worker
         orchestrator_module.process_extract_queue = fake_worker
@@ -2416,6 +2465,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
             for thread in threads.values():
                 thread.join(timeout=1)
 
+        orchestrator_module.process_torrent_pipeline = original_values["process_torrent_pipeline"]
         orchestrator_module.process_ttml_pipeline = original_values["process_ttml_pipeline"]
         orchestrator_module.process_pretext_queue = original_values["process_pretext_queue"]
         orchestrator_module.process_extract_queue = original_values["process_extract_queue"]
@@ -2449,6 +2499,7 @@ def main() -> int:
             test_extract_failure_writes_error_and_moves_to_fail,
             test_premium_extract_full_process_archives_to_archive_folder,
             test_file_scanner_routes_text_inputs,
+            test_file_scanner_skips_torrent_and_torrent_scan_moves_it,
             test_periodic_file_scanner_routes_text_inputs,
             test_audio_scan_enqueues_audio_file,
             test_file_scanner_skips_audio_and_audio_pipeline_scans,

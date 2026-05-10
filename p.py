@@ -15,6 +15,7 @@ from w.p_pipelines import (
     process_wikilink_cleaning,
 )
 from w.p_audio import process_audio_pipeline
+from w.p_torrent import process_torrent_pipeline
 from w.p_ttml import process_ttml_pipeline
 from w.p_ytd import process_ytd_pipeline
 
@@ -36,6 +37,7 @@ CONFIG = {
         ],
     },
     "PIPELINES": {
+        "TORRENT": True,
         "AUDIO": True,
         "TTML": True,
         "PRETEXT": True,
@@ -96,6 +98,7 @@ def start_runtime(ctx: PipelineContext) -> dict[str, threading.Thread]:
     threads: dict[str, threading.Thread] = {}
 
     thread_specs = [
+        (ctx.config["PIPELINES"]["TORRENT"], "TorrentPipeline", process_torrent_pipeline, (ctx,)),
         (True, "PeriodicScanner", run_file_scanner, (ctx,)),
         (ctx.config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (ctx,)),
         (ctx.config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_pretext_queue, (ctx,)),
