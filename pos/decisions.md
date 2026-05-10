@@ -134,3 +134,22 @@ Boundary:
 
 Rule:
 - Name runtime components by responsibility, not by scheduling mechanism.
+
+## 2026-05-10
+
+Decision:
+- Establish a strict no-custom-OOP rule for the personal codebase.
+- The only accepted exception is when an external library or framework requires a class, subclass, handler, or callback object.
+
+Reason:
+- Keep execution flow explicit.
+- Prevent AI-generated Manager/Service/Controller-style abstraction layers.
+- Avoid hidden state behind `self.*`.
+- Improve local readability, patch review, and long-term maintainability.
+
+Boundary:
+- Do not use custom classes for grouping functions, architecture neatness, resource lifecycle wrappers, state containers, orchestrators, registries, or future extensibility.
+- If a class is forced by an external interface, keep it thin and push core logic back into functions.
+
+Rule:
+- No custom OOP unless required by an external interface.
