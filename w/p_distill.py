@@ -11,13 +11,6 @@ Used by:
 Pipelines:
 - collect -> build -> distill -> write -> merge
 
-Invariants:
-- Distillation is skipped when MODEL_DISTILL is empty or missing.
-- Distill error markers are written to the extract folder on read or LLM failures.
-
-Out of scope:
-- Running extraction models or generating source extracts.
-- Managing extraction queues or pipeline threading.
 """
 
 import logging

@@ -10,17 +10,6 @@ Used by:
 
 Pipelines:
 - ttml_file -> readiness -> conversion -> text_file -> archive
-
-Invariants:
-- XML-like inputs are parsed as TTML before text extraction.
-- Non-XML inputs are copied as plain text output.
-- Originals are archived with a sanitized `.ttml` filename.
-- Failed processing restores the temporary `.processing` file when possible.
-
-Out of scope:
-- Subtitle timing preservation.
-- TTML validation beyond XML parsing.
-- Queue scanning and file locking.
 """
 
 import os

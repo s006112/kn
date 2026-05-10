@@ -8,13 +8,6 @@ markdown, and archive or fail files with distillation when configured.
 Pipelines:
 - scan -> queue -> read -> extract -> merge -> distill -> archive
 
-Invariants:
-- Extract jobs only accept `_p.txt` files in the configured watch folders.
-- Per-model extracts are written before markdown merges are attempted.
-
-Out of scope:
-- Pretext generation and audio transcription workflows.
-- Orchestrator wiring and queue thread management.
 """
 
 import os

@@ -8,13 +8,6 @@ turbo service, and archive results along with temporary file cleanup.
 Pipelines:
 - scan -> enqueue -> convert -> transcribe -> write -> archive
 
-Invariants:
-- Transcriptions are written as UTF-8 text files in the configured output folder.
-- Converted WAV files are removed after processing completes or fails.
-
-Out of scope:
-- Managing downstream text processing pipelines.
-- Providing queue shutdown or cancellation controls.
 """
 
 import os
