@@ -16,7 +16,8 @@ import subprocess
 import shutil
 import logging
 import sys
-from queue import Queue
+import threading
+from queue import Empty, Queue
 from pathlib import Path
 
 from .helper_files import release_text_file_permissions
@@ -161,14 +162,27 @@ def process_audio_file(file_path: str, folder_path: str, config: dict, done_fold
     return True
 
 
-def process_audio_queue(config, audio_queue: Queue, *, processing_lock, done_folder_path):
+def process_audio_queue(
+    config,
+    audio_queue: Queue,
+    *,
+    processing_lock,
+    done_folder_path,
+    shutdown_flag=None,
+    once: bool = False,
+    wait_seconds=None,
+):
     """Continuously wait for and process queued audio files."""
-    intervals = config.get("INTERVALS", {})
-    wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
-    while True:
+    if wait_seconds is None:
+        intervals = config.get("INTERVALS", {})
+        wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
+    while shutdown_flag is None or not shutdown_flag.is_set():
         queued_item = None
         try:
-            queued_item = audio_queue.get()
+            if shutdown_flag is None:
+                queued_item = audio_queue.get()
+            else:
+                queued_item = audio_queue.get(timeout=wait_seconds)
             file_path, folder_path = queued_item
             if not os.path.exists(file_path):
                 continue
@@ -179,9 +193,37 @@ def process_audio_queue(config, audio_queue: Queue, *, processing_lock, done_fol
             if success:
                 logging.info('Audio processed successfully')
 
+        except Empty:
+            if once:
+                return
+            continue
         except Exception as exc:
             logging.error('Audio queue error: %s', exc)
-            time.sleep(wait_seconds)
+            if shutdown_flag is not None:
+                shutdown_flag.wait(wait_seconds)
+            else:
+                time.sleep(wait_seconds)
         finally:
             if queued_item is not None:
                 audio_queue.task_done()
+        if once:
+            return
+
+
+def process_audio_pipeline(ctx) -> None:
+    current_thread = threading.current_thread()
+    current_thread.name = "AudioPipeline-GPU"
+    intervals = ctx.config.get("INTERVALS", {})
+    wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
+
+    while not ctx.shutdown_flag.is_set():
+        scan_audio_files(ctx.config, ctx.audio_queue)
+        process_audio_queue(
+            ctx.config,
+            ctx.audio_queue,
+            processing_lock=ctx.audio_processing_lock,
+            done_folder_path=os.fspath(ctx.config["AUDIO_DONE_FOLDER"]),
+            shutdown_flag=ctx.shutdown_flag,
+            once=True,
+            wait_seconds=wait_seconds,
+        )

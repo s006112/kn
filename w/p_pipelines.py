@@ -24,7 +24,6 @@ from typing import Any, Callable, Dict, Set
 
 from .p_pretext import process_pretext_file, request_pretext_processing
 from .p_extract import ExtractProcessor, PremiumExtractProcessor
-from .p_audio import process_audio_queue, scan_audio_files
 from .helper_unlink import clean_dead_links
 from .helper_files import get_next_available_filename, safe_rename
 from .helper_text import sanitize_and_trim_filename
@@ -231,9 +230,8 @@ def process_premium_extract_queue(
 
 
 def file_scanner(ctx: PipelineContext) -> None:
-    """Run one file intake scan: torrent move, audio enqueue, pretext normalize/request, extract enqueue, premium enqueue."""
+    """Run one file intake scan: torrent move, pretext normalize/request, extract enqueue, premium enqueue."""
     scan_torrent_watch_folder(ctx.config)
-    scan_audio_files(ctx.config, ctx.audio_queue)
 
     pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
     extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
@@ -288,24 +286,6 @@ def file_scanner(ctx: PipelineContext) -> None:
         ctx.premium_extract_queue.qsize(),
         ctx.audio_queue.qsize(),
     )
-
-
-def process_audio_pipeline(ctx: PipelineContext) -> None:
-    current_thread = threading.current_thread()
-    current_thread.name = "AudioPipeline-GPU"
-
-    process_audio_queue(
-        ctx.config,
-        ctx.audio_queue,
-        processing_lock=ctx.audio_processing_lock,
-        done_folder_path=os.fspath(ctx.config["AUDIO_DONE_FOLDER"]),
-    )
-
-
-def process_ttml_pipeline(ctx: PipelineContext) -> None:
-    from .p_ttml import process_ttml_pipeline as _process_ttml_pipeline
-
-    _process_ttml_pipeline(ctx)
 
 
 def process_wikilink_cleaning(ctx: PipelineContext) -> None:

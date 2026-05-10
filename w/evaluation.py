@@ -1197,6 +1197,93 @@ def test_audio_scan_enqueues_audio_file(test_id: str) -> tuple[bool, list[Path]]
 
     return passed, cleanup
 
+
+def test_file_scanner_skips_audio_and_audio_pipeline_scans(test_id: str) -> tuple[bool, list[Path]]:
+    folder = PATHS.audio_watch_folders[0]
+    source = folder / f"{test_id}_audio_pipeline_scan.mp3"
+
+    cleanup = [source]
+
+    folder.mkdir(parents=True, exist_ok=True)
+    PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.premium_watch.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(f"audio ownership scan source {test_id}\n", encoding="utf-8")
+
+    scanner_ctx = pipelines.PipelineContext(CONFIG)
+    original_scan_torrent = pipelines.scan_torrent_watch_folder
+    original_process_audio_queue = audio_module.process_audio_queue
+    queued_by_audio_pipeline: list[str] = []
+    audio_ctx = None
+    thread = None
+
+    try:
+        pipelines.scan_torrent_watch_folder = lambda _config: 0
+        pipelines.file_scanner(scanner_ctx)
+        scanner_left_audio_empty = scanner_ctx.audio_queue.empty()
+
+        config = {
+            **CONFIG,
+            "INTERVALS": {
+                **CONFIG["INTERVALS"],
+                "WAIT_SECONDS": 0.01,
+            },
+        }
+        audio_ctx = pipelines.PipelineContext(config)
+
+        def fake_process_audio_queue(
+            _config,
+            audio_queue,
+            *,
+            processing_lock,
+            done_folder_path,
+            shutdown_flag=None,
+            once=False,
+            wait_seconds=None,
+        ) -> None:
+            queued_by_audio_pipeline.extend(item[0] for item in list(audio_queue.queue))
+            audio_ctx.shutdown_flag.set()
+
+        audio_module.process_audio_queue = fake_process_audio_queue
+
+        thread = threading.Thread(
+            target=orchestrator_module.process_audio_pipeline,
+            args=(audio_ctx,),
+            daemon=True,
+        )
+        thread.start()
+        thread.join(timeout=1)
+
+        passed = (
+            scanner_left_audio_empty
+            and str(source) in queued_by_audio_pipeline
+            and orchestrator_module.process_audio_pipeline is audio_module.process_audio_pipeline
+            and not thread.is_alive()
+        )
+
+        print_result(
+            "file scanner skips audio and audio pipeline scans",
+            passed,
+            {
+                "source": source,
+                "scanner_audio_queue": scanner_ctx.audio_queue.qsize(),
+                "audio_pipeline_queued": str(source) in queued_by_audio_pipeline,
+                "thread_alive": thread.is_alive(),
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        if audio_ctx is not None:
+            audio_ctx.shutdown_flag.set()
+        if thread is not None:
+            thread.join(timeout=1)
+        pipelines.scan_torrent_watch_folder = original_scan_torrent
+        audio_module.process_audio_queue = original_process_audio_queue
+
+
 def test_audio_process_file_mocked_full_path(test_id: str) -> tuple[bool, list[Path]]:
     folder = PATHS.audio_watch_folders[0]
     base_name = f"{test_id}_audio_full"
@@ -2364,6 +2451,7 @@ def main() -> int:
             test_file_scanner_routes_text_inputs,
             test_periodic_file_scanner_routes_text_inputs,
             test_audio_scan_enqueues_audio_file,
+            test_file_scanner_skips_audio_and_audio_pipeline_scans,
             test_audio_process_file_mocked_full_path,
             test_process_queue_handles_lock_miss_errors_and_permanent_failures,
             test_distillation_success_skip_and_error_paths,

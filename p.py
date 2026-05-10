@@ -9,12 +9,12 @@ from w.p_pipelines import (
     PipelineContext,
     create_extract_processors,
     file_scanner,
-    process_audio_pipeline,
     process_extract_queue,
     process_premium_extract_queue,
     process_pretext_queue,
     process_wikilink_cleaning,
 )
+from w.p_audio import process_audio_pipeline
 from w.p_ttml import process_ttml_pipeline
 from w.p_ytd import process_ytd_pipeline
 
