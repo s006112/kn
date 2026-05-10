@@ -38,8 +38,8 @@ CONFIG = {
     "PIPELINES": {
         "AUDIO": True,
         "TTML": True,
-        "PRETEXT": False,
-        "EXTRACT": False,
+        "PRETEXT": True,
+        "EXTRACT": True,
         "WIKI": True,
         "YTD": True,
     },

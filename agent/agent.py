@@ -12,11 +12,13 @@ python agent/agent.py agent/task.md --show-commands
 python agent/agent.py agent/task.md --make-patch
 python agent/agent.py agent/task.md --check-patch
 python agent/agent.py agent/task.md --apply-patch
+python agent/agent.py agent/task.md --run-verify
 '''
 
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -205,11 +207,7 @@ def check_ready(task_path: Path) -> None:
     print()
     print("READY" if ok else "NOT READY")
 
-def show_commands() -> None:
-    if not FINAL_PLAN_PATH.exists():
-        print("No final plan found.")
-        return
-
+def get_final_plan_commands() -> list[str]:
     text = read_text(FINAL_PLAN_PATH)
     commands: list[str] = []
     in_bash = False
@@ -222,6 +220,16 @@ def show_commands() -> None:
         if in_bash and stripped:
             commands.append(stripped)
 
+    return commands
+
+
+def show_commands() -> None:
+    if not FINAL_PLAN_PATH.exists():
+        print("No final plan found.")
+        return
+
+    commands = get_final_plan_commands()
+
     print("=== Final Plan Commands ===")
     if not commands:
         print("No commands found.")
@@ -229,6 +237,28 @@ def show_commands() -> None:
 
     for command in commands:
         print(command)
+
+
+def run_verify() -> None:
+    if not FINAL_PLAN_PATH.exists():
+        print("No final plan found.")
+        return
+
+    commands = get_final_plan_commands()
+
+    print("=== Verify Patch Commands ===", flush=True)
+    if not commands:
+        print("No commands found.", flush=True)
+        return
+
+    for command in commands:
+        print(f"$ {command}", flush=True)
+        result = subprocess.run(command, cwd=REPO_ROOT, shell=True)
+        if result.returncode != 0:
+            print(f"VERIFY_FAILED: {command}", flush=True)
+            sys.exit(result.returncode)
+
+    print("VERIFY_OK", flush=True)
 
 def build_patch_prompt(
     task_text: str,
@@ -370,7 +400,7 @@ def apply_patch(task_path: Path) -> None:
         path.write_text(text.replace(search, replace, 1), encoding="utf-8")
 
     print("PATCH_APPLIED")
-
+    print("Next: python agent/agent.py agent/task.md --run-verify")
 
 
 
@@ -414,6 +444,10 @@ def main() -> None:
 
     if "--apply-patch" in sys.argv:
         apply_patch(task_path)
+        return
+
+    if "--run-verify" in sys.argv:
+        run_verify()
         return
 
     task_text = read_text(task_path)
