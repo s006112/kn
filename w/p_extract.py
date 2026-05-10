@@ -69,7 +69,7 @@ class BaseExtractProcessor:
 def process(self, file_path, get_next_available_filename):
     """Run configured extraction models, merge results, and archive the source."""
     filename = os.path.basename(file_path)
-    logging.info(f"Extract: Start processing {filename}")
+    logging.info(f"Extract: Start {filename}")
     extract_suffixes = tuple(
         str(s).lower() for s in self.config["EXTRACT_SUFFIX"] if str(s)
     )
@@ -176,7 +176,7 @@ def process(self, file_path, get_next_available_filename):
         # If the source file is already moved/missing (common with duplicate queue events),
         # treat it as benign and exit quietly.
         if isinstance(e, FileNotFoundError) or not os.path.exists(file_path):
-            logging.info(f"Extract: Skipping stale item (source missing): {filename}")
+            #logging.info(f"Extract: Skipping stale item (source missing): {filename}")
             return
 
         logging.error(f"Error processing {filename}: {e}")

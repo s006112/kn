@@ -190,8 +190,8 @@ def process_audio_queue(
             with processing_lock:
                 success = process_audio_file(file_path, folder_path, config, done_folder_path)
 
-            if success:
-                logging.info('Audio processed successfully')
+            #if success:
+                #logging.info('Audio processed successfully')
 
         except Empty:
             if once:

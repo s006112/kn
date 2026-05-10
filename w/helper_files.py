@@ -18,16 +18,6 @@ Pipelines:
 - base_name -> candidate_path -> existence_check -> numbered_path
 - file_path -> stat -> mode_or -> chmod
 
-Invariants:
-- `read_file_with_encodings` only retries on `UnicodeDecodeError`.
-- `get_next_available_filename` always returns a path ending in `.txt`.
-- `safe_rename` never overwrites an existing destination path.
-- `release_text_file_permissions` only changes mode bits for `.txt` and `.md` paths.
-
-Out of scope:
-- Directory creation and path normalization.
-- Atomic renames and cross-filesystem move guarantees.
-- File locking, concurrency coordination, and permission ownership changes.
 """
 
 import codecs

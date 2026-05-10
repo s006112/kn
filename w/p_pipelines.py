@@ -209,13 +209,6 @@ def file_scanner(ctx: PipelineContext) -> None:
             file_path = os.path.join(premium_watch_folder, filename)
             enqueue_if_absent(ctx.premium_extract_queue, file_path)
 
-    logging.info(
-        "Queued: %d pretext, %d extract, %d premium",
-        ctx.pretext_queue.qsize(),
-        ctx.extract_queue.qsize(),
-        ctx.premium_extract_queue.qsize(),
-    )
-
 
 def process_wikilink_cleaning(ctx: PipelineContext) -> None:
     intervals = ctx.config.get("INTERVALS", {})

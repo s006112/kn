@@ -15,17 +15,6 @@ Pipelines:
 - text -> chunking -> overlaps -> chunks
 - chunks -> lcs_overlap -> merge -> text
 
-Invariants:
-- `_normalize_unicode_name` applies `unicodedata.normalize("NFKC", ...)`.
-- `sanitize_filename` replaces control and disallowed filename characters and trims trailing `. `.
-- `sanitize_filename` returns `untitled` when the sanitized result is empty.
-- `sanitize_filename` appends `_` when the sanitized name is a reserved Windows device name.
-- `chunk_text` returns `[text]` when the computed chunk count is 1 or less.
-
-Out of scope:
-- Filesystem existence checks and path normalization.
-- Language-specific tokenization and semantic chunking.
-- Cryptographic hashing and stable ID generation for names.
 """
 
 import logging

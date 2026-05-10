@@ -13,17 +13,6 @@ Pipelines:
 - md_path -> sections -> prepend -> write -> permissions
 - whisper_md -> readlines -> insert -> writelines
 
-Invariants:
-- `find_most_recent_md_by_prefix` only matches `"{prefix}_YYMMDD.md"` (6 digits).
-- `create_or_find_note_for_base_name` always ensures `config["OBSIDIAN_SYNC_FOLDER"]` exists.
-- `write_pretext_markdown` always creates a new dated note (`allow_existing=False`).
-- `merge_to_markdown` only updates the Whisper index when `md_is_new` is true.
-- Index links are inserted as single lines formatted like `[[note_name]]`.
-
-Out of scope:
-- Markdown formatting beyond simple section insertion.
-- Concurrent edits, file locking, and conflict resolution.
-- Obsidian vault sync configuration and link validation.
 """
 
 import os

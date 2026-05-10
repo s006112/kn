@@ -8,7 +8,6 @@ target directory.
 
 Used by:
 * w/p_pipelines.py
-* tool/tool_wikilink_cleaner.py
 
 Pipelines:
 - target_dir -> detect_ontology -> move_ontology
@@ -17,20 +16,6 @@ Pipelines:
 - markdown -> remove_lines -> preserve_spacing -> write
 - file_path -> copy_backup -> write_file -> chmod
 
-Invariants:
-- Only Markdown files directly inside `target_dir` are candidates for ontology moves.
-- A file is treated as an ontology instance file only when its content starts with `Class::`.
-- Only non-embedded wikilinks matching `[[...]]` without a leading `!` are considered.
-- When `file_lock_functions` is provided and a lock cannot be acquired, the file is skipped for that run without counting an error.
-- When `dry_run` is true, no file content is written and ontology moves are only reported.
-- Backups are created via `shutil.copy2` into the configured backup directory when enabled.
-- `_cleaning_stats` accumulates totals across calls to `clean_dead_links`.
-
-Out of scope:
-- Full Markdown parsing, AST transforms, and link normalization.
-- Concurrency safety across processes and OS-level file locks.
-- Resolving links across directories beyond the note's parent folder.
-- Detecting ontology markers beyond the literal `Class::` prefix.
 """
 
 import logging
