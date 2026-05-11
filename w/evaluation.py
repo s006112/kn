@@ -783,6 +783,21 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
 
 
 def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list[Path]]:
+    text_process_path = ROOT_DIR / "w" / "p_txt_process.py"
+    outdated_text_process_path = ROOT_DIR / "w" / ("p_txt" + "_processing.py")
+    removed_pretext_path = ROOT_DIR / "w" / ("p_" + "pretext.py")
+    removed_extract_path = ROOT_DIR / "w" / ("p_" + "extract.py")
+    removed_distill_path = ROOT_DIR / "w" / ("p_" + "distill.py")
+    outdated_entrypoint = "start_" + "text_processing"
+    outdated_module_name = "p_txt" + "_processing"
+    removed_import_markers = {
+        "w." + "p_" + "pretext",
+        "w." + "p_" + "extract",
+        "w." + "p_" + "distill",
+        ".p_" + "pretext",
+        ".p_" + "extract",
+        ".p_" + "distill",
+    }
     removed_names = {
         "BaseExtractProcessor",
         "ExtractProcessor",
@@ -810,24 +825,29 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         name for name in required_names if not hasattr(txt_process_module, name)
     )
     p_source = (ROOT_DIR / "w" / "p.py").read_text(encoding="utf-8")
-    txt_source = (ROOT_DIR / "w" / "p_txt_process.py").read_text(encoding="utf-8")
-    removed_distill_path = ROOT_DIR / "w" / ("p_" + "distill.py")
-    distill_import_marker = ".p_" + "distill"
+    txt_source = text_process_path.read_text(encoding="utf-8")
     p_txt_import_line = "from w.p_txt_process import process_text_pipeline"
     forbidden_p_imports = sorted(
         name for name in forbidden_p_import_names if name in p_source
     )
+    forbidden_removed_imports = sorted(
+        marker for marker in removed_import_markers if marker in p_source
+    )
     passed = (
-        not exposed_removed
+        text_process_path.exists()
+        and not outdated_text_process_path.exists()
+        and not exposed_removed
         and not missing_required
-        and not (ROOT_DIR / "w" / "p_pretext.py").exists()
-        and not (ROOT_DIR / "w" / "p_extract.py").exists()
+        and not removed_pretext_path.exists()
+        and not removed_extract_path.exists()
         and not removed_distill_path.exists()
         and p_txt_import_line in p_source
         and p_source.count("from w.p_txt_process import") == 1
-        and "w.p_pretext" not in p_source
-        and "w.p_extract" not in p_source
-        and distill_import_marker not in txt_source
+        and "process_text_pipeline(config, shutdown_flag)" in p_source
+        and outdated_entrypoint not in p_source
+        and outdated_module_name not in p_source
+        and not forbidden_removed_imports
+        and not any(marker in txt_source for marker in removed_import_markers)
         and "def run_distillation(" in txt_source
         and not forbidden_p_imports
     )
@@ -838,10 +858,13 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         {
             "exposed_removed": exposed_removed,
             "missing_required": missing_required,
-            "p_pretext_exists": (ROOT_DIR / "w" / "p_pretext.py").exists(),
-            "p_extract_exists": (ROOT_DIR / "w" / "p_extract.py").exists(),
-            "distill_module_exists": removed_distill_path.exists(),
+            "text_process_exists": text_process_path.exists(),
+            "outdated_text_process_exists": outdated_text_process_path.exists(),
+            "removed_pretext_exists": removed_pretext_path.exists(),
+            "removed_extract_exists": removed_extract_path.exists(),
+            "removed_distill_exists": removed_distill_path.exists(),
             "forbidden_p_imports": forbidden_p_imports,
+            "forbidden_removed_imports": forbidden_removed_imports,
         },
     )
 
@@ -1198,6 +1221,9 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
             "TORRENT": False,
             "TTML": False,
             "AUDIO": False,
+            "PRETEXT": True,
+            "EXTRACT": True,
+            "PREMIUM_EXTRACT": True,
             "WIKI": False,
             "YTD": False,
         },
@@ -2351,21 +2377,33 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
     }
 
     cases = [
-        (False, False, base_threads),
+        (False, False, False, base_threads),
         (
             True,
+            False,
             False,
             base_threads | {"TextPipeline-Pretext"},
         ),
         (
             False,
             True,
-            base_threads | {
-                "TextPipeline-Extract",
-                "TextPipeline-PremiumExtract",
-            },
+            False,
+            base_threads | {"TextPipeline-Extract"},
         ),
         (
+            False,
+            False,
+            True,
+            base_threads | {"TextPipeline-PremiumExtract"},
+        ),
+        (
+            False,
+            True,
+            True,
+            base_threads | {"TextPipeline-Extract", "TextPipeline-PremiumExtract"},
+        ),
+        (
+            True,
             True,
             True,
             base_threads | {
@@ -2409,7 +2447,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_ytd_pipeline = fake_worker
 
-        for pretext_enabled, extract_enabled, expected_threads in cases:
+        for pretext_enabled, extract_enabled, premium_extract_enabled, expected_threads in cases:
             started_workers.clear()
 
             config = {
@@ -2418,6 +2456,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
                     **CONFIG["PIPELINES"],
                     "PRETEXT": pretext_enabled,
                     "EXTRACT": extract_enabled,
+                    "PREMIUM_EXTRACT": premium_extract_enabled,
                 },
             }
 
@@ -2440,6 +2479,10 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
                 and started_workers == expected_threads
                 and config["PIPELINES"]["PRETEXT"] is pretext_enabled
                 and config["PIPELINES"]["EXTRACT"] is extract_enabled
+                and config["PIPELINES"]["PREMIUM_EXTRACT"] is premium_extract_enabled
+                and ("TextPipeline-Pretext" in thread_names) is pretext_enabled
+                and ("TextPipeline-Extract" in thread_names) is extract_enabled
+                and ("TextPipeline-PremiumExtract" in thread_names) is premium_extract_enabled
                 and shutdown_flag.is_set()
                 and all(not thread.is_alive() for thread in threads.values())
             )
@@ -2448,6 +2491,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
                 {
                     "pretext": pretext_enabled,
                     "extract": extract_enabled,
+                    "premium_extract": premium_extract_enabled,
                     "passed": case_passed,
                     "threads": sorted(thread_names),
                 }

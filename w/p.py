@@ -38,6 +38,7 @@ CONFIG = {
         "TTML": True,
         "PRETEXT": True,
         "EXTRACT": True,
+        "PREMIUM_EXTRACT": True,
         "WIKI": True,
         "YTD": True,
     },

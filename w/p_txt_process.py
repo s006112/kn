@@ -620,7 +620,7 @@ def process_text_pipeline(config, shutdown_flag):
         for enabled, name, target, args in [
             (config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_queue, (config, pretext_queue, lambda path, _next: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_pretext_files, shutdown_flag, config, pretext_queue, processed_files_global, processed_files_lock)),
             (config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_queue, (config, extract_queue, lambda path, _next: process_extract_file(config, path, _next), "process_extract", scan_extract_files, shutdown_flag, config, extract_queue)),
-            (config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_queue, (config, premium_extract_queue, lambda path, _next: process_premium_extract_file(config, path, _next), "process_premium_extract", scan_premium_extract_files, shutdown_flag, config, premium_extract_queue)),
+            (config["PIPELINES"]["PREMIUM_EXTRACT"], "TextPipeline-PremiumExtract", process_queue, (config, premium_extract_queue, lambda path, _next: process_premium_extract_file(config, path, _next), "process_premium_extract", scan_premium_extract_files, shutdown_flag, config, premium_extract_queue)),
         ]
         if enabled
     }
