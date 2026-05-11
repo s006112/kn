@@ -52,23 +52,23 @@ def _is_file_ready(path, wait=1.0):
     return size1 == os.path.getsize(path)
 
 
-def process_ttml_pipeline(runtime):
-    ttml_watch_folder = os.path.abspath(os.fspath(runtime.config["TTML_WATCH_FOLDER"]))
-    pretext_watch_folder = os.fspath(runtime.config["PRETEXT_WATCH_FOLDER"])
-    original_folder = os.fspath(runtime.config["ORIGINAL_FOLDER"])
-    intervals = runtime.config.get("INTERVALS", {})
+def process_ttml_pipeline(config, ttml_queue, shutdown_flag):
+    ttml_watch_folder = os.path.abspath(os.fspath(config["TTML_WATCH_FOLDER"]))
+    pretext_watch_folder = os.fspath(config["PRETEXT_WATCH_FOLDER"])
+    original_folder = os.fspath(config["ORIGINAL_FOLDER"])
+    intervals = config.get("INTERVALS", {})
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
 
-    while not runtime.shutdown_flag.is_set():
+    while not shutdown_flag.is_set():
         if os.path.exists(ttml_watch_folder):
             for filename in os.listdir(ttml_watch_folder):
                 if filename.lower().endswith(".ttml"):
                     src = os.path.join(ttml_watch_folder, filename)
-                    if src not in runtime.ttml_queue.queue:
-                        runtime.ttml_queue.put(src)
+                    if src not in ttml_queue.queue:
+                        ttml_queue.put(src)
 
         try:
-            src = runtime.ttml_queue.get(timeout=wait_seconds)
+            src = ttml_queue.get(timeout=wait_seconds)
         except Empty:
             continue
 
@@ -82,8 +82,8 @@ def process_ttml_pipeline(runtime):
             ):
                 continue
             if not _is_file_ready(src, wait=wait_seconds):
-                if src not in runtime.ttml_queue.queue:
-                    runtime.ttml_queue.put(src)
+                if src not in ttml_queue.queue:
+                    ttml_queue.put(src)
                 continue
 
             locked = False
@@ -92,8 +92,8 @@ def process_ttml_pipeline(runtime):
                     lock = _ttml_locks.setdefault(src, threading.Lock())
                 locked = lock.acquire(blocking=False)
                 if not locked:
-                    if src not in runtime.ttml_queue.queue:
-                        runtime.ttml_queue.put(src)
+                    if src not in ttml_queue.queue:
+                        ttml_queue.put(src)
                     continue
 
                 handle_ttml(
@@ -101,7 +101,7 @@ def process_ttml_pipeline(runtime):
                     pretext_watch_folder,
                     original_folder,
                     sanitize_and_trim_filename,
-                    str(runtime.config["PRETEXT_SUFFIX"]),
+                    str(config["PRETEXT_SUFFIX"]),
                 )
             except Exception as e:
                 logging.error(
@@ -118,7 +118,7 @@ def process_ttml_pipeline(runtime):
         except Exception as e:
             logging.error("TTML Pipeline: Error processing queued file: %s", e)
         finally:
-            runtime.ttml_queue.task_done()
+            ttml_queue.task_done()
 
 
 def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename, pretext_suffix: str):

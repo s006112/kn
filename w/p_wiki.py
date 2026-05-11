@@ -47,23 +47,25 @@ def get_cleaning_stats() -> Dict[str, any]:
     return _cleaning_stats.copy()
 
 
-def process_wikilink_cleaning(runtime) -> None:
-    intervals = runtime.config.get("INTERVALS", {})
+def process_wikilink_cleaning(config, shutdown_flag, wikilink_cleaning_stats) -> None:
+    intervals = config.get("INTERVALS", {})
     scan_seconds = intervals.get("SCAN_SECONDS", 60)
-    while not runtime.shutdown_flag.is_set():
+    while not shutdown_flag.is_set():
         try:
             clean_dead_links(
-                target_dir=os.fspath(runtime.config["OBSIDIAN_SYNC_FOLDER"]),
-                backup_dir=os.fspath(runtime.config["LINK_BACKUP_FOLDER"]),
+                target_dir=os.fspath(config["OBSIDIAN_SYNC_FOLDER"]),
+                backup_dir=os.fspath(config["LINK_BACKUP_FOLDER"]),
                 create_backup=True,
                 dry_run=False,
                 max_files=50,
             )
+            wikilink_cleaning_stats["last_run"] = _cleaning_stats["last_run"]
+            wikilink_cleaning_stats["cycle_count"] += 1
 
         except Exception:
             pass
 
-        if runtime.shutdown_flag.wait(scan_seconds):
+        if shutdown_flag.wait(scan_seconds):
             return
 
 

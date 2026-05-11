@@ -87,14 +87,14 @@ def scan_torrent_watch_folder(config: Dict[str, Any]) -> int:
     return moved_count
 
 
-def process_torrent_pipeline(runtime) -> None:
+def process_torrent_pipeline(config, shutdown_flag) -> None:
     current_thread = threading.current_thread()
     current_thread.name = "TorrentPipeline"
-    scan_seconds = runtime.config["INTERVALS"]["SCAN_SECONDS"]
+    scan_seconds = config["INTERVALS"]["SCAN_SECONDS"]
 
-    scan_torrent_watch_folder(runtime.config)
+    scan_torrent_watch_folder(config)
 
-    while not runtime.shutdown_flag.is_set():
-        if runtime.shutdown_flag.wait(scan_seconds):
+    while not shutdown_flag.is_set():
+        if shutdown_flag.wait(scan_seconds):
             return
-        scan_torrent_watch_folder(runtime.config)
+        scan_torrent_watch_folder(config)

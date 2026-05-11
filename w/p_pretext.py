@@ -152,11 +152,11 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
     finally:
         release_pretext_request(processed_files, processed_files_lock, normalized_path)
 
-def scan_pretext_files(runtime) -> None:
-    pretext_watch_folder = os.fspath(runtime.config["PRETEXT_WATCH_FOLDER"])
-    pretext_suffix = str(runtime.config["PRETEXT_SUFFIX"]).lower()
+def scan_pretext_files(config, pretext_queue, processed_files, processed_files_lock) -> None:
+    pretext_watch_folder = os.fspath(config["PRETEXT_WATCH_FOLDER"])
+    pretext_suffix = str(config["PRETEXT_SUFFIX"]).lower()
     extract_suffixes = tuple(
-        str(s).lower() for s in runtime.config["EXTRACT_SUFFIX"] if str(s)
+        str(s).lower() for s in config["EXTRACT_SUFFIX"] if str(s)
     )
 
     for filename in os.listdir(pretext_watch_folder):
@@ -183,4 +183,9 @@ def scan_pretext_files(runtime) -> None:
         if filename_lower.endswith(pretext_suffix) and not any(
             filename_lower.endswith(s) for s in extract_suffixes
         ):
-            request_pretext_processing(runtime.pretext_queue, runtime.processed_files_global, runtime.processed_files_lock, file_path)
+            request_pretext_processing(
+                pretext_queue,
+                processed_files,
+                processed_files_lock,
+                file_path,
+            )

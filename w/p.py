@@ -6,7 +6,6 @@ import threading
 import time
 from pathlib import Path
 from queue import Queue
-from types import SimpleNamespace
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -87,39 +86,25 @@ _file_locks = {}
 _file_locks_mutex = threading.Lock()
 
 
-def create_runtime(config):
-    return SimpleNamespace(
-        config=config,
-        pretext_queue=Queue(),
-        extract_queue=Queue(),
-        premium_extract_queue=Queue(),
-        audio_queue=Queue(),
-        ttml_queue=Queue(),
-        text_processing_lock=threading.Lock(),
-        audio_processing_lock=threading.Lock(),
-        processed_files_global=set(),
-        processed_files_lock=threading.Lock(),
-        wikilink_cleaning_stats={"last_run": None, "cycle_count": 0},
-        shutdown_flag=threading.Event(),
-    )
-
-
-def process_queue(runtime, queue, process, method_name, scan_files=None):
-    intervals = runtime.config.get("INTERVALS", {})
+def process_queue(config, queue, process, method_name, scan_files=None, shutdown_flag=None, *scan_args):
+    intervals = config.get("INTERVALS", {})
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
     scan_seconds = intervals.get("SCAN_SECONDS", 60)
     next_scan = time.monotonic()
 
-    while True:
+    while shutdown_flag is None or not shutdown_flag.is_set():
         if scan_files and time.monotonic() >= next_scan:
             try:
-                scan_files(runtime)
+                scan_files(*scan_args)
             except Exception as e:
                 logging.error("%s scan error: %s", method_name, e)
             next_scan = time.monotonic() + scan_seconds
 
         if queue.empty():
-            time.sleep(wait_seconds)
+            if shutdown_flag is None:
+                time.sleep(wait_seconds)
+            else:
+                shutdown_flag.wait(wait_seconds)
             continue
 
         file_path = queue.get()
@@ -158,22 +143,35 @@ def process_queue(runtime, queue, process, method_name, scan_files=None):
 
             queue.task_done()
 
-        time.sleep(wait_seconds)
+        if shutdown_flag is None:
+            time.sleep(wait_seconds)
+        else:
+            shutdown_flag.wait(wait_seconds)
 
 
-def start_runtime(runtime) -> dict[str, threading.Thread]:
-    extract_processor, premium_extract_processor = create_extract_processors(runtime)
+def start_runtime(config) -> tuple[dict[str, threading.Thread], threading.Event]:
+    pretext_queue = Queue()
+    extract_queue = Queue()
+    premium_extract_queue = Queue()
+    audio_queue = Queue()
+    ttml_queue = Queue()
+    audio_processing_lock = threading.Lock()
+    processed_files_global = set()
+    processed_files_lock = threading.Lock()
+    wikilink_cleaning_stats = {"last_run": None, "cycle_count": 0}
+    shutdown_flag = threading.Event()
+
+    extract_processor, premium_extract_processor = create_extract_processors(config)
     threads = {
         name: threading.Thread(target=target, args=args, daemon=True, name=name)
         for enabled, name, target, args in [
-            (runtime.config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", lambda runtime: process_queue(runtime, runtime.pretext_queue, lambda path, _next: process_pretext_file(runtime.config, path, runtime.processed_files_global, runtime.processed_files_lock), "process_pretext", scan_pretext_files), (runtime,)),
-            (runtime.config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", lambda runtime, processor: process_queue(runtime, runtime.extract_queue, processor.process_extract, "process_extract", scan_extract_files), (runtime, extract_processor)),
-            (runtime.config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", lambda runtime, processor: process_queue(runtime, runtime.premium_extract_queue, processor.process_premium_extract, "process_premium_extract", scan_premium_extract_files), (runtime, premium_extract_processor)),
-            (runtime.config["PIPELINES"]["TORRENT"], "TorrentPipeline", process_torrent_pipeline, (runtime,)),
-            (runtime.config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (runtime,)),
-            (runtime.config["PIPELINES"]["AUDIO"], "AudioPipeline-GPU", process_audio_pipeline, (runtime,)),
-            (runtime.config["PIPELINES"]["WIKI"], "WikilinkCleaner", process_wikilink_cleaning, (runtime,)),
-            (runtime.config["PIPELINES"]["YTD"], "YTDPipeline", process_ytd_pipeline, (runtime,)),
+            (config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_queue, (config, pretext_queue, lambda path, _next: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_pretext_files, shutdown_flag, config, pretext_queue, processed_files_global, processed_files_lock)),
+            (config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_queue, (config, extract_queue, extract_processor.process_extract, "process_extract", scan_extract_files, shutdown_flag, config, extract_queue)),
+            (config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_queue, (config, premium_extract_queue, premium_extract_processor.process_premium_extract, "process_premium_extract", scan_premium_extract_files, shutdown_flag, config, premium_extract_queue)),            (config["PIPELINES"]["TORRENT"], "TorrentPipeline", process_torrent_pipeline, (config, shutdown_flag)),
+            (config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (config, ttml_queue, shutdown_flag)),
+            (config["PIPELINES"]["AUDIO"], "AudioPipeline-GPU", process_audio_pipeline, (config, audio_queue, audio_processing_lock, shutdown_flag)),
+            (config["PIPELINES"]["WIKI"], "WikilinkCleaner", process_wikilink_cleaning, (config, shutdown_flag, wikilink_cleaning_stats)),
+            (config["PIPELINES"]["YTD"], "YTDPipeline", process_ytd_pipeline, (config, shutdown_flag)),
         ]
         if enabled
     }
@@ -181,23 +179,22 @@ def start_runtime(runtime) -> dict[str, threading.Thread]:
     for thread in threads.values():
         thread.start()
 
-    return threads
+    return threads, shutdown_flag
 
 
 def main() -> None:
     configure_logging(CONFIG["LOG_DIR"])
 
-    runtime = create_runtime(CONFIG)
-    start_runtime(runtime)
+    _, shutdown_flag = start_runtime(CONFIG)
 
-    logging.info("Enabled pipelines: %s", ", ".join(key for key, enabled in runtime.config["PIPELINES"].items() if enabled) or "none")
+    logging.info("Enabled pipelines: %s", ", ".join(key for key, enabled in CONFIG["PIPELINES"].items() if enabled) or "none")
 
     try:
         threading.Event().wait()
     except KeyboardInterrupt:
         pass
     finally:
-        runtime.shutdown_flag.set()
+        shutdown_flag.set()
 
 
 if __name__ == "__main__":

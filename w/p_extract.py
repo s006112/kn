@@ -227,34 +227,34 @@ class PremiumExtractProcessor(BaseExtractProcessor):
     process_premium_extract = process
 
 
-def create_extract_processors(runtime):
-    extract_processor = ExtractProcessor(runtime.config)
-    premium_extract_processor = PremiumExtractProcessor(runtime.config)
+def create_extract_processors(config):
+    extract_processor = ExtractProcessor(config)
+    premium_extract_processor = PremiumExtractProcessor(config)
     return extract_processor, premium_extract_processor
 
-def scan_extract_files(runtime) -> None:
-    extract_watch_folder = os.fspath(runtime.config["EXTRACT_WATCH_FOLDER"])
+def scan_extract_files(config, extract_queue) -> None:
+    extract_watch_folder = os.fspath(config["EXTRACT_WATCH_FOLDER"])
     extract_suffixes = tuple(
-        str(s).lower() for s in runtime.config["EXTRACT_SUFFIX"] if str(s)
+        str(s).lower() for s in config["EXTRACT_SUFFIX"] if str(s)
     )
 
     for filename in os.listdir(extract_watch_folder):
         filename_lower = filename.lower()
         if any(filename_lower.endswith(s) for s in extract_suffixes):
             file_path = os.path.join(extract_watch_folder, filename)
-            if file_path not in runtime.extract_queue.queue:
-                runtime.extract_queue.put(file_path)
+            if file_path not in extract_queue.queue:
+                extract_queue.put(file_path)
 
 
-def scan_premium_extract_files(runtime) -> None:
-    premium_watch_folder = os.fspath(runtime.config["PREMIUM_WATCH_FOLDER"])
+def scan_premium_extract_files(config, premium_extract_queue) -> None:
+    premium_watch_folder = os.fspath(config["PREMIUM_WATCH_FOLDER"])
     extract_suffixes = tuple(
-        str(s).lower() for s in runtime.config["EXTRACT_SUFFIX"] if str(s)
+        str(s).lower() for s in config["EXTRACT_SUFFIX"] if str(s)
     )
 
     for filename in os.listdir(premium_watch_folder):
         filename_lower = filename.lower()
         if any(filename_lower.endswith(s) for s in extract_suffixes):
             file_path = os.path.join(premium_watch_folder, filename)
-            if file_path not in runtime.premium_extract_queue.queue:
-                runtime.premium_extract_queue.put(file_path)
+            if file_path not in premium_extract_queue.queue:
+                premium_extract_queue.put(file_path)

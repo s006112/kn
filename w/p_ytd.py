@@ -6,8 +6,6 @@ import os
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
-
 from helper.helper_ytd import clean_url, classify_url, download
 
 
@@ -62,23 +60,23 @@ def remove_download_url_line(list_file, url):
     return False
 
 
-def process_ytd_pipeline(runtime: Any) -> None:
+def process_ytd_pipeline(config, shutdown_flag) -> None:
     threading.current_thread().name = "YTDPipeline"
-    intervals = runtime.config.get("INTERVALS", {})
+    intervals = config.get("INTERVALS", {})
     scan_seconds = intervals.get("SCAN_SECONDS", 60)
     ytd_resolve_timeout_seconds = intervals.get("YTD_RESOLVE_TIMEOUT_SECONDS", 20)
 
-    while not runtime.shutdown_flag.is_set():
+    while not shutdown_flag.is_set():
         try:
             target_folder = Path(
-                runtime.config.get("DOWNLOAD_TARGET_FOLDER", runtime.config["WHISPER_FOLDER"])
+                config.get("DOWNLOAD_TARGET_FOLDER", config["WHISPER_FOLDER"])
             )
-            list_file = Path(runtime.config["YTD_LIST_FILE"])
+            list_file = Path(config["YTD_LIST_FILE"])
             active_list_file = resolve_download_url_list_file(list_file)
             target_folder.mkdir(parents=True, exist_ok=True)
             skipped_urls: set[str] = set()
 
-            while not runtime.shutdown_flag.is_set():
+            while not shutdown_flag.is_set():
                 with list_file_lock() as locked:
                     if not locked:
                         break
@@ -119,5 +117,5 @@ def process_ytd_pipeline(runtime: Any) -> None:
         except Exception as exc:
             logging.error("YTDPipeline: Error during scan: %s", exc)
 
-        if runtime.shutdown_flag.wait(scan_seconds):
+        if shutdown_flag.wait(scan_seconds):
             return
