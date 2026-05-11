@@ -17,7 +17,7 @@ Pipelines:
 import logging
 import re
 import unicodedata
-
+import os
 
 # Avoid Windows device/reserved names that would make file creation fail.
 _RESERVED_WINDOWS_NAMES = {
@@ -33,6 +33,12 @@ _INVALID_FILENAME_CHARS = set("#[]`/\\?*<>|：:｜")
 _CONTROL_CHAR_PATTERN = re.compile(r"[\u0000-\u001f\u007f]")
 _REPLACEMENT_CHAR = "・"
 
+def short_log_name(name, keep=10):
+    name = os.path.basename(os.fspath(name))
+    stem, ext = os.path.splitext(name)
+    suffix = f"_p{ext}" if stem.lower().endswith("_p") else ext
+    stem = stem[:-2] if suffix.lower().startswith("_p") else stem
+    return name if len(stem) <= keep else f"{stem[:keep]}...{suffix}"
 
 def _normalize_unicode_name(name: str) -> str:
 	"""Normalize Unicode text to NFKC form."""

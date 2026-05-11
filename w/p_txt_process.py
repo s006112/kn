@@ -16,7 +16,7 @@ if str(ROOT_DIR) not in sys.path:
 from helper.helper_llm import LLMPermanentFailure, call_llm
 from .helper_files import get_next_available_filename, read_file_with_encodings, release_text_file_permissions, safe_rename
 from .helper_md import create_or_find_note_for_base_name, merge_to_markdown, write_pretext_markdown
-from .helper_text import chunk_text, intelligent_merge_chunks, sanitize_and_trim_filename, sanitize_filename
+from .helper_text import chunk_text, intelligent_merge_chunks, sanitize_and_trim_filename, sanitize_filename, short_log_name
 
 
 _file_locks = {}
@@ -34,11 +34,10 @@ def write_text_file(path, content):
     release_text_file_permissions(path)
     return path
 
-
 def save_pipeline_error(config, stage, base_name, error, *, filename=None, model=None, partial=None):
     marker = sanitize_filename(model or stage) or "unknown"
     path = os.path.join(config["WATCH_FOLDER"], f"{base_name}.{marker}.error")
-    logging.error("Pipeline error | stage=%s file=%s base=%s model=%s error=%s", stage, filename or "", base_name, model or "", error)
+    logging.error("Pipeline error | stage=%s file=%s base=%s model=%s error=%s", stage, short_log_name(filename) if filename else "", short_log_name(base_name), model or "", error)
 
     lines = [
         f"Stage: {stage}",
@@ -71,7 +70,8 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
 
         original_path = os.path.join(config["ORIGINAL_FOLDER"], f"{base_name}.txt")
         content, encoding_used = read_file_with_encodings(normalized_path)
-        logging.info("Pretext: Start %s (characters: %s)", original_filename, f"{len(content):,}")
+        original_log_name = short_log_name(original_filename)
+        logging.info("Pretext: Start %s (characters: %s)", original_log_name, f"{len(content):,}")
         logging.debug("File read successfully using %s encoding, content length: %s", encoding_used, f"{len(content):,}")
 
         chunks = chunk_text(content)
@@ -79,7 +79,7 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
 
         all_results = []
         for i, chunk in enumerate(chunks, 1):
-            logging.debug("Pretext: API call %d/%d for %s using %s", i, len(chunks), original_filename, pretext_model)
+            logging.debug("Pretext: API call %d/%d for %s using %s", i, len(chunks), original_log_name, pretext_model)
             chunk_result = call_text_llm(config, pretext_model, config["PRETEXT_PROMPT"], chunk, normalized_path)
             if not chunk_result:
                 raise ValueError(f"Empty response from OpenAI API for chunk {i}")
@@ -90,11 +90,11 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
         if not pretext_result:
             raise ValueError("Empty combined response from OpenAI API")
 
-        logging.info("Pretext: Completed %s (%s : %s)", original_filename, pretext_model, f"{len(pretext_result):,}")
+        logging.info("Pretext: Completed %s (%s : %s)", original_log_name, pretext_model, f"{len(pretext_result):,}")
 
         pretext_target_path = os.path.join(config["PRETEXT_WATCH_FOLDER"], f"{base_name}{config['EXTRACT_SUFFIX']}")
         write_text_file(pretext_target_path, pretext_result)
-        logging.info("Pretext: Created %s", os.path.basename(pretext_target_path))
+        logging.info("Pretext: Created %s", short_log_name(pretext_target_path))
 
         write_pretext_markdown(config, base_name, pretext_result)
         shutil.move(normalized_path, original_path)
@@ -112,20 +112,21 @@ def process_extract_file(config, file_path):
     extract_suffix = str(config["EXTRACT_SUFFIX"]).lower()
     base = filename[: -len(extract_suffix)] if filename.lower().endswith(extract_suffix) else os.path.splitext(filename)[0]
     failed_models = []
+    filename_log = short_log_name(filename)
 
     try:
-        logging.info(f"Extract: Start {filename}")
+        logging.info("Extract: Start %s", filename_log)
         content, _ = read_file_with_encodings(file_path)
 
         classifier_result = ""
         try:
             classifier_result = (call_text_llm(config, config["MODEL_PRETEXT"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper()
         except Exception as exc:
-            logging.error("Extract: Classifier failed for %s, route=OTHER: %s", filename, exc)
+            logging.error("Extract: Classifier failed for %s, route=OTHER: %s", filename_log, exc)
         route = "CORE" if classifier_result == "CORE" else "OTHER"
         if classifier_result not in ("CORE", "OTHER"):
-            logging.info("Extract: Classifier returned %r for %s, route=OTHER", classifier_result, filename)
-        logging.info("Extract: |%s| for %s", route, filename)
+            logging.info("Extract: Classifier returned %r for %s, route=OTHER", classifier_result, filename_log)
+        logging.info("Extract: |%s| for %s", route, filename_log)
 
         payload = f"《{base}》\n{content}"
         md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(config, base, allow_existing=True)
@@ -149,7 +150,7 @@ def process_extract_file(config, file_path):
                 write_text_file(save_path, result)
                 merge_to_markdown(md_path, [result], "", [f"{model} "], whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"), whisper_link_name=link_name, md_is_new=(md_is_new_seed and extract_count == 0))
                 extract_count += 1
-                logging.info(f"Extract: {filename} ({model} : {len(result):,})")
+                logging.info("Extract: %s (%s : %s)", filename_log, model, f"{len(result):,}")
             except Exception as exc:
                 failed_models.append(model)
                 save_pipeline_error(config, "extract", base, exc, filename=filename, model=model)
@@ -158,13 +159,13 @@ def process_extract_file(config, file_path):
             raise RuntimeError("One or more extraction models failed")
 
         if distill_model:
-            logging.info(f"Extract: Model {distill_model} for {filename}")
+            logging.info("Extract: Model %s for %s", distill_model, filename_log)
             try:
                 run_distillation(config, base_name=base, md_path=md_path)
             except Exception:
                 failed_models.append(distill_model or "distill")
                 raise
-            logging.info(f"Extract: Completed for {filename} ") 
+            logging.info("Extract: Completed for %s", filename_log)
 
         os.makedirs(config["PRETEXT_DONE_FOLDER"], exist_ok=True)
         shutil.move(file_path, os.path.join(config["PRETEXT_DONE_FOLDER"], filename))
@@ -181,9 +182,9 @@ def process_extract_file(config, file_path):
             os.makedirs(config["FAIL_FOLDER"], exist_ok=True)
             if os.path.exists(file_path):
                 shutil.move(file_path, os.path.join(config["FAIL_FOLDER"], filename))
-                logging.info(f"Moved failed file to Fail folder: {filename}")
+                logging.info("Moved failed file to Fail folder: %s", filename_log)
             else:
-                logging.info(f"Fail move skipped; source missing: {filename}")
+                logging.info("Fail move skipped; source missing: %s", filename_log)
         except Exception as move_error:
             logging.error(f"Move to Fail folder failed: {move_error}")
         raise
@@ -209,7 +210,7 @@ def collect_extracts(extract_folder: str, base_name: str, pretext_suffix: str):
                 label = candidate if tail.isdigit() else label
             extracts.append((label or "unknown", content, path))
         except Exception as exc:
-            logging.error("Distillation: failed to read extract %s: %s", fname, exc)
+            logging.error("Distillation: failed to read extract %s: %s", short_log_name(fname), exc)
             errors.append(fname)
 
     if errors:
@@ -223,20 +224,20 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
     distill_model = (config.get("MODEL_DISTILL") or "").strip()
 
     if not distill_model:
-        logging.info("Distillation: MODEL_DISTILL not configured, skipping for %s", base_name)
+        logging.info("Distillation: MODEL_DISTILL not configured, skipping for %s", short_log_name(base_name))
         return None
 
     try:
         extracts = collect_extracts(extract_folder, base_name, str(config["PRETEXT_SUFFIX"]))
         if not extracts:
-            logging.info("Distillation: No extracts found for %s, skipping", base_name)
+            logging.info("Distillation: No extracts found for %s, skipping", short_log_name(base_name))
             return None
 
         payload = [f"《{base_name}》", "Below are outputs from multiple expert extraction models for the same source. Please distill them into one final, coherent result according to the system instructions."]
         for label, content, path in extracts:
             payload += [f"--- {label} ({os.path.basename(path)}) ---", content.strip()]
 
-        logging.info("Distillation: Start %s with %s (%d inputs)", base_name, distill_model, len(extracts))
+        logging.info("Distillation: Start %s %s (%d inputs)", short_log_name(base_name), distill_model, len(extracts))
         distilled = call_text_llm(config, distill_model, config["DISTILL_PROMPT"], "\n\n".join(payload), extracts[0][2])
 
         os.makedirs(extract_folder, exist_ok=True)
@@ -246,7 +247,7 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
         if md_path:
             merge_to_markdown(md_path, [distilled], "", [f"{distill_model} distilled"], whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"), whisper_link_name=Path(md_path).stem, md_is_new=False)
 
-        logging.info("Distillation: Completed %s -> %s", base_name, os.path.basename(save_path))
+        logging.info("Distillation: Completed %s -> %s", short_log_name(base_name), short_log_name(save_path))
         return save_path
 
     except Exception as exc:
@@ -273,7 +274,7 @@ def scan_pretext_files(config, pretext_queue, processed_files, processed_files_l
                 if not os.path.exists(new_path):
                     safe_rename(file_path, new_path)
                     file_path = new_path
-                    logging.debug("Renamed long filename: %s -> %s", filename, new_name)
+                    logging.debug("Renamed long filename: %s -> %s", short_log_name(filename), short_log_name(new_name))
             except Exception as exc:
                 logging.error("Error renaming file: %s", exc)
                 continue
@@ -327,7 +328,7 @@ def process_queue(config, queue, process, method_name, scan_files=None, shutdown
                 try:
                     process(file_path)
                 except LLMPermanentFailure as exc:
-                    logging.error("Resilient Queue: OpenAI API permanent failure for file %s (model: %s): %s", exc.file_path, exc.model, exc.reason)
+                    logging.error("Resilient Queue: OpenAI API permanent failure for file %s (model: %s): %s", short_log_name(exc.file_path), exc.model, exc.reason)
                 except Exception as exc:
                     logging.error("%s queue error: %s", method_name, exc)
 
