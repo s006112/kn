@@ -16,17 +16,17 @@ import os
 import shutil
 import re
 import logging
+import threading
 import time
 from queue import Empty
 from .helper_files import release_text_file_permissions
 from .helper_text import sanitize_and_trim_filename
-from .p_pipelines import (
-    acquire_file_lock,
-    cleanup_file_lock,
-    enqueue_if_absent,
-    release_file_lock,
-)
+from .p_pipelines import enqueue_if_absent
 from xml.dom.minidom import parse
+
+
+_ttml_locks = {}
+_ttml_locks_mutex = threading.Lock()
 
 
 def extract_text(node):
@@ -89,7 +89,9 @@ def process_ttml_pipeline(runtime):
 
             locked = False
             try:
-                locked = acquire_file_lock(src)
+                with _ttml_locks_mutex:
+                    lock = _ttml_locks.setdefault(src, threading.Lock())
+                locked = lock.acquire(blocking=False)
                 if not locked:
                     enqueue_if_absent(runtime.ttml_queue, src)
                     continue
@@ -109,8 +111,9 @@ def process_ttml_pipeline(runtime):
                 )
             finally:
                 if locked:
-                    release_file_lock(src)
-                    cleanup_file_lock(src)
+                    with _ttml_locks_mutex:
+                        _ttml_locks.pop(src, None)
+                    lock.release()
 
         except Exception as e:
             logging.error("TTML Pipeline: Error processing queued file: %s", e)

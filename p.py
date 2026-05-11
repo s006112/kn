@@ -4,24 +4,20 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
+
 from w.helper_files import configure_logging
+from w.p_audio import process_audio_pipeline
+from w.p_extract import create_extract_processors, process_extract_queue, process_premium_extract_queue
 from w.p_pipelines import create_runtime
 from w.p_pretext import process_pretext_queue
-from w.p_extract import (
-    create_extract_processors,
-    process_extract_queue,
-    process_premium_extract_queue,
-)
-
-from w.p_audio import process_audio_pipeline
 from w.p_torrent import process_torrent_pipeline
 from w.p_ttml import process_ttml_pipeline
 from w.p_wiki import process_wikilink_cleaning
 from w.p_ytd import process_ytd_pipeline
 
 BASE_DIR = Path(__file__).resolve().parent
-WHISPER_FOLDER = Path("/desktop/Sync/Whisper")
 WATCH_FOLDER = Path("/desktop")
+WHISPER_FOLDER = Path("/desktop/Sync/Whisper")
 
 CONFIG = {
     "MODEL_PRETEXT": "gpt-4.1-mini",
@@ -32,9 +28,7 @@ CONFIG = {
             "grok-4.20-non-reasoning",  # grok-4.3, grok-4-1-fast-non-reasoning
             "gemini-3.1-flash-lite-preview",  # gemini-3.1-flash-lite-preview, gemini-3.1-pro-preview"
         ],
-        "PREMIUM_WATCH_FOLDER": [
-            "gpt-5.4",
-        ],
+        "PREMIUM_WATCH_FOLDER": ["gpt-5.4"],
     },
     "PIPELINES": {
         "TORRENT": True,
@@ -58,10 +52,7 @@ CONFIG = {
     "TTML_WATCH_FOLDER": WATCH_FOLDER,
     "EXTRACT_WATCH_FOLDER": WATCH_FOLDER,
     "AUDIO_TRANSCRIBED_TXT_FOLDER": WATCH_FOLDER,
-    "AUDIO_WATCH_FOLDERS": (
-        WATCH_FOLDER,
-        WHISPER_FOLDER,
-    ),
+    "AUDIO_WATCH_FOLDERS": (WATCH_FOLDER, WHISPER_FOLDER),
     "AUDIO_DONE_FOLDER": Path("/desktop/YT1"),
     "PRETEXT_WATCH_FOLDER": WATCH_FOLDER,
     "PREMIUM_WATCH_FOLDER": WHISPER_FOLDER / "Fail" / "p",
@@ -82,26 +73,26 @@ CONFIG = {
     "DISTILL_PROMPT": (BASE_DIR / "prompt" / "prompt_distill.txt").read_text(encoding="utf-8").strip(),
 }
 
+
 def start_runtime(runtime) -> dict[str, threading.Thread]:
     extract_processor, premium_extract_processor = create_extract_processors(runtime)
-    threads: dict[str, threading.Thread] = {}
+    threads = {
+        name: threading.Thread(target=target, args=args, daemon=True, name=name)
+        for enabled, name, target, args in [
+            (runtime.config["PIPELINES"]["TORRENT"], "TorrentPipeline", process_torrent_pipeline, (runtime,)),
+            (runtime.config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (runtime,)),
+            (runtime.config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_pretext_queue, (runtime,)),
+            (runtime.config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_extract_queue, (runtime, extract_processor)),
+            (runtime.config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_premium_extract_queue, (runtime, premium_extract_processor)),
+            (runtime.config["PIPELINES"]["AUDIO"], "AudioPipeline-GPU", process_audio_pipeline, (runtime,)),
+            (runtime.config["PIPELINES"]["WIKI"], "WikilinkCleaner", process_wikilink_cleaning, (runtime,)),
+            (runtime.config["PIPELINES"]["YTD"], "YTDPipeline", process_ytd_pipeline, (runtime,)),
+        ]
+        if enabled
+    }
 
-    thread_specs = [
-        (runtime.config["PIPELINES"]["TORRENT"], "TorrentPipeline", process_torrent_pipeline, (runtime,)),
-        (runtime.config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (runtime,)),
-        (runtime.config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_pretext_queue, (runtime,)),
-        (runtime.config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_extract_queue, (runtime, extract_processor)),
-        (runtime.config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_premium_extract_queue, (runtime, premium_extract_processor)),
-        (runtime.config["PIPELINES"]["AUDIO"], "AudioPipeline-GPU", process_audio_pipeline, (runtime,)),
-        (runtime.config["PIPELINES"]["WIKI"], "WikilinkCleaner", process_wikilink_cleaning, (runtime,)),
-        (runtime.config["PIPELINES"]["YTD"], "YTDPipeline", process_ytd_pipeline, (runtime,)),
-    ]
-
-    for enabled, name, target, args in thread_specs:
-        if enabled:
-            thread = threading.Thread(target=target, args=args, daemon=True, name=name)
-            threads[name] = thread
-            thread.start()
+    for thread in threads.values():
+        thread.start()
 
     return threads
 

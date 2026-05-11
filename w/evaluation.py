@@ -1381,9 +1381,11 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
     for item in (lock_retry, transient_error, permanent_error, success):
         runtime.pretext_queue.put(item)
 
-    lock_attempts: list[str] = []
     processed: list[str] = []
     raised: list[str] = []
+    primed_lock = threading.Lock()
+    primed_lock.acquire()
+    released_primed_lock = False
 
     class StopLoop(Exception):
         pass
@@ -1403,23 +1405,20 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
                 )
             processed.append(file_path)
 
-    original_acquire_file_lock = pipelines.acquire_file_lock
     original_sleep = pipelines.time.sleep
 
     try:
-        def fake_acquire_file_lock(file_path: str) -> bool:
-            lock_attempts.append(file_path)
-            return not (
-                file_path == lock_retry
-                and lock_attempts.count(lock_retry) == 1
-            )
-
         def fake_sleep(_seconds: float) -> None:
-            if runtime.pretext_queue.empty() and success in processed:
+            nonlocal released_primed_lock
+            if not released_primed_lock and lock_retry in runtime.pretext_queue.queue:
+                primed_lock.release()
+                released_primed_lock = True
+            if runtime.pretext_queue.empty() and success in processed and lock_retry in processed:
                 raise StopLoop()
             original_sleep(0)
 
-        pipelines.acquire_file_lock = fake_acquire_file_lock
+        with pipelines._file_locks_mutex:
+            pipelines._file_locks[lock_retry] = primed_lock
         pipelines.time.sleep = fake_sleep
 
         stopped = False
@@ -1430,7 +1429,6 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
 
         passed = (
             stopped
-            and lock_attempts.count(lock_retry) == 2
             and processed == [success, lock_retry]
             and raised == [transient_error, permanent_error]
             and runtime.pretext_queue.empty()
@@ -1440,7 +1438,7 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
             "process queue handles lock miss errors and permanent failures",
             passed,
             {
-                "lock_retry_attempts": lock_attempts.count(lock_retry),
+                "lock_retry_delayed": released_primed_lock,
                 "processed": processed,
                 "raised": raised,
                 "stopped": stopped,
@@ -1450,7 +1448,10 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
         return passed, cleanup
 
     finally:
-        pipelines.acquire_file_lock = original_acquire_file_lock
+        with pipelines._file_locks_mutex:
+            pipelines._file_locks.pop(lock_retry, None)
+        if primed_lock.locked():
+            primed_lock.release()
         pipelines.time.sleep = original_sleep
 
 
@@ -2014,7 +2015,7 @@ def test_ytd_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[bo
     return passed, cleanup
 
 
-def test_wikilink_cleaner_run_level_backup_dry_run_lock_and_ontology(test_id: str) -> tuple[bool, list[Path]]:
+def test_wikilink_cleaner_run_level_backup_dry_run_and_ontology(test_id: str) -> tuple[bool, list[Path]]:
     target_dir = PATHS.download_target / f"{test_id}_wikilink_target"
     backup_dir = PATHS.download_target / f"{test_id}_wikilink_backup"
     valid_note = target_dir / f"{test_id}_valid.md"
@@ -2022,7 +2023,6 @@ def test_wikilink_cleaner_run_level_backup_dry_run_lock_and_ontology(test_id: st
     ontology = target_dir / f"{test_id}_ontology.md"
     moved_ontology = target_dir / "Ontology" / ontology.name
     dry_source = target_dir / f"W {test_id} dry.md"
-    locked_source = target_dir / f"W {test_id} locked.md"
     limit_one = target_dir / f"W {test_id} limit one.md"
     limit_two = target_dir / f"W {test_id} limit two.md"
 
@@ -2032,7 +2032,6 @@ def test_wikilink_cleaner_run_level_backup_dry_run_lock_and_ontology(test_id: st
         ontology,
         moved_ontology,
         dry_source,
-        locked_source,
         limit_one,
         limit_two,
         target_dir / "Ontology",
@@ -2071,20 +2070,6 @@ def test_wikilink_cleaner_run_level_backup_dry_run_lock_and_ontology(test_id: st
     dry_text = dry_source.read_text(encoding="utf-8")
     dry_stats = dry_cleaner.get_stats()
 
-    locked_source.write_text(f"Locked [[{test_id}_locked_missing]]\n", encoding="utf-8")
-    locked_cleaner = WikilinkCleaner(
-        str(target_dir),
-        create_backup=False,
-        file_lock_functions={
-            "acquire": lambda _path: False,
-            "release": lambda _path: None,
-            "cleanup": lambda _path: None,
-        },
-    )
-    locked_result = locked_cleaner.process_file(locked_source)
-    locked_text = locked_source.read_text(encoding="utf-8")
-    locked_stats = locked_cleaner.get_stats()
-
     limit_one.write_text(f"limit one {test_id}\n", encoding="utf-8")
     limit_two.write_text(f"limit two {test_id}\n", encoding="utf-8")
     limited_cleaner = WikilinkCleaner(str(target_dir), create_backup=False, max_files=1)
@@ -2102,20 +2087,16 @@ def test_wikilink_cleaner_run_level_backup_dry_run_lock_and_ontology(test_id: st
         and f"Dry [[{test_id}_dry_missing]]" in dry_text
         and dry_stats["broken_links_found"] == 1
         and dry_stats["broken_links_removed"] == 0
-        and locked_result
-        and f"Locked [[{test_id}_locked_missing]]" in locked_text
-        and locked_stats["files_processed"] == 0
         and len(limited_files) == 1
     )
 
     print_result(
-        "wikilink cleaner run level backup dry run lock and ontology",
+        "wikilink cleaner run level backup dry run and ontology",
         passed,
         {
             "run_stats": run_stats,
             "backups": len(backups),
             "dry_stats": dry_stats,
-            "locked_stats": locked_stats,
             "limited_files": len(limited_files),
         },
     )
@@ -2464,7 +2445,7 @@ def main() -> int:
             test_audio_failure_paths_archive_or_cleanup,
             test_ttml_invalid_xml_restores_source_and_chinese_normalizes,
             test_ytd_failure_fallback_and_remove_failure_paths,
-            test_wikilink_cleaner_run_level_backup_dry_run_lock_and_ontology,
+            test_wikilink_cleaner_run_level_backup_dry_run_and_ontology,
             test_helper_files_and_text_boundaries,
             test_start_system_creates_expected_threads_and_stop,
             test_start_system_pretext_extract_toggle_matrix,

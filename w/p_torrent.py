@@ -11,9 +11,10 @@ import threading
 from typing import Any, Dict
 
 from .helper_files import safe_rename
-from .p_pipelines import acquire_file_lock, cleanup_file_lock, release_file_lock
 
 TORRENT_SUFFIX = ".torrent"
+_torrent_locks = {}
+_torrent_locks_mutex = threading.Lock()
 
 
 def _next_available_torrent_path(destination_folder: str, filename: str) -> str:
@@ -42,7 +43,10 @@ def move_torrent_to_whisper(file_path: str, whisper_folder: str) -> bool:
         return False
     if not os.path.isfile(normalized_path):
         return False
-    if not acquire_file_lock(normalized_path):
+
+    with _torrent_locks_mutex:
+        lock = _torrent_locks.setdefault(normalized_path, threading.Lock())
+    if not lock.acquire(blocking=False):
         return False
 
     try:
@@ -59,8 +63,9 @@ def move_torrent_to_whisper(file_path: str, whisper_folder: str) -> bool:
         logging.info("Torrent: Moved %s", os.path.basename(destination_path))
         return True
     finally:
-        release_file_lock(normalized_path)
-        cleanup_file_lock(normalized_path)
+        with _torrent_locks_mutex:
+            _torrent_locks.pop(normalized_path, None)
+        lock.release()
 
 
 def scan_torrent_watch_folder(config: Dict[str, Any]) -> int:

@@ -29,7 +29,6 @@ from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
 from .helper_files import release_text_file_permissions
-from .p_pipelines import get_file_lock_functions
 
 
 logger = logging.getLogger(__name__)
@@ -59,7 +58,6 @@ def process_wikilink_cleaning(runtime) -> None:
                 create_backup=True,
                 dry_run=False,
                 max_files=50,
-                file_lock_functions=get_file_lock_functions(),
             )
 
         except Exception:
@@ -75,7 +73,6 @@ def clean_dead_links(
     create_backup: bool = True,
     dry_run: bool = False,
     max_files: int = 50,
-    file_lock_functions: Dict | None = None,
 ) -> Dict[str, any]:
     """Move ontology notes and clean broken wikilinks from selected Markdown files."""
     global _cleaning_stats
@@ -95,7 +92,6 @@ def clean_dead_links(
             create_backup,
             dry_run,
             max_files,
-            file_lock_functions,
         )
         cleaner.run_cleaning()
 
@@ -126,7 +122,6 @@ class WikilinkCleaner:
         create_backup: bool = True,
         dry_run: bool = False,
         max_files: int = 50,
-        file_lock_functions: Dict | None = None,
     ):
         """Initialize cleaner paths, options, stats, and wikilink matching."""
         self.target_dir = Path(target_dir)
@@ -139,7 +134,6 @@ class WikilinkCleaner:
         self.dry_run = dry_run
         self.max_files = max_files
         self.logger = logger
-        self.file_lock_functions = file_lock_functions or {}
         self.stats = {
             "files_processed": 0,
             "broken_links_found": 0,
@@ -267,50 +261,12 @@ class WikilinkCleaner:
             self.stats["errors"] += 1
             return False
 
-    def _acquire_lock(self, file_path_str: str) -> bool:
-        """Attempt to acquire a non-blocking lock for a file path."""
-        acquire = (
-            self.file_lock_functions.get("acquire")
-            if self.file_lock_functions
-            else None
-        )
-        if not acquire:
-            return False
-        try:
-            return bool(acquire(file_path_str))
-        except Exception:
-            return False
-
-    def _release_lock(self, file_path_str: str, lock_acquired: bool) -> None:
-        """Release and clean up a previously acquired file lock."""
-        if not (lock_acquired and self.file_lock_functions):
-            return
-        release = self.file_lock_functions.get("release")
-        cleanup = self.file_lock_functions.get("cleanup")
-        try:
-            if release:
-                release(file_path_str)
-            if cleanup:
-                cleanup(file_path_str)
-        except Exception as e:
-            if self.logger:
-                self.logger.debug(
-                    "WikilinkCleaner: Error releasing lock for %s: %s",
-                    Path(file_path_str).name,
-                    e,
-                )
-
     def move_ontology_instance_files(self) -> bool:
         """Move ontology instance Markdown files into the ontology folder."""
         success = True
         ontology_dir = self.target_dir / "Ontology"
 
         for file_path in self.target_dir.glob("*.md"):
-            file_path_str = str(file_path)
-            lock_acquired = self._acquire_lock(file_path_str)
-            if self.file_lock_functions and not lock_acquired:
-                continue
-
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     original_content = f.read()
@@ -357,18 +313,11 @@ class WikilinkCleaner:
                     )
                 self.stats["errors"] += 1
                 success = False
-            finally:
-                self._release_lock(file_path_str, lock_acquired)
 
         return success
 
     def process_file(self, file_path: Path) -> bool:
         """Remove broken wikilinks and adjacent empty lines from one Markdown file."""
-        file_path_str = str(file_path)
-        lock_acquired = self._acquire_lock(file_path_str)
-        if self.file_lock_functions and not lock_acquired:
-            return True
-
         try:
             if self.logger:
                 self.logger.debug(
@@ -563,8 +512,6 @@ class WikilinkCleaner:
                 )
             self.stats["errors"] += 1
             return False
-        finally:
-            self._release_lock(file_path_str, lock_acquired)
 
     def run_cleaning(self) -> bool:
         """Run ontology moves before processing selected Markdown notes."""

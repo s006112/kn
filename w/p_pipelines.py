@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from .helper_files import get_next_available_filename
 from helper.helper_llm import LLMPermanentFailure
 
-_file_locks: dict[str, threading.Lock] = {}
+_file_locks = {}
 _file_locks_mutex = threading.Lock()
 
 
@@ -28,35 +28,8 @@ def create_runtime(config):
     )
 
 
-def acquire_file_lock(file_path):
-    with _file_locks_mutex:
-        if file_path not in _file_locks:
-            _file_locks[file_path] = threading.Lock()
-        registered_lock = _file_locks[file_path]
-    return registered_lock.acquire(blocking=False)
-
-
-def release_file_lock(file_path):
-    with _file_locks_mutex:
-        if file_path in _file_locks:
-            _file_locks[file_path].release()
-
-
-def cleanup_file_lock(file_path):
-    with _file_locks_mutex:
-        _file_locks.pop(file_path, None)
-
-
-def get_file_lock_functions():
-    return {
-        "acquire": acquire_file_lock,
-        "release": release_file_lock,
-        "cleanup": cleanup_file_lock,
-    }
-
-
 def enqueue_if_absent(queue, path):
-    if path not in list(queue.queue):
+    if path not in queue.queue:
         queue.put(path)
 
 
@@ -80,8 +53,13 @@ def process_queue(runtime, queue, process, method_name, scan_files=None):
 
         file_path = queue.get()
         locked = False
+
         try:
-            locked = acquire_file_lock(file_path)
+            with _file_locks_mutex:
+                lock = _file_locks.setdefault(file_path, threading.Lock())
+
+            locked = lock.acquire(blocking=False)
+
             if not locked:
                 queue.put(file_path)
             else:
@@ -97,12 +75,16 @@ def process_queue(runtime, queue, process, method_name, scan_files=None):
                     )
                 except Exception as e:
                     logging.error("%s queue error: %s", method_name, e)
+
         except Exception as e:
             logging.error("%s queue error: %s", method_name, e)
+
         finally:
             if locked:
-                release_file_lock(file_path)
-                cleanup_file_lock(file_path)
+                with _file_locks_mutex:
+                    _file_locks.pop(file_path, None)
+                lock.release()
+
             queue.task_done()
 
         time.sleep(wait_seconds)
