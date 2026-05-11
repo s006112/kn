@@ -20,7 +20,7 @@ import threading
 import time
 from queue import Empty
 from .helper_files import release_text_file_permissions
-from .helper_text import sanitize_and_trim_filename
+from .helper_text import sanitize_and_trim_filename, short_log_name
 from xml.dom.minidom import parse
 
 
@@ -130,7 +130,7 @@ def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename,
         with open(path, 'r', encoding='utf-8', errors='replace') as f:
             content = f.read()
         char_count = len(content)
-        logging.info(f"TTML: Start {filename} (characters: {char_count:,})")
+        logging.info("TTML: Start %s (characters: %s)", short_log_name(filename), f"{char_count:,}")
 
         os.rename(path, lock)
 
@@ -156,18 +156,18 @@ def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename,
         release_text_file_permissions(out_txt)
 
         output_filename = os.path.basename(out_txt)
-        logging.info(f"TTML: Created {output_filename} ({output_length:,} characters)")
+        logging.info("TTML: Created %s (%s characters)", short_log_name(output_filename), f"{output_length:,}")
 
         archive_filename = base_name + '.ttml'
         archive_path = os.path.join(original_folder, archive_filename)
         shutil.move(lock, archive_path)
 
-        logging.info(f"TTML: Completed {output_filename}")
+        logging.info("TTML: Completed %s", short_log_name(output_filename))
 
     except Exception as e:
-        logging.error(f"TTML: Error processing {filename}: {e}")
+        logging.error("TTML: Error processing %s: %s", short_log_name(filename), e)
         if os.path.exists(lock):
             try:
                 os.rename(lock, path)
             except Exception as restore_error:
-                logging.error(f"TTML: Failed to restore file {filename}: {restore_error}")
+                logging.error("TTML: Failed to restore file %s: %s", short_log_name(filename), restore_error)

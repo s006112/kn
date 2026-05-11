@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from .helper_text import short_log_name
 import os
 import threading
 from contextlib import contextmanager
@@ -89,7 +90,7 @@ def process_ytd_pipeline(config, shutdown_flag) -> None:
                     break
 
                 try:
-                    logging.info("YTDPipeline: Downloading %s", url)
+                    logging.info("YTDPipeline: Downloading %s", short_log_name(url))
                     cleaned_url = clean_url(url)
                     output_path, _ = download(
                         url,
@@ -98,7 +99,7 @@ def process_ytd_pipeline(config, shutdown_flag) -> None:
                         resolve_timeout=ytd_resolve_timeout_seconds,
                     )
                 except Exception as exc:
-                    logging.error("YTDPipeline: Download failed for %s: %s", url, exc)
+                    logging.error("YTDPipeline: Download failed for %s: %s", short_log_name(url), exc)
                     skipped_urls.add(url)
                     continue
 
@@ -106,11 +107,11 @@ def process_ytd_pipeline(config, shutdown_flag) -> None:
                     removed = remove_download_url_line(active_list_file, url) if locked else False
 
                 if removed:
-                    logging.info("YTDPipeline: Downloaded %s -> %s", cleaned_url, output_path)
+                    logging.info("YTDPipeline: Downloaded %s -> %s", short_log_name(cleaned_url), short_log_name(output_path))
                 else:
                     logging.warning(
                         "YTDPipeline: Downloaded %s but URL line was not removed",
-                        url,
+                        short_log_name(url),
                     )
                     skipped_urls.add(url)
 

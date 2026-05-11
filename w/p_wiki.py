@@ -21,6 +21,7 @@ Pipelines:
 """
 
 import logging
+from .helper_text import short_log_name
 import os
 import re
 import shutil
@@ -161,7 +162,7 @@ class WikilinkCleaner:
             if self.logger:
                 self.logger.error(
                     "WikilinkCleaner: Target directory does not exist: %s",
-                    self.target_dir,
+                    short_log_name(self.target_dir),
                 )
             return target_files
 
@@ -177,7 +178,7 @@ class WikilinkCleaner:
                     target_files.append(file_path)
                     if self.logger:
                         self.logger.debug(
-                            "WikilinkCleaner: %s: %s", msg, file_path.name
+                            "WikilinkCleaner: %s: %s", msg, short_log_name(file_path.name)
                         )
 
         if len(target_files) > self.max_files:
@@ -509,7 +510,7 @@ class WikilinkCleaner:
             if self.logger:
                 self.logger.error(
                     "WikilinkCleaner: Error processing file %s: %s",
-                    file_path,
+                    short_log_name(file_path),
                     e,
                 )
             self.stats["errors"] += 1

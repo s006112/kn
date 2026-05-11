@@ -21,7 +21,7 @@ from queue import Empty, Queue
 from pathlib import Path
 
 from .helper_files import release_text_file_permissions
-from .helper_text import sanitize_and_trim_filename
+from .helper_text import sanitize_and_trim_filename, short_log_name
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -87,7 +87,7 @@ def convert_audio_to_wav(folder_path: str, audio_file: str) -> str | None:
         )
         return output_path
     except subprocess.CalledProcessError as exc:
-        logging.error(f'ffmpeg failed on {audio_file}: {exc}')
+        logging.error(f'ffmpeg failed on %s: %s', short_log_name(audio_file), exc)
         return None
 
 
@@ -105,7 +105,7 @@ def move_files_to_done(
     if os.path.exists(target):
         os.remove(target)
     shutil.move(audio_file_path, target)
-    logging.info(f'Audio processed in {process_time:.2f}s')
+    logging.info('Audio processed in %.2fs', process_time)
 
 
 def scan_audio_files(config: dict, audio_queue: Queue) -> None:
@@ -115,7 +115,7 @@ def scan_audio_files(config: dict, audio_queue: Queue) -> None:
             file_path = os.path.join(current_folder, audio_file)
             if file_path not in (item[0] for item in list(audio_queue.queue)):
                 audio_queue.put((file_path, current_folder))
-                logging.info('Queued %s', audio_file)
+                logging.info('Queued %s', short_log_name(audio_file))
 
 
 def process_audio_file(file_path: str, folder_path: str, config: dict, done_folder_path: str) -> bool:
@@ -156,7 +156,7 @@ def process_audio_file(file_path: str, folder_path: str, config: dict, done_fold
     release_text_file_permissions(txt_path)
 
     move_files_to_done(file_path, wav_file, time.time() - start, done_folder_path, sanitized + ext)
-    logging.info('Finished %s', sanitized)
+    logging.info('Finished %s', short_log_name(sanitized))
     return True
 
 

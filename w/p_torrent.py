@@ -11,6 +11,7 @@ import threading
 from typing import Any, Dict
 
 from .helper_files import safe_rename
+from .helper_text import short_log_name
 
 TORRENT_SUFFIX = ".torrent"
 _torrent_locks = {}
@@ -57,10 +58,10 @@ def move_torrent_to_whisper(file_path: str, whisper_folder: str) -> bool:
         )
         moved_path = safe_rename(normalized_path, destination_path)
         if os.path.abspath(moved_path) != os.path.abspath(destination_path):
-            logging.warning("Torrent: Failed to move %s", normalized_path)
+            logging.warning("Torrent: Failed to move %s", short_log_name(normalized_path))
             return False
 
-        logging.info("Torrent: Moved %s", os.path.basename(destination_path))
+        logging.info("Torrent: Moved %s", short_log_name(destination_path))
         return True
     finally:
         with _torrent_locks_mutex:
