@@ -639,6 +639,11 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
             "LLM_RETRY_DELAY_SECONDS": 6,
         },
     }
+    expected_llm_options = {
+        "max_retries": config["INTERVALS"]["LLM_MAX_RETRIES"],
+        "timeout": config["INTERVALS"]["LLM_TIMEOUT_SECONDS"],
+        "retry_delay": config["INTERVALS"]["LLM_RETRY_DELAY_SECONDS"],
+    }
 
     original_call_llm = txt_process_module.call_llm
     index_existed = whisper_index.exists()
@@ -683,10 +688,7 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
             and f"mock pretext result {test_id}" in note_text
             and str(source.resolve()) not in processed_files_global
             and captured_llm_options
-            and all(
-                options == txt_process_module.llm_call_options(config)
-                for options in captured_llm_options
-            )
+            and all(options == expected_llm_options for options in captured_llm_options)
         )
 
         print_result(
@@ -980,7 +982,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         "save_pipeline_error",
         "process_queue",
         "process_text_pipeline",
-        "llm_call_options",
+        "call_text_llm",
         "run_distillation",
     }
     forbidden_premium_markers = {
@@ -1041,20 +1043,31 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         and isinstance(node.func, ast.Name)
         and node.func.id == "call_llm"
     ]
-    call_llm_uses_helper = [
-        any(
-            keyword.arg is None
-            and isinstance(keyword.value, ast.Call)
-            and isinstance(keyword.value.func, ast.Name)
-            and keyword.value.func.id == "llm_call_options"
-            for keyword in node.keywords
-        )
-        for node in call_llm_nodes
-    ]
     inline_llm_option_keywords = sorted(
         {
             keyword.arg
             for node in call_llm_nodes
+            for keyword in node.keywords
+            if keyword.arg in {"max_retries", "timeout", "retry_delay"}
+        }
+    )
+    call_text_llm_nodes = [
+        node
+        for node in txt_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "call_text_llm"
+    ]
+    call_llm_in_call_text_llm = [
+        node
+        for function_node in call_text_llm_nodes
+        for node in ast.walk(function_node)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "call_llm"
+    ]
+    call_text_llm_option_keywords = sorted(
+        {
+            keyword.arg
+            for node in call_llm_in_call_text_llm
             for keyword in node.keywords
             if keyword.arg in {"max_retries", "timeout", "retry_delay"}
         }
@@ -1068,8 +1081,9 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         and not forbidden_text_wiring
         and not hardcoded_desktop
         and call_llm_nodes
-        and all(call_llm_uses_helper)
-        and not inline_llm_option_keywords
+        and call_llm_nodes == call_llm_in_call_text_llm
+        and call_text_llm_option_keywords == ["max_retries", "retry_delay", "timeout"]
+        and inline_llm_option_keywords == ["max_retries", "retry_delay", "timeout"]
         and not removed_pretext_path.exists()
         and not removed_extract_path.exists()
         and not removed_distill_path.exists()
@@ -1095,7 +1109,9 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
             "text_process_classes": text_process_classes,
             "forbidden_text_wiring": forbidden_text_wiring,
             "hardcoded_desktop": hardcoded_desktop,
-            "call_llm_uses_helper": call_llm_uses_helper,
+            "call_text_llm_exists": bool(call_text_llm_nodes),
+            "call_llm_in_call_text_llm": len(call_llm_in_call_text_llm),
+            "call_text_llm_option_keywords": call_text_llm_option_keywords,
             "inline_llm_option_keywords": inline_llm_option_keywords,
             "text_process_exists": text_process_path.exists(),
             "outdated_text_process_exists": outdated_text_process_path.exists(),
@@ -1216,9 +1232,8 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
     return passed, []
 
 
-def test_llm_call_options_defaults_and_overrides(test_id: str) -> tuple[bool, list[Path]]:
-    default_config = {**CONFIG, "INTERVALS": {}}
-    custom_config = {
+def test_call_text_llm_forwards_options(test_id: str) -> tuple[bool, list[Path]]:
+    config = {
         **CONFIG,
         "INTERVALS": {
             **CONFIG["INTERVALS"],
@@ -1227,29 +1242,48 @@ def test_llm_call_options_defaults_and_overrides(test_id: str) -> tuple[bool, li
             "LLM_RETRY_DELAY_SECONDS": 11,
         },
     }
+    model = "evaluation-model"
+    system_prompt = "evaluation system prompt"
+    user_text = f"evaluation user text {test_id}"
+    file_path = f"/tmp/{test_id}.txt"
+    captured = {}
 
-    default_options = txt_process_module.llm_call_options(default_config)
-    custom_options = txt_process_module.llm_call_options(custom_config)
+    original_call_llm = txt_process_module.call_llm
+
+    try:
+        def fake_call_llm(**kwargs) -> str:
+            captured.update(kwargs)
+            return f"mock llm result {test_id}"
+
+        txt_process_module.call_llm = fake_call_llm
+
+        result = txt_process_module.call_text_llm(
+            config,
+            model,
+            system_prompt,
+            user_text,
+            file_path,
+        )
+    finally:
+        txt_process_module.call_llm = original_call_llm
 
     passed = (
-        default_options == {
-            "max_retries": 2,
-            "timeout": 90,
-            "retry_delay": 10,
-        }
-        and custom_options == {
-            "max_retries": 7,
-            "timeout": 123,
-            "retry_delay": 11,
-        }
+        result == f"mock llm result {test_id}"
+        and captured.get("model") == model
+        and captured.get("system_prompt") == system_prompt
+        and captured.get("user_text") == user_text
+        and captured.get("file_path") == file_path
+        and captured.get("max_retries") == config["INTERVALS"]["LLM_MAX_RETRIES"]
+        and captured.get("timeout") == config["INTERVALS"]["LLM_TIMEOUT_SECONDS"]
+        and captured.get("retry_delay") == config["INTERVALS"]["LLM_RETRY_DELAY_SECONDS"]
     )
 
     print_result(
-        "llm call options defaults and overrides",
+        "call text llm forwards options",
         passed,
         {
-            "default_options": default_options,
-            "custom_options": custom_options,
+            "captured": captured,
+            "result": result,
         },
     )
 
@@ -1433,6 +1467,11 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
             "EXTRACT_WATCH_FOLDER": [model],
         },
     }
+    expected_llm_options = {
+        "max_retries": config["INTERVALS"]["LLM_MAX_RETRIES"],
+        "timeout": config["INTERVALS"]["LLM_TIMEOUT_SECONDS"],
+        "retry_delay": config["INTERVALS"]["LLM_RETRY_DELAY_SECONDS"],
+    }
 
     original_call_llm = txt_process_module.call_llm
     index_existed = whisper_index.exists()
@@ -1468,7 +1507,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
             and f"mock extract result {test_id}" in extract_text
             and note is not None
             and f"mock extract result {test_id}" in note_text
-            and captured_llm_options == [txt_process_module.llm_call_options(config)]
+            and captured_llm_options == [expected_llm_options]
         )
 
         print_result(
@@ -2055,6 +2094,11 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
             "LLM_RETRY_DELAY_SECONDS": 8,
         },
     }
+    expected_llm_options = {
+        "max_retries": config["INTERVALS"]["LLM_MAX_RETRIES"],
+        "timeout": config["INTERVALS"]["LLM_TIMEOUT_SECONDS"],
+        "retry_delay": config["INTERVALS"]["LLM_RETRY_DELAY_SECONDS"],
+    }
 
     original_call_llm = txt_process_module.call_llm
     index_existed = whisper_index.exists()
@@ -2115,10 +2159,7 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
             and error_file.name == f"{fail_base}.{sanitize_filename(model)}.error"
             and error_text == expected_error_text
             and len(captured_llm_options) == 2
-            and all(
-                options == txt_process_module.llm_call_options(config)
-                for options in captured_llm_options
-            )
+            and all(options == expected_llm_options for options in captured_llm_options)
         )
 
         print_result(
@@ -3034,7 +3075,7 @@ def main() -> int:
             test_text_process_module_function_boundary,
             test_text_process_compression_line_count,
             test_text_write_helper_cleanup_static,
-            test_llm_call_options_defaults_and_overrides,
+            test_call_text_llm_forwards_options,
             test_write_text_file_helper_contract,
             test_save_pipeline_error_helper_contract,
             test_extract_full_process_writes_extract_markdown_and_archive,
