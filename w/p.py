@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import sys
 import threading
-import time
 from pathlib import Path
 from queue import Queue
 
@@ -11,15 +10,9 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from helper.helper_llm import LLMPermanentFailure
-from w.helper_files import configure_logging, get_next_available_filename
+from w.helper_files import configure_logging
 from w.p_audio import process_audio_pipeline
-from w.p_extract import (
-    create_extract_processors,
-    scan_extract_files,
-    scan_premium_extract_files,
-)
-from w.p_pretext import process_pretext_file, scan_pretext_files
+from w.p_txt_process import start_text_processing
 from w.p_torrent import process_torrent_pipeline
 from w.p_ttml import process_ttml_pipeline
 from w.p_wiki import process_wikilink_cleaning
@@ -82,92 +75,19 @@ CONFIG = {
     "DISTILL_PROMPT": (ROOT_DIR / "prompt" / "prompt_distill.txt").read_text(encoding="utf-8").strip(),
 }
 
-_file_locks = {}
-_file_locks_mutex = threading.Lock()
-
-
-def process_queue(config, queue, process, method_name, scan_files=None, shutdown_flag=None, *scan_args):
-    intervals = config.get("INTERVALS", {})
-    wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
-    scan_seconds = intervals.get("SCAN_SECONDS", 60)
-    next_scan = time.monotonic()
-
-    while shutdown_flag is None or not shutdown_flag.is_set():
-        if scan_files and time.monotonic() >= next_scan:
-            try:
-                scan_files(*scan_args)
-            except Exception as e:
-                logging.error("%s scan error: %s", method_name, e)
-            next_scan = time.monotonic() + scan_seconds
-
-        if queue.empty():
-            if shutdown_flag is None:
-                time.sleep(wait_seconds)
-            else:
-                shutdown_flag.wait(wait_seconds)
-            continue
-
-        file_path = queue.get()
-        locked = False
-
-        try:
-            with _file_locks_mutex:
-                lock = _file_locks.setdefault(file_path, threading.Lock())
-
-            locked = lock.acquire(blocking=False)
-
-            if not locked:
-                queue.put(file_path)
-            else:
-                try:
-                    process(file_path, get_next_available_filename)
-                except LLMPermanentFailure as e:
-                    logging.error(
-                        "Resilient Queue: OpenAI API permanent failure for file %s "
-                        "(model: %s): %s",
-                        e.file_path,
-                        e.model,
-                        e.reason,
-                    )
-                except Exception as e:
-                    logging.error("%s queue error: %s", method_name, e)
-
-        except Exception as e:
-            logging.error("%s queue error: %s", method_name, e)
-
-        finally:
-            if locked:
-                with _file_locks_mutex:
-                    _file_locks.pop(file_path, None)
-                lock.release()
-
-            queue.task_done()
-
-        if shutdown_flag is None:
-            time.sleep(wait_seconds)
-        else:
-            shutdown_flag.wait(wait_seconds)
-
 
 def start_runtime(config) -> tuple[dict[str, threading.Thread], threading.Event]:
-    pretext_queue = Queue()
-    extract_queue = Queue()
-    premium_extract_queue = Queue()
     audio_queue = Queue()
     ttml_queue = Queue()
     audio_processing_lock = threading.Lock()
-    processed_files_global = set()
-    processed_files_lock = threading.Lock()
     wikilink_cleaning_stats = {"last_run": None, "cycle_count": 0}
     shutdown_flag = threading.Event()
 
-    extract_processor, premium_extract_processor = create_extract_processors(config)
+    text_threads = start_text_processing(config, shutdown_flag)
     threads = {
         name: threading.Thread(target=target, args=args, daemon=True, name=name)
         for enabled, name, target, args in [
-            (config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_queue, (config, pretext_queue, lambda path, _next: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_pretext_files, shutdown_flag, config, pretext_queue, processed_files_global, processed_files_lock)),
-            (config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_queue, (config, extract_queue, extract_processor.process_extract, "process_extract", scan_extract_files, shutdown_flag, config, extract_queue)),
-            (config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_queue, (config, premium_extract_queue, premium_extract_processor.process_premium_extract, "process_premium_extract", scan_premium_extract_files, shutdown_flag, config, premium_extract_queue)),            (config["PIPELINES"]["TORRENT"], "TorrentPipeline", process_torrent_pipeline, (config, shutdown_flag)),
+            (config["PIPELINES"]["TORRENT"], "TorrentPipeline", process_torrent_pipeline, (config, shutdown_flag)),
             (config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (config, ttml_queue, shutdown_flag)),
             (config["PIPELINES"]["AUDIO"], "AudioPipeline-GPU", process_audio_pipeline, (config, audio_queue, audio_processing_lock, shutdown_flag)),
             (config["PIPELINES"]["WIKI"], "WikilinkCleaner", process_wikilink_cleaning, (config, shutdown_flag, wikilink_cleaning_stats)),
@@ -179,7 +99,7 @@ def start_runtime(config) -> tuple[dict[str, threading.Thread], threading.Event]
     for thread in threads.values():
         thread.start()
 
-    return threads, shutdown_flag
+    return {**text_threads, **threads}, shutdown_flag
 
 
 def main() -> None:

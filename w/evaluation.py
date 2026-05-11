@@ -15,6 +15,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 import w.p as orchestrator_module
+import w.p_txt_process as txt_process_module
 from w.p import CONFIG
 pipelines = orchestrator_module
 
@@ -1148,23 +1149,22 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
 
     captured: dict[str, object] = {}
     captured_queues = {}
-    original_process_queue = pipelines.process_queue
+    original_process_queue = txt_process_module.process_queue
     threads = {}
-    shutdown_flag = None
+    shutdown_flag = threading.Event()
 
     try:
         def fake_process_queue(_config, queue, _process, method_name, scan_files=None, shutdown_flag=None, *scan_args):
             captured[method_name] = getattr(scan_files, "func", scan_files)
             captured_queues[method_name] = queue
 
-        pipelines.process_queue = fake_process_queue
-        threads, shutdown_flag = orchestrator_module.start_runtime(config)
+        txt_process_module.process_queue = fake_process_queue
+        threads = txt_process_module.start_text_processing(config, shutdown_flag)
         for thread in threads.values():
             thread.join(timeout=1)
     finally:
-        if shutdown_flag is not None:
-            shutdown_flag.set()
-        pipelines.process_queue = original_process_queue
+        shutdown_flag.set()
+        txt_process_module.process_queue = original_process_queue
 
     passed = (
         captured == {
@@ -1420,7 +1420,7 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
                 )
             processed.append(file_path)
 
-    original_sleep = pipelines.time.sleep
+    original_sleep = txt_process_module.time.sleep
 
     try:
         def fake_sleep(_seconds: float) -> None:
@@ -1432,13 +1432,13 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
                 raise StopLoop()
             original_sleep(0)
 
-        with pipelines._file_locks_mutex:
-            pipelines._file_locks[lock_retry] = primed_lock
-        pipelines.time.sleep = fake_sleep
+        with txt_process_module._file_locks_mutex:
+            txt_process_module._file_locks[lock_retry] = primed_lock
+        txt_process_module.time.sleep = fake_sleep
 
         stopped = False
         try:
-            pipelines.process_queue(
+            txt_process_module.process_queue(
                 config,
                 pretext_queue,
                 FakeHandler().process_pretext,
@@ -1468,11 +1468,11 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
         return passed, cleanup
 
     finally:
-        with pipelines._file_locks_mutex:
-            pipelines._file_locks.pop(lock_retry, None)
+        with txt_process_module._file_locks_mutex:
+            txt_process_module._file_locks.pop(lock_retry, None)
         if primed_lock.locked():
             primed_lock.release()
-        pipelines.time.sleep = original_sleep
+        txt_process_module.time.sleep = original_sleep
 
 
 def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, list[Path]]:
@@ -2218,7 +2218,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
     original_values = {
         "process_torrent_pipeline": orchestrator_module.process_torrent_pipeline,
         "process_ttml_pipeline": orchestrator_module.process_ttml_pipeline,
-        "process_queue": orchestrator_module.process_queue,
+        "process_queue": txt_process_module.process_queue,
         "process_audio_pipeline": orchestrator_module.process_audio_pipeline,
         "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
         "process_ytd_pipeline": orchestrator_module.process_ytd_pipeline,
@@ -2230,7 +2230,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
     try:
         orchestrator_module.process_torrent_pipeline = fake_worker
         orchestrator_module.process_ttml_pipeline = fake_worker
-        orchestrator_module.process_queue = fake_queue_worker
+        txt_process_module.process_queue = fake_queue_worker
         orchestrator_module.process_audio_pipeline = fake_worker
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_ytd_pipeline = fake_worker
@@ -2280,7 +2280,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
 
         orchestrator_module.process_torrent_pipeline = original_values["process_torrent_pipeline"]
         orchestrator_module.process_ttml_pipeline = original_values["process_ttml_pipeline"]
-        orchestrator_module.process_queue = original_values["process_queue"]
+        txt_process_module.process_queue = original_values["process_queue"]
         orchestrator_module.process_audio_pipeline = original_values["process_audio_pipeline"]
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
         orchestrator_module.process_ytd_pipeline = original_values["process_ytd_pipeline"]
@@ -2338,7 +2338,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
     original_values = {
         "process_torrent_pipeline": orchestrator_module.process_torrent_pipeline,
         "process_ttml_pipeline": orchestrator_module.process_ttml_pipeline,
-        "process_queue": orchestrator_module.process_queue,
+        "process_queue": txt_process_module.process_queue,
         "process_audio_pipeline": orchestrator_module.process_audio_pipeline,
         "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
         "process_ytd_pipeline": orchestrator_module.process_ytd_pipeline,
@@ -2350,7 +2350,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
     try:
         orchestrator_module.process_torrent_pipeline = fake_worker
         orchestrator_module.process_ttml_pipeline = fake_worker
-        orchestrator_module.process_queue = fake_queue_worker
+        txt_process_module.process_queue = fake_queue_worker
         orchestrator_module.process_audio_pipeline = fake_worker
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_ytd_pipeline = fake_worker
@@ -2420,7 +2420,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
 
         orchestrator_module.process_torrent_pipeline = original_values["process_torrent_pipeline"]
         orchestrator_module.process_ttml_pipeline = original_values["process_ttml_pipeline"]
-        orchestrator_module.process_queue = original_values["process_queue"]
+        txt_process_module.process_queue = original_values["process_queue"]
         orchestrator_module.process_audio_pipeline = original_values["process_audio_pipeline"]
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
         orchestrator_module.process_ytd_pipeline = original_values["process_ytd_pipeline"]
