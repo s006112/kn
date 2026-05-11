@@ -20,7 +20,12 @@ import time
 from queue import Empty
 from .helper_files import release_text_file_permissions
 from .helper_text import sanitize_and_trim_filename
-from .p_pipelines import enqueue_if_absent, file_lock
+from .p_pipelines import (
+    acquire_file_lock,
+    cleanup_file_lock,
+    enqueue_if_absent,
+    release_file_lock,
+)
 from xml.dom.minidom import parse
 
 
@@ -82,25 +87,30 @@ def process_ttml_pipeline(ctx):
                 enqueue_if_absent(ctx.ttml_queue, src)
                 continue
 
-            with file_lock(src) as locked:
+            locked = False
+            try:
+                locked = acquire_file_lock(src)
                 if not locked:
                     enqueue_if_absent(ctx.ttml_queue, src)
                     continue
 
-                try:
-                    handle_ttml(
-                        src,
-                        pretext_watch_folder,
-                        original_folder,
-                        sanitize_and_trim_filename,
-                        str(ctx.config["PRETEXT_SUFFIX"]),
-                    )
-                except Exception as e:
-                    logging.error(
-                        "TTML Pipeline: Error processing %s: %s",
-                        os.path.basename(src),
-                        e,
-                    )
+                handle_ttml(
+                    src,
+                    pretext_watch_folder,
+                    original_folder,
+                    sanitize_and_trim_filename,
+                    str(ctx.config["PRETEXT_SUFFIX"]),
+                )
+            except Exception as e:
+                logging.error(
+                    "TTML Pipeline: Error processing %s: %s",
+                    os.path.basename(src),
+                    e,
+                )
+            finally:
+                if locked:
+                    release_file_lock(src)
+                    cleanup_file_lock(src)
 
         except Exception as e:
             logging.error("TTML Pipeline: Error processing queued file: %s", e)

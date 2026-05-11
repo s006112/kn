@@ -1388,20 +1388,6 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
     class StopLoop(Exception):
         pass
 
-    class FakeFileLock:
-        def __init__(self, file_path: str):
-            self.file_path = file_path
-
-        def __enter__(self) -> bool:
-            lock_attempts.append(self.file_path)
-            return not (
-                self.file_path == lock_retry
-                and lock_attempts.count(lock_retry) == 1
-            )
-
-        def __exit__(self, *_args) -> bool:
-            return False
-
     class FakeHandler:
         def process_pretext(self, file_path: str, _get_next_available_filename) -> None:
             if file_path == transient_error:
@@ -1417,16 +1403,23 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
                 )
             processed.append(file_path)
 
-    original_file_lock = pipelines.file_lock
+    original_acquire_file_lock = pipelines.acquire_file_lock
     original_sleep = pipelines.time.sleep
 
     try:
+        def fake_acquire_file_lock(file_path: str) -> bool:
+            lock_attempts.append(file_path)
+            return not (
+                file_path == lock_retry
+                and lock_attempts.count(lock_retry) == 1
+            )
+
         def fake_sleep(_seconds: float) -> None:
             if ctx.pretext_queue.empty() and success in processed:
                 raise StopLoop()
             original_sleep(0)
 
-        pipelines.file_lock = lambda path: FakeFileLock(path)
+        pipelines.acquire_file_lock = fake_acquire_file_lock
         pipelines.time.sleep = fake_sleep
 
         stopped = False
@@ -1457,7 +1450,7 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
         return passed, cleanup
 
     finally:
-        pipelines.file_lock = original_file_lock
+        pipelines.acquire_file_lock = original_acquire_file_lock
         pipelines.time.sleep = original_sleep
 
 

@@ -81,19 +81,19 @@ CONFIG = {
     "DISTILL_PROMPT": (BASE_DIR / "prompt" / "prompt_distill.txt").read_text(encoding="utf-8").strip(),
 }
 
-def start_runtime(ctx) -> dict[str, threading.Thread]:
-    extract_processor, premium_extract_processor = create_extract_processors(ctx)
+def start_runtime(runtime) -> dict[str, threading.Thread]:
+    extract_processor, premium_extract_processor = create_extract_processors(runtime)
     threads: dict[str, threading.Thread] = {}
 
     thread_specs = [
-        (ctx.config["PIPELINES"]["TORRENT"], "TorrentPipeline", process_torrent_pipeline, (ctx,)),
-        (ctx.config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (ctx,)),
-        (ctx.config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_pretext_queue, (ctx,)),
-        (ctx.config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_extract_queue, (ctx, extract_processor)),
-        (ctx.config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_premium_extract_queue, (ctx, premium_extract_processor)),
-        (ctx.config["PIPELINES"]["AUDIO"], "AudioPipeline-GPU", process_audio_pipeline, (ctx,)),
-        (ctx.config["PIPELINES"]["WIKI"], "WikilinkCleaner", process_wikilink_cleaning, (ctx,)),
-        (ctx.config["PIPELINES"]["YTD"], "YTDPipeline", process_ytd_pipeline, (ctx,)),
+        (runtime.config["PIPELINES"]["TORRENT"], "TorrentPipeline", process_torrent_pipeline, (runtime,)),
+        (runtime.config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (runtime,)),
+        (runtime.config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_pretext_queue, (runtime,)),
+        (runtime.config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_extract_queue, (runtime, extract_processor)),
+        (runtime.config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_premium_extract_queue, (runtime, premium_extract_processor)),
+        (runtime.config["PIPELINES"]["AUDIO"], "AudioPipeline-GPU", process_audio_pipeline, (runtime,)),
+        (runtime.config["PIPELINES"]["WIKI"], "WikilinkCleaner", process_wikilink_cleaning, (runtime,)),
+        (runtime.config["PIPELINES"]["YTD"], "YTDPipeline", process_ytd_pipeline, (runtime,)),
     ]
 
     for enabled, name, target, args in thread_specs:

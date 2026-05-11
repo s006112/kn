@@ -16,7 +16,6 @@ import logging
 import os
 import threading
 import time
-from contextlib import contextmanager
 from queue import Queue
 from types import SimpleNamespace
 from typing import Any, Callable, Dict
@@ -69,19 +68,6 @@ def cleanup_file_lock(file_path: str) -> None:
             del _file_locks[file_path]
 
 
-@contextmanager
-def file_lock(file_path: str):
-    """Yield whether a non-blocking lock for `file_path` was acquired."""
-    if acquire_file_lock(file_path):
-        try:
-            yield True
-        finally:
-            release_file_lock(file_path)
-            cleanup_file_lock(file_path)
-    else:
-        yield False
-
-
 def get_file_lock_functions() -> Dict[str, Callable[[str], Any]]:
     """Return the file-lock operation mapping used by integration points."""
     return {
@@ -125,29 +111,34 @@ def process_queue(
             continue
 
         file_path = queue.get()
+        locked = False
         try:
-            with file_lock(file_path) as locked:
-                if not locked:
-                    queue.put(file_path)
-                else:
-                    try:
-                        process(file_path, get_next_available_filename)
-                    except LLMPermanentFailure as e:
-                        logging.error(
-                            "Resilient Queue: OpenAI API permanent failure for file %s "
-                            "(model: %s): %s",
-                            e.file_path,
-                            e.model,
-                            e.reason,
-                        )
-                    except Exception as e:
-                        logging.error("%s queue error: %s", method_name, e)
+            locked = acquire_file_lock(file_path)
+            if not locked:
+                queue.put(file_path)
+            else:
+                try:
+                    process(file_path, get_next_available_filename)
+                except LLMPermanentFailure as e:
+                    logging.error(
+                        "Resilient Queue: OpenAI API permanent failure for file %s "
+                        "(model: %s): %s",
+                        e.file_path,
+                        e.model,
+                        e.reason,
+                    )
+                except Exception as e:
+                    logging.error("%s queue error: %s", method_name, e)
         except Exception as e:
             logging.error("%s queue error: %s", method_name, e)
         finally:
+            if locked:
+                release_file_lock(file_path)
+                cleanup_file_lock(file_path)
             queue.task_done()
 
         time.sleep(wait_seconds)
+
 
 def process_pretext_queue(ctx) -> None:
     process_queue(ctx, ctx.pretext_queue, lambda path, _next: process_pretext_file(ctx.config, path, ctx.processed_files_global, ctx.processed_files_lock), "process_pretext", scan_pretext_files)
