@@ -62,23 +62,23 @@ def remove_download_url_line(list_file, url):
     return False
 
 
-def process_ytd_pipeline(ctx: Any) -> None:
+def process_ytd_pipeline(runtime: Any) -> None:
     threading.current_thread().name = "YTDPipeline"
-    intervals = ctx.config.get("INTERVALS", {})
+    intervals = runtime.config.get("INTERVALS", {})
     scan_seconds = intervals.get("SCAN_SECONDS", 60)
     ytd_resolve_timeout_seconds = intervals.get("YTD_RESOLVE_TIMEOUT_SECONDS", 20)
 
-    while not ctx.shutdown_flag.is_set():
+    while not runtime.shutdown_flag.is_set():
         try:
             target_folder = Path(
-                ctx.config.get("DOWNLOAD_TARGET_FOLDER", ctx.config["WHISPER_FOLDER"])
+                runtime.config.get("DOWNLOAD_TARGET_FOLDER", runtime.config["WHISPER_FOLDER"])
             )
-            list_file = Path(ctx.config["YTD_LIST_FILE"])
+            list_file = Path(runtime.config["YTD_LIST_FILE"])
             active_list_file = resolve_download_url_list_file(list_file)
             target_folder.mkdir(parents=True, exist_ok=True)
             skipped_urls: set[str] = set()
 
-            while not ctx.shutdown_flag.is_set():
+            while not runtime.shutdown_flag.is_set():
                 with list_file_lock() as locked:
                     if not locked:
                         break
@@ -119,5 +119,5 @@ def process_ytd_pipeline(ctx: Any) -> None:
         except Exception as exc:
             logging.error("YTDPipeline: Error during scan: %s", exc)
 
-        if ctx.shutdown_flag.wait(scan_seconds):
+        if runtime.shutdown_flag.wait(scan_seconds):
             return

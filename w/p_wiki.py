@@ -48,14 +48,14 @@ def get_cleaning_stats() -> Dict[str, any]:
     return _cleaning_stats.copy()
 
 
-def process_wikilink_cleaning(ctx) -> None:
-    intervals = ctx.config.get("INTERVALS", {})
+def process_wikilink_cleaning(runtime) -> None:
+    intervals = runtime.config.get("INTERVALS", {})
     scan_seconds = intervals.get("SCAN_SECONDS", 60)
-    while not ctx.shutdown_flag.is_set():
+    while not runtime.shutdown_flag.is_set():
         try:
             clean_dead_links(
-                target_dir=os.fspath(ctx.config["OBSIDIAN_SYNC_FOLDER"]),
-                backup_dir=os.fspath(ctx.config["LINK_BACKUP_FOLDER"]),
+                target_dir=os.fspath(runtime.config["OBSIDIAN_SYNC_FOLDER"]),
+                backup_dir=os.fspath(runtime.config["LINK_BACKUP_FOLDER"]),
                 create_backup=True,
                 dry_run=False,
                 max_files=50,
@@ -65,7 +65,7 @@ def process_wikilink_cleaning(ctx) -> None:
         except Exception:
             pass
 
-        if ctx.shutdown_flag.wait(scan_seconds):
+        if runtime.shutdown_flag.wait(scan_seconds):
             return
 
 

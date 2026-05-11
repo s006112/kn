@@ -210,20 +210,20 @@ def process_audio_queue(
             return
 
 
-def process_audio_pipeline(ctx) -> None:
+def process_audio_pipeline(runtime) -> None:
     current_thread = threading.current_thread()
     current_thread.name = "AudioPipeline-GPU"
-    intervals = ctx.config.get("INTERVALS", {})
+    intervals = runtime.config.get("INTERVALS", {})
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
 
-    while not ctx.shutdown_flag.is_set():
-        scan_audio_files(ctx.config, ctx.audio_queue)
+    while not runtime.shutdown_flag.is_set():
+        scan_audio_files(runtime.config, runtime.audio_queue)
         process_audio_queue(
-            ctx.config,
-            ctx.audio_queue,
-            processing_lock=ctx.audio_processing_lock,
-            done_folder_path=os.fspath(ctx.config["AUDIO_DONE_FOLDER"]),
-            shutdown_flag=ctx.shutdown_flag,
+            runtime.config,
+            runtime.audio_queue,
+            processing_lock=runtime.audio_processing_lock,
+            done_folder_path=os.fspath(runtime.config["AUDIO_DONE_FOLDER"]),
+            shutdown_flag=runtime.shutdown_flag,
             once=True,
             wait_seconds=wait_seconds,
         )

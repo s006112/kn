@@ -158,17 +158,17 @@ def test_summary(results: list[bool]) -> None:
     print(f"✅ summary: {passed} ✅, {failed} ❌, {len(results)} total")
 
 
-def system_status(ctx) -> dict:
+def system_status(runtime) -> dict:
     return {
-        "pipelines": dict(ctx.config["PIPELINES"]),
+        "pipelines": dict(runtime.config["PIPELINES"]),
         "queues": {
-            "pretext": ctx.pretext_queue.qsize(),
-            "extract": ctx.extract_queue.qsize(),
-            "premium_extract": ctx.premium_extract_queue.qsize(),
+            "pretext": runtime.pretext_queue.qsize(),
+            "extract": runtime.extract_queue.qsize(),
+            "premium_extract": runtime.premium_extract_queue.qsize(),
         },
         "wikilink_cleaner": {
-            "last_run": ctx.wikilink_cleaning_stats["last_run"],
-            "cycle_count": ctx.wikilink_cleaning_stats["cycle_count"],
+            "last_run": runtime.wikilink_cleaning_stats["last_run"],
+            "cycle_count": runtime.wikilink_cleaning_stats["cycle_count"],
         },
     }
 
@@ -405,7 +405,7 @@ def test_ytd_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[b
         },
     }
 
-    ctx = pipelines.create_runtime(config)
+    runtime = pipelines.create_runtime(config)
     original_download = ytd_module.download
 
     try:
@@ -423,7 +423,7 @@ def test_ytd_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[b
 
         thread = threading.Thread(
             target=process_ytd_pipeline,
-            args=(ctx,),
+            args=(runtime,),
             daemon=True,
         )
         thread.start()
@@ -435,7 +435,7 @@ def test_ytd_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[b
                 break
             time.sleep(0.05)
 
-        ctx.shutdown_flag.set()
+        runtime.shutdown_flag.set()
         thread.join(timeout=1)
 
         remaining = list_file.read_text(encoding="utf-8") if list_file.exists() else ""
@@ -462,7 +462,7 @@ def test_ytd_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[b
 
     finally:
         ytd_module.download = original_download
-        ctx.shutdown_flag.set()
+        runtime.shutdown_flag.set()
 
 def test_wikilink_cleaner_removes_broken_link(test_id: str) -> tuple[bool, list[Path]]:
     valid_name = f"{test_id}_valid"
@@ -600,32 +600,32 @@ def test_pretext_request_deduplicates_queue(test_id: str) -> tuple[bool, list[Pa
 
     source.write_text(f"dummy pretext queue source {test_id}\n", encoding="utf-8")
 
-    ctx = pipelines.create_runtime(CONFIG)
+    runtime = pipelines.create_runtime(CONFIG)
     first = request_pretext_processing(
-        ctx.pretext_queue,
-        ctx.processed_files_global,
-        ctx.processed_files_lock,
+        runtime.pretext_queue,
+        runtime.processed_files_global,
+        runtime.processed_files_lock,
         str(source),
     )
     second = request_pretext_processing(
-        ctx.pretext_queue,
-        ctx.processed_files_global,
-        ctx.processed_files_lock,
+        runtime.pretext_queue,
+        runtime.processed_files_global,
+        runtime.processed_files_lock,
         str(source),
     )
-    queued_path = ctx.pretext_queue.get_nowait()
+    queued_path = runtime.pretext_queue.get_nowait()
     release_pretext_request(
-        ctx.processed_files_global,
-        ctx.processed_files_lock,
+        runtime.processed_files_global,
+        runtime.processed_files_lock,
         str(source),
     )
 
     passed = (
         first
         and not second
-        and ctx.pretext_queue.empty()
+        and runtime.pretext_queue.empty()
         and queued_path == str(source.resolve())
-        and str(source.resolve()) not in ctx.processed_files_global
+        and str(source.resolve()) not in runtime.processed_files_global
     )
 
     print_result(
@@ -672,12 +672,12 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
     try:
         pretext_module.call_llm = lambda **_kwargs: f"mock pretext result {test_id}"
 
-        ctx = pipelines.create_runtime(config)
+        runtime = pipelines.create_runtime(config)
         pretext_module.process_pretext_file(
-            ctx.config,
+            runtime.config,
             str(source),
-            ctx.processed_files_global,
-            ctx.processed_files_lock,
+            runtime.processed_files_global,
+            runtime.processed_files_lock,
         )
 
         notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
@@ -694,7 +694,7 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
             and f"mock pretext result {test_id}" in output_text
             and note is not None
             and f"mock pretext result {test_id}" in note_text
-            and str(source.resolve()) not in ctx.processed_files_global
+            and str(source.resolve()) not in runtime.processed_files_global
         )
 
         print_result(
@@ -776,11 +776,11 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
     source.write_text(f"extract queue candidate {test_id}\n", encoding="utf-8")
     ignored.write_text(f"wrong folder candidate {test_id}\n", encoding="utf-8")
 
-    ctx = pipelines.create_runtime(CONFIG)
-    pipelines.scan_extract_files(ctx)
-    pipelines.scan_extract_files(ctx)
+    runtime = pipelines.create_runtime(CONFIG)
+    pipelines.scan_extract_files(runtime)
+    pipelines.scan_extract_files(runtime)
 
-    queued_paths = list(ctx.extract_queue.queue)
+    queued_paths = list(runtime.extract_queue.queue)
 
     passed = (
         queued_paths.count(str(source)) == 1
@@ -834,7 +834,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
     try:
         extract_module.call_llm = lambda **_kwargs: f"mock extract result {test_id}"
 
-        ctx = pipelines.create_runtime(config)
+        runtime = pipelines.create_runtime(config)
         processor = ExtractProcessor(config)
         processor.process_extract(str(source), get_next_available_filename)
 
@@ -908,7 +908,7 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
 
         extract_module.call_llm = fail_call_llm
 
-        ctx = pipelines.create_runtime(config)
+        runtime = pipelines.create_runtime(config)
         processor = ExtractProcessor(config)
 
         raised = False
@@ -982,7 +982,7 @@ def test_premium_extract_full_process_archives_to_archive_folder(test_id: str) -
     try:
         extract_module.call_llm = lambda **_kwargs: f"mock premium extract result {test_id}"
 
-        ctx = pipelines.create_runtime(config)
+        runtime = pipelines.create_runtime(config)
         processor = PremiumExtractProcessor(config)
         processor.process_premium_extract(str(source), get_next_available_filename)
 
@@ -1044,14 +1044,14 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
     extract.write_text(f"startup scan extract {test_id}\n", encoding="utf-8")
     premium.write_text(f"startup scan premium {test_id}\n", encoding="utf-8")
 
-    ctx = pipelines.create_runtime(CONFIG)
-    pipelines.scan_pretext_files(ctx)
-    pipelines.scan_extract_files(ctx)
-    pipelines.scan_premium_extract_files(ctx)
+    runtime = pipelines.create_runtime(CONFIG)
+    pipelines.scan_pretext_files(runtime)
+    pipelines.scan_extract_files(runtime)
+    pipelines.scan_premium_extract_files(runtime)
 
-    pretext_paths = list(ctx.pretext_queue.queue)
-    extract_paths = list(ctx.extract_queue.queue)
-    premium_paths = list(ctx.premium_extract_queue.queue)
+    pretext_paths = list(runtime.pretext_queue.queue)
+    extract_paths = list(runtime.extract_queue.queue)
+    premium_paths = list(runtime.premium_extract_queue.queue)
 
     passed = (
         not raw.exists()
@@ -1066,9 +1066,9 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
         passed,
         {
             "renamed": renamed,
-            "pretext_queue": ctx.pretext_queue.qsize(),
-            "extract_queue": ctx.extract_queue.qsize(),
-            "premium_queue": ctx.premium_extract_queue.qsize(),
+            "pretext_queue": runtime.pretext_queue.qsize(),
+            "extract_queue": runtime.extract_queue.qsize(),
+            "premium_queue": runtime.premium_extract_queue.qsize(),
         },
     )
 
@@ -1140,7 +1140,7 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
     extract.write_text(f"periodic scan extract {test_id}\n", encoding="utf-8")
     premium.write_text(f"periodic scan premium {test_id}\n", encoding="utf-8")
 
-    ctx = pipelines.create_runtime(CONFIG)
+    runtime = pipelines.create_runtime(CONFIG)
     captured: dict[str, object] = {}
     original_process_queue = pipelines.process_queue
 
@@ -1149,9 +1149,9 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
             captured[method_name] = scan_files
 
         pipelines.process_queue = fake_process_queue
-        pipelines.process_pretext_queue(ctx)
-        pipelines.process_extract_queue(ctx, ExtractProcessor(CONFIG))
-        pipelines.process_premium_extract_queue(ctx, PremiumExtractProcessor(CONFIG))
+        pipelines.process_pretext_queue(runtime)
+        pipelines.process_extract_queue(runtime, ExtractProcessor(CONFIG))
+        pipelines.process_premium_extract_queue(runtime, PremiumExtractProcessor(CONFIG))
     finally:
         pipelines.process_queue = original_process_queue
 
@@ -1161,9 +1161,9 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
             "process_extract": pipelines.scan_extract_files,
             "process_premium_extract": pipelines.scan_premium_extract_files,
         }
-        and ctx.pretext_queue.empty()
-        and ctx.extract_queue.empty()
-        and ctx.premium_extract_queue.empty()
+        and runtime.pretext_queue.empty()
+        and runtime.extract_queue.empty()
+        and runtime.premium_extract_queue.empty()
         and raw.is_file()
         and extract.is_file()
         and premium.is_file()
@@ -1372,14 +1372,14 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
             "WAIT_SECONDS": 0,
         },
     }
-    ctx = pipelines.create_runtime(config)
+    runtime = pipelines.create_runtime(config)
 
     lock_retry = f"{test_id}_queue_lock_retry"
     transient_error = f"{test_id}_queue_transient_error"
     permanent_error = f"{test_id}_queue_permanent_error"
     success = f"{test_id}_queue_success"
     for item in (lock_retry, transient_error, permanent_error, success):
-        ctx.pretext_queue.put(item)
+        runtime.pretext_queue.put(item)
 
     lock_attempts: list[str] = []
     processed: list[str] = []
@@ -1415,7 +1415,7 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
             )
 
         def fake_sleep(_seconds: float) -> None:
-            if ctx.pretext_queue.empty() and success in processed:
+            if runtime.pretext_queue.empty() and success in processed:
                 raise StopLoop()
             original_sleep(0)
 
@@ -1424,7 +1424,7 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
 
         stopped = False
         try:
-            pipelines.process_queue(ctx, ctx.pretext_queue, FakeHandler().process_pretext, "process_pretext")
+            pipelines.process_queue(runtime, runtime.pretext_queue, FakeHandler().process_pretext, "process_pretext")
         except StopLoop:
             stopped = True
 
@@ -1433,7 +1433,7 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
             and lock_attempts.count(lock_retry) == 2
             and processed == [success, lock_retry]
             and raised == [transient_error, permanent_error]
-            and ctx.pretext_queue.empty()
+            and runtime.pretext_queue.empty()
         )
 
         print_result(
@@ -1586,7 +1586,7 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
 
         extract_module.call_llm = fake_call_llm
 
-        ctx = pipelines.create_runtime(config)
+        runtime = pipelines.create_runtime(config)
         processor = ExtractProcessor(config)
 
         raised = False
@@ -1951,7 +1951,7 @@ def test_ytd_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[bo
                 "YTD_RESOLVE_TIMEOUT_SECONDS": 0.05,
             },
         }
-        ctx = pipelines.create_runtime(config)
+        runtime = pipelines.create_runtime(config)
         original_download = ytd_module.download
         original_remove_line = ytd_module.remove_download_url_line
         try:
@@ -1961,19 +1961,19 @@ def test_ytd_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[bo
 
             thread = threading.Thread(
                 target=process_ytd_pipeline,
-                args=(ctx,),
+                args=(runtime,),
                 daemon=True,
             )
             thread.start()
             time.sleep(0.2)
-            ctx.shutdown_flag.set()
+            runtime.shutdown_flag.set()
             thread.join(timeout=1)
             remaining = list_file.read_text(encoding="utf-8") if list_file.exists() else ""
             return remaining, thread.is_alive()
         finally:
             ytd_module.download = original_download
             ytd_module.remove_download_url_line = original_remove_line
-            ctx.shutdown_flag.set()
+            runtime.shutdown_flag.set()
 
     def fail_download(*_args, **_kwargs):
         raise RuntimeError(f"mock download failure {test_id}")
@@ -2204,9 +2204,9 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
 
     started_workers: set[str] = set()
 
-    def fake_worker(ctx, *_args) -> None:
+    def fake_worker(runtime, *_args) -> None:
         started_workers.add(threading.current_thread().name)
-        ctx.shutdown_flag.wait(5)
+        runtime.shutdown_flag.wait(5)
 
     original_values = {
         "process_torrent_pipeline": orchestrator_module.process_torrent_pipeline,
@@ -2219,7 +2219,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         "process_ytd_pipeline": orchestrator_module.process_ytd_pipeline,
     }
 
-    ctx = None
+    runtime = None
     threads = {}
 
     try:
@@ -2232,17 +2232,17 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_ytd_pipeline = fake_worker
 
-        ctx = orchestrator_module.create_runtime(CONFIG)
-        threads = orchestrator_module.start_runtime(ctx)
+        runtime = orchestrator_module.create_runtime(CONFIG)
+        threads = orchestrator_module.start_runtime(runtime)
 
         deadline = time.time() + 2
         while time.time() < deadline and started_workers != expected_threads:
             time.sleep(0.01)
 
         thread_names = set(threads)
-        status = system_status(ctx)
+        status = system_status(runtime)
 
-        ctx.shutdown_flag.set()
+        runtime.shutdown_flag.set()
 
         for thread in threads.values():
             thread.join(timeout=1)
@@ -2251,7 +2251,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
             thread_names == expected_threads
             and started_workers == expected_threads
             and status["pipelines"] == CONFIG["PIPELINES"]
-            and ctx.shutdown_flag.is_set()
+            and runtime.shutdown_flag.is_set()
             and all(not thread.is_alive() for thread in threads.values())
         )
 
@@ -2261,7 +2261,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
             {
                 "thread_names": sorted(thread_names),
                 "started_workers": sorted(started_workers),
-                "shutdown": ctx.shutdown_flag.is_set(),
+                "shutdown": runtime.shutdown_flag.is_set(),
                 "threads_alive": [
                     name
                     for name, thread in threads.items()
@@ -2273,8 +2273,8 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         return passed, cleanup
 
     finally:
-        if ctx is not None and not ctx.shutdown_flag.is_set():
-            ctx.shutdown_flag.set()
+        if runtime is not None and not runtime.shutdown_flag.is_set():
+            runtime.shutdown_flag.set()
         for thread in threads.values():
             thread.join(timeout=1)
 
@@ -2326,9 +2326,9 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
 
     started_workers: set[str] = set()
 
-    def fake_worker(ctx, *_args) -> None:
+    def fake_worker(runtime, *_args) -> None:
         started_workers.add(threading.current_thread().name)
-        ctx.shutdown_flag.wait(5)
+        runtime.shutdown_flag.wait(5)
 
     original_values = {
         "process_torrent_pipeline": orchestrator_module.process_torrent_pipeline,
@@ -2366,18 +2366,18 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
                 },
             }
 
-            ctx = orchestrator_module.create_runtime(config)
-            threads = orchestrator_module.start_runtime(ctx)
-            runtimes.append((ctx, threads))
+            runtime = orchestrator_module.create_runtime(config)
+            threads = orchestrator_module.start_runtime(runtime)
+            runtimes.append((runtime, threads))
 
             deadline = time.time() + 2
             while time.time() < deadline and started_workers != expected_threads:
                 time.sleep(0.01)
 
             thread_names = set(threads)
-            status = system_status(ctx)
+            status = system_status(runtime)
 
-            ctx.shutdown_flag.set()
+            runtime.shutdown_flag.set()
 
             for thread in threads.values():
                 thread.join(timeout=1)
@@ -2387,7 +2387,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
                 and started_workers == expected_threads
                 and status["pipelines"]["PRETEXT"] is pretext_enabled
                 and status["pipelines"]["EXTRACT"] is extract_enabled
-                and ctx.shutdown_flag.is_set()
+                and runtime.shutdown_flag.is_set()
                 and all(not thread.is_alive() for thread in threads.values())
             )
 
@@ -2413,9 +2413,9 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         return passed, cleanup
 
     finally:
-        for ctx, threads in runtimes:
-            if not ctx.shutdown_flag.is_set():
-                ctx.shutdown_flag.set()
+        for runtime, threads in runtimes:
+            if not runtime.shutdown_flag.is_set():
+                runtime.shutdown_flag.set()
             for thread in threads.values():
                 thread.join(timeout=1)
 

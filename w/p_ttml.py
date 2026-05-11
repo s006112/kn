@@ -53,24 +53,24 @@ def _is_file_ready(path, wait=1.0):
     return size1 == os.path.getsize(path)
 
 
-def process_ttml_pipeline(ctx):
-    ttml_watch_folder = os.path.abspath(os.fspath(ctx.config["TTML_WATCH_FOLDER"]))
-    pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
-    original_folder = os.fspath(ctx.config["ORIGINAL_FOLDER"])
-    intervals = ctx.config.get("INTERVALS", {})
+def process_ttml_pipeline(runtime):
+    ttml_watch_folder = os.path.abspath(os.fspath(runtime.config["TTML_WATCH_FOLDER"]))
+    pretext_watch_folder = os.fspath(runtime.config["PRETEXT_WATCH_FOLDER"])
+    original_folder = os.fspath(runtime.config["ORIGINAL_FOLDER"])
+    intervals = runtime.config.get("INTERVALS", {})
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
 
-    while not ctx.shutdown_flag.is_set():
+    while not runtime.shutdown_flag.is_set():
         if os.path.exists(ttml_watch_folder):
             for filename in os.listdir(ttml_watch_folder):
                 if filename.lower().endswith(".ttml"):
                     enqueue_if_absent(
-                        ctx.ttml_queue,
+                        runtime.ttml_queue,
                         os.path.join(ttml_watch_folder, filename),
                     )
 
         try:
-            src = ctx.ttml_queue.get(timeout=wait_seconds)
+            src = runtime.ttml_queue.get(timeout=wait_seconds)
         except Empty:
             continue
 
@@ -84,14 +84,14 @@ def process_ttml_pipeline(ctx):
             ):
                 continue
             if not _is_file_ready(src, wait=wait_seconds):
-                enqueue_if_absent(ctx.ttml_queue, src)
+                enqueue_if_absent(runtime.ttml_queue, src)
                 continue
 
             locked = False
             try:
                 locked = acquire_file_lock(src)
                 if not locked:
-                    enqueue_if_absent(ctx.ttml_queue, src)
+                    enqueue_if_absent(runtime.ttml_queue, src)
                     continue
 
                 handle_ttml(
@@ -99,7 +99,7 @@ def process_ttml_pipeline(ctx):
                     pretext_watch_folder,
                     original_folder,
                     sanitize_and_trim_filename,
-                    str(ctx.config["PRETEXT_SUFFIX"]),
+                    str(runtime.config["PRETEXT_SUFFIX"]),
                 )
             except Exception as e:
                 logging.error(
@@ -115,7 +115,7 @@ def process_ttml_pipeline(ctx):
         except Exception as e:
             logging.error("TTML Pipeline: Error processing queued file: %s", e)
         finally:
-            ctx.ttml_queue.task_done()
+            runtime.ttml_queue.task_done()
 
 
 def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename, pretext_suffix: str):

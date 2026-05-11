@@ -1,15 +1,15 @@
 """ p_pipelines.py -
-Runtime pipeline orchestration.
+Runtime factory, queue workers, scanners, and shared file locks.
 
 Used by:
 - p.py
-- p_h.py
 
 Flows:
-- scanner -> pretext / extract intake
-- text queue -> file lock -> processor -> archive / fail
-- audio queue -> gpu worker -> archive
-- ytd worker -> read X.txt -> download -> remove completed URL
+- create_runtime(config) -> queues, locks, stats, shutdown flag
+- pretext scanner -> pretext queue -> file lock -> pretext processor
+- extract scanner -> extract queue -> file lock -> extract processor
+- premium scanner -> premium extract queue -> file lock -> premium processor
+- shared lock helpers -> acquire / release / cleanup by path
 """
 
 import logging
@@ -76,9 +76,9 @@ def get_file_lock_functions() -> Dict[str, Callable[[str], Any]]:
         "cleanup": cleanup_file_lock,
     }
 
-def create_extract_processors(ctx):
-    extract_processor = ExtractProcessor(ctx.config)
-    premium_extract_processor = PremiumExtractProcessor(ctx.config)
+def create_extract_processors(runtime):
+    extract_processor = ExtractProcessor(runtime.config)
+    premium_extract_processor = PremiumExtractProcessor(runtime.config)
     return extract_processor, premium_extract_processor
 
 def enqueue_if_absent(queue: Queue, path: str) -> None:
@@ -87,13 +87,13 @@ def enqueue_if_absent(queue: Queue, path: str) -> None:
 
 
 def process_queue(
-    ctx,
+    runtime,
     queue: Queue,
     process: Callable[[str, Callable[..., str]], None],
     method_name: str,
     scan_files: Callable[[Any], None] | None = None,
 ) -> None:
-    intervals = ctx.config.get("INTERVALS", {})
+    intervals = runtime.config.get("INTERVALS", {})
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
     scan_seconds = intervals.get("SCAN_SECONDS", 60)
     next_scan = time.monotonic()
@@ -101,7 +101,7 @@ def process_queue(
     while True:
         if scan_files and time.monotonic() >= next_scan:
             try:
-                scan_files(ctx)
+                scan_files(runtime)
             except Exception as e:
                 logging.error("%s scan error: %s", method_name, e)
             next_scan = time.monotonic() + scan_seconds
@@ -140,25 +140,25 @@ def process_queue(
         time.sleep(wait_seconds)
 
 
-def process_pretext_queue(ctx) -> None:
-    process_queue(ctx, ctx.pretext_queue, lambda path, _next: process_pretext_file(ctx.config, path, ctx.processed_files_global, ctx.processed_files_lock), "process_pretext", scan_pretext_files)
+def process_pretext_queue(runtime) -> None:
+    process_queue(runtime, runtime.pretext_queue, lambda path, _next: process_pretext_file(runtime.config, path, runtime.processed_files_global, runtime.processed_files_lock), "process_pretext", scan_pretext_files)
 
 
-def process_extract_queue(ctx, processor: ExtractProcessor) -> None:
-    process_queue(ctx, ctx.extract_queue, processor.process_extract, "process_extract", scan_extract_files)
+def process_extract_queue(runtime, processor: ExtractProcessor) -> None:
+    process_queue(runtime, runtime.extract_queue, processor.process_extract, "process_extract", scan_extract_files)
 
 
 def process_premium_extract_queue(
-    ctx, processor: PremiumExtractProcessor
+    runtime, processor: PremiumExtractProcessor
 ) -> None:
-    process_queue(ctx, ctx.premium_extract_queue, processor.process_premium_extract, "process_premium_extract", scan_premium_extract_files)
+    process_queue(runtime, runtime.premium_extract_queue, processor.process_premium_extract, "process_premium_extract", scan_premium_extract_files)
 
 
-def scan_pretext_files(ctx) -> None:
-    pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
-    pretext_suffix = str(ctx.config["PRETEXT_SUFFIX"]).lower()
+def scan_pretext_files(runtime) -> None:
+    pretext_watch_folder = os.fspath(runtime.config["PRETEXT_WATCH_FOLDER"])
+    pretext_suffix = str(runtime.config["PRETEXT_SUFFIX"]).lower()
     extract_suffixes = tuple(
-        str(s).lower() for s in ctx.config["EXTRACT_SUFFIX"] if str(s)
+        str(s).lower() for s in runtime.config["EXTRACT_SUFFIX"] if str(s)
     )
 
     for filename in os.listdir(pretext_watch_folder):
@@ -185,30 +185,30 @@ def scan_pretext_files(ctx) -> None:
         if filename_lower.endswith(pretext_suffix) and not any(
             filename_lower.endswith(s) for s in extract_suffixes
         ):
-            request_pretext_processing(ctx.pretext_queue, ctx.processed_files_global, ctx.processed_files_lock, file_path)
+            request_pretext_processing(runtime.pretext_queue, runtime.processed_files_global, runtime.processed_files_lock, file_path)
 
 
-def scan_extract_files(ctx) -> None:
-    extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
+def scan_extract_files(runtime) -> None:
+    extract_watch_folder = os.fspath(runtime.config["EXTRACT_WATCH_FOLDER"])
     extract_suffixes = tuple(
-        str(s).lower() for s in ctx.config["EXTRACT_SUFFIX"] if str(s)
+        str(s).lower() for s in runtime.config["EXTRACT_SUFFIX"] if str(s)
     )
 
     for filename in os.listdir(extract_watch_folder):
         filename_lower = filename.lower()
         if any(filename_lower.endswith(s) for s in extract_suffixes):
             file_path = os.path.join(extract_watch_folder, filename)
-            enqueue_if_absent(ctx.extract_queue, file_path)
+            enqueue_if_absent(runtime.extract_queue, file_path)
 
 
-def scan_premium_extract_files(ctx) -> None:
-    premium_watch_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
+def scan_premium_extract_files(runtime) -> None:
+    premium_watch_folder = os.fspath(runtime.config["PREMIUM_WATCH_FOLDER"])
     extract_suffixes = tuple(
-        str(s).lower() for s in ctx.config["EXTRACT_SUFFIX"] if str(s)
+        str(s).lower() for s in runtime.config["EXTRACT_SUFFIX"] if str(s)
     )
 
     for filename in os.listdir(premium_watch_folder):
         filename_lower = filename.lower()
         if any(filename_lower.endswith(s) for s in extract_suffixes):
             file_path = os.path.join(premium_watch_folder, filename)
-            enqueue_if_absent(ctx.premium_extract_queue, file_path)
+            enqueue_if_absent(runtime.premium_extract_queue, file_path)
