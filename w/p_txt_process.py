@@ -134,7 +134,7 @@ def _finalize_extract_success(config, filename: str, base_name: str, md_path: st
         logging.info(f"Extract: Skipped for {filename} (MODEL_DISTILL disabled)")
 
 
-def _process_extract_file(config, file_path, get_next_available_filename, models, *, enable_distillation):
+def process_extract_file(config, file_path, get_next_available_filename):
     filename = os.path.basename(file_path)
     logging.info(f"Extract: Start {filename}")
     extract_suffixes = tuple(str(s).lower() for s in config["EXTRACT_SUFFIX"] if str(s))
@@ -157,30 +157,32 @@ def _process_extract_file(config, file_path, get_next_available_filename, models
         any_success = False
         any_failure = False
 
-        for model in models:
+        for model in config.get("MODEL_EXTRACT_MATRIX", {}).get("EXTRACT_WATCH_FOLDER", []):
             if not model:
-                logging.info(f"Extract: Skipping model entry (not configured)")
+                logging.info("Extract: Skipping model entry (not configured)")
                 continue
             try:
                 result = call_llm(
                     model=model,
-                    system_prompt=config['EXTRACT_PROMPT'],
+                    system_prompt=config["EXTRACT_PROMPT"],
                     user_text=payload,
                     file_path=file_path,
                     **_llm_call_options(config),
                 )
 
-                os.makedirs(config['EXTRACT_FOLDER'], exist_ok=True)
+                os.makedirs(config["EXTRACT_FOLDER"], exist_ok=True)
                 model_suffix = f"_{sanitize_filename(model)}"
-                save_path = get_next_available_filename(config['EXTRACT_FOLDER'], base, model_suffix)
+                save_path = get_next_available_filename(config["EXTRACT_FOLDER"], base, model_suffix)
                 _write_text_file(save_path, result)
 
-                label = f"{model} "
                 merge_to_markdown(
-                    md_path, [result], "", [label],
-                    whisper_md_path=os.path.join(config['OBSIDIAN_SYNC_FOLDER'], 'Whisper 000000.md'),
+                    md_path,
+                    [result],
+                    "",
+                    [f"{model} "],
+                    whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"),
                     whisper_link_name=link_name,
-                    md_is_new=(md_is_new_seed and not any_success)
+                    md_is_new=(md_is_new_seed and not any_success),
                 )
                 any_success = True
                 logging.info(f"Extract: {filename} ({model} : {len(result):,})")
@@ -196,14 +198,10 @@ def _process_extract_file(config, file_path, get_next_available_filename, models
         if any_failure:
             raise RuntimeError("One or more extraction models failed")
 
-        if enable_distillation:
-            _finalize_extract_success(config, filename=filename, base_name=base, md_path=md_path)
+        _finalize_extract_success(config, filename=filename, base_name=base, md_path=md_path)
 
-        dest_dir = config['PRETEXT_DONE_FOLDER']
-        if os.path.abspath(os.path.dirname(file_path)) == os.path.abspath(config['PREMIUM_WATCH_FOLDER']):
-            dest_dir = config['ARCHIVE_FOLDER']
-        os.makedirs(dest_dir, exist_ok=True)
-        shutil.move(file_path, os.path.join(dest_dir, filename))
+        os.makedirs(config["PRETEXT_DONE_FOLDER"], exist_ok=True)
+        shutil.move(file_path, os.path.join(config["PRETEXT_DONE_FOLDER"], filename))
         return
 
     except Exception as e:
@@ -216,25 +214,15 @@ def _process_extract_file(config, file_path, get_next_available_filename, models
         except Exception as w:
             logging.error(f"Write error file failed: {w}")
         try:
-            os.makedirs(config['FAIL_FOLDER'], exist_ok=True)
+            os.makedirs(config["FAIL_FOLDER"], exist_ok=True)
             if os.path.exists(file_path):
-                shutil.move(file_path, os.path.join(config['FAIL_FOLDER'], filename))
+                shutil.move(file_path, os.path.join(config["FAIL_FOLDER"], filename))
                 logging.info(f"Moved failed file to Fail folder: {filename}")
             else:
                 logging.info(f"Fail move skipped; source missing: {filename}")
         except Exception as m:
             logging.error(f"Move to Fail folder failed: {m}")
         raise
-
-
-def process_extract_file(config, file_path, get_next_available_filename):
-    models = config.get('MODEL_EXTRACT_MATRIX', {}).get('EXTRACT_WATCH_FOLDER', [])
-    return _process_extract_file(config, file_path, get_next_available_filename, models, enable_distillation=True)
-
-
-def process_premium_extract_file(config, file_path, get_next_available_filename):
-    models = config.get('MODEL_EXTRACT_MATRIX', {}).get('PREMIUM_WATCH_FOLDER', [])
-    return _process_extract_file(config, file_path, get_next_available_filename, models, enable_distillation=False)
 
 
 def _derive_model_label(base_name: str, path: Path) -> str:
@@ -375,20 +363,13 @@ def scan_pretext_files(config, pretext_queue, processed_files, processed_files_l
             request_pretext_processing(pretext_queue, processed_files, processed_files_lock, file_path)
 
 
-def _scan_extract_route(folder, suffixes, queue) -> None:
-    for filename in os.listdir(os.fspath(folder)):
-        if any(filename.lower().endswith(s) for s in suffixes):
-            file_path = os.path.join(os.fspath(folder), filename)
-            if file_path not in queue.queue:
-                queue.put(file_path)
-
-
 def scan_extract_files(config, extract_queue) -> None:
-    _scan_extract_route(config["EXTRACT_WATCH_FOLDER"], tuple(str(s).lower() for s in config["EXTRACT_SUFFIX"] if str(s)), extract_queue)
-
-
-def scan_premium_extract_files(config, premium_extract_queue) -> None:
-    _scan_extract_route(config["PREMIUM_WATCH_FOLDER"], tuple(str(s).lower() for s in config["EXTRACT_SUFFIX"] if str(s)), premium_extract_queue)
+    suffixes = tuple(str(s).lower() for s in config["EXTRACT_SUFFIX"] if str(s))
+    for filename in os.listdir(os.fspath(config["EXTRACT_WATCH_FOLDER"])):
+        if any(filename.lower().endswith(s) for s in suffixes):
+            file_path = os.path.join(os.fspath(config["EXTRACT_WATCH_FOLDER"]), filename)
+            if file_path not in extract_queue.queue:
+                extract_queue.put(file_path)
 
 
 def _wait_or_sleep(shutdown_flag, seconds):
@@ -446,12 +427,7 @@ def process_queue(config, queue, process, method_name, scan_files=None, shutdown
         _wait_or_sleep(shutdown_flag, wait_seconds)
 
 
-def _start_text_thread(threads, name, config, queue, process, scan_files, shutdown_flag, *scan_args):
-    method_name = {
-        "TextPipeline-Pretext": "process_pretext",
-        "TextPipeline-Extract": "process_extract",
-        "TextPipeline-PremiumExtract": "process_premium_extract",
-    }[name]
+def _start_text_thread(threads, name, config, queue, process, method_name, scan_files, shutdown_flag, *scan_args):
     thread = threading.Thread(
         target=process_queue,
         args=(config, queue, process, method_name, scan_files, shutdown_flag, *scan_args),
@@ -463,31 +439,39 @@ def _start_text_thread(threads, name, config, queue, process, scan_files, shutdo
 
 
 def process_text_pipeline(config, shutdown_flag):
-    pretext_queue, extract_queue, premium_extract_queue = Queue(), Queue(), Queue()
+    pretext_queue, extract_queue = Queue(), Queue()
     processed_files_global = set()
     processed_files_lock = threading.Lock()
-
     threads = {}
 
     if config["PIPELINES"]["PRETEXT"]:
         _start_text_thread(
-            threads, "TextPipeline-Pretext", config, pretext_queue,
+            threads,
+            "TextPipeline-Pretext",
+            config,
+            pretext_queue,
             lambda path, _next: process_pretext_file(config, path, processed_files_global, processed_files_lock),
-            scan_pretext_files, shutdown_flag, config, pretext_queue, processed_files_global, processed_files_lock,
+            "process_pretext",
+            scan_pretext_files,
+            shutdown_flag,
+            config,
+            pretext_queue,
+            processed_files_global,
+            processed_files_lock,
         )
 
     if config["PIPELINES"]["EXTRACT"]:
         _start_text_thread(
-            threads, "TextPipeline-Extract", config, extract_queue,
+            threads,
+            "TextPipeline-Extract",
+            config,
+            extract_queue,
             lambda path, _next: process_extract_file(config, path, _next),
-            scan_extract_files, shutdown_flag, config, extract_queue,
-        )
-
-    if config["PIPELINES"]["PREMIUM_EXTRACT"]:
-        _start_text_thread(
-            threads, "TextPipeline-PremiumExtract", config, premium_extract_queue,
-            lambda path, _next: process_premium_extract_file(config, path, _next),
-            scan_premium_extract_files, shutdown_flag, config, premium_extract_queue,
+            "process_extract",
+            scan_extract_files,
+            shutdown_flag,
+            config,
+            extract_queue,
         )
 
     return threads

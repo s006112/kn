@@ -30,7 +30,6 @@ CONFIG = {
             "grok-4.20-non-reasoning",  # grok-4.3, grok-4-1-fast-non-reasoning
             "gemini-3.1-flash-lite-preview",  # gemini-3.1-flash-lite-preview, gemini-3.1-pro-preview"
         ],
-        "PREMIUM_WATCH_FOLDER": ["gpt-5.4"],
     },
     "PIPELINES": {
         "TORRENT": True,
@@ -38,7 +37,6 @@ CONFIG = {
         "TTML": True,
         "PRETEXT": True,
         "EXTRACT": True,
-        "PREMIUM_EXTRACT": True,
         "WIKI": True,
         "YTD": True,
     },
@@ -58,9 +56,7 @@ CONFIG = {
     "AUDIO_WATCH_FOLDERS": (WATCH_FOLDER, WHISPER_FOLDER),
     "AUDIO_DONE_FOLDER": Path("/desktop/YT1"),
     "PRETEXT_WATCH_FOLDER": WATCH_FOLDER,
-    "PREMIUM_WATCH_FOLDER": WHISPER_FOLDER / "Fail" / "p",
     "PRETEXT_DONE_FOLDER": WHISPER_FOLDER / "_p",
-    "ARCHIVE_FOLDER": WHISPER_FOLDER / "_p",
     "ORIGINAL_FOLDER": WHISPER_FOLDER / "_p" / "Raw",
     "EXTRACT_FOLDER": WHISPER_FOLDER / "_p" / "Extract",
     "LINK_BACKUP_FOLDER": WHISPER_FOLDER / "_p" / "link_backup",

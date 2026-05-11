@@ -61,13 +61,11 @@ class EvalPaths:
 
     pretext_watch: Path
     pretext_done: Path
-    premium_watch: Path
 
     extract_watch: Path
     extract: Path
 
     original: Path
-    archive: Path
     fail: Path
 
     audio_watch_folders: tuple[Path, ...]
@@ -88,13 +86,11 @@ PATHS = EvalPaths(
 
     pretext_watch=Path(CONFIG["PRETEXT_WATCH_FOLDER"]),
     pretext_done=Path(CONFIG["PRETEXT_DONE_FOLDER"]),
-    premium_watch=Path(CONFIG["PREMIUM_WATCH_FOLDER"]),
 
     extract_watch=Path(CONFIG["EXTRACT_WATCH_FOLDER"]),
     extract=Path(CONFIG["EXTRACT_FOLDER"]),
 
     original=Path(CONFIG["ORIGINAL_FOLDER"]),
-    archive=Path(CONFIG["ARCHIVE_FOLDER"]),
     fail=Path(CONFIG["FAIL_FOLDER"]),
 
     audio_watch_folders=tuple(Path(p) for p in CONFIG["AUDIO_WATCH_FOLDERS"]),
@@ -914,7 +910,6 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
     PATHS.ttml_watch.mkdir(parents=True, exist_ok=True)
     PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
     PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
-    PATHS.premium_watch.mkdir(parents=True, exist_ok=True)
     PATHS.download_target.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"extract queue candidate {test_id}\n", encoding="utf-8")
@@ -972,13 +967,20 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         "process_pretext_file",
         "scan_pretext_files",
         "process_extract_file",
-        "process_premium_extract_file",
         "scan_extract_files",
-        "scan_premium_extract_files",
         "process_queue",
         "process_text_pipeline",
         "_llm_call_options",
         "run_distillation",
+    }
+    forbidden_premium_markers = {
+        "PREMIUM_EXTRACT",
+        "PREMIUM_WATCH_FOLDER",
+        "TextPipeline-PremiumExtract",
+        "process_premium_extract_file",
+        "scan_premium_extract_files",
+        "premium_extract_queue",
+        "process_premium_extract",
     }
     forbidden_p_import_names = required_names - {"process_text_pipeline"}
     exposed_removed = sorted(
@@ -996,6 +998,12 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
     )
     forbidden_removed_imports = sorted(
         marker for marker in removed_import_markers if marker in p_source
+    )
+    forbidden_premium_txt_markers = sorted(
+        marker for marker in forbidden_premium_markers if marker in txt_source
+    )
+    forbidden_premium_p_markers = sorted(
+        marker for marker in forbidden_premium_markers if marker in p_source
     )
     text_process_classes = sorted(
         node.name for node in ast.walk(txt_tree) if isinstance(node, ast.ClassDef)
@@ -1064,6 +1072,8 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         and not any(marker in txt_source for marker in removed_import_markers)
         and "def run_distillation(" in txt_source
         and not forbidden_p_imports
+        and not forbidden_premium_txt_markers
+        and not forbidden_premium_p_markers
     )
 
     print_result(
@@ -1084,6 +1094,8 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
             "removed_distill_exists": removed_distill_path.exists(),
             "forbidden_p_imports": forbidden_p_imports,
             "forbidden_removed_imports": forbidden_removed_imports,
+            "forbidden_premium_txt_markers": forbidden_premium_txt_markers,
+            "forbidden_premium_p_markers": forbidden_premium_p_markers,
         },
     )
 
@@ -1532,80 +1544,6 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
     finally:
         txt_process_module.call_llm = original_call_llm
 
-def test_premium_extract_full_process_archives_to_archive_folder(test_id: str) -> tuple[bool, list[Path]]:
-    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
-    base_name = f"{test_id}_premium_full"
-    model = "evaluation-premium-model"
-
-    source = PATHS.premium_watch / f"{base_name}{extract_suffix}"
-    extract_output = PATHS.extract / f"{base_name}_{model}.txt"
-    archived = PATHS.archive / source.name
-    whisper_index = PATHS.obsidian / "Whisper 000000.md"
-
-    cleanup = [source, extract_output, archived]
-
-    PATHS.premium_watch.mkdir(parents=True, exist_ok=True)
-    PATHS.extract.mkdir(parents=True, exist_ok=True)
-    PATHS.archive.mkdir(parents=True, exist_ok=True)
-    PATHS.obsidian.mkdir(parents=True, exist_ok=True)
-
-    source.write_text(f"dummy premium extract source {test_id}\n", encoding="utf-8")
-
-    config = {
-        **CONFIG,
-        "MODEL_EXTRACT_MATRIX": {
-            **CONFIG.get("MODEL_EXTRACT_MATRIX", {}),
-            "PREMIUM_WATCH_FOLDER": [model],
-        },
-    }
-
-    original_call_llm = txt_process_module.call_llm
-    index_existed = whisper_index.exists()
-    index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
-
-    try:
-        txt_process_module.call_llm = lambda **_kwargs: f"mock premium extract result {test_id}"
-
-        txt_process_module.process_premium_extract_file(config, str(source), get_next_available_filename)
-
-        notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
-        note = notes[-1] if notes else None
-        cleanup.extend(notes)
-
-        extract_text = extract_output.read_text(encoding="utf-8") if extract_output.exists() else ""
-        note_text = note.read_text(encoding="utf-8") if note and note.exists() else ""
-
-        passed = (
-            not source.exists()
-            and archived.is_file()
-            and extract_output.is_file()
-            and f"mock premium extract result {test_id}" in extract_text
-            and note is not None
-            and f"mock premium extract result {test_id}" in note_text
-        )
-
-        print_result(
-            "premium extract full process archives to archive folder",
-            passed,
-            {
-                "source": source,
-                "extract_output": extract_output,
-                "markdown": note,
-                "archived": archived,
-                "archive_folder": PATHS.archive,
-            },
-        )
-
-        return passed, cleanup
-
-    finally:
-        txt_process_module.call_llm = original_call_llm
-
-        if index_before is not None:
-            whisper_index.write_text(index_before, encoding="utf-8")
-        elif not index_existed and whisper_index.exists():
-            whisper_index.unlink()
-
 def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
     extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
@@ -1614,21 +1552,17 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
     raw = PATHS.pretext_watch / f"{long_base}{pretext_suffix}"
     renamed = PATHS.pretext_watch / f"{sanitize_and_trim_filename(long_base)}{pretext_suffix}"
     extract = PATHS.extract_watch / f"{test_id}_scan_existing{extract_suffix}"
-    premium = PATHS.premium_watch / f"{test_id}_scan_existing{extract_suffix}"
 
-    cleanup = [raw, renamed, extract, premium]
+    cleanup = [raw, renamed, extract]
 
     PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
     PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
-    PATHS.premium_watch.mkdir(parents=True, exist_ok=True)
 
     raw.write_text(f"startup scan raw {test_id}\n", encoding="utf-8")
     extract.write_text(f"startup scan extract {test_id}\n", encoding="utf-8")
-    premium.write_text(f"startup scan premium {test_id}\n", encoding="utf-8")
 
     pretext_queue = Queue()
     extract_queue = Queue()
-    premium_extract_queue = Queue()
     processed_files_global = set()
     processed_files_lock = threading.Lock()
     txt_process_module.scan_pretext_files(
@@ -1638,18 +1572,15 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
         processed_files_lock,
     )
     txt_process_module.scan_extract_files(CONFIG, extract_queue)
-    txt_process_module.scan_premium_extract_files(CONFIG, premium_extract_queue)
 
     pretext_paths = list(pretext_queue.queue)
     extract_paths = list(extract_queue.queue)
-    premium_paths = list(premium_extract_queue.queue)
 
     passed = (
         not raw.exists()
         and renamed.is_file()
         and str(renamed.resolve()) in pretext_paths
         and str(extract) in extract_paths
-        and str(premium) in premium_paths
     )
 
     print_result(
@@ -1659,7 +1590,6 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
             "renamed": renamed,
             "pretext_queue": pretext_queue.qsize(),
             "extract_queue": extract_queue.qsize(),
-            "premium_queue": premium_extract_queue.qsize(),
         },
     )
 
@@ -1671,15 +1601,14 @@ def test_torrent_scan_moves_torrent(test_id: str) -> tuple[bool, list[Path]]:
     whisper_dir = ROOT_DIR / f"{test_id}_torrent_whisper"
     pretext_dir = ROOT_DIR / f"{test_id}_pretext_watch"
     extract_dir = ROOT_DIR / f"{test_id}_extract_watch"
-    premium_dir = ROOT_DIR / f"{test_id}_premium_watch"
 
     filename = f"{test_id}_ownership.torrent"
     source = watch_dir / filename
     target = whisper_dir / filename
 
-    cleanup = [watch_dir, whisper_dir, pretext_dir, extract_dir, premium_dir]
+    cleanup = [watch_dir, whisper_dir, pretext_dir, extract_dir]
 
-    for folder in (watch_dir, whisper_dir, pretext_dir, extract_dir, premium_dir):
+    for folder in (watch_dir, whisper_dir, pretext_dir, extract_dir):
         folder.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"torrent ownership source {test_id}\n", encoding="utf-8")
@@ -1690,7 +1619,6 @@ def test_torrent_scan_moves_torrent(test_id: str) -> tuple[bool, list[Path]]:
         "WHISPER_FOLDER": whisper_dir,
         "PRETEXT_WATCH_FOLDER": pretext_dir,
         "EXTRACT_WATCH_FOLDER": extract_dir,
-        "PREMIUM_WATCH_FOLDER": premium_dir,
     }
 
     moved_count = scan_torrent_watch_folder(config)
@@ -1719,17 +1647,14 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
 
     raw = PATHS.pretext_watch / f"{test_id}_periodic_raw{pretext_suffix}"
     extract = PATHS.extract_watch / f"{test_id}_periodic_extract{extract_suffix}"
-    premium = PATHS.premium_watch / f"{test_id}_periodic_premium{extract_suffix}"
 
-    cleanup = [raw, extract, premium]
+    cleanup = [raw, extract]
 
     PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
     PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
-    PATHS.premium_watch.mkdir(parents=True, exist_ok=True)
 
     raw.write_text(f"periodic scan raw {test_id}\n", encoding="utf-8")
     extract.write_text(f"periodic scan extract {test_id}\n", encoding="utf-8")
-    premium.write_text(f"periodic scan premium {test_id}\n", encoding="utf-8")
 
     config = {
         **CONFIG,
@@ -1740,7 +1665,6 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
             "AUDIO": False,
             "PRETEXT": True,
             "EXTRACT": True,
-            "PREMIUM_EXTRACT": True,
             "WIKI": False,
             "YTD": False,
         },
@@ -1769,19 +1693,15 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
         captured == {
             "process_pretext": txt_process_module.scan_pretext_files,
             "process_extract": txt_process_module.scan_extract_files,
-            "process_premium_extract": txt_process_module.scan_premium_extract_files,
         }
         and set(threads) == {
             "TextPipeline-Pretext",
             "TextPipeline-Extract",
-            "TextPipeline-PremiumExtract",
         }
         and captured_queues["process_pretext"].empty()
         and captured_queues["process_extract"].empty()
-        and captured_queues["process_premium_extract"].empty()
         and raw.is_file()
         and extract.is_file()
-        and premium.is_file()
     )
 
     print_result(
@@ -1790,7 +1710,6 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
         {
             "raw": raw,
             "extract": extract,
-            "premium": premium,
             "captured": sorted(captured),
         },
     )
@@ -1841,7 +1760,6 @@ def test_audio_pipeline_scans_audio(test_id: str) -> tuple[bool, list[Path]]:
     folder.mkdir(parents=True, exist_ok=True)
     PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
     PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
-    PATHS.premium_watch.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"audio ownership scan source {test_id}\n", encoding="utf-8")
 
@@ -2817,7 +2735,6 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         "TTMLPipeline",
         "TextPipeline-Pretext",
         "TextPipeline-Extract",
-        "TextPipeline-PremiumExtract",
         "AudioPipeline-GPU",
         "WikilinkCleaner",
         "YTDPipeline",
@@ -2918,39 +2835,23 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
     }
 
     cases = [
-        (False, False, False, base_threads),
+        (False, False, base_threads),
         (
             True,
-            False,
             False,
             base_threads | {"TextPipeline-Pretext"},
         ),
         (
             False,
             True,
-            False,
             base_threads | {"TextPipeline-Extract"},
         ),
         (
-            False,
-            False,
-            True,
-            base_threads | {"TextPipeline-PremiumExtract"},
-        ),
-        (
-            False,
-            True,
-            True,
-            base_threads | {"TextPipeline-Extract", "TextPipeline-PremiumExtract"},
-        ),
-        (
-            True,
             True,
             True,
             base_threads | {
                 "TextPipeline-Pretext",
                 "TextPipeline-Extract",
-                "TextPipeline-PremiumExtract",
             },
         ),
     ]
@@ -2988,7 +2889,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_ytd_pipeline = fake_worker
 
-        for pretext_enabled, extract_enabled, premium_extract_enabled, expected_threads in cases:
+        for pretext_enabled, extract_enabled, expected_threads in cases:
             started_workers.clear()
 
             config = {
@@ -2997,7 +2898,6 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
                     **CONFIG["PIPELINES"],
                     "PRETEXT": pretext_enabled,
                     "EXTRACT": extract_enabled,
-                    "PREMIUM_EXTRACT": premium_extract_enabled,
                 },
             }
 
@@ -3020,10 +2920,8 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
                 and started_workers == expected_threads
                 and config["PIPELINES"]["PRETEXT"] is pretext_enabled
                 and config["PIPELINES"]["EXTRACT"] is extract_enabled
-                and config["PIPELINES"]["PREMIUM_EXTRACT"] is premium_extract_enabled
                 and ("TextPipeline-Pretext" in thread_names) is pretext_enabled
                 and ("TextPipeline-Extract" in thread_names) is extract_enabled
-                and ("TextPipeline-PremiumExtract" in thread_names) is premium_extract_enabled
                 and shutdown_flag.is_set()
                 and all(not thread.is_alive() for thread in threads.values())
             )
@@ -3032,7 +2930,6 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
                 {
                     "pretext": pretext_enabled,
                     "extract": extract_enabled,
-                    "premium_extract": premium_extract_enabled,
                     "passed": case_passed,
                     "threads": sorted(thread_names),
                 }
@@ -3094,7 +2991,6 @@ def main() -> int:
             test_write_error_file_helper_contract,
             test_extract_full_process_writes_extract_markdown_and_archive,
             test_extract_failure_writes_error_and_moves_to_fail,
-            test_premium_extract_full_process_archives_to_archive_folder,
             test_text_worker_scans_route_text_inputs,
             test_torrent_scan_moves_torrent,
             test_text_workers_own_scan_functions,
