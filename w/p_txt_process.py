@@ -615,17 +615,36 @@ def process_text_pipeline(config, shutdown_flag):
     processed_files_global = set()
     processed_files_lock = threading.Lock()
 
-    threads = {
-        name: threading.Thread(target=target, args=args, daemon=True, name=name)
-        for enabled, name, target, args in [
-            (config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_queue, (config, pretext_queue, lambda path, _next: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_pretext_files, shutdown_flag, config, pretext_queue, processed_files_global, processed_files_lock)),
-            (config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_queue, (config, extract_queue, lambda path, _next: process_extract_file(config, path, _next), "process_extract", scan_extract_files, shutdown_flag, config, extract_queue)),
-            (config["PIPELINES"]["PREMIUM_EXTRACT"], "TextPipeline-PremiumExtract", process_queue, (config, premium_extract_queue, lambda path, _next: process_premium_extract_file(config, path, _next), "process_premium_extract", scan_premium_extract_files, shutdown_flag, config, premium_extract_queue)),
-        ]
-        if enabled
-    }
+    threads = {}
 
-    for thread in threads.values():
+    if config["PIPELINES"]["PRETEXT"]:
+        thread = threading.Thread(
+            target=process_queue,
+            args=(config, pretext_queue, lambda path, _next: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_pretext_files, shutdown_flag, config, pretext_queue, processed_files_global, processed_files_lock),
+            daemon=True,
+            name="TextPipeline-Pretext",
+        )
         thread.start()
+        threads["TextPipeline-Pretext"] = thread
+
+    if config["PIPELINES"]["EXTRACT"]:
+        thread = threading.Thread(
+            target=process_queue,
+            args=(config, extract_queue, lambda path, _next: process_extract_file(config, path, _next), "process_extract", scan_extract_files, shutdown_flag, config, extract_queue),
+            daemon=True,
+            name="TextPipeline-Extract",
+        )
+        thread.start()
+        threads["TextPipeline-Extract"] = thread
+
+    if config["PIPELINES"]["PREMIUM_EXTRACT"]:
+        thread = threading.Thread(
+            target=process_queue,
+            args=(config, premium_extract_queue, lambda path, _next: process_premium_extract_file(config, path, _next), "process_premium_extract", scan_premium_extract_files, shutdown_flag, config, premium_extract_queue),
+            daemon=True,
+            name="TextPipeline-PremiumExtract",
+        )
+        thread.start()
+        threads["TextPipeline-PremiumExtract"] = thread
 
     return threads

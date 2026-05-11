@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import sys
 import shutil
 import threading
@@ -826,6 +827,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
     )
     p_source = (ROOT_DIR / "w" / "p.py").read_text(encoding="utf-8")
     txt_source = text_process_path.read_text(encoding="utf-8")
+    txt_tree = ast.parse(txt_source)
     p_txt_import_line = "from w.p_txt_process import process_text_pipeline"
     forbidden_p_imports = sorted(
         name for name in forbidden_p_import_names if name in p_source
@@ -833,11 +835,27 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
     forbidden_removed_imports = sorted(
         marker for marker in removed_import_markers if marker in p_source
     )
+    text_process_classes = sorted(
+        node.name for node in ast.walk(txt_tree) if isinstance(node, ast.ClassDef)
+    )
+    forbidden_text_wiring_markers = {
+        "for enabled, name, target, args",
+        "RouteSpec",
+        "@dataclass",
+        "from dataclasses import",
+        "functools.partial",
+        "partial(",
+    }
+    forbidden_text_wiring = sorted(
+        marker for marker in forbidden_text_wiring_markers if marker in txt_source
+    )
     passed = (
         text_process_path.exists()
         and not outdated_text_process_path.exists()
         and not exposed_removed
         and not missing_required
+        and not text_process_classes
+        and not forbidden_text_wiring
         and not removed_pretext_path.exists()
         and not removed_extract_path.exists()
         and not removed_distill_path.exists()
@@ -858,6 +876,8 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         {
             "exposed_removed": exposed_removed,
             "missing_required": missing_required,
+            "text_process_classes": text_process_classes,
+            "forbidden_text_wiring": forbidden_text_wiring,
             "text_process_exists": text_process_path.exists(),
             "outdated_text_process_exists": outdated_text_process_path.exists(),
             "removed_pretext_exists": removed_pretext_path.exists(),
