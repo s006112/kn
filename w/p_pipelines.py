@@ -18,8 +18,8 @@ import threading
 import time
 from contextlib import contextmanager
 from queue import Queue
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Set
+from types import SimpleNamespace
+from typing import Any, Callable, Dict
 
 from .p_pretext import process_pretext_file, request_pretext_processing
 from .p_extract import ExtractProcessor, PremiumExtractProcessor
@@ -30,22 +30,21 @@ from helper.helper_llm import LLMPermanentFailure
 _file_locks: Dict[str, threading.Lock] = {}
 _file_locks_mutex = threading.Lock()
 
-@dataclass
-class PipelineContext:
-    config: Dict[str, Any]
-    pretext_queue: Queue = field(default_factory=Queue)
-    extract_queue: Queue = field(default_factory=Queue)
-    premium_extract_queue: Queue = field(default_factory=Queue)
-    audio_queue: Queue = field(default_factory=Queue)
-    ttml_queue: Queue = field(default_factory=Queue)
-    text_processing_lock: threading.Lock = field(default_factory=threading.Lock)
-    audio_processing_lock: threading.Lock = field(default_factory=threading.Lock)
-    processed_files_global: Set[str] = field(default_factory=set)
-    processed_files_lock: threading.Lock = field(default_factory=threading.Lock)
-    wikilink_cleaning_stats: Dict[str, Any] = field(
-        default_factory=lambda: {"last_run": None, "cycle_count": 0}
+def create_runtime(config: dict[str, Any]) -> SimpleNamespace:
+    return SimpleNamespace(
+        config=config,
+        pretext_queue=Queue(),
+        extract_queue=Queue(),
+        premium_extract_queue=Queue(),
+        audio_queue=Queue(),
+        ttml_queue=Queue(),
+        text_processing_lock=threading.Lock(),
+        audio_processing_lock=threading.Lock(),
+        processed_files_global=set(),
+        processed_files_lock=threading.Lock(),
+        wikilink_cleaning_stats={"last_run": None, "cycle_count": 0},
+        shutdown_flag=threading.Event(),
     )
-    shutdown_flag: threading.Event = field(default_factory=threading.Event)
 
 def acquire_file_lock(file_path: str) -> bool:
     """Acquire a non-blocking in-process lock for `file_path`."""
@@ -91,7 +90,7 @@ def get_file_lock_functions() -> Dict[str, Callable[[str], Any]]:
         "cleanup": cleanup_file_lock,
     }
 
-def create_extract_processors(ctx: PipelineContext):
+def create_extract_processors(ctx):
     extract_processor = ExtractProcessor(ctx.config)
     premium_extract_processor = PremiumExtractProcessor(ctx.config)
     return extract_processor, premium_extract_processor
@@ -102,11 +101,11 @@ def enqueue_if_absent(queue: Queue, path: str) -> None:
 
 
 def process_queue(
-    ctx: PipelineContext,
+    ctx,
     queue: Queue,
     process: Callable[[str, Callable[..., str]], None],
     method_name: str,
-    scan_files: Callable[[PipelineContext], None] | None = None,
+    scan_files: Callable[[Any], None] | None = None,
 ) -> None:
     intervals = ctx.config.get("INTERVALS", {})
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
@@ -150,21 +149,21 @@ def process_queue(
 
         time.sleep(wait_seconds)
 
-def process_pretext_queue(ctx: PipelineContext) -> None:
+def process_pretext_queue(ctx) -> None:
     process_queue(ctx, ctx.pretext_queue, lambda path, _next: process_pretext_file(ctx.config, path, ctx.processed_files_global, ctx.processed_files_lock), "process_pretext", scan_pretext_files)
 
 
-def process_extract_queue(ctx: PipelineContext, processor: ExtractProcessor) -> None:
+def process_extract_queue(ctx, processor: ExtractProcessor) -> None:
     process_queue(ctx, ctx.extract_queue, processor.process_extract, "process_extract", scan_extract_files)
 
 
 def process_premium_extract_queue(
-    ctx: PipelineContext, processor: PremiumExtractProcessor
+    ctx, processor: PremiumExtractProcessor
 ) -> None:
     process_queue(ctx, ctx.premium_extract_queue, processor.process_premium_extract, "process_premium_extract", scan_premium_extract_files)
 
 
-def scan_pretext_files(ctx: PipelineContext) -> None:
+def scan_pretext_files(ctx) -> None:
     pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
     pretext_suffix = str(ctx.config["PRETEXT_SUFFIX"]).lower()
     extract_suffixes = tuple(
@@ -198,7 +197,7 @@ def scan_pretext_files(ctx: PipelineContext) -> None:
             request_pretext_processing(ctx.pretext_queue, ctx.processed_files_global, ctx.processed_files_lock, file_path)
 
 
-def scan_extract_files(ctx: PipelineContext) -> None:
+def scan_extract_files(ctx) -> None:
     extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
     extract_suffixes = tuple(
         str(s).lower() for s in ctx.config["EXTRACT_SUFFIX"] if str(s)
@@ -211,7 +210,7 @@ def scan_extract_files(ctx: PipelineContext) -> None:
             enqueue_if_absent(ctx.extract_queue, file_path)
 
 
-def scan_premium_extract_files(ctx: PipelineContext) -> None:
+def scan_premium_extract_files(ctx) -> None:
     premium_watch_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
     extract_suffixes = tuple(
         str(s).lower() for s in ctx.config["EXTRACT_SUFFIX"] if str(s)

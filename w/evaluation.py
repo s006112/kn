@@ -405,7 +405,7 @@ def test_ytd_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[b
         },
     }
 
-    ctx = pipelines.PipelineContext(config)
+    ctx = pipelines.create_runtime(config)
     original_download = ytd_module.download
 
     try:
@@ -600,7 +600,7 @@ def test_pretext_request_deduplicates_queue(test_id: str) -> tuple[bool, list[Pa
 
     source.write_text(f"dummy pretext queue source {test_id}\n", encoding="utf-8")
 
-    ctx = pipelines.PipelineContext(CONFIG)
+    ctx = pipelines.create_runtime(CONFIG)
     first = request_pretext_processing(
         ctx.pretext_queue,
         ctx.processed_files_global,
@@ -672,7 +672,7 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
     try:
         pretext_module.call_llm = lambda **_kwargs: f"mock pretext result {test_id}"
 
-        ctx = pipelines.PipelineContext(config)
+        ctx = pipelines.create_runtime(config)
         pretext_module.process_pretext_file(
             ctx.config,
             str(source),
@@ -776,7 +776,7 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
     source.write_text(f"extract queue candidate {test_id}\n", encoding="utf-8")
     ignored.write_text(f"wrong folder candidate {test_id}\n", encoding="utf-8")
 
-    ctx = pipelines.PipelineContext(CONFIG)
+    ctx = pipelines.create_runtime(CONFIG)
     pipelines.scan_extract_files(ctx)
     pipelines.scan_extract_files(ctx)
 
@@ -834,7 +834,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
     try:
         extract_module.call_llm = lambda **_kwargs: f"mock extract result {test_id}"
 
-        ctx = pipelines.PipelineContext(config)
+        ctx = pipelines.create_runtime(config)
         processor = ExtractProcessor(config)
         processor.process_extract(str(source), get_next_available_filename)
 
@@ -908,7 +908,7 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
 
         extract_module.call_llm = fail_call_llm
 
-        ctx = pipelines.PipelineContext(config)
+        ctx = pipelines.create_runtime(config)
         processor = ExtractProcessor(config)
 
         raised = False
@@ -982,7 +982,7 @@ def test_premium_extract_full_process_archives_to_archive_folder(test_id: str) -
     try:
         extract_module.call_llm = lambda **_kwargs: f"mock premium extract result {test_id}"
 
-        ctx = pipelines.PipelineContext(config)
+        ctx = pipelines.create_runtime(config)
         processor = PremiumExtractProcessor(config)
         processor.process_premium_extract(str(source), get_next_available_filename)
 
@@ -1044,7 +1044,7 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
     extract.write_text(f"startup scan extract {test_id}\n", encoding="utf-8")
     premium.write_text(f"startup scan premium {test_id}\n", encoding="utf-8")
 
-    ctx = pipelines.PipelineContext(CONFIG)
+    ctx = pipelines.create_runtime(CONFIG)
     pipelines.scan_pretext_files(ctx)
     pipelines.scan_extract_files(ctx)
     pipelines.scan_premium_extract_files(ctx)
@@ -1140,7 +1140,7 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
     extract.write_text(f"periodic scan extract {test_id}\n", encoding="utf-8")
     premium.write_text(f"periodic scan premium {test_id}\n", encoding="utf-8")
 
-    ctx = pipelines.PipelineContext(CONFIG)
+    ctx = pipelines.create_runtime(CONFIG)
     captured: dict[str, object] = {}
     original_process_queue = pipelines.process_queue
 
@@ -1243,7 +1243,7 @@ def test_audio_pipeline_scans_audio(test_id: str) -> tuple[bool, list[Path]]:
                 "WAIT_SECONDS": 0.01,
             },
         }
-        audio_ctx = pipelines.PipelineContext(config)
+        audio_ctx = pipelines.create_runtime(config)
 
         def fake_process_audio_queue(
             _config,
@@ -1372,7 +1372,7 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
             "WAIT_SECONDS": 0,
         },
     }
-    ctx = pipelines.PipelineContext(config)
+    ctx = pipelines.create_runtime(config)
 
     lock_retry = f"{test_id}_queue_lock_retry"
     transient_error = f"{test_id}_queue_transient_error"
@@ -1593,7 +1593,7 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
 
         extract_module.call_llm = fake_call_llm
 
-        ctx = pipelines.PipelineContext(config)
+        ctx = pipelines.create_runtime(config)
         processor = ExtractProcessor(config)
 
         raised = False
@@ -1689,7 +1689,7 @@ def test_pretext_multichunk_and_failure_release_request(test_id: str) -> tuple[b
             return chunk_results[call_count - 1]
 
         pretext_module.call_llm = success_call_llm
-        success_ctx = pipelines.PipelineContext(config)
+        success_ctx = pipelines.create_runtime(config)
         success_ctx.processed_files_global.add(str(success_source.resolve()))
         pretext_module.process_pretext_file(
             success_ctx.config,
@@ -1709,7 +1709,7 @@ def test_pretext_multichunk_and_failure_release_request(test_id: str) -> tuple[b
             return ""
 
         pretext_module.call_llm = empty_call_llm
-        failure_ctx = pipelines.PipelineContext(config)
+        failure_ctx = pipelines.create_runtime(config)
         failure_ctx.processed_files_global.add(str(failure_source.resolve()))
 
         failure_raised = False
@@ -1958,7 +1958,7 @@ def test_ytd_failure_fallback_and_remove_failure_paths(test_id: str) -> tuple[bo
                 "YTD_RESOLVE_TIMEOUT_SECONDS": 0.05,
             },
         }
-        ctx = pipelines.PipelineContext(config)
+        ctx = pipelines.create_runtime(config)
         original_download = ytd_module.download
         original_remove_line = ytd_module.remove_download_url_line
         try:
@@ -2239,7 +2239,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_ytd_pipeline = fake_worker
 
-        ctx = orchestrator_module.PipelineContext(CONFIG)
+        ctx = orchestrator_module.create_runtime(CONFIG)
         threads = orchestrator_module.start_runtime(ctx)
 
         deadline = time.time() + 2
@@ -2373,7 +2373,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
                 },
             }
 
-            ctx = orchestrator_module.PipelineContext(config)
+            ctx = orchestrator_module.create_runtime(config)
             threads = orchestrator_module.start_runtime(ctx)
             runtimes.append((ctx, threads))
 

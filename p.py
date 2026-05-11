@@ -6,7 +6,7 @@ import threading
 from pathlib import Path
 from w.helper_files import configure_logging
 from w.p_pipelines import (
-    PipelineContext,
+    create_runtime,
     create_extract_processors,
     process_extract_queue,
     process_premium_extract_queue,
@@ -81,7 +81,7 @@ CONFIG = {
     "DISTILL_PROMPT": (BASE_DIR / "prompt" / "prompt_distill.txt").read_text(encoding="utf-8").strip(),
 }
 
-def start_runtime(ctx: PipelineContext) -> dict[str, threading.Thread]:
+def start_runtime(ctx) -> dict[str, threading.Thread]:
     extract_processor, premium_extract_processor = create_extract_processors(ctx)
     threads: dict[str, threading.Thread] = {}
 
@@ -108,7 +108,7 @@ def start_runtime(ctx: PipelineContext) -> dict[str, threading.Thread]:
 def main() -> None:
     configure_logging(CONFIG["LOG_DIR"])
 
-    runtime = PipelineContext(CONFIG)
+    runtime = create_runtime(CONFIG)
     start_runtime(runtime)
 
     logging.info("Enabled pipelines: %s", ", ".join(key for key, enabled in runtime.config["PIPELINES"].items() if enabled) or "none")
