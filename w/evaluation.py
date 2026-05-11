@@ -25,8 +25,6 @@ from w.p_audio import move_files_to_done, scan_audio_files
 import w.p_distill as distill_module
 from w.p_distill import _collect_extracts
 
-import w.p_extract as extract_module
-
 from w.p_torrent import (
     move_torrent_to_whisper,
     scan_torrent_watch_folder,
@@ -38,8 +36,7 @@ from w.p_ytd import (
     remove_download_url_line,
 )
 
-import w.p_pretext as pretext_module
-from w.p_pretext import release_pretext_request, request_pretext_processing
+from w.p_txt_process import release_pretext_request, request_pretext_processing
 
 from w.p_ttml import handle_ttml
 from w.helper_md import merge_to_markdown
@@ -652,16 +649,16 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
         "PRETEXT_PROMPT": "evaluation pretext prompt",
     }
 
-    original_call_llm = pretext_module.call_llm
+    original_call_llm = txt_process_module.call_llm
     index_existed = whisper_index.exists()
     index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
 
     try:
-        pretext_module.call_llm = lambda **_kwargs: f"mock pretext result {test_id}"
+        txt_process_module.call_llm = lambda **_kwargs: f"mock pretext result {test_id}"
 
         processed_files_global = set()
         processed_files_lock = threading.Lock()
-        pretext_module.process_pretext_file(
+        txt_process_module.process_pretext_file(
             config,
             str(source),
             processed_files_global,
@@ -699,7 +696,7 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
         return passed, cleanup
 
     finally:
-        pretext_module.call_llm = original_call_llm
+        txt_process_module.call_llm = original_call_llm
 
         if index_before is not None:
             whisper_index.write_text(index_before, encoding="utf-8")
@@ -765,8 +762,8 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
     ignored.write_text(f"wrong folder candidate {test_id}\n", encoding="utf-8")
 
     extract_queue = Queue()
-    extract_module.scan_extract_files(CONFIG, extract_queue)
-    extract_module.scan_extract_files(CONFIG, extract_queue)
+    txt_process_module.scan_extract_files(CONFIG, extract_queue)
+    txt_process_module.scan_extract_files(CONFIG, extract_queue)
 
     queued_paths = list(extract_queue.queue)
 
@@ -788,29 +785,58 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
     return passed, cleanup
 
 
-def test_extract_module_function_boundary(test_id: str) -> tuple[bool, list[Path]]:
+def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list[Path]]:
     removed_names = {
         "BaseExtractProcessor",
         "ExtractProcessor",
         "PremiumExtractProcessor",
         "create_extract_processors",
     }
+    required_names = {
+        "request_pretext_processing",
+        "release_pretext_request",
+        "process_pretext_file",
+        "scan_pretext_files",
+        "process_extract_file",
+        "process_premium_extract_file",
+        "scan_extract_files",
+        "scan_premium_extract_files",
+        "process_queue",
+        "start_text_processing",
+    }
+    forbidden_p_import_names = required_names - {"start_text_processing"}
     exposed_removed = sorted(
-        name for name in removed_names if hasattr(extract_module, name)
+        name for name in removed_names if hasattr(txt_process_module, name)
+    )
+    missing_required = sorted(
+        name for name in required_names if not hasattr(txt_process_module, name)
+    )
+    p_source = (ROOT_DIR / "w" / "p.py").read_text(encoding="utf-8")
+    p_txt_import_line = "from w.p_txt_process import start_text_processing"
+    forbidden_p_imports = sorted(
+        name for name in forbidden_p_import_names if name in p_source
     )
     passed = (
         not exposed_removed
-        and hasattr(extract_module, "process_extract_file")
-        and hasattr(extract_module, "process_premium_extract_file")
+        and not missing_required
+        and not (ROOT_DIR / "w" / "p_pretext.py").exists()
+        and not (ROOT_DIR / "w" / "p_extract.py").exists()
+        and p_txt_import_line in p_source
+        and p_source.count("from w.p_txt_process import") == 1
+        and "w.p_pretext" not in p_source
+        and "w.p_extract" not in p_source
+        and not forbidden_p_imports
     )
 
     print_result(
-        "extract module function boundary",
+        "text process module function boundary",
         passed,
         {
             "exposed_removed": exposed_removed,
-            "has_extract_function": hasattr(extract_module, "process_extract_file"),
-            "has_premium_function": hasattr(extract_module, "process_premium_extract_file"),
+            "missing_required": missing_required,
+            "p_pretext_exists": (ROOT_DIR / "w" / "p_pretext.py").exists(),
+            "p_extract_exists": (ROOT_DIR / "w" / "p_extract.py").exists(),
+            "forbidden_p_imports": forbidden_p_imports,
         },
     )
 
@@ -845,14 +871,14 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
         },
     }
 
-    original_call_llm = extract_module.call_llm
+    original_call_llm = txt_process_module.call_llm
     index_existed = whisper_index.exists()
     index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
 
     try:
-        extract_module.call_llm = lambda **_kwargs: f"mock extract result {test_id}"
+        txt_process_module.call_llm = lambda **_kwargs: f"mock extract result {test_id}"
 
-        extract_module.process_extract_file(config, str(source), get_next_available_filename)
+        txt_process_module.process_extract_file(config, str(source), get_next_available_filename)
 
         notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
         note = notes[-1] if notes else None
@@ -884,7 +910,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
         return passed, cleanup
 
     finally:
-        extract_module.call_llm = original_call_llm
+        txt_process_module.call_llm = original_call_llm
 
         if index_before is not None:
             whisper_index.write_text(index_before, encoding="utf-8")
@@ -916,17 +942,17 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
         },
     }
 
-    original_call_llm = extract_module.call_llm
+    original_call_llm = txt_process_module.call_llm
 
     try:
         def fail_call_llm(**_kwargs):
             raise RuntimeError(f"mock extract failure {test_id}")
 
-        extract_module.call_llm = fail_call_llm
+        txt_process_module.call_llm = fail_call_llm
 
         raised = False
         try:
-            extract_module.process_extract_file(config, str(source), get_next_available_filename)
+            txt_process_module.process_extract_file(config, str(source), get_next_available_filename)
         except RuntimeError:
             raised = True
 
@@ -959,7 +985,7 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
         return passed, cleanup
 
     finally:
-        extract_module.call_llm = original_call_llm
+        txt_process_module.call_llm = original_call_llm
 
 def test_premium_extract_full_process_archives_to_archive_folder(test_id: str) -> tuple[bool, list[Path]]:
     extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
@@ -988,14 +1014,14 @@ def test_premium_extract_full_process_archives_to_archive_folder(test_id: str) -
         },
     }
 
-    original_call_llm = extract_module.call_llm
+    original_call_llm = txt_process_module.call_llm
     index_existed = whisper_index.exists()
     index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
 
     try:
-        extract_module.call_llm = lambda **_kwargs: f"mock premium extract result {test_id}"
+        txt_process_module.call_llm = lambda **_kwargs: f"mock premium extract result {test_id}"
 
-        extract_module.process_premium_extract_file(config, str(source), get_next_available_filename)
+        txt_process_module.process_premium_extract_file(config, str(source), get_next_available_filename)
 
         notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
         note = notes[-1] if notes else None
@@ -1028,7 +1054,7 @@ def test_premium_extract_full_process_archives_to_archive_folder(test_id: str) -
         return passed, cleanup
 
     finally:
-        extract_module.call_llm = original_call_llm
+        txt_process_module.call_llm = original_call_llm
 
         if index_before is not None:
             whisper_index.write_text(index_before, encoding="utf-8")
@@ -1060,14 +1086,14 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
     premium_extract_queue = Queue()
     processed_files_global = set()
     processed_files_lock = threading.Lock()
-    pretext_module.scan_pretext_files(
+    txt_process_module.scan_pretext_files(
         CONFIG,
         pretext_queue,
         processed_files_global,
         processed_files_lock,
     )
-    extract_module.scan_extract_files(CONFIG, extract_queue)
-    extract_module.scan_premium_extract_files(CONFIG, premium_extract_queue)
+    txt_process_module.scan_extract_files(CONFIG, extract_queue)
+    txt_process_module.scan_premium_extract_files(CONFIG, premium_extract_queue)
 
     pretext_paths = list(pretext_queue.queue)
     extract_paths = list(extract_queue.queue)
@@ -1193,9 +1219,9 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
 
     passed = (
         captured == {
-            "process_pretext": pretext_module.scan_pretext_files,
-            "process_extract": extract_module.scan_extract_files,
-            "process_premium_extract": extract_module.scan_premium_extract_files,
+            "process_pretext": txt_process_module.scan_pretext_files,
+            "process_extract": txt_process_module.scan_extract_files,
+            "process_premium_extract": txt_process_module.scan_premium_extract_files,
         }
         and set(threads) == {
             "TextPipeline-Pretext",
@@ -1620,7 +1646,7 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
         },
     }
 
-    original_call_llm = extract_module.call_llm
+    original_call_llm = txt_process_module.call_llm
     index_existed = whisper_index.exists()
     index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
 
@@ -1630,11 +1656,11 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
                 raise RuntimeError(f"mock partial failure {test_id}")
             return f"mock partial success {test_id}"
 
-        extract_module.call_llm = fake_call_llm
+        txt_process_module.call_llm = fake_call_llm
 
         raised = False
         try:
-            extract_module.process_extract_file(config, str(source), get_next_available_filename)
+            txt_process_module.process_extract_file(config, str(source), get_next_available_filename)
         except RuntimeError:
             raised = True
 
@@ -1676,7 +1702,7 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
         return passed, cleanup
 
     finally:
-        extract_module.call_llm = original_call_llm
+        txt_process_module.call_llm = original_call_llm
 
         if index_before is not None:
             whisper_index.write_text(index_before, encoding="utf-8")
@@ -1711,7 +1737,7 @@ def test_pretext_multichunk_and_failure_release_request(test_id: str) -> tuple[b
         "PRETEXT_PROMPT": "evaluation pretext prompt",
     }
 
-    original_call_llm = pretext_module.call_llm
+    original_call_llm = txt_process_module.call_llm
     index_existed = whisper_index.exists()
     index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
     call_count = 0
@@ -1724,10 +1750,10 @@ def test_pretext_multichunk_and_failure_release_request(test_id: str) -> tuple[b
             call_count += 1
             return chunk_results[call_count - 1]
 
-        pretext_module.call_llm = success_call_llm
+        txt_process_module.call_llm = success_call_llm
         success_processed_files = {str(success_source.resolve())}
         success_processed_files_lock = threading.Lock()
-        pretext_module.process_pretext_file(
+        txt_process_module.process_pretext_file(
             config,
             str(success_source),
             success_processed_files,
@@ -1744,13 +1770,13 @@ def test_pretext_multichunk_and_failure_release_request(test_id: str) -> tuple[b
         def empty_call_llm(**_kwargs) -> str:
             return ""
 
-        pretext_module.call_llm = empty_call_llm
+        txt_process_module.call_llm = empty_call_llm
         failure_processed_files = {str(failure_source.resolve())}
         failure_processed_files_lock = threading.Lock()
 
         failure_raised = False
         try:
-            pretext_module.process_pretext_file(
+            txt_process_module.process_pretext_file(
                 config,
                 str(failure_source),
                 failure_processed_files,
@@ -1788,7 +1814,7 @@ def test_pretext_multichunk_and_failure_release_request(test_id: str) -> tuple[b
         return passed, cleanup
 
     finally:
-        pretext_module.call_llm = original_call_llm
+        txt_process_module.call_llm = original_call_llm
 
         if index_before is not None:
             whisper_index.write_text(index_before, encoding="utf-8")
@@ -2468,7 +2494,7 @@ def main() -> int:
             test_pretext_full_process_writes_pretext_markdown_and_archive,
             test_distill_collects_extract_outputs,
             test_extract_worker_scan_queues_candidate_once,
-            test_extract_module_function_boundary,
+            test_text_process_module_function_boundary,
             test_extract_full_process_writes_extract_markdown_and_archive,
             test_extract_failure_writes_error_and_moves_to_fail,
             test_premium_extract_full_process_archives_to_archive_folder,

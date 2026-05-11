@@ -6,7 +6,7 @@ Collect extract outputs, distill them through an LLM prompt, persist the distill
 result, and optionally merge it into a markdown note.
 
 Used by:
-* w/p_extract.py
+* w/p_txt_process.py
 
 Pipelines:
 - collect -> build -> distill -> write -> merge

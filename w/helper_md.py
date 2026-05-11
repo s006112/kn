@@ -4,8 +4,7 @@ Helpers for creating and updating Markdown notes and a Whisper index note.
 
 Used by:
 * w/p_distill.py
-* w/p_extract.py
-* w/p_pretext.py
+* w/p_txt_process.py
 
 Pipelines:
 - folder -> listdir -> regex_match -> max -> md_path
