@@ -70,6 +70,7 @@ CONFIG = {
     "PRETEXT_PROMPT": (ROOT_DIR / "prompt" / "prompt_pretext.txt").read_text(encoding="utf-8").strip(),
     "EXTRACT_PROMPT": (ROOT_DIR / "prompt" / "prompt_extract.txt").read_text(encoding="utf-8").strip(),
     "DISTILL_PROMPT": (ROOT_DIR / "prompt" / "prompt_distill.txt").read_text(encoding="utf-8").strip(),
+    "CLASSIFIER_PROMPT": (ROOT_DIR / "prompt" / "prompt_core_classifier.txt").read_text(encoding="utf-8").strip(),
 }
 
 

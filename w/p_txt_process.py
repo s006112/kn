@@ -116,11 +116,28 @@ def process_extract_file(config, file_path):
     try:
         logging.info(f"Extract: Start {filename}")
         content, _ = read_file_with_encodings(file_path)
+
+        classifier_result = ""
+        try:
+            classifier_result = (call_text_llm(config, config["MODEL_PRETEXT"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper()
+        except Exception as exc:
+            logging.error("Extract: Classifier failed for %s, route=OTHER: %s", filename, exc)
+        route = "CORE" if classifier_result == "CORE" else "OTHER"
+        if classifier_result not in ("CORE", "OTHER"):
+            logging.info("Extract: Classifier returned %r for %s, route=OTHER", classifier_result, filename)
+        logging.info("Extract: Route %s for %s", route, filename)
+
         payload = f"《{base}》\n{content}"
         md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(config, base, allow_existing=True)
 
+        extract_models = list(config.get("MODEL_EXTRACT_MATRIX", {}).get("EXTRACT_WATCH_FOLDER", []))
+        distill_model = (config.get("MODEL_DISTILL") or "").strip()
+        if route == "OTHER":
+            extract_models = extract_models[:1]
+            distill_model = None
+
         extract_count = 0
-        for model in config.get("MODEL_EXTRACT_MATRIX", {}).get("EXTRACT_WATCH_FOLDER", []):
+        for model in extract_models:
             if not model:
                 logging.info("Extract: Skipping model entry (not configured)")
                 continue
@@ -140,7 +157,6 @@ def process_extract_file(config, file_path):
         if failed_models:
             raise RuntimeError("One or more extraction models failed")
 
-        distill_model = (config.get("MODEL_DISTILL") or "").strip()
         if distill_model:
             logging.info(f"Extract: Model {distill_model} for {filename}")
             try:

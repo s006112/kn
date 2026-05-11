@@ -1476,17 +1476,21 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
     original_call_llm = txt_process_module.call_llm
     index_existed = whisper_index.exists()
     index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
-    captured_llm_options = []
+    captured_llm_calls = []
 
     try:
         def fake_call_llm(**kwargs) -> str:
-            captured_llm_options.append(
+            captured_llm_calls.append(
                 {
+                    "model": kwargs.get("model"),
+                    "system_prompt": kwargs.get("system_prompt"),
                     "max_retries": kwargs.get("max_retries"),
                     "timeout": kwargs.get("timeout"),
                     "retry_delay": kwargs.get("retry_delay"),
                 }
             )
+            if kwargs.get("system_prompt") == config["CLASSIFIER_PROMPT"]:
+                return "CORE"
             return f"mock extract result {test_id}"
 
         txt_process_module.call_llm = fake_call_llm
@@ -1507,7 +1511,19 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
             and f"mock extract result {test_id}" in extract_text
             and note is not None
             and f"mock extract result {test_id}" in note_text
-            and captured_llm_options == [expected_llm_options]
+            and captured_llm_calls
+            == [
+                {
+                    "model": config["MODEL_PRETEXT"],
+                    "system_prompt": config["CLASSIFIER_PROMPT"],
+                    **expected_llm_options,
+                },
+                {
+                    "model": model,
+                    "system_prompt": config["EXTRACT_PROMPT"],
+                    **expected_llm_options,
+                },
+            ]
         )
 
         print_result(
@@ -1518,7 +1534,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
                 "extract_output": extract_output,
                 "markdown": note,
                 "archived": archived,
-                "llm_options": captured_llm_options,
+                "llm_calls": captured_llm_calls,
             },
         )
 
@@ -1560,9 +1576,13 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
     }
 
     original_call_llm = txt_process_module.call_llm
+    call_sequence = []
 
     try:
-        def fail_call_llm(**_kwargs):
+        def fail_call_llm(**kwargs):
+            call_sequence.append((kwargs.get("system_prompt"), kwargs.get("model")))
+            if kwargs.get("system_prompt") == config["CLASSIFIER_PROMPT"]:
+                return "CORE"
             raise RuntimeError(f"mock extract failure {test_id}")
 
         txt_process_module.call_llm = fail_call_llm
@@ -1594,6 +1614,11 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
             and per_model_error.name == f"{base_name}.{sanitize_filename(model)}.error"
             and per_model_error_text == expected_per_model_error_text
             and not top_level_error.exists()
+            and call_sequence
+            == [
+                (config["CLASSIFIER_PROMPT"], config["MODEL_PRETEXT"]),
+                (config["EXTRACT_PROMPT"], model),
+            ]
         )
 
         print_result(
@@ -1605,6 +1630,7 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
                 "per_model_error": per_model_error,
                 "top_level_error": top_level_error,
                 "raised": raised,
+                "call_sequence": call_sequence,
             },
         )
 
@@ -2219,9 +2245,13 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
     original_call_llm = txt_process_module.call_llm
     index_existed = whisper_index.exists()
     index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
+    call_sequence = []
 
     try:
         def fake_call_llm(**kwargs) -> str:
+            call_sequence.append((kwargs.get("system_prompt"), kwargs.get("model")))
+            if kwargs.get("system_prompt") == config["CLASSIFIER_PROMPT"]:
+                return "CORE"
             if kwargs.get("model") == bad_model:
                 raise RuntimeError(f"mock partial failure {test_id}")
             return f"mock partial success {test_id}"
@@ -2264,6 +2294,12 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
             and f"mock partial success {test_id}" in note_text
             and bad_model_error.is_file()
             and bad_model_error_text == expected_bad_model_error_text
+            and call_sequence
+            == [
+                (config["CLASSIFIER_PROMPT"], config["MODEL_PRETEXT"]),
+                (config["EXTRACT_PROMPT"], good_model),
+                (config["EXTRACT_PROMPT"], bad_model),
+            ]
         )
 
         print_result(
@@ -2275,6 +2311,109 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
                 "markdown": note,
                 "error_files": error_files,
                 "raised": raised,
+                "call_sequence": call_sequence,
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        txt_process_module.call_llm = original_call_llm
+
+        if index_before is not None:
+            whisper_index.write_text(index_before, encoding="utf-8")
+        elif not index_existed and whisper_index.exists():
+            whisper_index.unlink()
+
+
+def test_extract_other_route_uses_first_model_and_skips_distill(test_id: str) -> tuple[bool, list[Path]]:
+    extract_suffix = extract_input_suffix()
+    base_name = f"{test_id}_extract_other"
+    first_model = "evaluation-first-model"
+    second_model = "evaluation-second-model"
+    distill_model = "evaluation-distill-model"
+
+    source = PATHS.extract_watch / f"{base_name}{extract_suffix}"
+    archived = PATHS.pretext_done / source.name
+    first_output = PATHS.extract / f"{base_name}_{first_model}.txt"
+    second_output = PATHS.extract / f"{base_name}_{second_model}.txt"
+    distill_output = PATHS.extract / f"{base_name}_{distill_model}.txt"
+    whisper_index = PATHS.obsidian / "Whisper 000000.md"
+
+    cleanup = [source, archived, first_output, second_output, distill_output]
+
+    PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.extract.mkdir(parents=True, exist_ok=True)
+    PATHS.pretext_done.mkdir(parents=True, exist_ok=True)
+    PATHS.watch.mkdir(parents=True, exist_ok=True)
+    PATHS.obsidian.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(f"other route source {test_id}\n", encoding="utf-8")
+
+    config = {
+        **extract_text_config(),
+        "MODEL_DISTILL": distill_model,
+        "MODEL_EXTRACT_MATRIX": {
+            **CONFIG.get("MODEL_EXTRACT_MATRIX", {}),
+            "EXTRACT_WATCH_FOLDER": [first_model, second_model],
+        },
+    }
+
+    original_call_llm = txt_process_module.call_llm
+    index_existed = whisper_index.exists()
+    index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
+    call_sequence = []
+
+    try:
+        def fake_call_llm(**kwargs) -> str:
+            call_sequence.append((kwargs.get("system_prompt"), kwargs.get("model")))
+            if kwargs.get("system_prompt") == config["CLASSIFIER_PROMPT"]:
+                return "OTHER"
+            if kwargs.get("model") == first_model:
+                return f"mock other extract result {test_id}"
+            raise RuntimeError(f"unexpected LLM call: {kwargs.get('model')}")
+
+        txt_process_module.call_llm = fake_call_llm
+
+        txt_process_module.process_extract_file(config, str(source))
+
+        notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
+        note = notes[-1] if notes else None
+        error_files = sorted(PATHS.watch.glob(f"{base_name}*.error"))
+        cleanup.extend(notes)
+        cleanup.extend(error_files)
+
+        first_text = first_output.read_text(encoding="utf-8") if first_output.exists() else ""
+        note_text = note.read_text(encoding="utf-8") if note and note.exists() else ""
+
+        passed = (
+            not source.exists()
+            and archived.is_file()
+            and first_output.is_file()
+            and f"mock other extract result {test_id}" in first_text
+            and not second_output.exists()
+            and not distill_output.exists()
+            and note is not None
+            and f"mock other extract result {test_id}" in note_text
+            and not error_files
+            and call_sequence
+            == [
+                (config["CLASSIFIER_PROMPT"], config["MODEL_PRETEXT"]),
+                (config["EXTRACT_PROMPT"], first_model),
+            ]
+        )
+
+        print_result(
+            "extract OTHER route uses first model and skips distill",
+            passed,
+            {
+                "archived": archived,
+                "first_output": first_output,
+                "second_output": second_output,
+                "distill_output": distill_output,
+                "markdown": note,
+                "error_files": error_files,
+                "call_sequence": call_sequence,
             },
         )
 
@@ -3089,6 +3228,7 @@ def main() -> int:
             test_process_queue_handles_lock_miss_errors_and_permanent_failures,
             test_distillation_success_skip_and_error_paths,
             test_extract_multi_model_partial_failure_preserves_success_outputs,
+            test_extract_other_route_uses_first_model_and_skips_distill,
             test_pretext_multichunk_and_failure_discards_processed_path,
             test_audio_failure_paths_archive_or_cleanup,
             test_ttml_invalid_xml_restores_source_and_chinese_normalizes,
