@@ -14,8 +14,8 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-import p as orchestrator_module
-from p import CONFIG
+import w.p as orchestrator_module
+from w.p import CONFIG
 
 import w.p_audio as audio_module
 from w.p_audio import move_files_to_done, scan_audio_files

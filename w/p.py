@@ -1,13 +1,21 @@
-# p.py
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 from pathlib import Path
 
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from w.helper_files import configure_logging
 from w.p_audio import process_audio_pipeline
-from w.p_extract import create_extract_processors, process_extract_queue, process_premium_extract_queue
+from w.p_extract import (
+    create_extract_processors,
+    process_extract_queue,
+    process_premium_extract_queue,
+)
 from w.p_pipelines import create_runtime
 from w.p_pretext import process_pretext_queue
 from w.p_torrent import process_torrent_pipeline
@@ -15,7 +23,6 @@ from w.p_ttml import process_ttml_pipeline
 from w.p_wiki import process_wikilink_cleaning
 from w.p_ytd import process_ytd_pipeline
 
-BASE_DIR = Path(__file__).resolve().parent
 WATCH_FOLDER = Path("/desktop")
 WHISPER_FOLDER = Path("/desktop/Sync/Whisper")
 
@@ -65,12 +72,12 @@ CONFIG = {
     "OBSIDIAN_SYNC_FOLDER": Path("/desktop/Obsidian/O_2025"),
     "YTD_LIST_FILE": WHISPER_FOLDER / "X" / "X.txt",
     "DOWNLOAD_TARGET_FOLDER": WHISPER_FOLDER / "X",
-    "LOG_DIR": BASE_DIR / "data" / "logs",
+    "LOG_DIR": ROOT_DIR / "data" / "logs",
     "PRETEXT_SUFFIX": ".txt",
     "EXTRACT_SUFFIX": ("_p.txt", ".md"),
-    "PRETEXT_PROMPT": (BASE_DIR / "prompt" / "prompt_pretext.txt").read_text(encoding="utf-8").strip(),
-    "EXTRACT_PROMPT": (BASE_DIR / "prompt" / "prompt_extract.txt").read_text(encoding="utf-8").strip(),
-    "DISTILL_PROMPT": (BASE_DIR / "prompt" / "prompt_distill.txt").read_text(encoding="utf-8").strip(),
+    "PRETEXT_PROMPT": (ROOT_DIR / "prompt" / "prompt_pretext.txt").read_text(encoding="utf-8").strip(),
+    "EXTRACT_PROMPT": (ROOT_DIR / "prompt" / "prompt_extract.txt").read_text(encoding="utf-8").strip(),
+    "DISTILL_PROMPT": (ROOT_DIR / "prompt" / "prompt_distill.txt").read_text(encoding="utf-8").strip(),
 }
 
 
@@ -111,6 +118,7 @@ def main() -> None:
         pass
     finally:
         runtime.shutdown_flag.set()
+
 
 if __name__ == "__main__":
     main()
