@@ -95,7 +95,7 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
 
         logging.info("Pretext: Completed %s (%s : %s)", original_filename, pretext_model, f"{len(pretext_result):,}")
 
-        pretext_target_path = os.path.join(config["PRETEXT_WATCH_FOLDER"], f"{base_name}{config['EXTRACT_SUFFIX'][0]}")
+        pretext_target_path = os.path.join(config["PRETEXT_WATCH_FOLDER"], f"{base_name}{config['EXTRACT_SUFFIX']}")
         write_text_file(pretext_target_path, pretext_result)
         logging.info("Pretext: Created %s", os.path.basename(pretext_target_path))
 
@@ -110,9 +110,9 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
             processed_files.discard(normalized_path)
 
 
-def process_extract_file(config, file_path, get_next_available_filename):
+def process_extract_file(config, file_path):
     filename = os.path.basename(file_path)
-    extract_suffix = str(config["EXTRACT_SUFFIX"][0]).lower()
+    extract_suffix = str(config["EXTRACT_SUFFIX"]).lower()
     base = filename[: -len(extract_suffix)] if filename.lower().endswith(extract_suffix) else os.path.splitext(filename)[0]
     failed_models = []
 
@@ -246,11 +246,11 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
 def scan_pretext_files(config, pretext_queue, processed_files, processed_files_lock) -> None:
     pretext_watch_folder = os.fspath(config["PRETEXT_WATCH_FOLDER"])
     pretext_suffix = str(config["PRETEXT_SUFFIX"]).lower()
-    extract_suffixes = tuple(str(s).lower() for s in config["EXTRACT_SUFFIX"] if str(s))
+    extract_suffix = str(config["EXTRACT_SUFFIX"]).lower()
 
     for filename in os.listdir(pretext_watch_folder):
         filename_lower = filename.lower()
-        if not filename_lower.endswith(pretext_suffix):
+        if not filename_lower.endswith(pretext_suffix) or filename_lower.endswith(extract_suffix):
             continue
 
         file_path = os.path.join(pretext_watch_folder, filename)
@@ -267,18 +267,17 @@ def scan_pretext_files(config, pretext_queue, processed_files, processed_files_l
                 logging.error("Error renaming file: %s", exc)
                 continue
 
-        if not any(filename_lower.endswith(s) for s in extract_suffixes):
-            normalized = os.path.abspath(os.fspath(file_path))
-            with processed_files_lock:
-                if normalized not in processed_files:
-                    processed_files.add(normalized)
-                    pretext_queue.put(normalized)
+        normalized = os.path.abspath(os.fspath(file_path))
+        with processed_files_lock:
+            if normalized not in processed_files:
+                processed_files.add(normalized)
+                pretext_queue.put(normalized)
 
 
 def scan_extract_files(config, extract_queue) -> None:
-    suffixes = tuple(str(s).lower() for s in config["EXTRACT_SUFFIX"] if str(s))
+    extract_suffix = str(config["EXTRACT_SUFFIX"]).lower()
     for filename in os.listdir(os.fspath(config["EXTRACT_WATCH_FOLDER"])):
-        if any(filename.lower().endswith(s) for s in suffixes):
+        if filename.lower().endswith(extract_suffix):
             file_path = os.path.join(os.fspath(config["EXTRACT_WATCH_FOLDER"]), filename)
             if file_path not in extract_queue.queue:
                 extract_queue.put(file_path)
@@ -315,7 +314,7 @@ def process_queue(config, queue, process, method_name, scan_files=None, shutdown
                 queue.put(file_path)
             else:
                 try:
-                    process(file_path, get_next_available_filename)
+                    process(file_path)
                 except LLMPermanentFailure as exc:
                     logging.error("Resilient Queue: OpenAI API permanent failure for file %s (model: %s): %s", exc.file_path, exc.model, exc.reason)
                 except Exception as exc:
@@ -342,12 +341,12 @@ def process_text_pipeline(config, shutdown_flag):
     threads = {}
 
     if config["PIPELINES"]["PRETEXT"]:
-        thread = threading.Thread(target=process_queue, args=(config, pretext_queue, lambda path, _next: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_pretext_files, shutdown_flag, config, pretext_queue, processed_files_global, processed_files_lock), daemon=True, name="TextPipeline-Pretext")
+        thread = threading.Thread(target=process_queue, args=(config, pretext_queue, lambda path: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_pretext_files, shutdown_flag, config, pretext_queue, processed_files_global, processed_files_lock), daemon=True, name="TextPipeline-Pretext")
         thread.start()
         threads["TextPipeline-Pretext"] = thread
 
     if config["PIPELINES"]["EXTRACT"]:
-        thread = threading.Thread(target=process_queue, args=(config, extract_queue, lambda path, _next: process_extract_file(config, path, _next), "process_extract", scan_extract_files, shutdown_flag, config, extract_queue), daemon=True, name="TextPipeline-Extract")
+        thread = threading.Thread(target=process_queue, args=(config, extract_queue, lambda path: process_extract_file(config, path), "process_extract", scan_extract_files, shutdown_flag, config, extract_queue), daemon=True, name="TextPipeline-Extract")
         thread.start()
         threads["TextPipeline-Extract"] = thread
 

@@ -105,13 +105,11 @@ PATHS = EvalPaths(
 
 
 def extract_input_suffix(config=CONFIG) -> str:
-    suffix = config["EXTRACT_SUFFIX"]
-    suffixes = (suffix,) if isinstance(suffix, str) else tuple(suffix)
-    return EXTRACT_INPUT_SUFFIX if EXTRACT_INPUT_SUFFIX in suffixes else str(suffixes[0])
+    return str(config["EXTRACT_SUFFIX"])
 
 
 def extract_text_config(**overrides):
-    return {**CONFIG, "EXTRACT_SUFFIX": (EXTRACT_INPUT_SUFFIX,), **overrides}
+    return {**CONFIG, "EXTRACT_SUFFIX": EXTRACT_INPUT_SUFFIX, **overrides}
 
 
 def safe_delete(path: Path, test_id: str) -> bool:
@@ -1454,7 +1452,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
 
         txt_process_module.call_llm = fake_call_llm
 
-        txt_process_module.process_extract_file(config, str(source), get_next_available_filename)
+        txt_process_module.process_extract_file(config, str(source))
 
         notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
         note = notes[-1] if notes else None
@@ -1532,7 +1530,7 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
 
         raised = False
         try:
-            txt_process_module.process_extract_file(config, str(source), get_next_available_filename)
+            txt_process_module.process_extract_file(config, str(source))
         except RuntimeError:
             raised = True
 
@@ -1956,7 +1954,7 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
         pass
 
     class FakeHandler:
-        def process_pretext(self, file_path: str, _get_next_available_filename) -> None:
+        def process_pretext(self, file_path: str) -> None:
             if file_path == transient_error:
                 raised.append(file_path)
                 raise RuntimeError(f"transient queue failure {test_id}")
@@ -2191,7 +2189,7 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
 
         raised = False
         try:
-            txt_process_module.process_extract_file(config, str(source), get_next_available_filename)
+            txt_process_module.process_extract_file(config, str(source))
         except RuntimeError:
             raised = True
 
