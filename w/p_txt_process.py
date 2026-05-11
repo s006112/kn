@@ -40,6 +40,14 @@ _file_locks = {}
 _file_locks_mutex = threading.Lock()
 
 
+def _llm_call_options(config):
+    return {
+        "max_retries": config["INTERVALS"].get("LLM_MAX_RETRIES", 2),
+        "timeout": config["INTERVALS"].get("LLM_TIMEOUT_SECONDS", 90),
+        "retry_delay": config["INTERVALS"].get("LLM_RETRY_DELAY_SECONDS", 10),
+    }
+
+
 def request_pretext_processing(queue, processed_files, processed_files_lock, file_path: str) -> bool:
     normalized = os.path.abspath(os.fspath(file_path))
     with processed_files_lock:
@@ -58,7 +66,6 @@ def release_pretext_request(processed_files, processed_files_lock, file_path: st
 
 def process_pretext_file(config, file_path, processed_files, processed_files_lock) -> None:
     normalized_path = os.path.abspath(os.fspath(file_path))
-    intervals = config.get("INTERVALS", {})
 
     try:
         os.makedirs(config["ORIGINAL_FOLDER"], exist_ok=True)
@@ -100,9 +107,7 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
                     system_prompt=config["PRETEXT_PROMPT"],
                     user_text=chunk,
                     file_path=normalized_path,
-                    max_retries=intervals.get("LLM_MAX_RETRIES", 2),
-                    timeout=intervals.get("LLM_TIMEOUT_SECONDS", 90),
-                    retry_delay=intervals.get("LLM_RETRY_DELAY_SECONDS", 10),
+                    **_llm_call_options(config),
                 )
             except Exception as exc:
                 logging.error(
@@ -195,7 +200,6 @@ def _process_extract_file(config, file_path, get_next_available_filename, models
     try:
         content, _ = read_file_with_encodings(file_path)
         payload = f"《{base}》\n{content}"
-        intervals = config.get("INTERVALS", {})
 
         # Avoid repeated note selection so merges stay consistent across models.
         # For markdown-source triggers, write into the existing note with the same filename
@@ -225,9 +229,7 @@ def _process_extract_file(config, file_path, get_next_available_filename, models
                     system_prompt=config['EXTRACT_PROMPT'],
                     user_text=payload,
                     file_path=file_path,
-                    max_retries=intervals.get("LLM_MAX_RETRIES", 2),
-                    timeout=intervals.get("LLM_TIMEOUT_SECONDS", 90),
-                    retry_delay=intervals.get("LLM_RETRY_DELAY_SECONDS", 10),
+                    **_llm_call_options(config),
                 )
 
                 # Preserve raw output before merging to allow later audits.
@@ -419,7 +421,6 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
     extract_folder = os.fspath(config["EXTRACT_FOLDER"])
     distill_model = (config.get("MODEL_DISTILL") or "").strip()
     distill_suffix = f"_{sanitize_filename(distill_model)}" if distill_model else ""
-    intervals = config.get("INTERVALS", {})
 
     if not distill_model:
         logging.info("Distillation: MODEL_DISTILL not configured, skipping for %s", base_name)
@@ -449,9 +450,7 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
             system_prompt=config["DISTILL_PROMPT"],
             user_text=user_payload,
             file_path=extracts[0][2],
-            max_retries=intervals.get("LLM_MAX_RETRIES", 2),
-            timeout=intervals.get("LLM_TIMEOUT_SECONDS", 90),
-            retry_delay=intervals.get("LLM_RETRY_DELAY_SECONDS", 10),
+            **_llm_call_options(config),
         )
     except Exception as exc:
         _write_distill_error(extract_folder, base_name, f"LLM error ({distill_model}): {exc}\n")

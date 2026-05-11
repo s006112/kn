@@ -645,14 +645,31 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
         **CONFIG,
         "MODEL_PRETEXT": "evaluation-model",
         "PRETEXT_PROMPT": "evaluation pretext prompt",
+        "INTERVALS": {
+            **CONFIG["INTERVALS"],
+            "LLM_MAX_RETRIES": 4,
+            "LLM_TIMEOUT_SECONDS": 44,
+            "LLM_RETRY_DELAY_SECONDS": 6,
+        },
     }
 
     original_call_llm = txt_process_module.call_llm
     index_existed = whisper_index.exists()
     index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
+    captured_llm_options = []
 
     try:
-        txt_process_module.call_llm = lambda **_kwargs: f"mock pretext result {test_id}"
+        def fake_call_llm(**kwargs) -> str:
+            captured_llm_options.append(
+                {
+                    "max_retries": kwargs.get("max_retries"),
+                    "timeout": kwargs.get("timeout"),
+                    "retry_delay": kwargs.get("retry_delay"),
+                }
+            )
+            return f"mock pretext result {test_id}"
+
+        txt_process_module.call_llm = fake_call_llm
 
         processed_files_global = set()
         processed_files_lock = threading.Lock()
@@ -678,6 +695,11 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
             and note is not None
             and f"mock pretext result {test_id}" in note_text
             and str(source.resolve()) not in processed_files_global
+            and captured_llm_options
+            and all(
+                options == txt_process_module._llm_call_options(config)
+                for options in captured_llm_options
+            )
         )
 
         print_result(
@@ -688,6 +710,7 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
                 "output": output,
                 "markdown": note,
                 "archived": archived,
+                "llm_options": captured_llm_options,
             },
         )
 
@@ -816,6 +839,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         "scan_premium_extract_files",
         "process_queue",
         "process_text_pipeline",
+        "_llm_call_options",
         "run_distillation",
     }
     forbidden_p_import_names = required_names - {"process_text_pipeline"}
@@ -841,13 +865,42 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
     forbidden_text_wiring_markers = {
         "for enabled, name, target, args",
         "RouteSpec",
+        "SimpleNamespace",
         "@dataclass",
         "from dataclasses import",
         "functools.partial",
         "partial(",
+        "LLMClient",
+        "LLMService",
+        "TextModelRunner",
     }
     forbidden_text_wiring = sorted(
         marker for marker in forbidden_text_wiring_markers if marker in txt_source
+    )
+    call_llm_nodes = [
+        node
+        for node in ast.walk(txt_tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "call_llm"
+    ]
+    call_llm_uses_helper = [
+        any(
+            keyword.arg is None
+            and isinstance(keyword.value, ast.Call)
+            and isinstance(keyword.value.func, ast.Name)
+            and keyword.value.func.id == "_llm_call_options"
+            for keyword in node.keywords
+        )
+        for node in call_llm_nodes
+    ]
+    inline_llm_option_keywords = sorted(
+        {
+            keyword.arg
+            for node in call_llm_nodes
+            for keyword in node.keywords
+            if keyword.arg in {"max_retries", "timeout", "retry_delay"}
+        }
     )
     passed = (
         text_process_path.exists()
@@ -856,6 +909,9 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         and not missing_required
         and not text_process_classes
         and not forbidden_text_wiring
+        and call_llm_nodes
+        and all(call_llm_uses_helper)
+        and not inline_llm_option_keywords
         and not removed_pretext_path.exists()
         and not removed_extract_path.exists()
         and not removed_distill_path.exists()
@@ -878,6 +934,8 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
             "missing_required": missing_required,
             "text_process_classes": text_process_classes,
             "forbidden_text_wiring": forbidden_text_wiring,
+            "call_llm_uses_helper": call_llm_uses_helper,
+            "inline_llm_option_keywords": inline_llm_option_keywords,
             "text_process_exists": text_process_path.exists(),
             "outdated_text_process_exists": outdated_text_process_path.exists(),
             "removed_pretext_exists": removed_pretext_path.exists(),
@@ -885,6 +943,46 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
             "removed_distill_exists": removed_distill_path.exists(),
             "forbidden_p_imports": forbidden_p_imports,
             "forbidden_removed_imports": forbidden_removed_imports,
+        },
+    )
+
+    return passed, []
+
+
+def test_llm_call_options_defaults_and_overrides(test_id: str) -> tuple[bool, list[Path]]:
+    default_config = {**CONFIG, "INTERVALS": {}}
+    custom_config = {
+        **CONFIG,
+        "INTERVALS": {
+            **CONFIG["INTERVALS"],
+            "LLM_MAX_RETRIES": 7,
+            "LLM_TIMEOUT_SECONDS": 123,
+            "LLM_RETRY_DELAY_SECONDS": 11,
+        },
+    }
+
+    default_options = txt_process_module._llm_call_options(default_config)
+    custom_options = txt_process_module._llm_call_options(custom_config)
+
+    passed = (
+        default_options == {
+            "max_retries": 2,
+            "timeout": 90,
+            "retry_delay": 10,
+        }
+        and custom_options == {
+            "max_retries": 7,
+            "timeout": 123,
+            "retry_delay": 11,
+        }
+    )
+
+    print_result(
+        "llm call options defaults and overrides",
+        passed,
+        {
+            "default_options": default_options,
+            "custom_options": custom_options,
         },
     )
 
@@ -913,6 +1011,12 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
     config = {
         **CONFIG,
         "MODEL_DISTILL": "",
+        "INTERVALS": {
+            **CONFIG["INTERVALS"],
+            "LLM_MAX_RETRIES": 5,
+            "LLM_TIMEOUT_SECONDS": 55,
+            "LLM_RETRY_DELAY_SECONDS": 7,
+        },
         "MODEL_EXTRACT_MATRIX": {
             **CONFIG.get("MODEL_EXTRACT_MATRIX", {}),
             "EXTRACT_WATCH_FOLDER": [model],
@@ -922,9 +1026,20 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
     original_call_llm = txt_process_module.call_llm
     index_existed = whisper_index.exists()
     index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
+    captured_llm_options = []
 
     try:
-        txt_process_module.call_llm = lambda **_kwargs: f"mock extract result {test_id}"
+        def fake_call_llm(**kwargs) -> str:
+            captured_llm_options.append(
+                {
+                    "max_retries": kwargs.get("max_retries"),
+                    "timeout": kwargs.get("timeout"),
+                    "retry_delay": kwargs.get("retry_delay"),
+                }
+            )
+            return f"mock extract result {test_id}"
+
+        txt_process_module.call_llm = fake_call_llm
 
         txt_process_module.process_extract_file(config, str(source), get_next_available_filename)
 
@@ -942,6 +1057,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
             and f"mock extract result {test_id}" in extract_text
             and note is not None
             and f"mock extract result {test_id}" in note_text
+            and captured_llm_options == [txt_process_module._llm_call_options(config)]
         )
 
         print_result(
@@ -952,6 +1068,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
                 "extract_output": extract_output,
                 "markdown": note,
                 "archived": archived,
+                "llm_options": captured_llm_options,
             },
         )
 
@@ -1601,14 +1718,28 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
         **CONFIG,
         "MODEL_DISTILL": model,
         "DISTILL_PROMPT": "evaluation distill prompt",
+        "INTERVALS": {
+            **CONFIG["INTERVALS"],
+            "LLM_MAX_RETRIES": 6,
+            "LLM_TIMEOUT_SECONDS": 66,
+            "LLM_RETRY_DELAY_SECONDS": 8,
+        },
     }
 
     original_call_llm = txt_process_module.call_llm
     index_existed = whisper_index.exists()
     index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
+    captured_llm_options = []
 
     try:
         def fake_call_llm(**kwargs) -> str:
+            captured_llm_options.append(
+                {
+                    "max_retries": kwargs.get("max_retries"),
+                    "timeout": kwargs.get("timeout"),
+                    "retry_delay": kwargs.get("retry_delay"),
+                }
+            )
             file_path = str(kwargs.get("file_path", ""))
             if fail_base in file_path:
                 raise RuntimeError(f"mock distill failure {test_id}")
@@ -1643,6 +1774,11 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
             and failure_raised
             and error_file.is_file()
             and f"mock distill failure {test_id}" in error_text
+            and len(captured_llm_options) == 2
+            and all(
+                options == txt_process_module._llm_call_options(config)
+                for options in captured_llm_options
+            )
         )
 
         print_result(
@@ -1653,6 +1789,7 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
                 "skip_path": skip_path,
                 "error_file": error_file,
                 "failure_raised": failure_raised,
+                "llm_options": captured_llm_options,
             },
         )
 
@@ -2564,6 +2701,7 @@ def main() -> int:
             test_distill_collects_extract_outputs,
             test_extract_worker_scan_queues_candidate_once,
             test_text_process_module_function_boundary,
+            test_llm_call_options_defaults_and_overrides,
             test_extract_full_process_writes_extract_markdown_and_archive,
             test_extract_failure_writes_error_and_moves_to_fail,
             test_premium_extract_full_process_archives_to_archive_folder,
