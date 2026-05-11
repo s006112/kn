@@ -1075,7 +1075,7 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
     return passed, cleanup
 
 
-def test_file_scanner_skips_torrent_and_torrent_scan_moves_it(test_id: str) -> tuple[bool, list[Path]]:
+def test_torrent_scan_moves_torrent(test_id: str) -> tuple[bool, list[Path]]:
     watch_dir = ROOT_DIR / f"{test_id}_torrent_watch"
     whisper_dir = ROOT_DIR / f"{test_id}_torrent_whisper"
     pretext_dir = ROOT_DIR / f"{test_id}_pretext_watch"
@@ -1102,27 +1102,18 @@ def test_file_scanner_skips_torrent_and_torrent_scan_moves_it(test_id: str) -> t
         "PREMIUM_WATCH_FOLDER": premium_dir,
     }
 
-    ctx = pipelines.PipelineContext(config)
-    pipelines.file_scanner(ctx)
-
-    file_scanner_left_source = source.is_file()
-    file_scanner_left_target_empty = not target.exists()
     moved_count = scan_torrent_watch_folder(config)
 
     passed = (
-        file_scanner_left_source
-        and file_scanner_left_target_empty
-        and moved_count == 1
+        moved_count == 1
         and not source.exists()
         and target.is_file()
     )
 
     print_result(
-        "file scanner skips torrent and torrent scan moves it",
+        "torrent scan moves torrent",
         passed,
         {
-            "source_after_file_scanner": file_scanner_left_source,
-            "target_after_file_scanner": file_scanner_left_target_empty,
             "moved_count": moved_count,
             "target": target,
         },
@@ -1131,7 +1122,7 @@ def test_file_scanner_skips_torrent_and_torrent_scan_moves_it(test_id: str) -> t
     return passed, cleanup
 
 
-def test_text_workers_own_file_scanners(test_id: str) -> tuple[bool, list[Path]]:
+def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
     extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
 
@@ -1161,7 +1152,6 @@ def test_text_workers_own_file_scanners(test_id: str) -> tuple[bool, list[Path]]
         pipelines.process_pretext_queue(ctx)
         pipelines.process_extract_queue(ctx, ExtractProcessor(CONFIG))
         pipelines.process_premium_extract_queue(ctx, PremiumExtractProcessor(CONFIG))
-        pipelines.file_scanner(ctx)
     finally:
         pipelines.process_queue = original_process_queue
 
@@ -1180,7 +1170,7 @@ def test_text_workers_own_file_scanners(test_id: str) -> tuple[bool, list[Path]]
     )
 
     print_result(
-        "text workers own file scanners",
+        "text workers own scan functions",
         passed,
         {
             "raw": raw,
@@ -1227,7 +1217,7 @@ def test_audio_scan_enqueues_audio_file(test_id: str) -> tuple[bool, list[Path]]
     return passed, cleanup
 
 
-def test_file_scanner_skips_audio_and_audio_pipeline_scans(test_id: str) -> tuple[bool, list[Path]]:
+def test_audio_pipeline_scans_audio(test_id: str) -> tuple[bool, list[Path]]:
     folder = PATHS.audio_watch_folders[0]
     source = folder / f"{test_id}_audio_pipeline_scan.mp3"
 
@@ -1240,16 +1230,12 @@ def test_file_scanner_skips_audio_and_audio_pipeline_scans(test_id: str) -> tupl
 
     source.write_text(f"audio ownership scan source {test_id}\n", encoding="utf-8")
 
-    scanner_ctx = pipelines.PipelineContext(CONFIG)
     original_process_audio_queue = audio_module.process_audio_queue
     queued_by_audio_pipeline: list[str] = []
     audio_ctx = None
     thread = None
 
     try:
-        pipelines.file_scanner(scanner_ctx)
-        scanner_left_audio_empty = scanner_ctx.audio_queue.empty()
-
         config = {
             **CONFIG,
             "INTERVALS": {
@@ -1283,18 +1269,16 @@ def test_file_scanner_skips_audio_and_audio_pipeline_scans(test_id: str) -> tupl
         thread.join(timeout=1)
 
         passed = (
-            scanner_left_audio_empty
-            and str(source) in queued_by_audio_pipeline
+            str(source) in queued_by_audio_pipeline
             and orchestrator_module.process_audio_pipeline is audio_module.process_audio_pipeline
             and not thread.is_alive()
         )
 
         print_result(
-            "file scanner skips audio and audio pipeline scans",
+            "audio pipeline scans audio",
             passed,
             {
                 "source": source,
-                "scanner_audio_queue": scanner_ctx.audio_queue.qsize(),
                 "audio_pipeline_queued": str(source) in queued_by_audio_pipeline,
                 "thread_alive": thread.is_alive(),
             },
@@ -2221,7 +2205,6 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         "TextPipeline-Extract",
         "TextPipeline-PremiumExtract",
         "AudioPipeline-GPU",
-        "PeriodicScanner",
         "WikilinkCleaner",
         "YTDPipeline",
     }
@@ -2239,7 +2222,6 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         "process_extract_queue": orchestrator_module.process_extract_queue,
         "process_premium_extract_queue": orchestrator_module.process_premium_extract_queue,
         "process_audio_pipeline": orchestrator_module.process_audio_pipeline,
-        "run_file_scanner": orchestrator_module.run_file_scanner,
         "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
         "process_ytd_pipeline": orchestrator_module.process_ytd_pipeline,
     }
@@ -2254,7 +2236,6 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         orchestrator_module.process_extract_queue = fake_worker
         orchestrator_module.process_premium_extract_queue = fake_worker
         orchestrator_module.process_audio_pipeline = fake_worker
-        orchestrator_module.run_file_scanner = fake_worker
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_ytd_pipeline = fake_worker
 
@@ -2310,7 +2291,6 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         orchestrator_module.process_extract_queue = original_values["process_extract_queue"]
         orchestrator_module.process_premium_extract_queue = original_values["process_premium_extract_queue"]
         orchestrator_module.process_audio_pipeline = original_values["process_audio_pipeline"]
-        orchestrator_module.run_file_scanner = original_values["run_file_scanner"]
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
         orchestrator_module.process_ytd_pipeline = original_values["process_ytd_pipeline"]
 
@@ -2321,7 +2301,6 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         "TorrentPipeline",
         "TTMLPipeline",
         "AudioPipeline-GPU",
-        "PeriodicScanner",
         "WikilinkCleaner",
         "YTDPipeline",
     }
@@ -2365,7 +2344,6 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         "process_extract_queue": orchestrator_module.process_extract_queue,
         "process_premium_extract_queue": orchestrator_module.process_premium_extract_queue,
         "process_audio_pipeline": orchestrator_module.process_audio_pipeline,
-        "run_file_scanner": orchestrator_module.run_file_scanner,
         "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
         "process_ytd_pipeline": orchestrator_module.process_ytd_pipeline,
     }
@@ -2380,7 +2358,6 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         orchestrator_module.process_extract_queue = fake_worker
         orchestrator_module.process_premium_extract_queue = fake_worker
         orchestrator_module.process_audio_pipeline = fake_worker
-        orchestrator_module.run_file_scanner = fake_worker
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_ytd_pipeline = fake_worker
 
@@ -2455,7 +2432,6 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         orchestrator_module.process_extract_queue = original_values["process_extract_queue"]
         orchestrator_module.process_premium_extract_queue = original_values["process_premium_extract_queue"]
         orchestrator_module.process_audio_pipeline = original_values["process_audio_pipeline"]
-        orchestrator_module.run_file_scanner = original_values["run_file_scanner"]
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
         orchestrator_module.process_ytd_pipeline = original_values["process_ytd_pipeline"]
 
@@ -2483,10 +2459,10 @@ def main() -> int:
             test_extract_failure_writes_error_and_moves_to_fail,
             test_premium_extract_full_process_archives_to_archive_folder,
             test_text_worker_scans_route_text_inputs,
-            test_file_scanner_skips_torrent_and_torrent_scan_moves_it,
-            test_text_workers_own_file_scanners,
+            test_torrent_scan_moves_torrent,
+            test_text_workers_own_scan_functions,
             test_audio_scan_enqueues_audio_file,
-            test_file_scanner_skips_audio_and_audio_pipeline_scans,
+            test_audio_pipeline_scans_audio,
             test_audio_process_file_mocked_full_path,
             test_process_queue_handles_lock_miss_errors_and_permanent_failures,
             test_distillation_success_skip_and_error_paths,

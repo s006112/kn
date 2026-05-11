@@ -222,7 +222,3 @@ def scan_premium_extract_files(ctx: PipelineContext) -> None:
         if any(filename_lower.endswith(s) for s in extract_suffixes):
             file_path = os.path.join(premium_watch_folder, filename)
             enqueue_if_absent(ctx.premium_extract_queue, file_path)
-
-
-def file_scanner(ctx: PipelineContext) -> None:
-    pass

@@ -8,7 +8,6 @@ from w.helper_files import configure_logging
 from w.p_pipelines import (
     PipelineContext,
     create_extract_processors,
-    file_scanner,
     process_extract_queue,
     process_premium_extract_queue,
     process_pretext_queue,
@@ -28,9 +27,9 @@ CONFIG = {
     "MODEL_DISTILL": "o3",
     "MODEL_EXTRACT_MATRIX": {
         "EXTRACT_WATCH_FOLDER": [
-            "gpt-5.4",
+            "gpt-5.4-mini",
             "grok-4.20-non-reasoning",  # grok-4.3, grok-4-1-fast-non-reasoning
-            "gemini-3.1-pro-preview",  # gemini-3.1-flash-lite-preview
+            "gemini-3.1-flash-lite-preview",  # gemini-3.1-flash-lite-preview, gemini-3.1-pro-preview"
         ],
         "PREMIUM_WATCH_FOLDER": [
             "gpt-5.4",
@@ -82,24 +81,12 @@ CONFIG = {
     "DISTILL_PROMPT": (BASE_DIR / "prompt" / "prompt_distill.txt").read_text(encoding="utf-8").strip(),
 }
 
-def run_file_scanner(ctx: PipelineContext) -> None:
-    scan_seconds = ctx.config["INTERVALS"]["SCAN_SECONDS"]
-
-    file_scanner(ctx)
-
-    while not ctx.shutdown_flag.is_set():
-        if ctx.shutdown_flag.wait(scan_seconds):
-            return
-        file_scanner(ctx)
-
-
 def start_runtime(ctx: PipelineContext) -> dict[str, threading.Thread]:
     extract_processor, premium_extract_processor = create_extract_processors(ctx)
     threads: dict[str, threading.Thread] = {}
 
     thread_specs = [
         (ctx.config["PIPELINES"]["TORRENT"], "TorrentPipeline", process_torrent_pipeline, (ctx,)),
-        (True, "PeriodicScanner", run_file_scanner, (ctx,)),
         (ctx.config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (ctx,)),
         (ctx.config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_pretext_queue, (ctx,)),
         (ctx.config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_extract_queue, (ctx, extract_processor)),

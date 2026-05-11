@@ -55,7 +55,7 @@ class BaseExtractProcessor:
                     md_path=md_path,
                 )
                 logging.info(
-                    f"Extract: Completed for {filename} ({distill_path or 'skipped'})"
+                    f"Extract: Completed for {filename} "
                 )
             else:
                 logging.info(
