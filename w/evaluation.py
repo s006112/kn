@@ -759,7 +759,7 @@ def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path
     return passed, cleanup
 
 
-def test_file_scanner_queues_extract_candidate_once(test_id: str) -> tuple[bool, list[Path]]:
+def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, list[Path]]:
     extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
     source = PATHS.extract_watch / f"{test_id}_extract{extract_suffix}"
     ignored = PATHS.download_target / f"{test_id}_ignored{extract_suffix}"
@@ -777,8 +777,8 @@ def test_file_scanner_queues_extract_candidate_once(test_id: str) -> tuple[bool,
     ignored.write_text(f"wrong folder candidate {test_id}\n", encoding="utf-8")
 
     ctx = pipelines.PipelineContext(CONFIG)
-    pipelines.file_scanner(ctx)
-    pipelines.file_scanner(ctx)
+    pipelines.scan_extract_files(ctx)
+    pipelines.scan_extract_files(ctx)
 
     queued_paths = list(ctx.extract_queue.queue)
 
@@ -788,7 +788,7 @@ def test_file_scanner_queues_extract_candidate_once(test_id: str) -> tuple[bool,
     )
 
     print_result(
-        "file scanner queues extract candidate once",
+        "extract worker scan queues candidate once",
         passed,
         {
             "source": source,
@@ -1024,7 +1024,7 @@ def test_premium_extract_full_process_archives_to_archive_folder(test_id: str) -
         elif not index_existed and whisper_index.exists():
             whisper_index.unlink()
 
-def test_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, list[Path]]:
+def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
     extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
 
@@ -1045,7 +1045,9 @@ def test_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, list[Path]
     premium.write_text(f"startup scan premium {test_id}\n", encoding="utf-8")
 
     ctx = pipelines.PipelineContext(CONFIG)
-    pipelines.file_scanner(ctx)
+    pipelines.scan_pretext_files(ctx)
+    pipelines.scan_extract_files(ctx)
+    pipelines.scan_premium_extract_files(ctx)
 
     pretext_paths = list(ctx.pretext_queue.queue)
     extract_paths = list(ctx.extract_queue.queue)
@@ -1060,7 +1062,7 @@ def test_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, list[Path]
     )
 
     print_result(
-        "file scanner routes text inputs",
+        "text worker scans route text inputs",
         passed,
         {
             "renamed": renamed,
@@ -1129,7 +1131,7 @@ def test_file_scanner_skips_torrent_and_torrent_scan_moves_it(test_id: str) -> t
     return passed, cleanup
 
 
-def test_periodic_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, list[Path]]:
+def test_text_workers_own_file_scanners(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
     extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
 
@@ -1147,62 +1149,44 @@ def test_periodic_file_scanner_routes_text_inputs(test_id: str) -> tuple[bool, l
     extract.write_text(f"periodic scan extract {test_id}\n", encoding="utf-8")
     premium.write_text(f"periodic scan premium {test_id}\n", encoding="utf-8")
 
-    config = {
-        **CONFIG,
-        "INTERVALS": {
-            **CONFIG["INTERVALS"],
-            "SCAN_SECONDS": 0.05,
-        },
-    }
-
-    ctx = pipelines.PipelineContext(config)
-    thread = threading.Thread(
-        target=orchestrator_module.run_file_scanner,
-        args=(ctx,),
-        daemon=True,
-    )
-    thread.start()
+    ctx = pipelines.PipelineContext(CONFIG)
+    captured: dict[str, object] = {}
+    original_process_queue = pipelines.process_queue
 
     try:
-        deadline = time.time() + 2
-        while time.time() < deadline:
-            pretext_paths = list(ctx.pretext_queue.queue)
-            extract_paths = list(ctx.extract_queue.queue)
-            premium_paths = list(ctx.premium_extract_queue.queue)
+        def fake_process_queue(_ctx, _queue, _process, method_name, scan_files=None):
+            captured[method_name] = scan_files
 
-            if (
-                str(raw.resolve()) in pretext_paths
-                and str(extract) in extract_paths
-                and str(premium) in premium_paths
-            ):
-                break
-
-            time.sleep(0.05)
-
-        pretext_paths = list(ctx.pretext_queue.queue)
-        extract_paths = list(ctx.extract_queue.queue)
-        premium_paths = list(ctx.premium_extract_queue.queue)
-
-        ctx.shutdown_flag.set()
-        thread.join(timeout=1)
+        pipelines.process_queue = fake_process_queue
+        pipelines.process_pretext_queue(ctx)
+        pipelines.process_extract_queue(ctx, ExtractProcessor(CONFIG))
+        pipelines.process_premium_extract_queue(ctx, PremiumExtractProcessor(CONFIG))
+        pipelines.file_scanner(ctx)
     finally:
-        ctx.shutdown_flag.set()
+        pipelines.process_queue = original_process_queue
 
     passed = (
-        str(raw.resolve()) in pretext_paths
-        and str(extract) in extract_paths
-        and str(premium) in premium_paths
-        and not thread.is_alive()
+        captured == {
+            "process_pretext": pipelines.scan_pretext_files,
+            "process_extract": pipelines.scan_extract_files,
+            "process_premium_extract": pipelines.scan_premium_extract_files,
+        }
+        and ctx.pretext_queue.empty()
+        and ctx.extract_queue.empty()
+        and ctx.premium_extract_queue.empty()
+        and raw.is_file()
+        and extract.is_file()
+        and premium.is_file()
     )
 
     print_result(
-        "periodic file scanner routes text inputs",
+        "text workers own file scanners",
         passed,
         {
             "raw": raw,
             "extract": extract,
             "premium": premium,
-            "thread_alive": thread.is_alive(),
+            "captured": sorted(captured),
         },
     )
 
@@ -2494,13 +2478,13 @@ def main() -> int:
             test_pretext_request_deduplicates_queue,
             test_pretext_full_process_writes_pretext_markdown_and_archive,
             test_distill_collects_extract_outputs,
-            test_file_scanner_queues_extract_candidate_once,
+            test_extract_worker_scan_queues_candidate_once,
             test_extract_full_process_writes_extract_markdown_and_archive,
             test_extract_failure_writes_error_and_moves_to_fail,
             test_premium_extract_full_process_archives_to_archive_folder,
-            test_file_scanner_routes_text_inputs,
+            test_text_worker_scans_route_text_inputs,
             test_file_scanner_skips_torrent_and_torrent_scan_moves_it,
-            test_periodic_file_scanner_routes_text_inputs,
+            test_text_workers_own_file_scanners,
             test_audio_scan_enqueues_audio_file,
             test_file_scanner_skips_audio_and_audio_pipeline_scans,
             test_audio_process_file_mocked_full_path,

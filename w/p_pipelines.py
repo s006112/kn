@@ -106,64 +106,66 @@ def process_queue(
     queue: Queue,
     process: Callable[[str, Callable[..., str]], None],
     method_name: str,
+    scan_files: Callable[[PipelineContext], None] | None = None,
 ) -> None:
     intervals = ctx.config.get("INTERVALS", {})
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
+    scan_seconds = intervals.get("SCAN_SECONDS", 60)
+    next_scan = time.monotonic()
+
     while True:
-        file_path = None
+        if scan_files and time.monotonic() >= next_scan:
+            try:
+                scan_files(ctx)
+            except Exception as e:
+                logging.error("%s scan error: %s", method_name, e)
+            next_scan = time.monotonic() + scan_seconds
+
+        if queue.empty():
+            time.sleep(wait_seconds)
+            continue
+
+        file_path = queue.get()
         try:
-            if queue.empty():
-                time.sleep(wait_seconds)
-                continue
-            file_path = queue.get()
             with file_lock(file_path) as locked:
                 if not locked:
                     queue.put(file_path)
-                    queue.task_done()
-                    file_path = None
-                    time.sleep(wait_seconds)
-                    continue
-                try:
-                    process(file_path, get_next_available_filename)
-                except LLMPermanentFailure as e:
-                    logging.error(
-                        "Resilient Queue: OpenAI API permanent failure for file %s "
-                        "(model: %s): %s",
-                        e.file_path,
-                        e.model,
-                        e.reason,
-                    )
-                except Exception as e:
-                    logging.error("%s queue error: %s", method_name, e)
-                finally:
-                    queue.task_done()
-                    file_path = None
+                else:
+                    try:
+                        process(file_path, get_next_available_filename)
+                    except LLMPermanentFailure as e:
+                        logging.error(
+                            "Resilient Queue: OpenAI API permanent failure for file %s "
+                            "(model: %s): %s",
+                            e.file_path,
+                            e.model,
+                            e.reason,
+                        )
+                    except Exception as e:
+                        logging.error("%s queue error: %s", method_name, e)
         except Exception as e:
-            logging.error("%s queue error (outer): %s", method_name, e)
-            if file_path is not None:
-                queue.task_done()
+            logging.error("%s queue error: %s", method_name, e)
+        finally:
+            queue.task_done()
+
         time.sleep(wait_seconds)
 
-
 def process_pretext_queue(ctx: PipelineContext) -> None:
-    process_queue(ctx, ctx.pretext_queue, lambda path, _next: process_pretext_file(ctx.config, path, ctx.processed_files_global, ctx.processed_files_lock), "process_pretext")
+    process_queue(ctx, ctx.pretext_queue, lambda path, _next: process_pretext_file(ctx.config, path, ctx.processed_files_global, ctx.processed_files_lock), "process_pretext", scan_pretext_files)
 
 
 def process_extract_queue(ctx: PipelineContext, processor: ExtractProcessor) -> None:
-    process_queue(ctx, ctx.extract_queue, processor.process_extract, "process_extract")
+    process_queue(ctx, ctx.extract_queue, processor.process_extract, "process_extract", scan_extract_files)
 
 
 def process_premium_extract_queue(
     ctx: PipelineContext, processor: PremiumExtractProcessor
 ) -> None:
-    process_queue(ctx, ctx.premium_extract_queue, processor.process_premium_extract, "process_premium_extract")
+    process_queue(ctx, ctx.premium_extract_queue, processor.process_premium_extract, "process_premium_extract", scan_premium_extract_files)
 
 
-def file_scanner(ctx: PipelineContext) -> None:
-    """Run one file intake scan: pretext normalize/request, extract enqueue, premium enqueue."""
+def scan_pretext_files(ctx: PipelineContext) -> None:
     pretext_watch_folder = os.fspath(ctx.config["PRETEXT_WATCH_FOLDER"])
-    extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
-    premium_watch_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
     pretext_suffix = str(ctx.config["PRETEXT_SUFFIX"]).lower()
     extract_suffixes = tuple(
         str(s).lower() for s in ctx.config["EXTRACT_SUFFIX"] if str(s)
@@ -195,14 +197,32 @@ def file_scanner(ctx: PipelineContext) -> None:
         ):
             request_pretext_processing(ctx.pretext_queue, ctx.processed_files_global, ctx.processed_files_lock, file_path)
 
+
+def scan_extract_files(ctx: PipelineContext) -> None:
+    extract_watch_folder = os.fspath(ctx.config["EXTRACT_WATCH_FOLDER"])
+    extract_suffixes = tuple(
+        str(s).lower() for s in ctx.config["EXTRACT_SUFFIX"] if str(s)
+    )
+
     for filename in os.listdir(extract_watch_folder):
         filename_lower = filename.lower()
         if any(filename_lower.endswith(s) for s in extract_suffixes):
             file_path = os.path.join(extract_watch_folder, filename)
             enqueue_if_absent(ctx.extract_queue, file_path)
 
+
+def scan_premium_extract_files(ctx: PipelineContext) -> None:
+    premium_watch_folder = os.fspath(ctx.config["PREMIUM_WATCH_FOLDER"])
+    extract_suffixes = tuple(
+        str(s).lower() for s in ctx.config["EXTRACT_SUFFIX"] if str(s)
+    )
+
     for filename in os.listdir(premium_watch_folder):
         filename_lower = filename.lower()
         if any(filename_lower.endswith(s) for s in extract_suffixes):
             file_path = os.path.join(premium_watch_folder, filename)
             enqueue_if_absent(ctx.premium_extract_queue, file_path)
+
+
+def file_scanner(ctx: PipelineContext) -> None:
+    pass
