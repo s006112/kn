@@ -23,12 +23,9 @@ _file_locks = {}
 _file_locks_mutex = threading.Lock()
 
 
-def llm_call_options(config):
-    return {
-        "max_retries": config["INTERVALS"].get("LLM_MAX_RETRIES", 2),
-        "timeout": config["INTERVALS"].get("LLM_TIMEOUT_SECONDS", 90),
-        "retry_delay": config["INTERVALS"].get("LLM_RETRY_DELAY_SECONDS", 10),
-    }
+def call_text_llm(config, model, system_prompt, user_text, file_path):
+    intervals = config["INTERVALS"]
+    return call_llm(model=model, system_prompt=system_prompt, user_text=user_text, file_path=file_path, max_retries=intervals.get("LLM_MAX_RETRIES", 2), timeout=intervals.get("LLM_TIMEOUT_SECONDS", 90), retry_delay=intervals.get("LLM_RETRY_DELAY_SECONDS", 10))
 
 
 def write_text_file(path, content):
@@ -83,7 +80,7 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
         all_results = []
         for i, chunk in enumerate(chunks, 1):
             logging.debug("Pretext: API call %d/%d for %s using %s", i, len(chunks), original_filename, pretext_model)
-            chunk_result = call_llm(model=pretext_model, system_prompt=config["PRETEXT_PROMPT"], user_text=chunk, file_path=normalized_path, **llm_call_options(config))
+            chunk_result = call_text_llm(config, pretext_model, config["PRETEXT_PROMPT"], chunk, normalized_path)
             if not chunk_result:
                 raise ValueError(f"Empty response from OpenAI API for chunk {i}")
             all_results.append(chunk_result)
@@ -129,7 +126,7 @@ def process_extract_file(config, file_path):
                 continue
 
             try:
-                result = call_llm(model=model, system_prompt=config["EXTRACT_PROMPT"], user_text=payload, file_path=file_path, **llm_call_options(config))
+                result = call_text_llm(config, model, config["EXTRACT_PROMPT"], payload, file_path)
                 os.makedirs(config["EXTRACT_FOLDER"], exist_ok=True)
                 save_path = get_next_available_filename(config["EXTRACT_FOLDER"], base, f"_{sanitize_filename(model)}")
                 write_text_file(save_path, result)
@@ -226,7 +223,7 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
             payload += [f"--- {label} ({os.path.basename(path)}) ---", content.strip()]
 
         logging.info("Distillation: Start %s with %s (%d inputs)", base_name, distill_model, len(extracts))
-        distilled = call_llm(model=distill_model, system_prompt=config["DISTILL_PROMPT"], user_text="\n\n".join(payload), file_path=extracts[0][2], **llm_call_options(config))
+        distilled = call_text_llm(config, distill_model, config["DISTILL_PROMPT"], "\n\n".join(payload), extracts[0][2])
 
         os.makedirs(extract_folder, exist_ok=True)
         save_path = get_next_available_filename(extract_folder, base_name, f"_{sanitize_filename(distill_model)}")
