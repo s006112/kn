@@ -728,10 +728,7 @@ def test_pretext_partial_error_filename_and_content_unchanged(test_id: str) -> t
 
     source = PATHS.pretext_watch / f"{base_name}{pretext_suffix}"
     output = PATHS.pretext_watch / f"{base_name}{extract_suffix}"
-    error_file = PATHS.watch / f"{base_name}.error"
     archived = PATHS.original / f"{base_name}.txt"
-
-    cleanup = [source, output, error_file, archived]
 
     PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
     PATHS.original.mkdir(parents=True, exist_ok=True)
@@ -743,6 +740,9 @@ def test_pretext_partial_error_filename_and_content_unchanged(test_id: str) -> t
         "MODEL_PRETEXT": "evaluation-model",
         "PRETEXT_PROMPT": "evaluation pretext prompt",
     }
+    error_file = PATHS.watch / f"{base_name}.{sanitize_filename(config['MODEL_PRETEXT'])}.error"
+
+    cleanup = [source, output, error_file, archived]
 
     original_call_llm = txt_process_module.call_llm
     original_write_pretext_markdown = txt_process_module.write_pretext_markdown
@@ -774,6 +774,16 @@ def test_pretext_partial_error_filename_and_content_unchanged(test_id: str) -> t
 
         output_text = output.read_text(encoding="utf-8") if output.exists() else ""
         error_text = error_file.read_text(encoding="utf-8") if error_file.exists() else ""
+        expected_error_text = (
+            "Stage: pretext\n"
+            f"File: {source.name}\n"
+            f"Base: {base_name}\n"
+            f"Model: {config['MODEL_PRETEXT']}\n"
+            f"Error: {failure_message}\n"
+            "\n"
+            "Partial:\n"
+            f"{result}\n"
+        )
 
         passed = (
             raised
@@ -783,8 +793,8 @@ def test_pretext_partial_error_filename_and_content_unchanged(test_id: str) -> t
             and output.name == f"{base_name}{extract_suffix}"
             and output_text == result
             and error_file.is_file()
-            and error_file.name == f"{base_name}.error"
-            and error_text == f"Error: {failure_message}\nPartial response:\n{result}"
+            and error_file.name == f"{base_name}.{sanitize_filename(config['MODEL_PRETEXT'])}.error"
+            and error_text == expected_error_text
             and str(source.resolve()) not in processed_files_global
         )
 
@@ -849,8 +859,6 @@ def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path
 
 def test_distillation_read_error_writes_watch_marker(test_id: str) -> tuple[bool, list[Path]]:
     base_name = f"{test_id}_distill_read_error"
-    error_file = PATHS.watch / f"{base_name}.distill.error"
-    cleanup = [error_file]
     read_message = f"mock distill read error {test_id}"
 
     PATHS.watch.mkdir(parents=True, exist_ok=True)
@@ -860,6 +868,8 @@ def test_distillation_read_error_writes_watch_marker(test_id: str) -> tuple[bool
         "MODEL_DISTILL": "evaluation-distill-model",
         "DISTILL_PROMPT": "evaluation distill prompt",
     }
+    error_file = PATHS.watch / f"{base_name}.{sanitize_filename(config['MODEL_DISTILL'])}.error"
+    cleanup = [error_file]
 
     original_collect_extracts = txt_process_module._collect_extracts
 
@@ -876,12 +886,19 @@ def test_distillation_read_error_writes_watch_marker(test_id: str) -> tuple[bool
             raised = True
 
         error_text = error_file.read_text(encoding="utf-8") if error_file.exists() else ""
+        expected_error_text = (
+            "Stage: distill\n"
+            f"File: {base_name}\n"
+            f"Base: {base_name}\n"
+            f"Model: {config['MODEL_DISTILL']}\n"
+            f"Error: {read_message}\n"
+        )
 
         passed = (
             raised
             and error_file.is_file()
-            and error_file.name == f"{base_name}.distill.error"
-            and error_text == f"Read error: {read_message}\n"
+            and error_file.name == f"{base_name}.{sanitize_filename(config['MODEL_DISTILL'])}.error"
+            and error_text == expected_error_text
         )
 
         print_result(
@@ -968,6 +985,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         "scan_pretext_files",
         "process_extract_file",
         "scan_extract_files",
+        "save_pipeline_error",
         "process_queue",
         "process_text_pipeline",
         "_llm_call_options",
@@ -1146,38 +1164,26 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
                 and not (helper_start <= index <= helper_end)
             ):
                 direct_write_release_lines.append(index)
-    error_helper = next(
+    error_helper_name = "_write_" + "error_file"
+    save_error_helper = next(
         (
             node
             for node in txt_tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "_write_error_file"
+            if isinstance(node, ast.FunctionDef) and node.name == "save_pipeline_error"
         ),
         None,
     )
-    error_helper_start = error_helper.lineno if error_helper else 0
-    error_helper_end = error_helper.end_lineno if error_helper else 0
+    save_error_start = save_error_helper.lineno if save_error_helper else 0
+    save_error_end = save_error_helper.end_lineno if save_error_helper else 0
 
     required_text_helper_calls = [
         "_write_text_file(pretext_target_path, pretext_result)",
         "_write_text_file(save_path, result)",
         "_write_text_file(save_path, distilled)",
-        "return _write_text_file(path, message)",
+        "return _write_text_file(path,",
     ]
     missing_text_helper_calls = [
         marker for marker in required_text_helper_calls if marker not in txt_source
-    ]
-    required_error_helper_calls = [
-        "_write_error_file(config, base_name, f\"Error: {exc}\\nPartial response:\\n{pretext_result}\")",
-        "_write_error_file(",
-        "folder = config[\"WATCH_FOLDER\"]",
-        "sanitize_filename(marker) or 'unknown_model'",
-        "sanitize_filename(model) or \"unknown_model\"",
-        "_write_error_file(config, base, f\"Error: {e}\\n\")",
-        "_write_error_file(config, base_name, f\"Read error: {exc}\\n\", \"distill\")",
-        "_write_error_file(config, base_name, f\"LLM error ({distill_model}): {exc}\\n\", \"distill\")",
-    ]
-    missing_error_helper_calls = [
-        marker for marker in required_error_helper_calls if marker not in txt_source
     ]
 
     error_route_path_writes = []
@@ -1185,16 +1191,16 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
         if (
             ".error" in line
             and "logging.error" not in line
-            and not (error_helper_start <= index <= error_helper_end)
+            and not (save_error_start <= index <= save_error_end)
         ):
             error_route_path_writes.append(index)
 
     passed = (
         helper is not None
-        and error_helper is not None
+        and save_error_helper is not None
+        and error_helper_name not in txt_source
         and not direct_write_release_lines
         and not missing_text_helper_calls
-        and not missing_error_helper_calls
         and not error_route_path_writes
         and "_write_distill_error" not in txt_source
         and txt_source.count("release_text_file_permissions(") == 1
@@ -1207,9 +1213,9 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
             "helper_exists": helper is not None,
             "direct_write_release_lines": direct_write_release_lines,
             "missing_text_helper_calls": missing_text_helper_calls,
-            "missing_error_helper_calls": missing_error_helper_calls,
             "error_route_path_writes": error_route_path_writes,
-            "error_helper_exists": error_helper is not None,
+            "save_error_helper_exists": save_error_helper is not None,
+            "old_error_helper_present": error_helper_name in txt_source,
             "distill_error_helper_exists": "_write_distill_error" in txt_source,
             "release_calls": txt_source.count("release_text_file_permissions("),
         },
@@ -1301,66 +1307,100 @@ def test_write_text_file_helper_contract(test_id: str) -> tuple[bool, list[Path]
         txt_process_module.release_text_file_permissions = original_release
 
 
-def test_write_error_file_helper_contract(test_id: str) -> tuple[bool, list[Path]]:
-    base_name = f"{test_id}_write_error_helper"
-    default_error = PATHS.watch / f"{base_name}.error"
-    marked_error = PATHS.watch / f"{base_name}.bad model name.error"
-    fallback_error = PATHS.watch / f"{base_name}.unknown_model.error"
-    cleanup = [default_error, marked_error, fallback_error]
-    default_message = f"default error helper content {test_id}\n"
-    marked_message = f"marked error helper content {test_id}\n"
-    fallback_message = f"fallback error helper content {test_id}\n"
+def test_save_pipeline_error_helper_contract(test_id: str) -> tuple[bool, list[Path]]:
+    base_name = f"{test_id}_save_pipeline_error"
+    model = "bad\tmodel\nname"
+    model_marker = sanitize_filename(model)
+    model_error = PATHS.watch / f"{base_name}.{model_marker}.error"
+    stage_error = PATHS.watch / f"{base_name}.distill.error"
+    fallback_error = PATHS.watch / f"{base_name}.unknown.error"
+    cleanup = [model_error, stage_error, fallback_error]
 
     config = {**CONFIG, "WATCH_FOLDER": str(PATHS.watch)}
     original_sanitize = txt_process_module.sanitize_filename
 
     try:
-        returned_default = txt_process_module._write_error_file(
+        returned_model = txt_process_module.save_pipeline_error(
             config,
+            "extract",
             base_name,
-            default_message,
+            f"model error {test_id}",
+            filename=f"{base_name}_p.txt",
+            model=model,
+            partial=f"partial body {test_id}",
         )
-        returned_marked = txt_process_module._write_error_file(
+        returned_stage = txt_process_module.save_pipeline_error(
             config,
+            "distill",
             base_name,
-            marked_message,
-            "bad\tmodel\nname",
+            f"stage error {test_id}",
+            filename=base_name,
         )
         txt_process_module.sanitize_filename = lambda _marker: ""
-        returned_fallback = txt_process_module._write_error_file(
+        returned_fallback = txt_process_module.save_pipeline_error(
             config,
+            "fallback",
             base_name,
-            fallback_message,
-            "bad-marker",
+            f"fallback error {test_id}",
         )
     finally:
         txt_process_module.sanitize_filename = original_sanitize
 
-    default_text = default_error.read_text(encoding="utf-8") if default_error.exists() else ""
-    marked_text = marked_error.read_text(encoding="utf-8") if marked_error.exists() else ""
+    model_text = model_error.read_text(encoding="utf-8") if model_error.exists() else ""
+    stage_text = stage_error.read_text(encoding="utf-8") if stage_error.exists() else ""
     fallback_text = fallback_error.read_text(encoding="utf-8") if fallback_error.exists() else ""
+    expected_model_text = (
+        "Stage: extract\n"
+        f"File: {base_name}_p.txt\n"
+        f"Base: {base_name}\n"
+        f"Model: {model}\n"
+        f"Error: model error {test_id}\n"
+        "\n"
+        "Partial:\n"
+        f"partial body {test_id}\n"
+    )
+    expected_stage_text = (
+        "Stage: distill\n"
+        f"File: {base_name}\n"
+        f"Base: {base_name}\n"
+        "Model: \n"
+        f"Error: stage error {test_id}\n"
+    )
+    expected_fallback_text = (
+        "Stage: fallback\n"
+        "File: \n"
+        f"Base: {base_name}\n"
+        "Model: \n"
+        f"Error: fallback error {test_id}\n"
+    )
 
     passed = (
-        default_error.is_file()
-        and default_text == default_message
-        and Path(returned_default) == default_error
-        and marked_error.is_file()
-        and marked_text == marked_message
-        and Path(returned_marked) == marked_error
+        model_error.is_file()
+        and model_error.parent == PATHS.watch
+        and model_error.name == f"{base_name}.{model_marker}.error"
+        and model_text == expected_model_text
+        and Path(returned_model) == model_error
+        and stage_error.is_file()
+        and stage_error.parent == PATHS.watch
+        and stage_error.name == f"{base_name}.distill.error"
+        and stage_text == expected_stage_text
+        and Path(returned_stage) == stage_error
         and fallback_error.is_file()
-        and fallback_text == fallback_message
+        and fallback_error.parent == PATHS.watch
+        and fallback_error.name == f"{base_name}.unknown.error"
+        and fallback_text == expected_fallback_text
         and Path(returned_fallback) == fallback_error
     )
 
     print_result(
-        "write error file helper contract",
+        "save pipeline error helper contract",
         passed,
         {
-            "default_error": default_error,
-            "marked_error": marked_error,
+            "model_error": model_error,
+            "stage_error": stage_error,
             "fallback_error": fallback_error,
-            "returned_default": returned_default,
-            "returned_marked": returned_marked,
+            "returned_model": returned_model,
+            "returned_stage": returned_stage,
             "returned_fallback": returned_fallback,
         },
     )
@@ -1507,10 +1547,12 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
             if per_model_error.exists()
             else ""
         )
-        top_level_error_text = (
-            top_level_error.read_text(encoding="utf-8")
-            if top_level_error.exists()
-            else ""
+        expected_per_model_error_text = (
+            "Stage: extract\n"
+            f"File: {source.name}\n"
+            f"Base: {base_name}\n"
+            f"Model: {model}\n"
+            f"Error: mock extract failure {test_id}\n"
         )
 
         passed = (
@@ -1519,12 +1561,8 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
             and failed.is_file()
             and per_model_error.is_file()
             and per_model_error.name == f"{base_name}.{sanitize_filename(model)}.error"
-            and per_model_error_text == (
-                f"Model: {model}\nError: mock extract failure {test_id}\n"
-            )
-            and top_level_error.is_file()
-            and top_level_error.name == f"{base_name}.error"
-            and top_level_error_text == "Error: One or more extraction models failed\n"
+            and per_model_error_text == expected_per_model_error_text
+            and not top_level_error.exists()
         )
 
         print_result(
@@ -2058,12 +2096,19 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
         except RuntimeError:
             failure_raised = True
 
-        error_file = PATHS.watch / f"{fail_base}.distill.error"
+        error_file = PATHS.watch / f"{fail_base}.{sanitize_filename(model)}.error"
         cleanup.append(error_file)
 
         success_text = success_path.read_text(encoding="utf-8") if success_path.exists() else ""
         md_text = md_path.read_text(encoding="utf-8") if md_path.exists() else ""
         error_text = error_file.read_text(encoding="utf-8") if error_file.exists() else ""
+        expected_error_text = (
+            "Stage: distill\n"
+            f"File: {fail_base}\n"
+            f"Base: {fail_base}\n"
+            f"Model: {model}\n"
+            f"Error: mock distill failure {test_id}\n"
+        )
 
         passed = (
             success_path.is_file()
@@ -2074,8 +2119,8 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
             and skip_path is None
             and failure_raised
             and error_file.is_file()
-            and error_file.name == f"{fail_base}.distill.error"
-            and error_text == f"LLM error ({model}): mock distill failure {test_id}\n"
+            and error_file.name == f"{fail_base}.{sanitize_filename(model)}.error"
+            and error_text == expected_error_text
             and len(captured_llm_options) == 2
             and all(
                 options == txt_process_module._llm_call_options(config)
@@ -2115,9 +2160,10 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
     source = PATHS.extract_watch / f"{base_name}{extract_suffix}"
     good_output = PATHS.extract / f"{base_name}_{good_model}.txt"
     failed = PATHS.fail / source.name
+    bad_model_error = PATHS.watch / f"{base_name}.{sanitize_filename(bad_model)}.error"
     whisper_index = PATHS.obsidian / "Whisper 000000.md"
 
-    cleanup = [source, good_output, failed]
+    cleanup = [source, good_output, failed, bad_model_error]
 
     PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
     PATHS.extract.mkdir(parents=True, exist_ok=True)
@@ -2162,8 +2208,17 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
 
         output_text = good_output.read_text(encoding="utf-8") if good_output.exists() else ""
         note_text = note.read_text(encoding="utf-8") if note and note.exists() else ""
-        error_text = "\n".join(
-            path.read_text(encoding="utf-8") for path in error_files
+        bad_model_error_text = (
+            bad_model_error.read_text(encoding="utf-8")
+            if bad_model_error.exists()
+            else ""
+        )
+        expected_bad_model_error_text = (
+            "Stage: extract\n"
+            f"File: {source.name}\n"
+            f"Base: {base_name}\n"
+            f"Model: {bad_model}\n"
+            f"Error: mock partial failure {test_id}\n"
         )
 
         passed = (
@@ -2173,8 +2228,8 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
             and good_output.is_file()
             and f"mock partial success {test_id}" in output_text
             and f"mock partial success {test_id}" in note_text
-            and len(error_files) >= 2
-            and f"mock partial failure {test_id}" in error_text
+            and bad_model_error.is_file()
+            and bad_model_error_text == expected_bad_model_error_text
         )
 
         print_result(
@@ -2988,7 +3043,7 @@ def main() -> int:
             test_text_write_helper_cleanup_static,
             test_llm_call_options_defaults_and_overrides,
             test_write_text_file_helper_contract,
-            test_write_error_file_helper_contract,
+            test_save_pipeline_error_helper_contract,
             test_extract_full_process_writes_extract_markdown_and_archive,
             test_extract_failure_writes_error_and_moves_to_fail,
             test_text_worker_scans_route_text_inputs,
