@@ -125,7 +125,7 @@ def process_extract_file(config, file_path):
         route = "CORE" if classifier_result == "CORE" else "OTHER"
         if classifier_result not in ("CORE", "OTHER"):
             logging.info("Extract: Classifier returned %r for %s, route=OTHER", classifier_result, filename)
-        logging.info("Extract: Route %s for %s", route, filename)
+        logging.info("Extract: |%s| for %s", route, filename)
 
         payload = f"《{base}》\n{content}"
         md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(config, base, allow_existing=True)
@@ -164,9 +164,7 @@ def process_extract_file(config, file_path):
             except Exception:
                 failed_models.append(distill_model or "distill")
                 raise
-            logging.info(f"Extract: Completed for {filename} ")
-        else:
-            logging.info(f"Extract: Skipped for {filename} (MODEL_DISTILL disabled)")
+            logging.info(f"Extract: Completed for {filename} ") 
 
         os.makedirs(config["PRETEXT_DONE_FOLDER"], exist_ok=True)
         shutil.move(file_path, os.path.join(config["PRETEXT_DONE_FOLDER"], filename))
