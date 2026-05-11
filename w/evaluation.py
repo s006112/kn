@@ -26,7 +26,6 @@ import w.p_distill as distill_module
 from w.p_distill import _collect_extracts
 
 import w.p_extract as extract_module
-from w.p_extract import ExtractProcessor, PremiumExtractProcessor
 
 from w.p_torrent import (
     move_torrent_to_whisper,
@@ -788,6 +787,36 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
 
     return passed, cleanup
 
+
+def test_extract_module_function_boundary(test_id: str) -> tuple[bool, list[Path]]:
+    removed_names = {
+        "BaseExtractProcessor",
+        "ExtractProcessor",
+        "PremiumExtractProcessor",
+        "create_extract_processors",
+    }
+    exposed_removed = sorted(
+        name for name in removed_names if hasattr(extract_module, name)
+    )
+    passed = (
+        not exposed_removed
+        and hasattr(extract_module, "process_extract_file")
+        and hasattr(extract_module, "process_premium_extract_file")
+    )
+
+    print_result(
+        "extract module function boundary",
+        passed,
+        {
+            "exposed_removed": exposed_removed,
+            "has_extract_function": hasattr(extract_module, "process_extract_file"),
+            "has_premium_function": hasattr(extract_module, "process_premium_extract_file"),
+        },
+    )
+
+    return passed, []
+
+
 def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) -> tuple[bool, list[Path]]:
     extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
     base_name = f"{test_id}_extract_full"
@@ -823,8 +852,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
     try:
         extract_module.call_llm = lambda **_kwargs: f"mock extract result {test_id}"
 
-        processor = ExtractProcessor(config)
-        processor.process_extract(str(source), get_next_available_filename)
+        extract_module.process_extract_file(config, str(source), get_next_available_filename)
 
         notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
         note = notes[-1] if notes else None
@@ -896,11 +924,9 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
 
         extract_module.call_llm = fail_call_llm
 
-        processor = ExtractProcessor(config)
-
         raised = False
         try:
-            processor.process_extract(str(source), get_next_available_filename)
+            extract_module.process_extract_file(config, str(source), get_next_available_filename)
         except RuntimeError:
             raised = True
 
@@ -969,8 +995,7 @@ def test_premium_extract_full_process_archives_to_archive_folder(test_id: str) -
     try:
         extract_module.call_llm = lambda **_kwargs: f"mock premium extract result {test_id}"
 
-        processor = PremiumExtractProcessor(config)
-        processor.process_premium_extract(str(source), get_next_available_filename)
+        extract_module.process_premium_extract_file(config, str(source), get_next_available_filename)
 
         notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
         note = notes[-1] if notes else None
@@ -1607,11 +1632,9 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
 
         extract_module.call_llm = fake_call_llm
 
-        processor = ExtractProcessor(config)
-
         raised = False
         try:
-            processor.process_extract(str(source), get_next_available_filename)
+            extract_module.process_extract_file(config, str(source), get_next_available_filename)
         except RuntimeError:
             raised = True
 
@@ -2445,6 +2468,7 @@ def main() -> int:
             test_pretext_full_process_writes_pretext_markdown_and_archive,
             test_distill_collects_extract_outputs,
             test_extract_worker_scan_queues_candidate_once,
+            test_extract_module_function_boundary,
             test_extract_full_process_writes_extract_markdown_and_archive,
             test_extract_failure_writes_error_and_moves_to_fail,
             test_premium_extract_full_process_archives_to_archive_folder,

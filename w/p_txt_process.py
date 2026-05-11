@@ -8,7 +8,8 @@ from queue import Queue
 from helper.helper_llm import LLMPermanentFailure
 from w.helper_files import get_next_available_filename
 from w.p_extract import (
-    create_extract_processors,
+    process_extract_file,
+    process_premium_extract_file,
     scan_extract_files,
     scan_premium_extract_files,
 )
@@ -87,14 +88,13 @@ def start_text_processing(config, shutdown_flag):
     premium_extract_queue = Queue()
     processed_files_global = set()
     processed_files_lock = threading.Lock()
-    extract_processor, premium_extract_processor = create_extract_processors(config)
 
     threads = {
         name: threading.Thread(target=target, args=args, daemon=True, name=name)
         for enabled, name, target, args in [
             (config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_queue, (config, pretext_queue, lambda path, _next: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_pretext_files, shutdown_flag, config, pretext_queue, processed_files_global, processed_files_lock)),
-            (config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_queue, (config, extract_queue, extract_processor.process_extract, "process_extract", scan_extract_files, shutdown_flag, config, extract_queue)),
-            (config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_queue, (config, premium_extract_queue, premium_extract_processor.process_premium_extract, "process_premium_extract", scan_premium_extract_files, shutdown_flag, config, premium_extract_queue)),
+            (config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_queue, (config, extract_queue, lambda path, _next: process_extract_file(config, path, _next), "process_extract", scan_extract_files, shutdown_flag, config, extract_queue)),
+            (config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_queue, (config, premium_extract_queue, lambda path, _next: process_premium_extract_file(config, path, _next), "process_premium_extract", scan_premium_extract_files, shutdown_flag, config, premium_extract_queue)),
         ]
         if enabled
     }
