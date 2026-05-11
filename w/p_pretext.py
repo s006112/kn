@@ -28,7 +28,6 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from helper.helper_llm import call_llm
-from . import p_pipelines as pipelines
 from .helper_files import read_file_with_encodings, release_text_file_permissions, safe_rename
 from .helper_md import write_pretext_markdown
 from .helper_text import chunk_text, intelligent_merge_chunks, sanitize_and_trim_filename
@@ -152,11 +151,6 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
         raise
     finally:
         release_pretext_request(processed_files, processed_files_lock, normalized_path)
-
-
-def process_pretext_queue(runtime) -> None:
-    pipelines.process_queue(runtime, runtime.pretext_queue, lambda path, _next: process_pretext_file(runtime.config, path, runtime.processed_files_global, runtime.processed_files_lock), "process_pretext", scan_pretext_files)
-
 
 def scan_pretext_files(runtime) -> None:
     pretext_watch_folder = os.fspath(runtime.config["PRETEXT_WATCH_FOLDER"])

@@ -16,6 +16,7 @@ if str(ROOT_DIR) not in sys.path:
 
 import w.p as orchestrator_module
 from w.p import CONFIG
+pipelines = orchestrator_module
 
 import w.p_audio as audio_module
 from w.p_audio import move_files_to_done, scan_audio_files
@@ -26,7 +27,6 @@ from w.p_distill import _collect_extracts
 import w.p_extract as extract_module
 from w.p_extract import ExtractProcessor, PremiumExtractProcessor
 
-import w.p_pipelines as pipelines
 from w.p_torrent import (
     move_torrent_to_whisper,
     scan_torrent_watch_folder,
@@ -1140,18 +1140,31 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
     extract.write_text(f"periodic scan extract {test_id}\n", encoding="utf-8")
     premium.write_text(f"periodic scan premium {test_id}\n", encoding="utf-8")
 
-    runtime = pipelines.create_runtime(CONFIG)
+    config = {
+        **CONFIG,
+        "PIPELINES": {
+            **CONFIG["PIPELINES"],
+            "TORRENT": False,
+            "TTML": False,
+            "AUDIO": False,
+            "WIKI": False,
+            "YTD": False,
+        },
+    }
+
+    runtime = pipelines.create_runtime(config)
     captured: dict[str, object] = {}
     original_process_queue = pipelines.process_queue
+    threads = {}
 
     try:
         def fake_process_queue(_ctx, _queue, _process, method_name, scan_files=None):
             captured[method_name] = scan_files
 
         pipelines.process_queue = fake_process_queue
-        pretext_module.process_pretext_queue(runtime)
-        extract_module.process_extract_queue(runtime, ExtractProcessor(CONFIG))
-        extract_module.process_premium_extract_queue(runtime, PremiumExtractProcessor(CONFIG))
+        threads = orchestrator_module.start_runtime(runtime)
+        for thread in threads.values():
+            thread.join(timeout=1)
     finally:
         pipelines.process_queue = original_process_queue
 
@@ -1160,6 +1173,11 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
             "process_pretext": pretext_module.scan_pretext_files,
             "process_extract": extract_module.scan_extract_files,
             "process_premium_extract": extract_module.scan_premium_extract_files,
+        }
+        and set(threads) == {
+            "TextPipeline-Pretext",
+            "TextPipeline-Extract",
+            "TextPipeline-PremiumExtract",
         }
         and runtime.pretext_queue.empty()
         and runtime.extract_queue.empty()
@@ -2189,12 +2207,14 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         started_workers.add(threading.current_thread().name)
         runtime.shutdown_flag.wait(5)
 
+    def fake_queue_worker(runtime, _queue, _process, _method_name, scan_files=None) -> None:
+        started_workers.add(threading.current_thread().name)
+        runtime.shutdown_flag.wait(5)
+
     original_values = {
         "process_torrent_pipeline": orchestrator_module.process_torrent_pipeline,
         "process_ttml_pipeline": orchestrator_module.process_ttml_pipeline,
-        "process_pretext_queue": orchestrator_module.process_pretext_queue,
-        "process_extract_queue": orchestrator_module.process_extract_queue,
-        "process_premium_extract_queue": orchestrator_module.process_premium_extract_queue,
+        "process_queue": orchestrator_module.process_queue,
         "process_audio_pipeline": orchestrator_module.process_audio_pipeline,
         "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
         "process_ytd_pipeline": orchestrator_module.process_ytd_pipeline,
@@ -2206,9 +2226,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
     try:
         orchestrator_module.process_torrent_pipeline = fake_worker
         orchestrator_module.process_ttml_pipeline = fake_worker
-        orchestrator_module.process_pretext_queue = fake_worker
-        orchestrator_module.process_extract_queue = fake_worker
-        orchestrator_module.process_premium_extract_queue = fake_worker
+        orchestrator_module.process_queue = fake_queue_worker
         orchestrator_module.process_audio_pipeline = fake_worker
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_ytd_pipeline = fake_worker
@@ -2261,9 +2279,7 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
 
         orchestrator_module.process_torrent_pipeline = original_values["process_torrent_pipeline"]
         orchestrator_module.process_ttml_pipeline = original_values["process_ttml_pipeline"]
-        orchestrator_module.process_pretext_queue = original_values["process_pretext_queue"]
-        orchestrator_module.process_extract_queue = original_values["process_extract_queue"]
-        orchestrator_module.process_premium_extract_queue = original_values["process_premium_extract_queue"]
+        orchestrator_module.process_queue = original_values["process_queue"]
         orchestrator_module.process_audio_pipeline = original_values["process_audio_pipeline"]
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
         orchestrator_module.process_ytd_pipeline = original_values["process_ytd_pipeline"]
@@ -2311,12 +2327,14 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         started_workers.add(threading.current_thread().name)
         runtime.shutdown_flag.wait(5)
 
+    def fake_queue_worker(runtime, _queue, _process, _method_name, scan_files=None) -> None:
+        started_workers.add(threading.current_thread().name)
+        runtime.shutdown_flag.wait(5)
+
     original_values = {
         "process_torrent_pipeline": orchestrator_module.process_torrent_pipeline,
         "process_ttml_pipeline": orchestrator_module.process_ttml_pipeline,
-        "process_pretext_queue": orchestrator_module.process_pretext_queue,
-        "process_extract_queue": orchestrator_module.process_extract_queue,
-        "process_premium_extract_queue": orchestrator_module.process_premium_extract_queue,
+        "process_queue": orchestrator_module.process_queue,
         "process_audio_pipeline": orchestrator_module.process_audio_pipeline,
         "process_wikilink_cleaning": orchestrator_module.process_wikilink_cleaning,
         "process_ytd_pipeline": orchestrator_module.process_ytd_pipeline,
@@ -2328,9 +2346,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
     try:
         orchestrator_module.process_torrent_pipeline = fake_worker
         orchestrator_module.process_ttml_pipeline = fake_worker
-        orchestrator_module.process_pretext_queue = fake_worker
-        orchestrator_module.process_extract_queue = fake_worker
-        orchestrator_module.process_premium_extract_queue = fake_worker
+        orchestrator_module.process_queue = fake_queue_worker
         orchestrator_module.process_audio_pipeline = fake_worker
         orchestrator_module.process_wikilink_cleaning = fake_worker
         orchestrator_module.process_ytd_pipeline = fake_worker
@@ -2402,9 +2418,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
 
         orchestrator_module.process_torrent_pipeline = original_values["process_torrent_pipeline"]
         orchestrator_module.process_ttml_pipeline = original_values["process_ttml_pipeline"]
-        orchestrator_module.process_pretext_queue = original_values["process_pretext_queue"]
-        orchestrator_module.process_extract_queue = original_values["process_extract_queue"]
-        orchestrator_module.process_premium_extract_queue = original_values["process_premium_extract_queue"]
+        orchestrator_module.process_queue = original_values["process_queue"]
         orchestrator_module.process_audio_pipeline = original_values["process_audio_pipeline"]
         orchestrator_module.process_wikilink_cleaning = original_values["process_wikilink_cleaning"]
         orchestrator_module.process_ytd_pipeline = original_values["process_ytd_pipeline"]

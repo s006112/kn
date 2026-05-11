@@ -6,8 +6,7 @@ Used by:
 * w/p_audio.py
 * w/p_distill.py
 * w/p_extract.py
-* p.py
-* w/p_pipelines.py
+* w/p.py
 * w/p_pretext.py
 * w/p_ttml.py
 * w/helper_md.py

@@ -3,21 +3,24 @@ from __future__ import annotations
 import logging
 import sys
 import threading
+import time
 from pathlib import Path
+from queue import Queue
+from types import SimpleNamespace
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from w.helper_files import configure_logging
+from helper.helper_llm import LLMPermanentFailure
+from w.helper_files import configure_logging, get_next_available_filename
 from w.p_audio import process_audio_pipeline
 from w.p_extract import (
     create_extract_processors,
-    process_extract_queue,
-    process_premium_extract_queue,
+    scan_extract_files,
+    scan_premium_extract_files,
 )
-from w.p_pipelines import create_runtime
-from w.p_pretext import process_pretext_queue
+from w.p_pretext import process_pretext_file, scan_pretext_files
 from w.p_torrent import process_torrent_pipeline
 from w.p_ttml import process_ttml_pipeline
 from w.p_wiki import process_wikilink_cleaning
@@ -80,6 +83,83 @@ CONFIG = {
     "DISTILL_PROMPT": (ROOT_DIR / "prompt" / "prompt_distill.txt").read_text(encoding="utf-8").strip(),
 }
 
+_file_locks = {}
+_file_locks_mutex = threading.Lock()
+
+
+def create_runtime(config):
+    return SimpleNamespace(
+        config=config,
+        pretext_queue=Queue(),
+        extract_queue=Queue(),
+        premium_extract_queue=Queue(),
+        audio_queue=Queue(),
+        ttml_queue=Queue(),
+        text_processing_lock=threading.Lock(),
+        audio_processing_lock=threading.Lock(),
+        processed_files_global=set(),
+        processed_files_lock=threading.Lock(),
+        wikilink_cleaning_stats={"last_run": None, "cycle_count": 0},
+        shutdown_flag=threading.Event(),
+    )
+
+
+def process_queue(runtime, queue, process, method_name, scan_files=None):
+    intervals = runtime.config.get("INTERVALS", {})
+    wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
+    scan_seconds = intervals.get("SCAN_SECONDS", 60)
+    next_scan = time.monotonic()
+
+    while True:
+        if scan_files and time.monotonic() >= next_scan:
+            try:
+                scan_files(runtime)
+            except Exception as e:
+                logging.error("%s scan error: %s", method_name, e)
+            next_scan = time.monotonic() + scan_seconds
+
+        if queue.empty():
+            time.sleep(wait_seconds)
+            continue
+
+        file_path = queue.get()
+        locked = False
+
+        try:
+            with _file_locks_mutex:
+                lock = _file_locks.setdefault(file_path, threading.Lock())
+
+            locked = lock.acquire(blocking=False)
+
+            if not locked:
+                queue.put(file_path)
+            else:
+                try:
+                    process(file_path, get_next_available_filename)
+                except LLMPermanentFailure as e:
+                    logging.error(
+                        "Resilient Queue: OpenAI API permanent failure for file %s "
+                        "(model: %s): %s",
+                        e.file_path,
+                        e.model,
+                        e.reason,
+                    )
+                except Exception as e:
+                    logging.error("%s queue error: %s", method_name, e)
+
+        except Exception as e:
+            logging.error("%s queue error: %s", method_name, e)
+
+        finally:
+            if locked:
+                with _file_locks_mutex:
+                    _file_locks.pop(file_path, None)
+                lock.release()
+
+            queue.task_done()
+
+        time.sleep(wait_seconds)
+
 
 def start_runtime(runtime) -> dict[str, threading.Thread]:
     extract_processor, premium_extract_processor = create_extract_processors(runtime)
@@ -88,9 +168,47 @@ def start_runtime(runtime) -> dict[str, threading.Thread]:
         for enabled, name, target, args in [
             (runtime.config["PIPELINES"]["TORRENT"], "TorrentPipeline", process_torrent_pipeline, (runtime,)),
             (runtime.config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (runtime,)),
-            (runtime.config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", process_pretext_queue, (runtime,)),
-            (runtime.config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", process_extract_queue, (runtime, extract_processor)),
-            (runtime.config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", process_premium_extract_queue, (runtime, premium_extract_processor)),
+            (
+                runtime.config["PIPELINES"]["PRETEXT"],
+                "TextPipeline-Pretext",
+                lambda runtime: process_queue(
+                    runtime,
+                    runtime.pretext_queue,
+                    lambda path, _next: process_pretext_file(
+                        runtime.config,
+                        path,
+                        runtime.processed_files_global,
+                        runtime.processed_files_lock,
+                    ),
+                    "process_pretext",
+                    scan_pretext_files,
+                ),
+                (runtime,),
+            ),
+            (
+                runtime.config["PIPELINES"]["EXTRACT"],
+                "TextPipeline-Extract",
+                lambda runtime, processor: process_queue(
+                    runtime,
+                    runtime.extract_queue,
+                    processor.process_extract,
+                    "process_extract",
+                    scan_extract_files,
+                ),
+                (runtime, extract_processor),
+            ),
+            (
+                runtime.config["PIPELINES"]["EXTRACT"],
+                "TextPipeline-PremiumExtract",
+                lambda runtime, processor: process_queue(
+                    runtime,
+                    runtime.premium_extract_queue,
+                    processor.process_premium_extract,
+                    "process_premium_extract",
+                    scan_premium_extract_files,
+                ),
+                (runtime, premium_extract_processor),
+            ),
             (runtime.config["PIPELINES"]["AUDIO"], "AudioPipeline-GPU", process_audio_pipeline, (runtime,)),
             (runtime.config["PIPELINES"]["WIKI"], "WikilinkCleaner", process_wikilink_cleaning, (runtime,)),
             (runtime.config["PIPELINES"]["YTD"], "YTDPipeline", process_ytd_pipeline, (runtime,)),

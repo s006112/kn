@@ -20,7 +20,6 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from . import p_pipelines as pipelines
 from .p_distill import run_distillation
 from .helper_files import (
     release_text_file_permissions,
@@ -232,17 +231,6 @@ def create_extract_processors(runtime):
     extract_processor = ExtractProcessor(runtime.config)
     premium_extract_processor = PremiumExtractProcessor(runtime.config)
     return extract_processor, premium_extract_processor
-
-
-def process_extract_queue(runtime, processor: ExtractProcessor) -> None:
-    pipelines.process_queue(runtime, runtime.extract_queue, processor.process_extract, "process_extract", scan_extract_files)
-
-
-def process_premium_extract_queue(
-    runtime, processor: PremiumExtractProcessor
-) -> None:
-    pipelines.process_queue(runtime, runtime.premium_extract_queue, processor.process_premium_extract, "process_premium_extract", scan_premium_extract_files)
-
 
 def scan_extract_files(runtime) -> None:
     extract_watch_folder = os.fspath(runtime.config["EXTRACT_WATCH_FOLDER"])

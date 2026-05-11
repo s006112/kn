@@ -6,7 +6,7 @@ Converts TTML or plain subtitle files into pretext text files and archives the o
 
 Used by:
 * w/evaluation.py
-* w/p_pipelines.py
+* w/p.py
 
 Pipelines:
 - scanner -> ttml queue -> readiness -> conversion -> text_file -> archive
