@@ -116,7 +116,7 @@ def process_extract_file(config, file_path, get_next_available_filename):
     filename_lower = filename.lower()
     matched_suffix = next((s for s in sorted(suffixes, key=len, reverse=True) if filename_lower.endswith(s)), None)
     base = filename[: -len(matched_suffix)] if matched_suffix else os.path.splitext(filename)[0]
-    error_recorded = False
+    failed_models = []
 
     try:
         logging.info(f"Extract: Start {filename}")
@@ -130,9 +130,7 @@ def process_extract_file(config, file_path, get_next_available_filename):
         else:
             md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(config, base, allow_existing=True)
 
-        any_success = False
-        any_failure = False
-
+        extract_count = 0
         for model in config.get("MODEL_EXTRACT_MATRIX", {}).get("EXTRACT_WATCH_FOLDER", []):
             if not model:
                 logging.info("Extract: Skipping model entry (not configured)")
@@ -140,21 +138,17 @@ def process_extract_file(config, file_path, get_next_available_filename):
 
             try:
                 result = call_llm(model=model, system_prompt=config["EXTRACT_PROMPT"], user_text=payload, file_path=file_path, **llm_call_options(config))
-
                 os.makedirs(config["EXTRACT_FOLDER"], exist_ok=True)
                 save_path = get_next_available_filename(config["EXTRACT_FOLDER"], base, f"_{sanitize_filename(model)}")
                 write_text_file(save_path, result)
-
-                merge_to_markdown(md_path, [result], "", [f"{model} "], whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"), whisper_link_name=link_name, md_is_new=(md_is_new_seed and not any_success))
-                any_success = True
+                merge_to_markdown(md_path, [result], "", [f"{model} "], whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"), whisper_link_name=link_name, md_is_new=(md_is_new_seed and extract_count == 0))
+                extract_count += 1
                 logging.info(f"Extract: {filename} ({model} : {len(result):,})")
-
             except Exception as exc:
-                any_failure = True
-                error_recorded = True
+                failed_models.append(model)
                 save_pipeline_error(config, "extract", base, exc, filename=filename, model=model)
 
-        if any_failure:
+        if failed_models:
             raise RuntimeError("One or more extraction models failed")
 
         distill_model = (config.get("MODEL_DISTILL") or "").strip()
@@ -163,7 +157,7 @@ def process_extract_file(config, file_path, get_next_available_filename):
             try:
                 run_distillation(config, base_name=base, md_path=md_path)
             except Exception:
-                error_recorded = True
+                failed_models.append(distill_model or "distill")
                 raise
             logging.info(f"Extract: Completed for {filename} ")
         else:
@@ -177,7 +171,7 @@ def process_extract_file(config, file_path, get_next_available_filename):
         if isinstance(exc, FileNotFoundError) or not os.path.exists(file_path):
             return
 
-        if not error_recorded:
+        if not failed_models:
             save_pipeline_error(config, "extract", base, exc, filename=filename, model="extract")
 
         try:
@@ -235,11 +229,7 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
             logging.info("Distillation: No extracts found for %s, skipping", base_name)
             return None
 
-        payload = [
-            f"《{base_name}》",
-            "Below are outputs from multiple expert extraction models for the same source. "
-            "Please distill them into one final, coherent result according to the system instructions.",
-        ]
+        payload = [f"《{base_name}》", "Below are outputs from multiple expert extraction models for the same source. Please distill them into one final, coherent result according to the system instructions."]
         for label, content, path in extracts:
             payload += [f"--- {label} ({os.path.basename(path)}) ---", content.strip()]
 
