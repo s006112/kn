@@ -1015,6 +1015,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
     forbidden_text_wiring = sorted(
         marker for marker in forbidden_text_wiring_markers if marker in txt_source
     )
+    hardcoded_desktop = "/desktop" in txt_source
     call_llm_nodes = [
         node
         for node in ast.walk(txt_tree)
@@ -1047,6 +1048,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         and not missing_required
         and not text_process_classes
         and not forbidden_text_wiring
+        and not hardcoded_desktop
         and call_llm_nodes
         and all(call_llm_uses_helper)
         and not inline_llm_option_keywords
@@ -1072,6 +1074,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
             "missing_required": missing_required,
             "text_process_classes": text_process_classes,
             "forbidden_text_wiring": forbidden_text_wiring,
+            "hardcoded_desktop": hardcoded_desktop,
             "call_llm_uses_helper": call_llm_uses_helper,
             "inline_llm_option_keywords": inline_llm_option_keywords,
             "text_process_exists": text_process_path.exists(),
@@ -1082,6 +1085,21 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
             "forbidden_p_imports": forbidden_p_imports,
             "forbidden_removed_imports": forbidden_removed_imports,
         },
+    )
+
+    return passed, []
+
+
+def test_text_process_compression_line_count(test_id: str) -> tuple[bool, list[Path]]:
+    text_process_path = ROOT_DIR / "w" / "p_txt_process.py"
+    line_count = len(text_process_path.read_text(encoding="utf-8").splitlines())
+    max_lines = 500
+    passed = line_count <= max_lines
+
+    print_result(
+        "text process compression line count",
+        passed,
+        {"line_count": line_count, "max_lines": max_lines, "baseline": 636},
     )
 
     return passed, []
@@ -1116,6 +1134,16 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
                 and not (helper_start <= index <= helper_end)
             ):
                 direct_write_release_lines.append(index)
+    error_helper = next(
+        (
+            node
+            for node in txt_tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_write_error_file"
+        ),
+        None,
+    )
+    error_helper_start = error_helper.lineno if error_helper else 0
+    error_helper_end = error_helper.end_lineno if error_helper else 0
 
     required_text_helper_calls = [
         "_write_text_file(pretext_target_path, pretext_result)",
@@ -1129,6 +1157,8 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
     required_error_helper_calls = [
         "_write_error_file(config, base_name, f\"Error: {exc}\\nPartial response:\\n{pretext_result}\")",
         "_write_error_file(",
+        "folder = config[\"WATCH_FOLDER\"]",
+        "sanitize_filename(marker) or 'unknown_model'",
         "sanitize_filename(model) or \"unknown_model\"",
         "_write_error_file(config, base, f\"Error: {e}\\n\")",
         "_write_error_file(config, base_name, f\"Read error: {exc}\\n\", \"distill\")",
@@ -1140,16 +1170,16 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
 
     error_route_path_writes = []
     for index, line in enumerate(lines, 1):
-        if ".error" in line and (
-            "PRETEXT_WATCH_FOLDER" in line
-            or "EXTRACT_FOLDER" in line
-            or "EXTRACT_WATCH_FOLDER" in line
-            or "PREMIUM_WATCH_FOLDER" in line
+        if (
+            ".error" in line
+            and "logging.error" not in line
+            and not (error_helper_start <= index <= error_helper_end)
         ):
             error_route_path_writes.append(index)
 
     passed = (
         helper is not None
+        and error_helper is not None
         and not direct_write_release_lines
         and not missing_text_helper_calls
         and not missing_error_helper_calls
@@ -1167,6 +1197,7 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
             "missing_text_helper_calls": missing_text_helper_calls,
             "missing_error_helper_calls": missing_error_helper_calls,
             "error_route_path_writes": error_route_path_writes,
+            "error_helper_exists": error_helper is not None,
             "distill_error_helper_exists": "_write_distill_error" in txt_source,
             "release_calls": txt_source.count("release_text_file_permissions("),
         },
@@ -1262,26 +1293,40 @@ def test_write_error_file_helper_contract(test_id: str) -> tuple[bool, list[Path
     base_name = f"{test_id}_write_error_helper"
     default_error = PATHS.watch / f"{base_name}.error"
     marked_error = PATHS.watch / f"{base_name}.bad model name.error"
-    cleanup = [default_error, marked_error]
+    fallback_error = PATHS.watch / f"{base_name}.unknown_model.error"
+    cleanup = [default_error, marked_error, fallback_error]
     default_message = f"default error helper content {test_id}\n"
     marked_message = f"marked error helper content {test_id}\n"
+    fallback_message = f"fallback error helper content {test_id}\n"
 
     config = {**CONFIG, "WATCH_FOLDER": str(PATHS.watch)}
+    original_sanitize = txt_process_module.sanitize_filename
 
-    returned_default = txt_process_module._write_error_file(
-        config,
-        base_name,
-        default_message,
-    )
-    returned_marked = txt_process_module._write_error_file(
-        config,
-        base_name,
-        marked_message,
-        "bad\tmodel\nname",
-    )
+    try:
+        returned_default = txt_process_module._write_error_file(
+            config,
+            base_name,
+            default_message,
+        )
+        returned_marked = txt_process_module._write_error_file(
+            config,
+            base_name,
+            marked_message,
+            "bad\tmodel\nname",
+        )
+        txt_process_module.sanitize_filename = lambda _marker: ""
+        returned_fallback = txt_process_module._write_error_file(
+            config,
+            base_name,
+            fallback_message,
+            "bad-marker",
+        )
+    finally:
+        txt_process_module.sanitize_filename = original_sanitize
 
     default_text = default_error.read_text(encoding="utf-8") if default_error.exists() else ""
     marked_text = marked_error.read_text(encoding="utf-8") if marked_error.exists() else ""
+    fallback_text = fallback_error.read_text(encoding="utf-8") if fallback_error.exists() else ""
 
     passed = (
         default_error.is_file()
@@ -1290,6 +1335,9 @@ def test_write_error_file_helper_contract(test_id: str) -> tuple[bool, list[Path
         and marked_error.is_file()
         and marked_text == marked_message
         and Path(returned_marked) == marked_error
+        and fallback_error.is_file()
+        and fallback_text == fallback_message
+        and Path(returned_fallback) == fallback_error
     )
 
     print_result(
@@ -1298,8 +1346,10 @@ def test_write_error_file_helper_contract(test_id: str) -> tuple[bool, list[Path
         {
             "default_error": default_error,
             "marked_error": marked_error,
+            "fallback_error": fallback_error,
             "returned_default": returned_default,
             "returned_marked": returned_marked,
+            "returned_fallback": returned_fallback,
         },
     )
 
@@ -3037,6 +3087,7 @@ def main() -> int:
             test_distillation_read_error_writes_watch_marker,
             test_extract_worker_scan_queues_candidate_once,
             test_text_process_module_function_boundary,
+            test_text_process_compression_line_count,
             test_text_write_helper_cleanup_static,
             test_llm_call_options_defaults_and_overrides,
             test_write_text_file_helper_contract,
