@@ -777,8 +777,8 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
     ignored.write_text(f"wrong folder candidate {test_id}\n", encoding="utf-8")
 
     runtime = pipelines.create_runtime(CONFIG)
-    pipelines.scan_extract_files(runtime)
-    pipelines.scan_extract_files(runtime)
+    extract_module.scan_extract_files(runtime)
+    extract_module.scan_extract_files(runtime)
 
     queued_paths = list(runtime.extract_queue.queue)
 
@@ -1045,9 +1045,9 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
     premium.write_text(f"startup scan premium {test_id}\n", encoding="utf-8")
 
     runtime = pipelines.create_runtime(CONFIG)
-    pipelines.scan_pretext_files(runtime)
-    pipelines.scan_extract_files(runtime)
-    pipelines.scan_premium_extract_files(runtime)
+    pretext_module.scan_pretext_files(runtime)
+    extract_module.scan_extract_files(runtime)
+    extract_module.scan_premium_extract_files(runtime)
 
     pretext_paths = list(runtime.pretext_queue.queue)
     extract_paths = list(runtime.extract_queue.queue)
@@ -1149,17 +1149,17 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
             captured[method_name] = scan_files
 
         pipelines.process_queue = fake_process_queue
-        pipelines.process_pretext_queue(runtime)
-        pipelines.process_extract_queue(runtime, ExtractProcessor(CONFIG))
-        pipelines.process_premium_extract_queue(runtime, PremiumExtractProcessor(CONFIG))
+        pretext_module.process_pretext_queue(runtime)
+        extract_module.process_extract_queue(runtime, ExtractProcessor(CONFIG))
+        extract_module.process_premium_extract_queue(runtime, PremiumExtractProcessor(CONFIG))
     finally:
         pipelines.process_queue = original_process_queue
 
     passed = (
         captured == {
-            "process_pretext": pipelines.scan_pretext_files,
-            "process_extract": pipelines.scan_extract_files,
-            "process_premium_extract": pipelines.scan_premium_extract_files,
+            "process_pretext": pretext_module.scan_pretext_files,
+            "process_extract": extract_module.scan_extract_files,
+            "process_premium_extract": extract_module.scan_premium_extract_files,
         }
         and runtime.pretext_queue.empty()
         and runtime.extract_queue.empty()

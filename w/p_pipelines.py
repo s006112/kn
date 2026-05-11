@@ -1,35 +1,17 @@
-""" p_pipelines.py -
-Runtime factory, queue workers, scanners, and shared file locks.
-
-Used by:
-- p.py
-
-Flows:
-- create_runtime(config) -> queues, locks, stats, shutdown flag
-- pretext scanner -> pretext queue -> file lock -> pretext processor
-- extract scanner -> extract queue -> file lock -> extract processor
-- premium scanner -> premium extract queue -> file lock -> premium processor
-- shared lock helpers -> acquire / release / cleanup by path
-"""
-
 import logging
-import os
 import threading
 import time
 from queue import Queue
 from types import SimpleNamespace
-from typing import Any, Callable, Dict
 
-from .p_pretext import process_pretext_file, request_pretext_processing
-from .p_extract import ExtractProcessor, PremiumExtractProcessor
-from .helper_files import get_next_available_filename, safe_rename
-from .helper_text import sanitize_and_trim_filename
+from .helper_files import get_next_available_filename
 from helper.helper_llm import LLMPermanentFailure
 
-_file_locks: Dict[str, threading.Lock] = {}
+_file_locks: dict[str, threading.Lock] = {}
 _file_locks_mutex = threading.Lock()
 
-def create_runtime(config: dict[str, Any]) -> SimpleNamespace:
+
+def create_runtime(config):
     return SimpleNamespace(
         config=config,
         pretext_queue=Queue(),
@@ -45,8 +27,8 @@ def create_runtime(config: dict[str, Any]) -> SimpleNamespace:
         shutdown_flag=threading.Event(),
     )
 
-def acquire_file_lock(file_path: str) -> bool:
-    """Acquire a non-blocking in-process lock for `file_path`."""
+
+def acquire_file_lock(file_path):
     with _file_locks_mutex:
         if file_path not in _file_locks:
             _file_locks[file_path] = threading.Lock()
@@ -54,45 +36,31 @@ def acquire_file_lock(file_path: str) -> bool:
     return registered_lock.acquire(blocking=False)
 
 
-def release_file_lock(file_path: str) -> None:
-    """Release the registered lock for `file_path` when present."""
+def release_file_lock(file_path):
     with _file_locks_mutex:
         if file_path in _file_locks:
             _file_locks[file_path].release()
 
 
-def cleanup_file_lock(file_path: str) -> None:
-    """Remove the registered lock entry for `file_path` when present."""
+def cleanup_file_lock(file_path):
     with _file_locks_mutex:
-        if file_path in _file_locks:
-            del _file_locks[file_path]
+        _file_locks.pop(file_path, None)
 
 
-def get_file_lock_functions() -> Dict[str, Callable[[str], Any]]:
-    """Return the file-lock operation mapping used by integration points."""
+def get_file_lock_functions():
     return {
         "acquire": acquire_file_lock,
         "release": release_file_lock,
         "cleanup": cleanup_file_lock,
     }
 
-def create_extract_processors(runtime):
-    extract_processor = ExtractProcessor(runtime.config)
-    premium_extract_processor = PremiumExtractProcessor(runtime.config)
-    return extract_processor, premium_extract_processor
 
-def enqueue_if_absent(queue: Queue, path: str) -> None:
+def enqueue_if_absent(queue, path):
     if path not in list(queue.queue):
         queue.put(path)
 
 
-def process_queue(
-    runtime,
-    queue: Queue,
-    process: Callable[[str, Callable[..., str]], None],
-    method_name: str,
-    scan_files: Callable[[Any], None] | None = None,
-) -> None:
+def process_queue(runtime, queue, process, method_name, scan_files=None):
     intervals = runtime.config.get("INTERVALS", {})
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
     scan_seconds = intervals.get("SCAN_SECONDS", 60)
@@ -138,77 +106,3 @@ def process_queue(
             queue.task_done()
 
         time.sleep(wait_seconds)
-
-
-def process_pretext_queue(runtime) -> None:
-    process_queue(runtime, runtime.pretext_queue, lambda path, _next: process_pretext_file(runtime.config, path, runtime.processed_files_global, runtime.processed_files_lock), "process_pretext", scan_pretext_files)
-
-
-def process_extract_queue(runtime, processor: ExtractProcessor) -> None:
-    process_queue(runtime, runtime.extract_queue, processor.process_extract, "process_extract", scan_extract_files)
-
-
-def process_premium_extract_queue(
-    runtime, processor: PremiumExtractProcessor
-) -> None:
-    process_queue(runtime, runtime.premium_extract_queue, processor.process_premium_extract, "process_premium_extract", scan_premium_extract_files)
-
-
-def scan_pretext_files(runtime) -> None:
-    pretext_watch_folder = os.fspath(runtime.config["PRETEXT_WATCH_FOLDER"])
-    pretext_suffix = str(runtime.config["PRETEXT_SUFFIX"]).lower()
-    extract_suffixes = tuple(
-        str(s).lower() for s in runtime.config["EXTRACT_SUFFIX"] if str(s)
-    )
-
-    for filename in os.listdir(pretext_watch_folder):
-        filename_lower = filename.lower()
-        if not filename_lower.endswith(pretext_suffix):
-            continue
-        file_path = os.path.join(pretext_watch_folder, filename)
-        if len(os.path.splitext(filename)[0]) > 60:
-            base_name = os.path.splitext(filename)[0]
-            sanitized_base = sanitize_and_trim_filename(base_name)
-            new_name = sanitized_base + pretext_suffix
-            new_path = os.path.join(pretext_watch_folder, new_name)
-            try:
-                if not os.path.exists(new_path):
-                    safe_rename(file_path, new_path)
-                    file_path = new_path
-                    logging.debug(
-                        "Renamed long filename: %s -> %s", filename, new_name
-                    )
-            except Exception as e:
-                logging.error("Error renaming file: %s", e)
-                continue
-
-        if filename_lower.endswith(pretext_suffix) and not any(
-            filename_lower.endswith(s) for s in extract_suffixes
-        ):
-            request_pretext_processing(runtime.pretext_queue, runtime.processed_files_global, runtime.processed_files_lock, file_path)
-
-
-def scan_extract_files(runtime) -> None:
-    extract_watch_folder = os.fspath(runtime.config["EXTRACT_WATCH_FOLDER"])
-    extract_suffixes = tuple(
-        str(s).lower() for s in runtime.config["EXTRACT_SUFFIX"] if str(s)
-    )
-
-    for filename in os.listdir(extract_watch_folder):
-        filename_lower = filename.lower()
-        if any(filename_lower.endswith(s) for s in extract_suffixes):
-            file_path = os.path.join(extract_watch_folder, filename)
-            enqueue_if_absent(runtime.extract_queue, file_path)
-
-
-def scan_premium_extract_files(runtime) -> None:
-    premium_watch_folder = os.fspath(runtime.config["PREMIUM_WATCH_FOLDER"])
-    extract_suffixes = tuple(
-        str(s).lower() for s in runtime.config["EXTRACT_SUFFIX"] if str(s)
-    )
-
-    for filename in os.listdir(premium_watch_folder):
-        filename_lower = filename.lower()
-        if any(filename_lower.endswith(s) for s in extract_suffixes):
-            file_path = os.path.join(premium_watch_folder, filename)
-            enqueue_if_absent(runtime.premium_extract_queue, file_path)

@@ -28,7 +28,8 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from helper.helper_llm import call_llm
-from .helper_files import read_file_with_encodings, release_text_file_permissions
+from . import p_pipelines as pipelines
+from .helper_files import read_file_with_encodings, release_text_file_permissions, safe_rename
 from .helper_md import write_pretext_markdown
 from .helper_text import chunk_text, intelligent_merge_chunks, sanitize_and_trim_filename
 
@@ -151,3 +152,41 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
         raise
     finally:
         release_pretext_request(processed_files, processed_files_lock, normalized_path)
+
+
+def process_pretext_queue(runtime) -> None:
+    pipelines.process_queue(runtime, runtime.pretext_queue, lambda path, _next: process_pretext_file(runtime.config, path, runtime.processed_files_global, runtime.processed_files_lock), "process_pretext", scan_pretext_files)
+
+
+def scan_pretext_files(runtime) -> None:
+    pretext_watch_folder = os.fspath(runtime.config["PRETEXT_WATCH_FOLDER"])
+    pretext_suffix = str(runtime.config["PRETEXT_SUFFIX"]).lower()
+    extract_suffixes = tuple(
+        str(s).lower() for s in runtime.config["EXTRACT_SUFFIX"] if str(s)
+    )
+
+    for filename in os.listdir(pretext_watch_folder):
+        filename_lower = filename.lower()
+        if not filename_lower.endswith(pretext_suffix):
+            continue
+        file_path = os.path.join(pretext_watch_folder, filename)
+        if len(os.path.splitext(filename)[0]) > 60:
+            base_name = os.path.splitext(filename)[0]
+            sanitized_base = sanitize_and_trim_filename(base_name)
+            new_name = sanitized_base + pretext_suffix
+            new_path = os.path.join(pretext_watch_folder, new_name)
+            try:
+                if not os.path.exists(new_path):
+                    safe_rename(file_path, new_path)
+                    file_path = new_path
+                    logging.debug(
+                        "Renamed long filename: %s -> %s", filename, new_name
+                    )
+            except Exception as e:
+                logging.error("Error renaming file: %s", e)
+                continue
+
+        if filename_lower.endswith(pretext_suffix) and not any(
+            filename_lower.endswith(s) for s in extract_suffixes
+        ):
+            request_pretext_processing(runtime.pretext_queue, runtime.processed_files_global, runtime.processed_files_lock, file_path)

@@ -5,12 +5,12 @@ import logging
 import threading
 from pathlib import Path
 from w.helper_files import configure_logging
-from w.p_pipelines import (
-    create_runtime,
+from w.p_pipelines import create_runtime
+from w.p_pretext import process_pretext_queue
+from w.p_extract import (
     create_extract_processors,
     process_extract_queue,
     process_premium_extract_queue,
-    process_pretext_queue,
 )
 
 from w.p_audio import process_audio_pipeline

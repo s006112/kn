@@ -20,6 +20,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from . import p_pipelines as pipelines
 from .p_distill import run_distillation
 from .helper_files import (
     release_text_file_permissions,
@@ -225,3 +226,45 @@ class PremiumExtractProcessor(BaseExtractProcessor):
         return
 
     process_premium_extract = process
+
+
+def create_extract_processors(runtime):
+    extract_processor = ExtractProcessor(runtime.config)
+    premium_extract_processor = PremiumExtractProcessor(runtime.config)
+    return extract_processor, premium_extract_processor
+
+
+def process_extract_queue(runtime, processor: ExtractProcessor) -> None:
+    pipelines.process_queue(runtime, runtime.extract_queue, processor.process_extract, "process_extract", scan_extract_files)
+
+
+def process_premium_extract_queue(
+    runtime, processor: PremiumExtractProcessor
+) -> None:
+    pipelines.process_queue(runtime, runtime.premium_extract_queue, processor.process_premium_extract, "process_premium_extract", scan_premium_extract_files)
+
+
+def scan_extract_files(runtime) -> None:
+    extract_watch_folder = os.fspath(runtime.config["EXTRACT_WATCH_FOLDER"])
+    extract_suffixes = tuple(
+        str(s).lower() for s in runtime.config["EXTRACT_SUFFIX"] if str(s)
+    )
+
+    for filename in os.listdir(extract_watch_folder):
+        filename_lower = filename.lower()
+        if any(filename_lower.endswith(s) for s in extract_suffixes):
+            file_path = os.path.join(extract_watch_folder, filename)
+            pipelines.enqueue_if_absent(runtime.extract_queue, file_path)
+
+
+def scan_premium_extract_files(runtime) -> None:
+    premium_watch_folder = os.fspath(runtime.config["PREMIUM_WATCH_FOLDER"])
+    extract_suffixes = tuple(
+        str(s).lower() for s in runtime.config["EXTRACT_SUFFIX"] if str(s)
+    )
+
+    for filename in os.listdir(premium_watch_folder):
+        filename_lower = filename.lower()
+        if any(filename_lower.endswith(s) for s in extract_suffixes):
+            file_path = os.path.join(premium_watch_folder, filename)
+            pipelines.enqueue_if_absent(runtime.premium_extract_queue, file_path)
