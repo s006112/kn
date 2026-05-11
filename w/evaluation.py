@@ -152,7 +152,7 @@ def cleanup_files(paths: list[Path], test_id: str) -> None:
 def test_summary(results: list[bool]) -> None:
     passed = sum(1 for result in results if result)
     failed = len(results) - passed
-    print(f"✅ summary: {passed} ✅, {failed} ❌, {len(results)} total")
+    print(f"✅ {len(results)} TESTS : ✅ {passed} ; ❌ {failed}")
 
 
 def test_torrent_move(test_id: str) -> tuple[bool, list[Path]]:
@@ -802,9 +802,9 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         "scan_extract_files",
         "scan_premium_extract_files",
         "process_queue",
-        "start_text_processing",
+        "process_text_pipeline",
     }
-    forbidden_p_import_names = required_names - {"start_text_processing"}
+    forbidden_p_import_names = required_names - {"process_text_pipeline"}
     exposed_removed = sorted(
         name for name in removed_names if hasattr(txt_process_module, name)
     )
@@ -812,7 +812,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         name for name in required_names if not hasattr(txt_process_module, name)
     )
     p_source = (ROOT_DIR / "w" / "p.py").read_text(encoding="utf-8")
-    p_txt_import_line = "from w.p_txt_process import start_text_processing"
+    p_txt_import_line = "from w.p_txt_process import process_text_pipeline"
     forbidden_p_imports = sorted(
         name for name in forbidden_p_import_names if name in p_source
     )
@@ -1210,7 +1210,7 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
             captured_queues[method_name] = queue
 
         txt_process_module.process_queue = fake_process_queue
-        threads = txt_process_module.start_text_processing(config, shutdown_flag)
+        threads = txt_process_module.process_text_pipeline(config, shutdown_flag)
         for thread in threads.values():
             thread.join(timeout=1)
     finally:

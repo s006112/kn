@@ -474,7 +474,7 @@ def process_queue(config, queue, process, method_name, scan_files=None, shutdown
             shutdown_flag.wait(wait_seconds)
 
 
-def start_text_processing(config, shutdown_flag):
+def process_text_pipeline(config, shutdown_flag):
     pretext_queue = Queue()
     extract_queue = Queue()
     premium_extract_queue = Queue()

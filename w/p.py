@@ -12,7 +12,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from w.helper_files import configure_logging
 from w.p_audio import process_audio_pipeline
-from w.p_txt_process import start_text_processing
+from w.p_txt_process import process_text_pipeline
 from w.p_torrent import process_torrent_pipeline
 from w.p_ttml import process_ttml_pipeline
 from w.p_wiki import process_wikilink_cleaning
@@ -83,7 +83,7 @@ def start_runtime(config) -> tuple[dict[str, threading.Thread], threading.Event]
     wikilink_cleaning_stats = {"last_run": None, "cycle_count": 0}
     shutdown_flag = threading.Event()
 
-    text_threads = start_text_processing(config, shutdown_flag)
+    text_threads = process_text_pipeline(config, shutdown_flag)
     threads = {
         name: threading.Thread(target=target, args=args, daemon=True, name=name)
         for enabled, name, target, args in [
