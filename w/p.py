@@ -107,7 +107,7 @@ def main() -> None:
 
     _, shutdown_flag = start_runtime(CONFIG)
 
-    logging.info("Enabled pipelines: %s", ", ".join(key for key, enabled in CONFIG["PIPELINES"].items() if enabled) or "none")
+    logging.info("Enabled: %s", ", ".join(key for key, enabled in CONFIG["PIPELINES"].items() if enabled) or "none")
 
     try:
         threading.Event().wait()

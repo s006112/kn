@@ -4,8 +4,6 @@ Text utilities for filename sanitization and chunking/merging long strings.
 
 Used by:
 * w/p_audio.py
-* w/p_distill.py
-* w/p.py
 * w/p_txt_process.py
 
 Pipelines:

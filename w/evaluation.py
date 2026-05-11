@@ -22,9 +22,6 @@ pipelines = orchestrator_module
 import w.p_audio as audio_module
 from w.p_audio import move_files_to_done, scan_audio_files
 
-import w.p_distill as distill_module
-from w.p_distill import _collect_extracts
-
 from w.p_torrent import (
     move_torrent_to_whisper,
     scan_torrent_watch_folder,
@@ -718,7 +715,7 @@ def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path
     second.write_text(f"beta extract for {test_id}\n", encoding="utf-8")
     ignored.write_text(f"ignored extract for {test_id}\n", encoding="utf-8")
 
-    extracts = _collect_extracts(str(PATHS.extract), base_name, pretext_suffix)
+    extracts = txt_process_module._collect_extracts(str(PATHS.extract), base_name, pretext_suffix)
     labels = [label for label, _, _ in extracts]
     contents = [content for _, content, _ in extracts]
     paths = [Path(path) for _, _, path in extracts]
@@ -803,6 +800,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         "scan_premium_extract_files",
         "process_queue",
         "process_text_pipeline",
+        "run_distillation",
     }
     forbidden_p_import_names = required_names - {"process_text_pipeline"}
     exposed_removed = sorted(
@@ -812,6 +810,9 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         name for name in required_names if not hasattr(txt_process_module, name)
     )
     p_source = (ROOT_DIR / "w" / "p.py").read_text(encoding="utf-8")
+    txt_source = (ROOT_DIR / "w" / "p_txt_process.py").read_text(encoding="utf-8")
+    removed_distill_path = ROOT_DIR / "w" / ("p_" + "distill.py")
+    distill_import_marker = ".p_" + "distill"
     p_txt_import_line = "from w.p_txt_process import process_text_pipeline"
     forbidden_p_imports = sorted(
         name for name in forbidden_p_import_names if name in p_source
@@ -821,10 +822,13 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         and not missing_required
         and not (ROOT_DIR / "w" / "p_pretext.py").exists()
         and not (ROOT_DIR / "w" / "p_extract.py").exists()
+        and not removed_distill_path.exists()
         and p_txt_import_line in p_source
         and p_source.count("from w.p_txt_process import") == 1
         and "w.p_pretext" not in p_source
         and "w.p_extract" not in p_source
+        and distill_import_marker not in txt_source
+        and "def run_distillation(" in txt_source
         and not forbidden_p_imports
     )
 
@@ -836,6 +840,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
             "missing_required": missing_required,
             "p_pretext_exists": (ROOT_DIR / "w" / "p_pretext.py").exists(),
             "p_extract_exists": (ROOT_DIR / "w" / "p_extract.py").exists(),
+            "distill_module_exists": removed_distill_path.exists(),
             "forbidden_p_imports": forbidden_p_imports,
         },
     )
@@ -1552,7 +1557,7 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
         "DISTILL_PROMPT": "evaluation distill prompt",
     }
 
-    original_call_llm = distill_module.call_llm
+    original_call_llm = txt_process_module.call_llm
     index_existed = whisper_index.exists()
     index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
 
@@ -1563,17 +1568,17 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
                 raise RuntimeError(f"mock distill failure {test_id}")
             return f"mock distilled result {test_id}"
 
-        distill_module.call_llm = fake_call_llm
+        txt_process_module.call_llm = fake_call_llm
 
         success_path = Path(
-            distill_module.run_distillation(config, success_base, md_path=str(md_path))
+            txt_process_module.run_distillation(config, success_base, md_path=str(md_path))
             or ""
         )
-        skip_path = distill_module.run_distillation(config, skip_base, md_path=None)
+        skip_path = txt_process_module.run_distillation(config, skip_base, md_path=None)
 
         failure_raised = False
         try:
-            distill_module.run_distillation(config, fail_base, md_path=None)
+            txt_process_module.run_distillation(config, fail_base, md_path=None)
         except RuntimeError:
             failure_raised = True
 
@@ -1608,7 +1613,7 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
         return passed, cleanup
 
     finally:
-        distill_module.call_llm = original_call_llm
+        txt_process_module.call_llm = original_call_llm
 
         if index_before is not None:
             whisper_index.write_text(index_before, encoding="utf-8")
