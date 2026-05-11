@@ -112,23 +112,15 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
 
 def process_extract_file(config, file_path, get_next_available_filename):
     filename = os.path.basename(file_path)
-    suffixes = tuple(str(s).lower() for s in config["EXTRACT_SUFFIX"] if str(s))
-    filename_lower = filename.lower()
-    matched_suffix = next((s for s in sorted(suffixes, key=len, reverse=True) if filename_lower.endswith(s)), None)
-    base = filename[: -len(matched_suffix)] if matched_suffix else os.path.splitext(filename)[0]
+    extract_suffix = str(config["EXTRACT_SUFFIX"][0]).lower()
+    base = filename[: -len(extract_suffix)] if filename.lower().endswith(extract_suffix) else os.path.splitext(filename)[0]
     failed_models = []
 
     try:
         logging.info(f"Extract: Start {filename}")
         content, _ = read_file_with_encodings(file_path)
         payload = f"《{base}》\n{content}"
-
-        if matched_suffix == ".md":
-            md_path = os.path.join(config["OBSIDIAN_SYNC_FOLDER"], filename)
-            link_name = os.path.splitext(filename)[0]
-            md_is_new_seed = True
-        else:
-            md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(config, base, allow_existing=True)
+        md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(config, base, allow_existing=True)
 
         extract_count = 0
         for model in config.get("MODEL_EXTRACT_MATRIX", {}).get("EXTRACT_WATCH_FOLDER", []):
