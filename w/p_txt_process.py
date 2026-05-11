@@ -23,7 +23,7 @@ _file_locks = {}
 _file_locks_mutex = threading.Lock()
 
 
-def _llm_call_options(config):
+def llm_call_options(config):
     return {
         "max_retries": config["INTERVALS"].get("LLM_MAX_RETRIES", 2),
         "timeout": config["INTERVALS"].get("LLM_TIMEOUT_SECONDS", 90),
@@ -31,7 +31,7 @@ def _llm_call_options(config):
     }
 
 
-def _write_text_file(path, content):
+def write_text_file(path, content):
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
     release_text_file_permissions(path)
@@ -55,26 +55,10 @@ def save_pipeline_error(config, stage, base_name, error, *, filename=None, model
 
     try:
         os.makedirs(config["WATCH_FOLDER"], exist_ok=True)
-        return _write_text_file(path, "\n".join(lines).rstrip() + "\n")
+        return write_text_file(path, "\n".join(lines).rstrip() + "\n")
     except Exception as write_error:
         logging.error("Pipeline error write failed | target=%s error=%s", path, write_error)
         return None
-
-
-def request_pretext_processing(queue, processed_files, processed_files_lock, file_path: str) -> bool:
-    normalized = os.path.abspath(os.fspath(file_path))
-    with processed_files_lock:
-        if normalized in processed_files:
-            return False
-        processed_files.add(normalized)
-        queue.put(normalized)
-        return True
-
-
-def release_pretext_request(processed_files, processed_files_lock, file_path: str) -> None:
-    normalized = os.path.abspath(os.fspath(file_path))
-    with processed_files_lock:
-        processed_files.discard(normalized)
 
 
 def process_pretext_file(config, file_path, processed_files, processed_files_lock) -> None:
@@ -99,7 +83,7 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
         all_results = []
         for i, chunk in enumerate(chunks, 1):
             logging.debug("Pretext: API call %d/%d for %s using %s", i, len(chunks), original_filename, pretext_model)
-            chunk_result = call_llm(model=pretext_model, system_prompt=config["PRETEXT_PROMPT"], user_text=chunk, file_path=normalized_path, **_llm_call_options(config))
+            chunk_result = call_llm(model=pretext_model, system_prompt=config["PRETEXT_PROMPT"], user_text=chunk, file_path=normalized_path, **llm_call_options(config))
             if not chunk_result:
                 raise ValueError(f"Empty response from OpenAI API for chunk {i}")
             all_results.append(chunk_result)
@@ -112,7 +96,7 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
         logging.info("Pretext: Completed %s (%s : %s)", original_filename, pretext_model, f"{len(pretext_result):,}")
 
         pretext_target_path = os.path.join(config["PRETEXT_WATCH_FOLDER"], f"{base_name}{config['EXTRACT_SUFFIX'][0]}")
-        _write_text_file(pretext_target_path, pretext_result)
+        write_text_file(pretext_target_path, pretext_result)
         logging.info("Pretext: Created %s", os.path.basename(pretext_target_path))
 
         write_pretext_markdown(config, base_name, pretext_result)
@@ -122,7 +106,8 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
         save_pipeline_error(config, "pretext", base_name, exc, filename=original_filename, model=pretext_model, partial=locals().get("pretext_result"))
         raise
     finally:
-        release_pretext_request(processed_files, processed_files_lock, normalized_path)
+        with processed_files_lock:
+            processed_files.discard(normalized_path)
 
 
 def process_extract_file(config, file_path, get_next_available_filename):
@@ -154,11 +139,11 @@ def process_extract_file(config, file_path, get_next_available_filename):
                 continue
 
             try:
-                result = call_llm(model=model, system_prompt=config["EXTRACT_PROMPT"], user_text=payload, file_path=file_path, **_llm_call_options(config))
+                result = call_llm(model=model, system_prompt=config["EXTRACT_PROMPT"], user_text=payload, file_path=file_path, **llm_call_options(config))
 
                 os.makedirs(config["EXTRACT_FOLDER"], exist_ok=True)
                 save_path = get_next_available_filename(config["EXTRACT_FOLDER"], base, f"_{sanitize_filename(model)}")
-                _write_text_file(save_path, result)
+                write_text_file(save_path, result)
 
                 merge_to_markdown(md_path, [result], "", [f"{model} "], whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"), whisper_link_name=link_name, md_is_new=(md_is_new_seed and not any_success))
                 any_success = True
@@ -207,7 +192,7 @@ def process_extract_file(config, file_path, get_next_available_filename):
         raise
 
 
-def _collect_extracts(extract_folder: str, base_name: str, pretext_suffix: str):
+def collect_extracts(extract_folder: str, base_name: str, pretext_suffix: str):
     if not os.path.isdir(extract_folder):
         return []
 
@@ -245,7 +230,7 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
         return None
 
     try:
-        extracts = _collect_extracts(extract_folder, base_name, str(config["PRETEXT_SUFFIX"]))
+        extracts = collect_extracts(extract_folder, base_name, str(config["PRETEXT_SUFFIX"]))
         if not extracts:
             logging.info("Distillation: No extracts found for %s, skipping", base_name)
             return None
@@ -259,11 +244,11 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
             payload += [f"--- {label} ({os.path.basename(path)}) ---", content.strip()]
 
         logging.info("Distillation: Start %s with %s (%d inputs)", base_name, distill_model, len(extracts))
-        distilled = call_llm(model=distill_model, system_prompt=config["DISTILL_PROMPT"], user_text="\n\n".join(payload), file_path=extracts[0][2], **_llm_call_options(config))
+        distilled = call_llm(model=distill_model, system_prompt=config["DISTILL_PROMPT"], user_text="\n\n".join(payload), file_path=extracts[0][2], **llm_call_options(config))
 
         os.makedirs(extract_folder, exist_ok=True)
         save_path = get_next_available_filename(extract_folder, base_name, f"_{sanitize_filename(distill_model)}")
-        _write_text_file(save_path, distilled)
+        write_text_file(save_path, distilled)
 
         if md_path:
             merge_to_markdown(md_path, [distilled], "", [f"{distill_model} distilled"], whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"), whisper_link_name=Path(md_path).stem, md_is_new=False)
@@ -301,7 +286,11 @@ def scan_pretext_files(config, pretext_queue, processed_files, processed_files_l
                 continue
 
         if not any(filename_lower.endswith(s) for s in extract_suffixes):
-            request_pretext_processing(pretext_queue, processed_files, processed_files_lock, file_path)
+            normalized = os.path.abspath(os.fspath(file_path))
+            with processed_files_lock:
+                if normalized not in processed_files:
+                    processed_files.add(normalized)
+                    pretext_queue.put(normalized)
 
 
 def scan_extract_files(config, extract_queue) -> None:
@@ -313,15 +302,12 @@ def scan_extract_files(config, extract_queue) -> None:
                 extract_queue.put(file_path)
 
 
-def _wait_or_sleep(shutdown_flag, seconds):
-    shutdown_flag.wait(seconds) if shutdown_flag is not None else time.sleep(seconds)
-
-
 def process_queue(config, queue, process, method_name, scan_files=None, shutdown_flag=None, *scan_args):
     intervals = config.get("INTERVALS", {})
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
     scan_seconds = intervals.get("SCAN_SECONDS", 60)
     next_scan = time.monotonic()
+    sleep = shutdown_flag.wait if shutdown_flag is not None else time.sleep
 
     while shutdown_flag is None or not shutdown_flag.is_set():
         if scan_files and time.monotonic() >= next_scan:
@@ -332,7 +318,7 @@ def process_queue(config, queue, process, method_name, scan_files=None, shutdown
             next_scan = time.monotonic() + scan_seconds
 
         if queue.empty():
-            _wait_or_sleep(shutdown_flag, wait_seconds)
+            sleep(wait_seconds)
             continue
 
         file_path = queue.get()
@@ -364,13 +350,7 @@ def process_queue(config, queue, process, method_name, scan_files=None, shutdown
 
             queue.task_done()
 
-        _wait_or_sleep(shutdown_flag, wait_seconds)
-
-
-def _start_text_thread(threads, name, config, queue, process, method_name, scan_files, shutdown_flag, *scan_args):
-    thread = threading.Thread(target=process_queue, args=(config, queue, process, method_name, scan_files, shutdown_flag, *scan_args), daemon=True, name=name)
-    thread.start()
-    threads[name] = thread
+        sleep(wait_seconds)
 
 
 def process_text_pipeline(config, shutdown_flag):
@@ -380,9 +360,13 @@ def process_text_pipeline(config, shutdown_flag):
     threads = {}
 
     if config["PIPELINES"]["PRETEXT"]:
-        _start_text_thread(threads, "TextPipeline-Pretext", config, pretext_queue, lambda path, _next: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_pretext_files, shutdown_flag, config, pretext_queue, processed_files_global, processed_files_lock)
+        thread = threading.Thread(target=process_queue, args=(config, pretext_queue, lambda path, _next: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_pretext_files, shutdown_flag, config, pretext_queue, processed_files_global, processed_files_lock), daemon=True, name="TextPipeline-Pretext")
+        thread.start()
+        threads["TextPipeline-Pretext"] = thread
 
     if config["PIPELINES"]["EXTRACT"]:
-        _start_text_thread(threads, "TextPipeline-Extract", config, extract_queue, lambda path, _next: process_extract_file(config, path, _next), "process_extract", scan_extract_files, shutdown_flag, config, extract_queue)
+        thread = threading.Thread(target=process_queue, args=(config, extract_queue, lambda path, _next: process_extract_file(config, path, _next), "process_extract", scan_extract_files, shutdown_flag, config, extract_queue), daemon=True, name="TextPipeline-Extract")
+        thread.start()
+        threads["TextPipeline-Extract"] = thread
 
     return threads

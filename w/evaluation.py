@@ -34,8 +34,6 @@ from w.p_ytd import (
     remove_download_url_line,
 )
 
-from w.p_txt_process import release_pretext_request, request_pretext_processing
-
 from w.p_ttml import handle_ttml
 from w.helper_md import merge_to_markdown
 from w.helper_text import sanitize_and_trim_filename, sanitize_filename
@@ -566,54 +564,38 @@ def test_audio_move_to_done_removes_wav(test_id: str) -> tuple[bool, list[Path]]
     return passed, cleanup
 
 
-def test_pretext_request_deduplicates_queue(test_id: str) -> tuple[bool, list[Path]]:
+def test_pretext_scan_deduplicates_queue(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
-    source = PATHS.pretext_watch / f"{test_id}_pretext{pretext_suffix}"
+    watch_dir = ROOT_DIR / f"{test_id}_pretext_scan_watch"
+    source = watch_dir / f"{test_id}_pretext{pretext_suffix}"
 
-    cleanup = [source]
+    cleanup = [source, watch_dir]
 
-    PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
+    watch_dir.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"dummy pretext queue source {test_id}\n", encoding="utf-8")
 
+    config = {**CONFIG, "PRETEXT_WATCH_FOLDER": str(watch_dir)}
     pretext_queue = Queue()
     processed_files_global = set()
     processed_files_lock = threading.Lock()
-    first = request_pretext_processing(
-        pretext_queue,
-        processed_files_global,
-        processed_files_lock,
-        str(source),
-    )
-    second = request_pretext_processing(
-        pretext_queue,
-        processed_files_global,
-        processed_files_lock,
-        str(source),
-    )
-    queued_path = pretext_queue.get_nowait()
-    release_pretext_request(
-        processed_files_global,
-        processed_files_lock,
-        str(source),
-    )
+    txt_process_module.scan_pretext_files(config, pretext_queue, processed_files_global, processed_files_lock)
+    txt_process_module.scan_pretext_files(config, pretext_queue, processed_files_global, processed_files_lock)
+    queued_paths = list(pretext_queue.queue)
+    normalized = str(source.resolve())
 
     passed = (
-        first
-        and not second
-        and pretext_queue.empty()
-        and queued_path == str(source.resolve())
-        and str(source.resolve()) not in processed_files_global
+        queued_paths == [normalized]
+        and normalized in processed_files_global
     )
 
     print_result(
-        "pretext request deduplicates queue",
+        "pretext scan deduplicates queue",
         passed,
         {
             "source": source,
-            "first": first,
-            "second": second,
-            "queued_path": queued_path,
+            "queued_paths": queued_paths,
+            "processed_files": sorted(processed_files_global),
         },
     )
 
@@ -693,7 +675,7 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
             and str(source.resolve()) not in processed_files_global
             and captured_llm_options
             and all(
-                options == txt_process_module._llm_call_options(config)
+                options == txt_process_module.llm_call_options(config)
                 for options in captured_llm_options
             )
         )
@@ -831,7 +813,7 @@ def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path
     second.write_text(f"beta extract for {test_id}\n", encoding="utf-8")
     ignored.write_text(f"ignored extract for {test_id}\n", encoding="utf-8")
 
-    extracts = txt_process_module._collect_extracts(str(PATHS.extract), base_name, pretext_suffix)
+    extracts = txt_process_module.collect_extracts(str(PATHS.extract), base_name, pretext_suffix)
     labels = [label for label, _, _ in extracts]
     contents = [content for _, content, _ in extracts]
     paths = [Path(path) for _, _, path in extracts]
@@ -871,13 +853,13 @@ def test_distillation_read_error_writes_watch_marker(test_id: str) -> tuple[bool
     error_file = PATHS.watch / f"{base_name}.{sanitize_filename(config['MODEL_DISTILL'])}.error"
     cleanup = [error_file]
 
-    original_collect_extracts = txt_process_module._collect_extracts
+    original_collect_extracts = txt_process_module.collect_extracts
 
     try:
         def fail_collect_extracts(*_args, **_kwargs):
             raise RuntimeError(read_message)
 
-        txt_process_module._collect_extracts = fail_collect_extracts
+        txt_process_module.collect_extracts = fail_collect_extracts
 
         raised = False
         try:
@@ -913,7 +895,7 @@ def test_distillation_read_error_writes_watch_marker(test_id: str) -> tuple[bool
         return passed, cleanup
 
     finally:
-        txt_process_module._collect_extracts = original_collect_extracts
+        txt_process_module.collect_extracts = original_collect_extracts
 
 
 def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, list[Path]]:
@@ -979,8 +961,6 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         "create_extract_processors",
     }
     required_names = {
-        "request_pretext_processing",
-        "release_pretext_request",
         "process_pretext_file",
         "scan_pretext_files",
         "process_extract_file",
@@ -988,7 +968,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         "save_pipeline_error",
         "process_queue",
         "process_text_pipeline",
-        "_llm_call_options",
+        "llm_call_options",
         "run_distillation",
     }
     forbidden_premium_markers = {
@@ -1054,7 +1034,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
             keyword.arg is None
             and isinstance(keyword.value, ast.Call)
             and isinstance(keyword.value.func, ast.Name)
-            and keyword.value.func.id == "_llm_call_options"
+            and keyword.value.func.id == "llm_call_options"
             for keyword in node.keywords
         )
         for node in call_llm_nodes
@@ -1143,7 +1123,7 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
         (
             node
             for node in txt_tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "_write_text_file"
+            if isinstance(node, ast.FunctionDef) and node.name == "write_text_file"
         ),
         None,
     )
@@ -1177,10 +1157,10 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
     save_error_end = save_error_helper.end_lineno if save_error_helper else 0
 
     required_text_helper_calls = [
-        "_write_text_file(pretext_target_path, pretext_result)",
-        "_write_text_file(save_path, result)",
-        "_write_text_file(save_path, distilled)",
-        "return _write_text_file(path,",
+        "write_text_file(pretext_target_path, pretext_result)",
+        "write_text_file(save_path, result)",
+        "write_text_file(save_path, distilled)",
+        "return write_text_file(path,",
     ]
     missing_text_helper_calls = [
         marker for marker in required_text_helper_calls if marker not in txt_source
@@ -1236,8 +1216,8 @@ def test_llm_call_options_defaults_and_overrides(test_id: str) -> tuple[bool, li
         },
     }
 
-    default_options = txt_process_module._llm_call_options(default_config)
-    custom_options = txt_process_module._llm_call_options(custom_config)
+    default_options = txt_process_module.llm_call_options(default_config)
+    custom_options = txt_process_module.llm_call_options(custom_config)
 
     passed = (
         default_options == {
@@ -1279,7 +1259,7 @@ def test_write_text_file_helper_contract(test_id: str) -> tuple[bool, list[Path]
             release_calls.append(path)
 
         txt_process_module.release_text_file_permissions = fake_release
-        returned = txt_process_module._write_text_file(target, content)
+        returned = txt_process_module.write_text_file(target, content)
 
         raw = target.read_bytes() if target.exists() else b""
 
@@ -1476,7 +1456,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
             and f"mock extract result {test_id}" in extract_text
             and note is not None
             and f"mock extract result {test_id}" in note_text
-            and captured_llm_options == [txt_process_module._llm_call_options(config)]
+            and captured_llm_options == [txt_process_module.llm_call_options(config)]
         )
 
         print_result(
@@ -2123,7 +2103,7 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
             and error_text == expected_error_text
             and len(captured_llm_options) == 2
             and all(
-                options == txt_process_module._llm_call_options(config)
+                options == txt_process_module.llm_call_options(config)
                 for options in captured_llm_options
             )
         )
@@ -2255,7 +2235,7 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
             whisper_index.unlink()
 
 
-def test_pretext_multichunk_and_failure_release_request(test_id: str) -> tuple[bool, list[Path]]:
+def test_pretext_multichunk_and_failure_discards_processed_path(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
     extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
     success_base = f"{test_id}_pretext_multichunk"
@@ -2346,7 +2326,7 @@ def test_pretext_multichunk_and_failure_release_request(test_id: str) -> tuple[b
         )
 
         print_result(
-            "pretext multichunk and failure release request",
+            "pretext multichunk and failure discards processed path",
             passed,
             {
                 "call_count": call_count,
@@ -3032,7 +3012,7 @@ def main() -> int:
             test_wikilink_cleaner_removes_broken_link,
             test_markdown_merge_updates_index,
             test_audio_move_to_done_removes_wav,
-            test_pretext_request_deduplicates_queue,
+            test_pretext_scan_deduplicates_queue,
             test_pretext_full_process_writes_pretext_markdown_and_archive,
             test_pretext_partial_error_filename_and_content_unchanged,
             test_distill_collects_extract_outputs,
@@ -3055,7 +3035,7 @@ def main() -> int:
             test_process_queue_handles_lock_miss_errors_and_permanent_failures,
             test_distillation_success_skip_and_error_paths,
             test_extract_multi_model_partial_failure_preserves_success_outputs,
-            test_pretext_multichunk_and_failure_release_request,
+            test_pretext_multichunk_and_failure_discards_processed_path,
             test_audio_failure_paths_archive_or_cleanup,
             test_ttml_invalid_xml_restores_source_and_chinese_normalizes,
             test_ytd_failure_fallback_and_remove_failure_paths,
