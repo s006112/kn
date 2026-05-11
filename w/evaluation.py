@@ -724,6 +724,92 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
         elif not index_existed and whisper_index.exists():
             whisper_index.unlink()
 
+
+def test_pretext_partial_error_filename_and_content_unchanged(test_id: str) -> tuple[bool, list[Path]]:
+    pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
+    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+    base_name = f"{test_id}_pretext_partial_error"
+
+    source = PATHS.pretext_watch / f"{base_name}{pretext_suffix}"
+    output = PATHS.pretext_watch / f"{base_name}{extract_suffix}"
+    error_file = PATHS.watch / f"{base_name}.error"
+    archived = PATHS.original / f"{base_name}.txt"
+
+    cleanup = [source, output, error_file, archived]
+
+    PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.original.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(f"dummy pretext partial source {test_id}\n", encoding="utf-8")
+
+    config = {
+        **CONFIG,
+        "MODEL_PRETEXT": "evaluation-model",
+        "PRETEXT_PROMPT": "evaluation pretext prompt",
+    }
+
+    original_call_llm = txt_process_module.call_llm
+    original_write_pretext_markdown = txt_process_module.write_pretext_markdown
+
+    try:
+        result = f"mock pretext partial result {test_id}"
+        failure_message = f"mock pretext markdown failure {test_id}"
+
+        txt_process_module.call_llm = lambda **_kwargs: result
+
+        def fail_write_pretext_markdown(*_args, **_kwargs) -> None:
+            raise RuntimeError(failure_message)
+
+        txt_process_module.write_pretext_markdown = fail_write_pretext_markdown
+
+        processed_files_global = {str(source.resolve())}
+        processed_files_lock = threading.Lock()
+
+        raised = False
+        try:
+            txt_process_module.process_pretext_file(
+                config,
+                str(source),
+                processed_files_global,
+                processed_files_lock,
+            )
+        except RuntimeError as exc:
+            raised = str(exc) == failure_message
+
+        output_text = output.read_text(encoding="utf-8") if output.exists() else ""
+        error_text = error_file.read_text(encoding="utf-8") if error_file.exists() else ""
+
+        passed = (
+            raised
+            and source.is_file()
+            and not archived.exists()
+            and output.is_file()
+            and output.name == f"{base_name}{extract_suffix}"
+            and output_text == result
+            and error_file.is_file()
+            and error_file.name == f"{base_name}.error"
+            and error_text == f"Error: {failure_message}\nPartial response:\n{result}"
+            and str(source.resolve()) not in processed_files_global
+        )
+
+        print_result(
+            "pretext partial error filename and content unchanged",
+            passed,
+            {
+                "source": source,
+                "output": output,
+                "error_file": error_file,
+                "raised": raised,
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        txt_process_module.call_llm = original_call_llm
+        txt_process_module.write_pretext_markdown = original_write_pretext_markdown
+
+
 def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
     base_name = f"{test_id}_distill"
@@ -763,6 +849,58 @@ def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path
     )
 
     return passed, cleanup
+
+
+def test_distillation_read_error_writes_watch_marker(test_id: str) -> tuple[bool, list[Path]]:
+    base_name = f"{test_id}_distill_read_error"
+    error_file = PATHS.watch / f"{base_name}.distill.error"
+    cleanup = [error_file]
+    read_message = f"mock distill read error {test_id}"
+
+    PATHS.watch.mkdir(parents=True, exist_ok=True)
+
+    config = {
+        **CONFIG,
+        "MODEL_DISTILL": "evaluation-distill-model",
+        "DISTILL_PROMPT": "evaluation distill prompt",
+    }
+
+    original_collect_extracts = txt_process_module._collect_extracts
+
+    try:
+        def fail_collect_extracts(*_args, **_kwargs):
+            raise RuntimeError(read_message)
+
+        txt_process_module._collect_extracts = fail_collect_extracts
+
+        raised = False
+        try:
+            txt_process_module.run_distillation(config, base_name, md_path=None)
+        except RuntimeError:
+            raised = True
+
+        error_text = error_file.read_text(encoding="utf-8") if error_file.exists() else ""
+
+        passed = (
+            raised
+            and error_file.is_file()
+            and error_file.name == f"{base_name}.distill.error"
+            and error_text == f"Read error: {read_message}\n"
+        )
+
+        print_result(
+            "distillation read error writes watch marker",
+            passed,
+            {
+                "error_file": error_file,
+                "raised": raised,
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        txt_process_module._collect_extracts = original_collect_extracts
 
 
 def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, list[Path]]:
@@ -949,6 +1087,94 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
     return passed, []
 
 
+def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path]]:
+    text_process_path = ROOT_DIR / "w" / "p_txt_process.py"
+    txt_source = text_process_path.read_text(encoding="utf-8")
+    txt_tree = ast.parse(txt_source)
+    helper = next(
+        (
+            node
+            for node in txt_tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_write_text_file"
+        ),
+        None,
+    )
+    helper_start = helper.lineno if helper else 0
+    helper_end = helper.end_lineno if helper else 0
+
+    direct_write_release_lines = []
+    lines = txt_source.splitlines()
+    for index, line in enumerate(lines, 1):
+        if (
+            "with open(" in line
+            and "encoding=" in line
+            and ('"w"' in line or "'w'" in line)
+        ):
+            window = "\n".join(lines[index - 1 : index + 5])
+            if (
+                "release_text_file_permissions(" in window
+                and not (helper_start <= index <= helper_end)
+            ):
+                direct_write_release_lines.append(index)
+
+    required_text_helper_calls = [
+        "_write_text_file(pretext_target_path, pretext_result)",
+        "_write_text_file(save_path, result)",
+        "_write_text_file(save_path, distilled)",
+        "return _write_text_file(path, message)",
+    ]
+    missing_text_helper_calls = [
+        marker for marker in required_text_helper_calls if marker not in txt_source
+    ]
+    required_error_helper_calls = [
+        "_write_error_file(config, base_name, f\"Error: {exc}\\nPartial response:\\n{pretext_result}\")",
+        "_write_error_file(",
+        "sanitize_filename(model) or \"unknown_model\"",
+        "_write_error_file(config, base, f\"Error: {e}\\n\")",
+        "_write_error_file(config, base_name, f\"Read error: {exc}\\n\", \"distill\")",
+        "_write_error_file(config, base_name, f\"LLM error ({distill_model}): {exc}\\n\", \"distill\")",
+    ]
+    missing_error_helper_calls = [
+        marker for marker in required_error_helper_calls if marker not in txt_source
+    ]
+
+    error_route_path_writes = []
+    for index, line in enumerate(lines, 1):
+        if ".error" in line and (
+            "PRETEXT_WATCH_FOLDER" in line
+            or "EXTRACT_FOLDER" in line
+            or "EXTRACT_WATCH_FOLDER" in line
+            or "PREMIUM_WATCH_FOLDER" in line
+        ):
+            error_route_path_writes.append(index)
+
+    passed = (
+        helper is not None
+        and not direct_write_release_lines
+        and not missing_text_helper_calls
+        and not missing_error_helper_calls
+        and not error_route_path_writes
+        and "_write_distill_error" not in txt_source
+        and txt_source.count("release_text_file_permissions(") == 1
+    )
+
+    print_result(
+        "text write helper cleanup static",
+        passed,
+        {
+            "helper_exists": helper is not None,
+            "direct_write_release_lines": direct_write_release_lines,
+            "missing_text_helper_calls": missing_text_helper_calls,
+            "missing_error_helper_calls": missing_error_helper_calls,
+            "error_route_path_writes": error_route_path_writes,
+            "distill_error_helper_exists": "_write_distill_error" in txt_source,
+            "release_calls": txt_source.count("release_text_file_permissions("),
+        },
+    )
+
+    return passed, []
+
+
 def test_llm_call_options_defaults_and_overrides(test_id: str) -> tuple[bool, list[Path]]:
     default_config = {**CONFIG, "INTERVALS": {}}
     custom_config = {
@@ -987,6 +1213,97 @@ def test_llm_call_options_defaults_and_overrides(test_id: str) -> tuple[bool, li
     )
 
     return passed, []
+
+
+def test_write_text_file_helper_contract(test_id: str) -> tuple[bool, list[Path]]:
+    target = PATHS.download_target / f"{test_id}_write_text_helper.txt"
+    cleanup = [target]
+    content = f"exact helper content {test_id}\nlatin: café\ncjk: 中文\n"
+
+    PATHS.download_target.mkdir(parents=True, exist_ok=True)
+
+    original_release = txt_process_module.release_text_file_permissions
+    release_calls = []
+
+    try:
+        def fake_release(path) -> None:
+            release_calls.append(path)
+
+        txt_process_module.release_text_file_permissions = fake_release
+        returned = txt_process_module._write_text_file(target, content)
+
+        raw = target.read_bytes() if target.exists() else b""
+
+        passed = (
+            target.is_file()
+            and raw == content.encode("utf-8")
+            and raw.decode("utf-8") == content
+            and release_calls == [target]
+            and returned == target
+        )
+
+        print_result(
+            "write text file helper contract",
+            passed,
+            {
+                "target": target,
+                "release_calls": release_calls,
+                "returned": returned,
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        txt_process_module.release_text_file_permissions = original_release
+
+
+def test_write_error_file_helper_contract(test_id: str) -> tuple[bool, list[Path]]:
+    base_name = f"{test_id}_write_error_helper"
+    default_error = PATHS.watch / f"{base_name}.error"
+    marked_error = PATHS.watch / f"{base_name}.bad model name.error"
+    cleanup = [default_error, marked_error]
+    default_message = f"default error helper content {test_id}\n"
+    marked_message = f"marked error helper content {test_id}\n"
+
+    config = {**CONFIG, "WATCH_FOLDER": str(PATHS.watch)}
+
+    returned_default = txt_process_module._write_error_file(
+        config,
+        base_name,
+        default_message,
+    )
+    returned_marked = txt_process_module._write_error_file(
+        config,
+        base_name,
+        marked_message,
+        "bad\tmodel\nname",
+    )
+
+    default_text = default_error.read_text(encoding="utf-8") if default_error.exists() else ""
+    marked_text = marked_error.read_text(encoding="utf-8") if marked_error.exists() else ""
+
+    passed = (
+        default_error.is_file()
+        and default_text == default_message
+        and Path(returned_default) == default_error
+        and marked_error.is_file()
+        and marked_text == marked_message
+        and Path(returned_marked) == marked_error
+    )
+
+    print_result(
+        "write error file helper contract",
+        passed,
+        {
+            "default_error": default_error,
+            "marked_error": marked_error,
+            "returned_default": returned_default,
+            "returned_marked": returned_marked,
+        },
+    )
+
+    return passed, cleanup
 
 
 def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) -> tuple[bool, list[Path]]:
@@ -1089,11 +1406,13 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
 
     source = PATHS.extract_watch / f"{base_name}{extract_suffix}"
     failed = PATHS.fail / source.name
+    per_model_error = PATHS.watch / f"{base_name}.{sanitize_filename(model)}.error"
+    top_level_error = PATHS.watch / f"{base_name}.error"
 
-    cleanup = [source, failed]
+    cleanup = [source, failed, per_model_error, top_level_error]
 
     PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
-    PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.watch.mkdir(parents=True, exist_ok=True)
     PATHS.fail.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"dummy extract failure source {test_id}\n", encoding="utf-8")
@@ -1121,19 +1440,29 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
         except RuntimeError:
             raised = True
 
-        error_files = sorted(PATHS.pretext_watch.glob(f"{base_name}*.error"))
-        cleanup.extend(error_files)
-
-        error_text = "\n".join(
-            path.read_text(encoding="utf-8") for path in error_files
+        per_model_error_text = (
+            per_model_error.read_text(encoding="utf-8")
+            if per_model_error.exists()
+            else ""
+        )
+        top_level_error_text = (
+            top_level_error.read_text(encoding="utf-8")
+            if top_level_error.exists()
+            else ""
         )
 
         passed = (
             raised
             and not source.exists()
             and failed.is_file()
-            and len(error_files) >= 2
-            and f"mock extract failure {test_id}" in error_text
+            and per_model_error.is_file()
+            and per_model_error.name == f"{base_name}.{sanitize_filename(model)}.error"
+            and per_model_error_text == (
+                f"Model: {model}\nError: mock extract failure {test_id}\n"
+            )
+            and top_level_error.is_file()
+            and top_level_error.name == f"{base_name}.error"
+            and top_level_error_text == "Error: One or more extraction models failed\n"
         )
 
         print_result(
@@ -1142,7 +1471,8 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
             {
                 "source": source,
                 "failed": failed,
-                "error_files": error_files,
+                "per_model_error": per_model_error,
+                "top_level_error": top_level_error,
                 "raised": raised,
             },
         )
@@ -1701,11 +2031,12 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
     fail_base = f"{test_id}_distill_fail"
 
     success_extract = PATHS.extract / f"{success_base}_model-one.txt"
+    expected_success_output = PATHS.extract / f"{success_base}_{model}.txt"
     fail_extract = PATHS.extract / f"{fail_base}_model-one.txt"
     md_path = PATHS.obsidian / f"{success_base}_260507.md"
     whisper_index = PATHS.obsidian / "Whisper 000000.md"
 
-    cleanup = [success_extract, fail_extract, md_path]
+    cleanup = [success_extract, expected_success_output, fail_extract, md_path]
 
     PATHS.extract.mkdir(parents=True, exist_ok=True)
     PATHS.obsidian.mkdir(parents=True, exist_ok=True)
@@ -1759,8 +2090,8 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
         except RuntimeError:
             failure_raised = True
 
-        error_file = PATHS.extract / f"{fail_base}_e.distill.error"
-        cleanup.extend([success_path, error_file])
+        error_file = PATHS.watch / f"{fail_base}.distill.error"
+        cleanup.append(error_file)
 
         success_text = success_path.read_text(encoding="utf-8") if success_path.exists() else ""
         md_text = md_path.read_text(encoding="utf-8") if md_path.exists() else ""
@@ -1768,12 +2099,15 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
 
         passed = (
             success_path.is_file()
+            and success_path == expected_success_output
+            and success_path.name == f"{success_base}_{model}.txt"
             and f"mock distilled result {test_id}" in success_text
             and f"mock distilled result {test_id}" in md_text
             and skip_path is None
             and failure_raised
             and error_file.is_file()
-            and f"mock distill failure {test_id}" in error_text
+            and error_file.name == f"{fail_base}.distill.error"
+            and error_text == f"LLM error ({model}): mock distill failure {test_id}\n"
             and len(captured_llm_options) == 2
             and all(
                 options == txt_process_module._llm_call_options(config)
@@ -1820,7 +2154,7 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
     PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
     PATHS.extract.mkdir(parents=True, exist_ok=True)
     PATHS.fail.mkdir(parents=True, exist_ok=True)
-    PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
+    PATHS.watch.mkdir(parents=True, exist_ok=True)
     PATHS.obsidian.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"partial extract source {test_id}\n", encoding="utf-8")
@@ -1854,7 +2188,7 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
 
         notes = sorted(PATHS.obsidian.glob(f"{base_name}_*.md"))
         note = notes[-1] if notes else None
-        error_files = sorted(PATHS.pretext_watch.glob(f"{base_name}*.error"))
+        error_files = sorted(PATHS.watch.glob(f"{base_name}*.error"))
         cleanup.extend(notes)
         cleanup.extend(error_files)
 
@@ -2698,10 +3032,15 @@ def main() -> int:
             test_audio_move_to_done_removes_wav,
             test_pretext_request_deduplicates_queue,
             test_pretext_full_process_writes_pretext_markdown_and_archive,
+            test_pretext_partial_error_filename_and_content_unchanged,
             test_distill_collects_extract_outputs,
+            test_distillation_read_error_writes_watch_marker,
             test_extract_worker_scan_queues_candidate_once,
             test_text_process_module_function_boundary,
+            test_text_write_helper_cleanup_static,
             test_llm_call_options_defaults_and_overrides,
+            test_write_text_file_helper_contract,
+            test_write_error_file_helper_contract,
             test_extract_full_process_writes_extract_markdown_and_archive,
             test_extract_failure_writes_error_and_moves_to_fail,
             test_premium_extract_full_process_archives_to_archive_folder,

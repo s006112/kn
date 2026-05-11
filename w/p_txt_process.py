@@ -48,6 +48,21 @@ def _llm_call_options(config):
     }
 
 
+def _write_text_file(path, content):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    release_text_file_permissions(path)
+    return path
+
+
+def _write_error_file(config, base_name, message, marker=None):
+    os.makedirs(config["WATCH_FOLDER"], exist_ok=True)
+    safe_marker = sanitize_filename(marker) if marker else ""
+    filename = f"{base_name}.{safe_marker}.error" if safe_marker else f"{base_name}.error"
+    path = os.path.join(config["WATCH_FOLDER"], filename)
+    return _write_text_file(path, message)
+
+
 def request_pretext_processing(queue, processed_files, processed_files_lock, file_path: str) -> bool:
     normalized = os.path.abspath(os.fspath(file_path))
     with processed_files_lock:
@@ -142,9 +157,7 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
             config["PRETEXT_WATCH_FOLDER"],
             f"{base_name}{config['EXTRACT_SUFFIX'][0]}",
         )
-        with open(pretext_target_path, "w", encoding="utf-8") as f:
-            f.write(pretext_result)
-        release_text_file_permissions(pretext_target_path)
+        _write_text_file(pretext_target_path, pretext_result)
         logging.info("Pretext: Created %s", os.path.basename(pretext_target_path))
 
         write_pretext_markdown(config, base_name, pretext_result)
@@ -153,13 +166,7 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
     except Exception as exc:
         logging.error("Error processing file: %s", exc)
         if "pretext_result" in locals():
-            error_path = os.path.join(
-                config["PRETEXT_WATCH_FOLDER"],
-                f"{base_name}.error",
-            )
-            with open(error_path, "w", encoding="utf-8") as f:
-                f.write(f"Error: {exc}\nPartial response:\n{pretext_result}")
-            release_text_file_permissions(error_path)
+            _write_error_file(config, base_name, f"Error: {exc}\nPartial response:\n{pretext_result}")
         raise
     finally:
         release_pretext_request(processed_files, processed_files_lock, normalized_path)
@@ -236,9 +243,7 @@ def _process_extract_file(config, file_path, get_next_available_filename, models
                 os.makedirs(config['EXTRACT_FOLDER'], exist_ok=True)
                 model_suffix = f"_{sanitize_filename(model)}"
                 save_path = get_next_available_filename(config['EXTRACT_FOLDER'], base, model_suffix)
-                with open(save_path, 'w', encoding='utf-8') as f:
-                    f.write(result)
-                release_text_file_permissions(save_path)
+                _write_text_file(save_path, result)
 
                 # Merge immediately to keep the markdown up to date after each success.
                 label = f"{model} "
@@ -260,15 +265,12 @@ def _process_extract_file(config, file_path, get_next_available_filename, models
                 logging.error(f"Extract: Model {model} failed for {filename}: {e}")
                 # Write a per-model error file (best-effort)
                 try:
-                    os.makedirs(config['PRETEXT_WATCH_FOLDER'], exist_ok=True)
-                    err_key = sanitize_filename(model) or "unknown_model"
-                    err_path = os.path.join(
-                        config['PRETEXT_WATCH_FOLDER'],
-                        f"{base}.{err_key}.error",
+                    _write_error_file(
+                        config,
+                        base,
+                        f"Model: {model}\nError: {e}\n",
+                        sanitize_filename(model) or "unknown_model",
                     )
-                    with open(err_path, 'w', encoding='utf-8') as ef:
-                        ef.write(f"Model: {model}\nError: {e}\n")
-                    release_text_file_permissions(err_path)
                 except Exception as w:
                     logging.error(f"Write per-model error file failed: {w}")
 
@@ -297,16 +299,9 @@ def _process_extract_file(config, file_path, get_next_available_filename, models
             return
 
         logging.error(f"Error processing {filename}: {e}")
-        base_nm = os.path.splitext(filename)[0]
         # Preserve a top-level error marker for troubleshooting.
         try:
-            os.makedirs(config['PRETEXT_WATCH_FOLDER'], exist_ok=True)
-            err_path = os.path.join(
-                config['PRETEXT_WATCH_FOLDER'], f"{base_nm}.error"
-            )
-            with open(err_path, 'w', encoding='utf-8') as f:
-                f.write(f"Error: {e}\n")
-            release_text_file_permissions(err_path)
+            _write_error_file(config, base, f"Error: {e}\n")
         except Exception as w:
             logging.error(f"Write error file failed: {w}")
         # Only move if the source still exists to avoid duplicate errors.
@@ -355,18 +350,6 @@ def _derive_model_label(base_name: str, path: Path) -> str:
         if tail.isdigit():
             return candidate
     return suffix or "unknown"
-
-
-def _write_distill_error(extract_folder: str, base_name: str, message: str) -> None:
-    """Write a distillation error marker file to the extract folder."""
-    try:
-        os.makedirs(extract_folder, exist_ok=True)
-        err_path = os.path.join(extract_folder, f"{base_name}_e.distill.error")
-        with open(err_path, "w", encoding="utf-8") as ef:
-            ef.write(message)
-        release_text_file_permissions(err_path)
-    except Exception as exc:
-        logging.error("Distillation: failed to write error file for %s: %s", base_name, exc)
 
 
 def _collect_extracts(extract_folder: str, base_name: str, pretext_suffix: str) -> List[Tuple[str, str, str]]:
@@ -429,7 +412,10 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
     try:
         extracts = _collect_extracts(extract_folder, base_name, str(config["PRETEXT_SUFFIX"]))
     except Exception as exc:
-        _write_distill_error(extract_folder, base_name, f"Read error: {exc}\n")
+        try:
+            _write_error_file(config, base_name, f"Read error: {exc}\n", "distill")
+        except Exception as write_exc:
+            logging.error("Distillation: failed to write error file for %s: %s", base_name, write_exc)
         raise
 
     if not extracts:
@@ -453,14 +439,15 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
             **_llm_call_options(config),
         )
     except Exception as exc:
-        _write_distill_error(extract_folder, base_name, f"LLM error ({distill_model}): {exc}\n")
+        try:
+            _write_error_file(config, base_name, f"LLM error ({distill_model}): {exc}\n", "distill")
+        except Exception as write_exc:
+            logging.error("Distillation: failed to write error file for %s: %s", base_name, write_exc)
         raise
 
     os.makedirs(extract_folder, exist_ok=True)
     save_path = get_next_available_filename(extract_folder, base_name, distill_suffix)
-    with open(save_path, "w", encoding="utf-8") as f:
-        f.write(distilled)
-    release_text_file_permissions(save_path)
+    _write_text_file(save_path, distilled)
 
     if md_path:
         merge_to_markdown(
