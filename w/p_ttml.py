@@ -21,7 +21,6 @@ import time
 from queue import Empty
 from .helper_files import release_text_file_permissions
 from .helper_text import sanitize_and_trim_filename
-from .p_pipelines import enqueue_if_absent
 from xml.dom.minidom import parse
 
 
@@ -64,10 +63,9 @@ def process_ttml_pipeline(runtime):
         if os.path.exists(ttml_watch_folder):
             for filename in os.listdir(ttml_watch_folder):
                 if filename.lower().endswith(".ttml"):
-                    enqueue_if_absent(
-                        runtime.ttml_queue,
-                        os.path.join(ttml_watch_folder, filename),
-                    )
+                    src = os.path.join(ttml_watch_folder, filename)
+                    if src not in runtime.ttml_queue.queue:
+                        runtime.ttml_queue.put(src)
 
         try:
             src = runtime.ttml_queue.get(timeout=wait_seconds)
@@ -84,7 +82,8 @@ def process_ttml_pipeline(runtime):
             ):
                 continue
             if not _is_file_ready(src, wait=wait_seconds):
-                enqueue_if_absent(runtime.ttml_queue, src)
+                if src not in runtime.ttml_queue.queue:
+                    runtime.ttml_queue.put(src)
                 continue
 
             locked = False
@@ -93,7 +92,8 @@ def process_ttml_pipeline(runtime):
                     lock = _ttml_locks.setdefault(src, threading.Lock())
                 locked = lock.acquire(blocking=False)
                 if not locked:
-                    enqueue_if_absent(runtime.ttml_queue, src)
+                    if src not in runtime.ttml_queue.queue:
+                        runtime.ttml_queue.put(src)
                     continue
 
                 handle_ttml(

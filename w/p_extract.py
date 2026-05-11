@@ -254,7 +254,8 @@ def scan_extract_files(runtime) -> None:
         filename_lower = filename.lower()
         if any(filename_lower.endswith(s) for s in extract_suffixes):
             file_path = os.path.join(extract_watch_folder, filename)
-            pipelines.enqueue_if_absent(runtime.extract_queue, file_path)
+            if file_path not in runtime.extract_queue.queue:
+                runtime.extract_queue.put(file_path)
 
 
 def scan_premium_extract_files(runtime) -> None:
@@ -267,4 +268,5 @@ def scan_premium_extract_files(runtime) -> None:
         filename_lower = filename.lower()
         if any(filename_lower.endswith(s) for s in extract_suffixes):
             file_path = os.path.join(premium_watch_folder, filename)
-            pipelines.enqueue_if_absent(runtime.premium_extract_queue, file_path)
+            if file_path not in runtime.premium_extract_queue.queue:
+                runtime.premium_extract_queue.put(file_path)

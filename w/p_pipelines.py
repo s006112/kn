@@ -26,13 +26,6 @@ def create_runtime(config):
         wikilink_cleaning_stats={"last_run": None, "cycle_count": 0},
         shutdown_flag=threading.Event(),
     )
-
-
-def enqueue_if_absent(queue, path):
-    if path not in queue.queue:
-        queue.put(path)
-
-
 def process_queue(runtime, queue, process, method_name, scan_files=None):
     intervals = runtime.config.get("INTERVALS", {})
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
