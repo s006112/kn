@@ -166,49 +166,11 @@ def start_runtime(runtime) -> dict[str, threading.Thread]:
     threads = {
         name: threading.Thread(target=target, args=args, daemon=True, name=name)
         for enabled, name, target, args in [
+            (runtime.config["PIPELINES"]["PRETEXT"], "TextPipeline-Pretext", lambda runtime: process_queue(runtime, runtime.pretext_queue, lambda path, _next: process_pretext_file(runtime.config, path, runtime.processed_files_global, runtime.processed_files_lock), "process_pretext", scan_pretext_files), (runtime,)),
+            (runtime.config["PIPELINES"]["EXTRACT"], "TextPipeline-Extract", lambda runtime, processor: process_queue(runtime, runtime.extract_queue, processor.process_extract, "process_extract", scan_extract_files), (runtime, extract_processor)),
+            (runtime.config["PIPELINES"]["EXTRACT"], "TextPipeline-PremiumExtract", lambda runtime, processor: process_queue(runtime, runtime.premium_extract_queue, processor.process_premium_extract, "process_premium_extract", scan_premium_extract_files), (runtime, premium_extract_processor)),
             (runtime.config["PIPELINES"]["TORRENT"], "TorrentPipeline", process_torrent_pipeline, (runtime,)),
             (runtime.config["PIPELINES"]["TTML"], "TTMLPipeline", process_ttml_pipeline, (runtime,)),
-            (
-                runtime.config["PIPELINES"]["PRETEXT"],
-                "TextPipeline-Pretext",
-                lambda runtime: process_queue(
-                    runtime,
-                    runtime.pretext_queue,
-                    lambda path, _next: process_pretext_file(
-                        runtime.config,
-                        path,
-                        runtime.processed_files_global,
-                        runtime.processed_files_lock,
-                    ),
-                    "process_pretext",
-                    scan_pretext_files,
-                ),
-                (runtime,),
-            ),
-            (
-                runtime.config["PIPELINES"]["EXTRACT"],
-                "TextPipeline-Extract",
-                lambda runtime, processor: process_queue(
-                    runtime,
-                    runtime.extract_queue,
-                    processor.process_extract,
-                    "process_extract",
-                    scan_extract_files,
-                ),
-                (runtime, extract_processor),
-            ),
-            (
-                runtime.config["PIPELINES"]["EXTRACT"],
-                "TextPipeline-PremiumExtract",
-                lambda runtime, processor: process_queue(
-                    runtime,
-                    runtime.premium_extract_queue,
-                    processor.process_premium_extract,
-                    "process_premium_extract",
-                    scan_premium_extract_files,
-                ),
-                (runtime, premium_extract_processor),
-            ),
             (runtime.config["PIPELINES"]["AUDIO"], "AudioPipeline-GPU", process_audio_pipeline, (runtime,)),
             (runtime.config["PIPELINES"]["WIKI"], "WikilinkCleaner", process_wikilink_cleaning, (runtime,)),
             (runtime.config["PIPELINES"]["YTD"], "YTDPipeline", process_ytd_pipeline, (runtime,)),
