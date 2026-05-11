@@ -48,6 +48,7 @@ from helper.helper_llm import LLMPermanentFailure
 
 OK = "✅"
 FAIL = "❌"
+EXTRACT_INPUT_SUFFIX = "_p.txt"
 
 
 @dataclass(frozen=True)
@@ -101,6 +102,16 @@ PATHS = EvalPaths(
     ytd_list=Path(CONFIG["YTD_LIST_FILE"]),
     download_target=Path(CONFIG["DOWNLOAD_TARGET_FOLDER"]),
 )
+
+
+def extract_input_suffix(config=CONFIG) -> str:
+    suffix = config["EXTRACT_SUFFIX"]
+    suffixes = (suffix,) if isinstance(suffix, str) else tuple(suffix)
+    return EXTRACT_INPUT_SUFFIX if EXTRACT_INPUT_SUFFIX in suffixes else str(suffixes[0])
+
+
+def extract_text_config(**overrides):
+    return {**CONFIG, "EXTRACT_SUFFIX": (EXTRACT_INPUT_SUFFIX,), **overrides}
 
 
 def safe_delete(path: Path, test_id: str) -> bool:
@@ -575,7 +586,7 @@ def test_pretext_scan_deduplicates_queue(test_id: str) -> tuple[bool, list[Path]
 
     source.write_text(f"dummy pretext queue source {test_id}\n", encoding="utf-8")
 
-    config = {**CONFIG, "PRETEXT_WATCH_FOLDER": str(watch_dir)}
+    config = extract_text_config(PRETEXT_WATCH_FOLDER=str(watch_dir))
     pretext_queue = Queue()
     processed_files_global = set()
     processed_files_lock = threading.Lock()
@@ -603,7 +614,7 @@ def test_pretext_scan_deduplicates_queue(test_id: str) -> tuple[bool, list[Path]
 
 def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
-    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+    extract_suffix = extract_input_suffix()
     base_name = f"{test_id}_pretext_full"
 
     source = PATHS.pretext_watch / f"{base_name}{pretext_suffix}"
@@ -620,7 +631,7 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
     source.write_text(f"dummy pretext source {test_id}\n", encoding="utf-8")
 
     config = {
-        **CONFIG,
+        **extract_text_config(),
         "MODEL_PRETEXT": "evaluation-model",
         "PRETEXT_PROMPT": "evaluation pretext prompt",
         "INTERVALS": {
@@ -705,7 +716,7 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
 
 def test_pretext_partial_error_filename_and_content_unchanged(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
-    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+    extract_suffix = extract_input_suffix()
     base_name = f"{test_id}_pretext_partial_error"
 
     source = PATHS.pretext_watch / f"{base_name}{pretext_suffix}"
@@ -718,7 +729,7 @@ def test_pretext_partial_error_filename_and_content_unchanged(test_id: str) -> t
     source.write_text(f"dummy pretext partial source {test_id}\n", encoding="utf-8")
 
     config = {
-        **CONFIG,
+        **extract_text_config(),
         "MODEL_PRETEXT": "evaluation-model",
         "PRETEXT_PROMPT": "evaluation pretext prompt",
     }
@@ -899,30 +910,32 @@ def test_distillation_read_error_writes_watch_marker(test_id: str) -> tuple[bool
 
 
 def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, list[Path]]:
-    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
-    source = PATHS.extract_watch / f"{test_id}_extract{extract_suffix}"
+    extract_suffix = extract_input_suffix()
+    watch_dir = ROOT_DIR / f"{test_id}_extract_scan_watch"
+    source = watch_dir / f"{test_id}_extract{extract_suffix}"
     ignored = PATHS.download_target / f"{test_id}_ignored{extract_suffix}"
+    markdown = watch_dir / f"{test_id}_extract.md"
 
-    cleanup = [source, ignored]
+    cleanup = [source, ignored, markdown, watch_dir]
 
-    PATHS.watch.mkdir(parents=True, exist_ok=True)
-    PATHS.ttml_watch.mkdir(parents=True, exist_ok=True)
-    PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
-    PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
+    watch_dir.mkdir(parents=True, exist_ok=True)
     PATHS.download_target.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"extract queue candidate {test_id}\n", encoding="utf-8")
     ignored.write_text(f"wrong folder candidate {test_id}\n", encoding="utf-8")
+    markdown.write_text(f"markdown is not extract input {test_id}\n", encoding="utf-8")
 
+    config = extract_text_config(EXTRACT_WATCH_FOLDER=str(watch_dir))
     extract_queue = Queue()
-    txt_process_module.scan_extract_files(CONFIG, extract_queue)
-    txt_process_module.scan_extract_files(CONFIG, extract_queue)
+    txt_process_module.scan_extract_files(config, extract_queue)
+    txt_process_module.scan_extract_files(config, extract_queue)
 
     queued_paths = list(extract_queue.queue)
 
     passed = (
         queued_paths.count(str(source)) == 1
         and str(ignored) not in queued_paths
+        and str(markdown) not in queued_paths
     )
 
     print_result(
@@ -931,6 +944,7 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
         {
             "source": source,
             "ignored": ignored,
+            "markdown": markdown,
             "queued_paths": queued_paths,
         },
     )
@@ -1389,7 +1403,7 @@ def test_save_pipeline_error_helper_contract(test_id: str) -> tuple[bool, list[P
 
 
 def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) -> tuple[bool, list[Path]]:
-    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+    extract_suffix = extract_input_suffix()
     base_name = f"{test_id}_extract_full"
     model = "evaluation-model"
 
@@ -1408,7 +1422,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
     source.write_text(f"dummy extract source {test_id}\n", encoding="utf-8")
 
     config = {
-        **CONFIG,
+        **extract_text_config(),
         "MODEL_DISTILL": "",
         "INTERVALS": {
             **CONFIG["INTERVALS"],
@@ -1482,7 +1496,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
             whisper_index.unlink()
 
 def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[bool, list[Path]]:
-    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+    extract_suffix = extract_input_suffix()
     base_name = f"{test_id}_extract_fail"
     model = "evaluation-failing-model"
 
@@ -1500,7 +1514,7 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
     source.write_text(f"dummy extract failure source {test_id}\n", encoding="utf-8")
 
     config = {
-        **CONFIG,
+        **extract_text_config(),
         "MODEL_DISTILL": "",
         "MODEL_EXTRACT_MATRIX": {
             **CONFIG.get("MODEL_EXTRACT_MATRIX", {}),
@@ -1564,7 +1578,7 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
 
 def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
-    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+    extract_suffix = extract_input_suffix()
 
     long_base = f"{test_id}_" + "x" * 70
     raw = PATHS.pretext_watch / f"{long_base}{pretext_suffix}"
@@ -1583,13 +1597,14 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
     extract_queue = Queue()
     processed_files_global = set()
     processed_files_lock = threading.Lock()
+    config = extract_text_config()
     txt_process_module.scan_pretext_files(
-        CONFIG,
+        config,
         pretext_queue,
         processed_files_global,
         processed_files_lock,
     )
-    txt_process_module.scan_extract_files(CONFIG, extract_queue)
+    txt_process_module.scan_extract_files(config, extract_queue)
 
     pretext_paths = list(pretext_queue.queue)
     extract_paths = list(extract_queue.queue)
@@ -1661,7 +1676,7 @@ def test_torrent_scan_moves_torrent(test_id: str) -> tuple[bool, list[Path]]:
 
 def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
-    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+    extract_suffix = extract_input_suffix()
 
     raw = PATHS.pretext_watch / f"{test_id}_periodic_raw{pretext_suffix}"
     extract = PATHS.extract_watch / f"{test_id}_periodic_extract{extract_suffix}"
@@ -1675,7 +1690,7 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
     extract.write_text(f"periodic scan extract {test_id}\n", encoding="utf-8")
 
     config = {
-        **CONFIG,
+        **extract_text_config(),
         "PIPELINES": {
             **CONFIG["PIPELINES"],
             "TORRENT": False,
@@ -2032,7 +2047,7 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
     md_path.write_text(f"# Existing distill note\n\nbody {test_id}\n", encoding="utf-8")
 
     config = {
-        **CONFIG,
+        **extract_text_config(),
         "MODEL_DISTILL": model,
         "DISTILL_PROMPT": "evaluation distill prompt",
         "INTERVALS": {
@@ -2132,7 +2147,7 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
 
 
 def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: str) -> tuple[bool, list[Path]]:
-    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+    extract_suffix = extract_input_suffix()
     base_name = f"{test_id}_extract_partial"
     good_model = "evaluation-good-model"
     bad_model = "evaluation-bad-model"
@@ -2154,7 +2169,7 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
     source.write_text(f"partial extract source {test_id}\n", encoding="utf-8")
 
     config = {
-        **CONFIG,
+        **extract_text_config(),
         "MODEL_DISTILL": "",
         "MODEL_EXTRACT_MATRIX": {
             **CONFIG.get("MODEL_EXTRACT_MATRIX", {}),
@@ -2237,7 +2252,7 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
 
 def test_pretext_multichunk_and_failure_discards_processed_path(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
-    extract_suffix = str(CONFIG["EXTRACT_SUFFIX"][0])
+    extract_suffix = extract_input_suffix()
     success_base = f"{test_id}_pretext_multichunk"
     failure_base = f"{test_id}_pretext_failure"
 
@@ -2257,7 +2272,7 @@ def test_pretext_multichunk_and_failure_discards_processed_path(test_id: str) ->
     failure_source.write_text(f"failure source {test_id}\n", encoding="utf-8")
 
     config = {
-        **CONFIG,
+        **extract_text_config(),
         "MODEL_PRETEXT": "evaluation-pretext-model",
         "PRETEXT_PROMPT": "evaluation pretext prompt",
     }
@@ -2928,7 +2943,7 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
             started_workers.clear()
 
             config = {
-                **CONFIG,
+                **extract_text_config(),
                 "PIPELINES": {
                     **CONFIG["PIPELINES"],
                     "PRETEXT": pretext_enabled,
