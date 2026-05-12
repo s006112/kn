@@ -34,26 +34,18 @@ def write_text_file(path, content):
     release_text_file_permissions(path)
     return path
 
-def save_pipeline_error(config, stage, base_name, error, *, filename=None, model=None, partial=None):
-    marker = sanitize_filename(model or stage) or "unknown"
-    path = os.path.join(config["WATCH_FOLDER"], f"{base_name}.{marker}.error")
+def save_pipeline_error(config, stage, base_name, error, *, filename=None, model=None, file_path=None):
     logging.error("Pipeline error | stage=%s file=%s base=%s model=%s error=%s", stage, short_log_name(filename) if filename else "", short_log_name(base_name), model or "", error)
+    if not file_path or not os.path.exists(file_path):
+        return None
 
-    lines = [
-        f"Stage: {stage}",
-        f"File: {filename or ''}",
-        f"Base: {base_name}",
-        f"Model: {model or ''}",
-        f"Error: {error}",
-    ]
-    if partial is not None:
-        lines += ["", "Partial:", str(partial)]
-
+    error_path = os.path.join(os.path.dirname(os.path.abspath(os.fspath(file_path))), f"{base_name}.error")
     try:
-        os.makedirs(config["WATCH_FOLDER"], exist_ok=True)
-        return write_text_file(path, "\n".join(lines).rstrip() + "\n")
-    except Exception as write_error:
-        logging.error("Pipeline error write failed | target=%s error=%s", path, write_error)
+        os.replace(file_path, error_path)
+        logging.info("Marked failed file as error: %s", short_log_name(error_path))
+        return error_path
+    except Exception as rename_error:
+        logging.error("Pipeline error rename failed | source=%s target=%s error=%s", short_log_name(file_path), short_log_name(error_path), rename_error)
         return None
 
 
@@ -100,7 +92,7 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
         shutil.move(normalized_path, original_path)
 
     except Exception as exc:
-        save_pipeline_error(config, "pretext", base_name, exc, filename=original_filename, model=pretext_model, partial=locals().get("pretext_result"))
+        save_pipeline_error(config, "pretext", base_name, exc, filename=original_filename, model=pretext_model, file_path=normalized_path)
         raise
     finally:
         with processed_files_lock:
@@ -111,14 +103,12 @@ def process_extract_file(config, file_path):
     filename = os.path.basename(file_path)
     extract_suffix = str(config["EXTRACT_SUFFIX"]).lower()
     base = filename[: -len(extract_suffix)] if filename.lower().endswith(extract_suffix) else os.path.splitext(filename)[0]
-    failed_models = []
     filename_log = short_log_name(filename)
 
     try:
         logging.info("Extract: Start %s", filename_log)
         content, _ = read_file_with_encodings(file_path)
 
-        classifier_result = "OTHER"
         classifier_result = (call_text_llm(config, config["MODEL_PRETEXT"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper()
         route = "CORE" if classifier_result == "CORE" else "OTHER"
         logging.info("Extract: |%s| for %s", route, filename_log)
@@ -138,28 +128,17 @@ def process_extract_file(config, file_path):
                 logging.info("Extract: Skipping model entry (not configured)")
                 continue
 
-            try:
-                result = call_text_llm(config, model, config["EXTRACT_PROMPT"], payload, file_path)
-                os.makedirs(config["EXTRACT_FOLDER"], exist_ok=True)
-                save_path = get_next_available_filename(config["EXTRACT_FOLDER"], base, f"_{sanitize_filename(model)}")
-                write_text_file(save_path, result)
-                merge_to_markdown(md_path, [result], "", [f"{model} "], whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"), whisper_link_name=link_name, md_is_new=(md_is_new_seed and extract_count == 0))
-                extract_count += 1
-                logging.info("Extract: %s (%s : %s)", filename_log, model, f"{len(result):,}")
-            except Exception as exc:
-                failed_models.append(model)
-                save_pipeline_error(config, "extract", base, exc, filename=filename, model=model)
-
-        if failed_models:
-            raise RuntimeError("One or more extraction models failed")
+            result = call_text_llm(config, model, config["EXTRACT_PROMPT"], payload, file_path)
+            os.makedirs(config["EXTRACT_FOLDER"], exist_ok=True)
+            save_path = get_next_available_filename(config["EXTRACT_FOLDER"], base, f"_{sanitize_filename(model)}")
+            write_text_file(save_path, result)
+            merge_to_markdown(md_path, [result], "", [f"{model} "], whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"), whisper_link_name=link_name, md_is_new=(md_is_new_seed and extract_count == 0))
+            extract_count += 1
+            logging.info("Extract: %s (%s : %s)", filename_log, model, f"{len(result):,}")
 
         if distill_model:
             logging.info("Extract: Model %s for %s", distill_model, filename_log)
-            try:
-                run_distillation(config, base_name=base, md_path=md_path)
-            except Exception:
-                failed_models.append(distill_model or "distill")
-                raise
+            run_distillation(config, base_name=base, md_path=md_path)
             logging.info("Extract: Completed for %s", filename_log)
 
         os.makedirs(config["PRETEXT_DONE_FOLDER"], exist_ok=True)
@@ -169,19 +148,7 @@ def process_extract_file(config, file_path):
     except Exception as exc:
         if isinstance(exc, FileNotFoundError) or not os.path.exists(file_path):
             return
-
-        if not failed_models:
-            save_pipeline_error(config, "extract", base, exc, filename=filename, model="extract")
-
-        try:
-            os.makedirs(config["FAIL_FOLDER"], exist_ok=True)
-            if os.path.exists(file_path):
-                shutil.move(file_path, os.path.join(config["FAIL_FOLDER"], filename))
-                logging.info("Moved failed file to Fail folder: %s", filename_log)
-            else:
-                logging.info("Fail move skipped; source missing: %s", filename_log)
-        except Exception as move_error:
-            logging.error(f"Move to Fail folder failed: {move_error}")
+        save_pipeline_error(config, "extract", base, exc, filename=filename, model="extract", file_path=file_path)
         raise
 
 
@@ -222,31 +189,26 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
         logging.info("Distillation: MODEL_DISTILL not configured, skipping for %s", short_log_name(base_name))
         return None
 
-    try:
-        extracts = collect_extracts(extract_folder, base_name, str(config["PRETEXT_SUFFIX"]))
-        if not extracts:
-            logging.info("Distillation: No extracts found for %s, skipping", short_log_name(base_name))
-            return None
+    extracts = collect_extracts(extract_folder, base_name, str(config["PRETEXT_SUFFIX"]))
+    if not extracts:
+        logging.info("Distillation: No extracts found for %s, skipping", short_log_name(base_name))
+        return None
 
-        payload = [f"《{base_name}》", "Below are outputs from multiple expert extraction models for the same source. Please distill them into one final, coherent result according to the system instructions."]
-        for label, content, path in extracts:
-            payload += [f"--- {label} ({os.path.basename(path)}) ---", content.strip()]
+    payload = [f"《{base_name}》", "Below are outputs from multiple expert extraction models for the same source. Please distill them into one final, coherent result according to the system instructions."]
+    for label, content, path in extracts:
+        payload += [f"--- {label} ({os.path.basename(path)}) ---", content.strip()]
 
-        logging.info("Distillation: Start %s %s (%d inputs)", short_log_name(base_name), distill_model, len(extracts))
-        distilled = call_text_llm(config, distill_model, config["DISTILL_PROMPT"], "\n\n".join(payload), extracts[0][2])
+    logging.info("Distillation: Start %s %s (%d inputs)", short_log_name(base_name), distill_model, len(extracts))
+    distilled = call_text_llm(config, distill_model, config["DISTILL_PROMPT"], "\n\n".join(payload), extracts[0][2])
 
-        os.makedirs(extract_folder, exist_ok=True)
-        save_path = write_text_file(get_next_available_filename(extract_folder, base_name, f"_{sanitize_filename(distill_model)}"), distilled)
+    os.makedirs(extract_folder, exist_ok=True)
+    save_path = write_text_file(get_next_available_filename(extract_folder, base_name, f"_{sanitize_filename(distill_model)}"), distilled)
 
-        if md_path:
-            merge_to_markdown(md_path, [distilled], "", [f"{distill_model} distilled"], whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"), whisper_link_name=Path(md_path).stem, md_is_new=False)
+    if md_path:
+        merge_to_markdown(md_path, [distilled], "", [f"{distill_model} distilled"], whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"), whisper_link_name=Path(md_path).stem, md_is_new=False)
 
-        logging.info("Distillation: Completed %s -> %s", short_log_name(base_name), short_log_name(save_path))
-        return save_path
-
-    except Exception as exc:
-        save_pipeline_error(config, "distill", base_name, exc, filename=base_name, model=distill_model)
-        raise
+    logging.info("Distillation: Completed %s -> %s", short_log_name(base_name), short_log_name(save_path))
+    return save_path
 
 
 def scan_pretext_files(config, pretext_queue, processed_files, processed_files_lock) -> None:

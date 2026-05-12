@@ -65,7 +65,6 @@ class EvalPaths:
     extract: Path
 
     original: Path
-    fail: Path
 
     audio_watch_folders: tuple[Path, ...]
     audio_done: Path
@@ -90,7 +89,6 @@ PATHS = EvalPaths(
     extract=Path(CONFIG["EXTRACT_FOLDER"]),
 
     original=Path(CONFIG["ORIGINAL_FOLDER"]),
-    fail=Path(CONFIG["FAIL_FOLDER"]),
 
     audio_watch_folders=tuple(Path(p) for p in CONFIG["AUDIO_WATCH_FOLDERS"]),
     audio_done=Path(CONFIG["AUDIO_DONE_FOLDER"]),
@@ -720,6 +718,7 @@ def test_pretext_partial_error_filename_and_content_unchanged(test_id: str) -> t
     base_name = f"{test_id}_pretext_partial_error"
 
     source = PATHS.pretext_watch / f"{base_name}{pretext_suffix}"
+    error_file = PATHS.pretext_watch / f"{base_name}.error"
     output = PATHS.pretext_watch / f"{base_name}{extract_suffix}"
     archived = PATHS.original / f"{base_name}.txt"
 
@@ -733,23 +732,18 @@ def test_pretext_partial_error_filename_and_content_unchanged(test_id: str) -> t
         "MODEL_PRETEXT": "evaluation-model",
         "PRETEXT_PROMPT": "evaluation pretext prompt",
     }
-    error_file = PATHS.watch / f"{base_name}.{sanitize_filename(config['MODEL_PRETEXT'])}.error"
 
     cleanup = [source, output, error_file, archived]
 
     original_call_llm = txt_process_module.call_llm
-    original_write_pretext_markdown = txt_process_module.write_pretext_markdown
 
     try:
-        result = f"mock pretext partial result {test_id}"
-        failure_message = f"mock pretext markdown failure {test_id}"
+        failure_message = f"mock pretext llm failure {test_id}"
 
-        txt_process_module.call_llm = lambda **_kwargs: result
-
-        def fail_write_pretext_markdown(*_args, **_kwargs) -> None:
+        def fail_call_llm(**_kwargs) -> str:
             raise RuntimeError(failure_message)
 
-        txt_process_module.write_pretext_markdown = fail_write_pretext_markdown
+        txt_process_module.call_llm = fail_call_llm
 
         processed_files_global = {str(source.resolve())}
         processed_files_lock = threading.Lock()
@@ -765,34 +759,17 @@ def test_pretext_partial_error_filename_and_content_unchanged(test_id: str) -> t
         except RuntimeError as exc:
             raised = str(exc) == failure_message
 
-        output_text = output.read_text(encoding="utf-8") if output.exists() else ""
-        error_text = error_file.read_text(encoding="utf-8") if error_file.exists() else ""
-        expected_error_text = (
-            "Stage: pretext\n"
-            f"File: {source.name}\n"
-            f"Base: {base_name}\n"
-            f"Model: {config['MODEL_PRETEXT']}\n"
-            f"Error: {failure_message}\n"
-            "\n"
-            "Partial:\n"
-            f"{result}\n"
-        )
-
         passed = (
             raised
-            and source.is_file()
-            and not archived.exists()
-            and output.is_file()
-            and output.name == f"{base_name}{extract_suffix}"
-            and output_text == result
+            and not source.exists()
             and error_file.is_file()
-            and error_file.name == f"{base_name}.{sanitize_filename(config['MODEL_PRETEXT'])}.error"
-            and error_text == expected_error_text
+            and not archived.exists()
+            and not output.exists()
             and str(source.resolve()) not in processed_files_global
         )
 
         print_result(
-            "pretext partial error filename and content unchanged",
+            "pretext failure renames source in place",
             passed,
             {
                 "source": source,
@@ -806,7 +783,6 @@ def test_pretext_partial_error_filename_and_content_unchanged(test_id: str) -> t
 
     finally:
         txt_process_module.call_llm = original_call_llm
-        txt_process_module.write_pretext_markdown = original_write_pretext_markdown
 
 
 def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path]]:
@@ -850,7 +826,7 @@ def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path
     return passed, cleanup
 
 
-def test_distillation_read_error_writes_watch_marker(test_id: str) -> tuple[bool, list[Path]]:
+def test_distillation_read_error_raises_without_sidecar(test_id: str) -> tuple[bool, list[Path]]:
     base_name = f"{test_id}_distill_read_error"
     read_message = f"mock distill read error {test_id}"
 
@@ -878,24 +854,10 @@ def test_distillation_read_error_writes_watch_marker(test_id: str) -> tuple[bool
         except RuntimeError:
             raised = True
 
-        error_text = error_file.read_text(encoding="utf-8") if error_file.exists() else ""
-        expected_error_text = (
-            "Stage: distill\n"
-            f"File: {base_name}\n"
-            f"Base: {base_name}\n"
-            f"Model: {config['MODEL_DISTILL']}\n"
-            f"Error: {read_message}\n"
-        )
-
-        passed = (
-            raised
-            and error_file.is_file()
-            and error_file.name == f"{base_name}.{sanitize_filename(config['MODEL_DISTILL'])}.error"
-            and error_text == expected_error_text
-        )
+        passed = raised and not error_file.exists()
 
         print_result(
-            "distillation read error writes watch marker",
+            "distillation read error raises without sidecar",
             passed,
             {
                 "error_file": error_file,
@@ -915,8 +877,9 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
     source = watch_dir / f"{test_id}_extract{extract_suffix}"
     ignored = PATHS.download_target / f"{test_id}_ignored{extract_suffix}"
     markdown = watch_dir / f"{test_id}_extract.md"
+    error_file = watch_dir / f"{test_id}_extract.error"
 
-    cleanup = [source, ignored, markdown, watch_dir]
+    cleanup = [source, ignored, markdown, error_file, watch_dir]
 
     watch_dir.mkdir(parents=True, exist_ok=True)
     PATHS.download_target.mkdir(parents=True, exist_ok=True)
@@ -924,6 +887,7 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
     source.write_text(f"extract queue candidate {test_id}\n", encoding="utf-8")
     ignored.write_text(f"wrong folder candidate {test_id}\n", encoding="utf-8")
     markdown.write_text(f"markdown is not extract input {test_id}\n", encoding="utf-8")
+    error_file.write_text(f"error marker is not extract input {test_id}\n", encoding="utf-8")
 
     config = extract_text_config(EXTRACT_WATCH_FOLDER=str(watch_dir))
     extract_queue = Queue()
@@ -936,6 +900,7 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
         queued_paths.count(str(source)) == 1
         and str(ignored) not in queued_paths
         and str(markdown) not in queued_paths
+        and str(error_file) not in queued_paths
     )
 
     print_result(
@@ -945,6 +910,7 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
             "source": source,
             "ignored": ignored,
             "markdown": markdown,
+            "error_file": error_file,
             "queued_paths": queued_paths,
         },
     )
@@ -1188,7 +1154,6 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
         "write_text_file(pretext_target_path, pretext_result)",
         "write_text_file(save_path, result)",
         "save_path = write_text_file(get_next_available_filename(",
-        "return write_text_file(path,",
     ]
     missing_text_helper_calls = [
         marker for marker in required_text_helper_calls if marker not in txt_source
@@ -1337,97 +1302,51 @@ def test_save_pipeline_error_helper_contract(test_id: str) -> tuple[bool, list[P
     base_name = f"{test_id}_save_pipeline_error"
     model = "bad\tmodel\nname"
     model_marker = sanitize_filename(model)
+    source = PATHS.watch / f"{base_name}_source.txt"
+    error_file = PATHS.watch / f"{base_name}.error"
     model_error = PATHS.watch / f"{base_name}.{model_marker}.error"
-    stage_error = PATHS.watch / f"{base_name}.distill.error"
-    fallback_error = PATHS.watch / f"{base_name}.unknown.error"
-    cleanup = [model_error, stage_error, fallback_error]
+    missing = PATHS.watch / f"{base_name}_missing.txt"
+    cleanup = [source, error_file, model_error, missing]
 
     config = {**CONFIG, "WATCH_FOLDER": str(PATHS.watch)}
-    original_sanitize = txt_process_module.sanitize_filename
+    PATHS.watch.mkdir(parents=True, exist_ok=True)
+    source.write_text(f"source to rename {test_id}\n", encoding="utf-8")
 
-    try:
-        returned_model = txt_process_module.save_pipeline_error(
-            config,
-            "extract",
-            base_name,
-            f"model error {test_id}",
-            filename=f"{base_name}_p.txt",
-            model=model,
-            partial=f"partial body {test_id}",
-        )
-        returned_stage = txt_process_module.save_pipeline_error(
-            config,
-            "distill",
-            base_name,
-            f"stage error {test_id}",
-            filename=base_name,
-        )
-        txt_process_module.sanitize_filename = lambda _marker: ""
-        returned_fallback = txt_process_module.save_pipeline_error(
-            config,
-            "fallback",
-            base_name,
-            f"fallback error {test_id}",
-        )
-    finally:
-        txt_process_module.sanitize_filename = original_sanitize
-
-    model_text = model_error.read_text(encoding="utf-8") if model_error.exists() else ""
-    stage_text = stage_error.read_text(encoding="utf-8") if stage_error.exists() else ""
-    fallback_text = fallback_error.read_text(encoding="utf-8") if fallback_error.exists() else ""
-    expected_model_text = (
-        "Stage: extract\n"
-        f"File: {base_name}_p.txt\n"
-        f"Base: {base_name}\n"
-        f"Model: {model}\n"
-        f"Error: model error {test_id}\n"
-        "\n"
-        "Partial:\n"
-        f"partial body {test_id}\n"
+    returned_error = txt_process_module.save_pipeline_error(
+        config,
+        "extract",
+        base_name,
+        f"model error {test_id}",
+        filename=source.name,
+        model=model,
+        file_path=source,
     )
-    expected_stage_text = (
-        "Stage: distill\n"
-        f"File: {base_name}\n"
-        f"Base: {base_name}\n"
-        "Model: \n"
-        f"Error: stage error {test_id}\n"
+    returned_missing = txt_process_module.save_pipeline_error(
+        config, "extract", base_name, f"missing error {test_id}", file_path=missing
     )
-    expected_fallback_text = (
-        "Stage: fallback\n"
-        "File: \n"
-        f"Base: {base_name}\n"
-        "Model: \n"
-        f"Error: fallback error {test_id}\n"
+    returned_none = txt_process_module.save_pipeline_error(
+        config, "extract", base_name, f"none error {test_id}", file_path=None
     )
 
     passed = (
-        model_error.is_file()
-        and model_error.parent == PATHS.watch
-        and model_error.name == f"{base_name}.{model_marker}.error"
-        and model_text == expected_model_text
-        and Path(returned_model) == model_error
-        and stage_error.is_file()
-        and stage_error.parent == PATHS.watch
-        and stage_error.name == f"{base_name}.distill.error"
-        and stage_text == expected_stage_text
-        and Path(returned_stage) == stage_error
-        and fallback_error.is_file()
-        and fallback_error.parent == PATHS.watch
-        and fallback_error.name == f"{base_name}.unknown.error"
-        and fallback_text == expected_fallback_text
-        and Path(returned_fallback) == fallback_error
+        Path(returned_error or "") == error_file
+        and error_file.is_file()
+        and not source.exists()
+        and not model_error.exists()
+        and returned_missing is None
+        and returned_none is None
     )
 
     print_result(
         "save pipeline error helper contract",
         passed,
         {
+            "source": source,
+            "error_file": error_file,
             "model_error": model_error,
-            "stage_error": stage_error,
-            "fallback_error": fallback_error,
-            "returned_model": returned_model,
-            "returned_stage": returned_stage,
-            "returned_fallback": returned_fallback,
+            "returned_error": returned_error,
+            "returned_missing": returned_missing,
+            "returned_none": returned_none,
         },
     )
 
@@ -1548,26 +1467,27 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
         elif not index_existed and whisper_index.exists():
             whisper_index.unlink()
 
-def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[bool, list[Path]]:
+def test_extract_failure_renames_source_in_place(test_id: str) -> tuple[bool, list[Path]]:
     extract_suffix = extract_input_suffix()
     base_name = f"{test_id}_extract_fail"
     model = "evaluation-failing-model"
+    watch_dir = ROOT_DIR / f"{test_id}_extract_fail_watch"
 
-    source = PATHS.extract_watch / f"{base_name}{extract_suffix}"
-    failed = PATHS.fail / source.name
+    source = watch_dir / f"{base_name}{extract_suffix}"
+    error_file = watch_dir / f"{base_name}.error"
     per_model_error = PATHS.watch / f"{base_name}.{sanitize_filename(model)}.error"
     top_level_error = PATHS.watch / f"{base_name}.error"
 
-    cleanup = [source, failed, per_model_error, top_level_error]
+    cleanup = [source, error_file, per_model_error, top_level_error, watch_dir]
 
-    PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
+    watch_dir.mkdir(parents=True, exist_ok=True)
     PATHS.watch.mkdir(parents=True, exist_ok=True)
-    PATHS.fail.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"dummy extract failure source {test_id}\n", encoding="utf-8")
 
     config = {
         **extract_text_config(),
+        "EXTRACT_WATCH_FOLDER": str(watch_dir),
         "MODEL_DISTILL": "",
         "MODEL_EXTRACT_MATRIX": {
             **CONFIG.get("MODEL_EXTRACT_MATRIX", {}),
@@ -1593,26 +1513,11 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
         except RuntimeError:
             raised = True
 
-        per_model_error_text = (
-            per_model_error.read_text(encoding="utf-8")
-            if per_model_error.exists()
-            else ""
-        )
-        expected_per_model_error_text = (
-            "Stage: extract\n"
-            f"File: {source.name}\n"
-            f"Base: {base_name}\n"
-            f"Model: {model}\n"
-            f"Error: mock extract failure {test_id}\n"
-        )
-
         passed = (
             raised
             and not source.exists()
-            and failed.is_file()
-            and per_model_error.is_file()
-            and per_model_error.name == f"{base_name}.{sanitize_filename(model)}.error"
-            and per_model_error_text == expected_per_model_error_text
+            and error_file.is_file()
+            and not per_model_error.exists()
             and not top_level_error.exists()
             and call_sequence
             == [
@@ -1622,11 +1527,11 @@ def test_extract_failure_writes_error_and_moves_to_fail(test_id: str) -> tuple[b
         )
 
         print_result(
-            "extract failure writes error and moves to fail",
+            "extract failure renames source in place",
             passed,
             {
                 "source": source,
-                "failed": failed,
+                "error_file": error_file,
                 "per_model_error": per_model_error,
                 "top_level_error": top_level_error,
                 "raised": raised,
@@ -1643,24 +1548,30 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
     extract_suffix = extract_input_suffix()
 
+    pretext_dir = ROOT_DIR / f"{test_id}_route_pretext_watch"
+    extract_dir = ROOT_DIR / f"{test_id}_route_extract_watch"
     long_base = f"{test_id}_" + "x" * 70
-    raw = PATHS.pretext_watch / f"{long_base}{pretext_suffix}"
-    renamed = PATHS.pretext_watch / f"{sanitize_and_trim_filename(long_base)}{pretext_suffix}"
-    extract = PATHS.extract_watch / f"{test_id}_scan_existing{extract_suffix}"
+    raw = pretext_dir / f"{long_base}{pretext_suffix}"
+    renamed = pretext_dir / f"{sanitize_and_trim_filename(long_base)}{pretext_suffix}"
+    extract = extract_dir / f"{test_id}_scan_existing{extract_suffix}"
+    pretext_error = pretext_dir / f"{test_id}_pretext_scan.error"
+    extract_error = extract_dir / f"{test_id}_extract_scan.error"
 
-    cleanup = [raw, renamed, extract]
+    cleanup = [raw, renamed, extract, pretext_error, extract_error, pretext_dir, extract_dir]
 
-    PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
-    PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
+    pretext_dir.mkdir(parents=True, exist_ok=True)
+    extract_dir.mkdir(parents=True, exist_ok=True)
 
     raw.write_text(f"startup scan raw {test_id}\n", encoding="utf-8")
     extract.write_text(f"startup scan extract {test_id}\n", encoding="utf-8")
+    pretext_error.write_text(f"startup scan pretext error {test_id}\n", encoding="utf-8")
+    extract_error.write_text(f"startup scan extract error {test_id}\n", encoding="utf-8")
 
     pretext_queue = Queue()
     extract_queue = Queue()
     processed_files_global = set()
     processed_files_lock = threading.Lock()
-    config = extract_text_config()
+    config = extract_text_config(PRETEXT_WATCH_FOLDER=str(pretext_dir), EXTRACT_WATCH_FOLDER=str(extract_dir))
     txt_process_module.scan_pretext_files(
         config,
         pretext_queue,
@@ -1677,6 +1588,8 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
         and renamed.is_file()
         and str(renamed.resolve()) in pretext_paths
         and str(extract) in extract_paths
+        and str(pretext_error.resolve()) not in pretext_paths
+        and str(extract_error) not in extract_paths
     )
 
     print_result(
@@ -1684,6 +1597,8 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
         passed,
         {
             "renamed": renamed,
+            "pretext_error": pretext_error,
+            "extract_error": extract_error,
             "pretext_queue": pretext_queue.qsize(),
             "extract_queue": extract_queue.qsize(),
         },
@@ -2164,14 +2079,6 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
 
         success_text = success_path.read_text(encoding="utf-8") if success_path.exists() else ""
         md_text = md_path.read_text(encoding="utf-8") if md_path.exists() else ""
-        error_text = error_file.read_text(encoding="utf-8") if error_file.exists() else ""
-        expected_error_text = (
-            "Stage: distill\n"
-            f"File: {fail_base}\n"
-            f"Base: {fail_base}\n"
-            f"Model: {model}\n"
-            f"Error: mock distill failure {test_id}\n"
-        )
 
         passed = (
             success_path.is_file()
@@ -2181,9 +2088,7 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
             and f"mock distilled result {test_id}" in md_text
             and skip_path is None
             and failure_raised
-            and error_file.is_file()
-            and error_file.name == f"{fail_base}.{sanitize_filename(model)}.error"
-            and error_text == expected_error_text
+            and not error_file.exists()
             and len(captured_llm_options) == 2
             and all(options == expected_llm_options for options in captured_llm_options)
         )
@@ -2211,23 +2116,23 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
             whisper_index.unlink()
 
 
-def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: str) -> tuple[bool, list[Path]]:
+def test_extract_multi_model_failure_is_terminal(test_id: str) -> tuple[bool, list[Path]]:
     extract_suffix = extract_input_suffix()
     base_name = f"{test_id}_extract_partial"
-    good_model = "evaluation-good-model"
     bad_model = "evaluation-bad-model"
+    later_model = "evaluation-later-model"
+    watch_dir = ROOT_DIR / f"{test_id}_extract_partial_watch"
 
-    source = PATHS.extract_watch / f"{base_name}{extract_suffix}"
-    good_output = PATHS.extract / f"{base_name}_{good_model}.txt"
-    failed = PATHS.fail / source.name
+    source = watch_dir / f"{base_name}{extract_suffix}"
+    error_file = watch_dir / f"{base_name}.error"
     bad_model_error = PATHS.watch / f"{base_name}.{sanitize_filename(bad_model)}.error"
+    later_output = PATHS.extract / f"{base_name}_{later_model}.txt"
     whisper_index = PATHS.obsidian / "Whisper 000000.md"
 
-    cleanup = [source, good_output, failed, bad_model_error]
+    cleanup = [source, error_file, bad_model_error, later_output, watch_dir]
 
-    PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
+    watch_dir.mkdir(parents=True, exist_ok=True)
     PATHS.extract.mkdir(parents=True, exist_ok=True)
-    PATHS.fail.mkdir(parents=True, exist_ok=True)
     PATHS.watch.mkdir(parents=True, exist_ok=True)
     PATHS.obsidian.mkdir(parents=True, exist_ok=True)
 
@@ -2235,10 +2140,11 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
 
     config = {
         **extract_text_config(),
+        "EXTRACT_WATCH_FOLDER": str(watch_dir),
         "MODEL_DISTILL": "",
         "MODEL_EXTRACT_MATRIX": {
             **CONFIG.get("MODEL_EXTRACT_MATRIX", {}),
-            "EXTRACT_WATCH_FOLDER": [good_model, bad_model],
+            "EXTRACT_WATCH_FOLDER": [bad_model, later_model],
         },
     }
 
@@ -2254,7 +2160,7 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
                 return "CORE"
             if kwargs.get("model") == bad_model:
                 raise RuntimeError(f"mock partial failure {test_id}")
-            return f"mock partial success {test_id}"
+            return f"unexpected later success {test_id}"
 
         txt_process_module.call_llm = fake_call_llm
 
@@ -2270,44 +2176,27 @@ def test_extract_multi_model_partial_failure_preserves_success_outputs(test_id: 
         cleanup.extend(notes)
         cleanup.extend(error_files)
 
-        output_text = good_output.read_text(encoding="utf-8") if good_output.exists() else ""
-        note_text = note.read_text(encoding="utf-8") if note and note.exists() else ""
-        bad_model_error_text = (
-            bad_model_error.read_text(encoding="utf-8")
-            if bad_model_error.exists()
-            else ""
-        )
-        expected_bad_model_error_text = (
-            "Stage: extract\n"
-            f"File: {source.name}\n"
-            f"Base: {base_name}\n"
-            f"Model: {bad_model}\n"
-            f"Error: mock partial failure {test_id}\n"
-        )
-
         passed = (
             raised
             and not source.exists()
-            and failed.is_file()
-            and good_output.is_file()
-            and f"mock partial success {test_id}" in output_text
-            and f"mock partial success {test_id}" in note_text
-            and bad_model_error.is_file()
-            and bad_model_error_text == expected_bad_model_error_text
+            and error_file.is_file()
+            and not later_output.exists()
+            and note is None
+            and not bad_model_error.exists()
+            and not error_files
             and call_sequence
             == [
                 (config["CLASSIFIER_PROMPT"], config["MODEL_PRETEXT"]),
-                (config["EXTRACT_PROMPT"], good_model),
                 (config["EXTRACT_PROMPT"], bad_model),
             ]
         )
 
         print_result(
-            "extract multi model partial failure preserves success outputs",
+            "extract multi model failure is terminal",
             passed,
             {
-                "good_output": good_output,
-                "failed": failed,
+                "error_file": error_file,
+                "later_output": later_output,
                 "markdown": note,
                 "error_files": error_files,
                 "raised": raised,
@@ -2438,9 +2327,10 @@ def test_pretext_multichunk_and_failure_discards_processed_path(test_id: str) ->
     success_output = PATHS.pretext_watch / f"{success_base}{extract_suffix}"
     success_archive = PATHS.original / f"{success_base}.txt"
     failure_source = PATHS.pretext_watch / f"{failure_base}{pretext_suffix}"
+    failure_error = PATHS.pretext_watch / f"{failure_base}.error"
     whisper_index = PATHS.obsidian / "Whisper 000000.md"
 
-    cleanup = [success_source, success_output, success_archive, failure_source]
+    cleanup = [success_source, success_output, success_archive, failure_source, failure_error]
 
     PATHS.pretext_watch.mkdir(parents=True, exist_ok=True)
     PATHS.original.mkdir(parents=True, exist_ok=True)
@@ -2514,7 +2404,8 @@ def test_pretext_multichunk_and_failure_discards_processed_path(test_id: str) ->
             and "ALPHA_RESULT" in note_text
             and str(success_source.resolve()) not in success_processed_files
             and failure_raised
-            and failure_source.is_file()
+            and not failure_source.exists()
+            and failure_error.is_file()
             and str(failure_source.resolve()) not in failure_processed_files
         )
 
@@ -2525,6 +2416,7 @@ def test_pretext_multichunk_and_failure_discards_processed_path(test_id: str) ->
                 "call_count": call_count,
                 "success_output": success_output,
                 "failure_source": failure_source,
+                "failure_error": failure_error,
                 "failure_raised": failure_raised,
             },
         )
@@ -3209,7 +3101,7 @@ def main() -> int:
             test_pretext_full_process_writes_pretext_markdown_and_archive,
             test_pretext_partial_error_filename_and_content_unchanged,
             test_distill_collects_extract_outputs,
-            test_distillation_read_error_writes_watch_marker,
+            test_distillation_read_error_raises_without_sidecar,
             test_extract_worker_scan_queues_candidate_once,
             test_text_process_module_function_boundary,
             test_text_process_compression_line_count,
@@ -3218,7 +3110,7 @@ def main() -> int:
             test_write_text_file_helper_contract,
             test_save_pipeline_error_helper_contract,
             test_extract_full_process_writes_extract_markdown_and_archive,
-            test_extract_failure_writes_error_and_moves_to_fail,
+            test_extract_failure_renames_source_in_place,
             test_text_worker_scans_route_text_inputs,
             test_torrent_scan_moves_torrent,
             test_text_workers_own_scan_functions,
@@ -3227,7 +3119,7 @@ def main() -> int:
             test_audio_process_file_mocked_full_path,
             test_process_queue_handles_lock_miss_errors_and_permanent_failures,
             test_distillation_success_skip_and_error_paths,
-            test_extract_multi_model_partial_failure_preserves_success_outputs,
+            test_extract_multi_model_failure_is_terminal,
             test_extract_other_route_uses_first_model_and_skips_distill,
             test_pretext_multichunk_and_failure_discards_processed_path,
             test_audio_failure_paths_archive_or_cleanup,

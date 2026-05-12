@@ -60,7 +60,6 @@ CONFIG = {
     "ORIGINAL_FOLDER": WHISPER_FOLDER / "_p" / "Raw",
     "EXTRACT_FOLDER": WHISPER_FOLDER / "_p" / "Extract",
     "LINK_BACKUP_FOLDER": WHISPER_FOLDER / "_p" / "link_backup",
-    "FAIL_FOLDER": WHISPER_FOLDER / "Fail",
     "OBSIDIAN_SYNC_FOLDER": Path("/desktop/Obsidian/O_2025"),
     "YTD_LIST_FILE": WHISPER_FOLDER / "X" / "X.txt",
     "DOWNLOAD_TARGET_FOLDER": WHISPER_FOLDER / "X",
