@@ -42,6 +42,7 @@ def save_pipeline_error(config, stage, base_name, error, *, filename=None, model
     error_path = os.path.join(os.path.dirname(os.path.abspath(os.fspath(file_path))), f"{base_name}.error")
     try:
         os.replace(file_path, error_path)
+        release_text_file_permissions(error_path)
         logging.info("Marked failed file as error: %s", short_log_name(error_path))
         return error_path
     except Exception as rename_error:

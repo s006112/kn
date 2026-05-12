@@ -1176,7 +1176,8 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
         and not missing_text_helper_calls
         and not error_route_path_writes
         and "_write_distill_error" not in txt_source
-        and txt_source.count("release_text_file_permissions(") == 1
+        and "release_text_file_permissions(error_path)" in txt_source
+        and txt_source.count("release_text_file_permissions(") == 2
     )
 
     print_result(
