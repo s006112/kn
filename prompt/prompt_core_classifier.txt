@@ -5,28 +5,26 @@
 CORE
 OTHER
 
-只允许输出一个词：
-CORE
-或
-OTHER
-
 不要解释。
 不要总结。
 不要输出 JSON。
 不要添加标点。
 不要输出任何其他文字。
 
-CORE 只包括以下内容：
-- AI
-- 深度知识：如哲學，學者內容
-- 工程
+CORE 屬於包括以下相關内容：
+- 人工智能
+- 學术：如哲學，心理，
 - 技术
 - 系统架构
-- 服务于长期 personal moat / Personal Ontology Operating System 的能力建设材料
+- 工程
 
 分类原则：
-默认输出 OTHER。
 只有输入文本明确属于 CORE 范围时，才输出 CORE。
-不确定时，输出 OTHER。
+其他默认输出 OTHER。
+
+只允许输出一个词：
+CORE
+或
+OTHER
 
 待分类文本会作为用户消息提供。
