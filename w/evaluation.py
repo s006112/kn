@@ -1187,7 +1187,7 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
     required_text_helper_calls = [
         "write_text_file(pretext_target_path, pretext_result)",
         "write_text_file(save_path, result)",
-        "write_text_file(save_path, distilled)",
+        "save_path = write_text_file(get_next_available_filename(",
         "return write_text_file(path,",
     ]
     missing_text_helper_calls = [
