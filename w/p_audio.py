@@ -85,6 +85,7 @@ def convert_audio_to_wav(folder_path: str, audio_file: str) -> str | None:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+        release_text_file_permissions(output_path)
         return output_path
     except subprocess.CalledProcessError as exc:
         logging.error(f'ffmpeg failed on %s: %s', short_log_name(audio_file), exc)
@@ -105,6 +106,7 @@ def move_files_to_done(
     if os.path.exists(target):
         os.remove(target)
     shutil.move(audio_file_path, target)
+    release_text_file_permissions(target)
     logging.info('Audio processed in %.2fs', process_time)
 
 
@@ -135,6 +137,7 @@ def process_audio_file(file_path: str, folder_path: str, config: dict, done_fold
         if os.path.exists(desktop_wav_path):
             os.remove(desktop_wav_path)
         shutil.move(source_wav_path, desktop_wav_path)
+        release_text_file_permissions(desktop_wav_path)
         wav_file = desktop_wav_path
     else:
         wav_file = source_wav_path

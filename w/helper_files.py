@@ -48,6 +48,7 @@ def configure_logging(log_dir: str | os.PathLike[str]) -> None:
 			),
 		],
 	)
+	release_text_file_permissions(os.path.join(log_dir, "script.log"))
 
 
 def read_file_with_encodings(
@@ -86,6 +87,7 @@ def safe_rename(old_path: str, new_path: str) -> str:
 	try:
 		if not os.path.exists(new_path):
 			os.rename(old_path, new_path)
+			release_text_file_permissions(new_path)
 			return new_path
 		return old_path
 	except Exception as exc:
@@ -94,13 +96,13 @@ def safe_rename(old_path: str, new_path: str) -> str:
 
 
 def release_text_file_permissions(path: os.PathLike | str | None) -> None:
-	"""Make `.txt` and `.md` files editable by adding read/write permission bits."""
+	"""Make created files editable by adding read/write permission bits."""
 	if not path:
 		return
 	file_path = os.fspath(path)
-	if not file_path.lower().endswith((".txt", ".md")):
-		return
 	try:
+		if not os.path.isfile(file_path):
+			return
 		current_mode = os.stat(file_path).st_mode
 		desired_mode = current_mode | 0o666
 		if desired_mode != current_mode:

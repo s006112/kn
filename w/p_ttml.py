@@ -161,6 +161,7 @@ def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename,
         archive_filename = base_name + '.ttml'
         archive_path = os.path.join(original_folder, archive_filename)
         shutil.move(lock, archive_path)
+        release_text_file_permissions(archive_path)
 
         logging.info("TTML: Completed %s", short_log_name(output_filename))
 

@@ -94,7 +94,9 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
 		logging.info("Pretext: Created %s", short_log_name(pretext_target_path))
 
 		write_pretext_markdown(config, base_name, pretext_result)
-		shutil.move(normalized_path, os.path.join(config["ORIGINAL_FOLDER"], f"{base_name}.txt"))
+		original_path = os.path.join(config["ORIGINAL_FOLDER"], f"{base_name}.txt")
+		shutil.move(normalized_path, original_path)
+		release_text_file_permissions(original_path)
 
 	except Exception as exc:
 		save_pipeline_error(config, "pretext", base_name, exc, filename=original_filename, model=pretext_model, file_path=normalized_path)
@@ -144,7 +146,9 @@ def process_extract_file(config, file_path):
 			logging.info("Extract: Completed for %s", filename_log)
 
 		os.makedirs(config["PRETEXT_DONE_FOLDER"], exist_ok=True)
-		shutil.move(file_path, os.path.join(config["PRETEXT_DONE_FOLDER"], filename))
+		archive_path = os.path.join(config["PRETEXT_DONE_FOLDER"], filename)
+		shutil.move(file_path, archive_path)
+		release_text_file_permissions(archive_path)
 
 	except Exception as exc:
 		if isinstance(exc, FileNotFoundError) or not os.path.exists(file_path):
@@ -202,8 +206,7 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
 
 def scan_pretext_files(config, pretext_queue, processed_files, processed_files_lock) -> None:
 	pretext_watch_folder = os.fspath(config["PRETEXT_WATCH_FOLDER"])
-	pretext_suffix = str(config["PRETEXT_SUFFIX"]).lower()
-	extract_suffix = str(config["EXTRACT_SUFFIX"]).lower()
+	pretext_suffix, extract_suffix = str(config["PRETEXT_SUFFIX"]).lower(), str(config["EXTRACT_SUFFIX"]).lower()
 
 	for filename in os.listdir(pretext_watch_folder):
 		filename_lower = filename.lower()
@@ -212,8 +215,7 @@ def scan_pretext_files(config, pretext_queue, processed_files, processed_files_l
 
 		file_path = os.path.join(pretext_watch_folder, filename)
 		if len(os.path.splitext(filename)[0]) > 60:
-			base_name = os.path.splitext(filename)[0]
-			new_name = sanitize_and_trim_filename(base_name) + pretext_suffix
+			new_name = sanitize_and_trim_filename(os.path.splitext(filename)[0]) + pretext_suffix
 			new_path = os.path.join(pretext_watch_folder, new_name)
 			try:
 				if not os.path.exists(new_path):
@@ -224,11 +226,11 @@ def scan_pretext_files(config, pretext_queue, processed_files, processed_files_l
 				logging.error("Error renaming file: %s", exc)
 				continue
 
-		normalized = os.path.abspath(os.fspath(file_path))
+		file_path = os.path.abspath(os.fspath(file_path))
 		with processed_files_lock:
-			if normalized not in processed_files:
-				processed_files.add(normalized)
-				pretext_queue.put(normalized)
+			if file_path not in processed_files:
+				processed_files.add(file_path)
+				pretext_queue.put(file_path)
 
 
 def scan_extract_files(config, extract_queue) -> None:

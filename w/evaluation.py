@@ -820,13 +820,13 @@ def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path
     release_text_file_permissions(ignored)
 
     extracts = txt_process_module.collect_extracts(str(PATHS.extract), base_name, pretext_suffix)
-    labels = [label for label, _, _ in extracts]
+    filenames = [fname for fname, _, _ in extracts]
     contents = [content for _, content, _ in extracts]
     paths = [Path(path) for _, _, path in extracts]
 
     passed = (
         len(extracts) == 2
-        and labels == ["model-alpha", "model-beta"]
+        and filenames == [first.name, second.name]
         and f"alpha extract for {test_id}" in contents[0]
         and f"beta extract for {test_id}" in contents[1]
         and paths == [first, second]
@@ -837,7 +837,7 @@ def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path
         passed,
         {
             "base_name": base_name,
-            "labels": labels,
+            "filenames": filenames,
             "paths": paths,
         },
     )
@@ -973,6 +973,9 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         "process_text_pipeline",
         "call_text_llm",
         "run_distillation",
+        "collect_extracts",
+        "save_extract_result",
+        "write_text_file",
     }
     forbidden_premium_markers = {
         "PREMIUM_EXTRACT",
@@ -1136,14 +1139,12 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
     text_process_path = ROOT_DIR / "w" / "p_txt.py"
     txt_source = text_process_path.read_text(encoding="utf-8")
     txt_tree = ast.parse(txt_source)
-    helper = next(
-        (
-            node
-            for node in txt_tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "write_text_file"
-        ),
-        None,
-    )
+    functions = {
+        node.name: node
+        for node in txt_tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
+    helper = functions.get("write_text_file")
     helper_start = helper.lineno if helper else 0
     helper_end = helper.end_lineno if helper else 0
 
@@ -1162,25 +1163,30 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
             ):
                 direct_write_release_lines.append(index)
     error_helper_name = "_write_" + "error_file"
-    save_error_helper = next(
-        (
-            node
-            for node in txt_tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "save_pipeline_error"
-        ),
-        None,
-    )
+    save_error_helper = functions.get("save_pipeline_error")
+    save_extract_helper = functions.get("save_extract_result")
+    pretext_helper = functions.get("process_pretext_file")
     save_error_start = save_error_helper.lineno if save_error_helper else 0
     save_error_end = save_error_helper.end_lineno if save_error_helper else 0
 
-    required_text_helper_calls = [
-        "write_text_file(pretext_target_path, pretext_result)",
-        "write_text_file(save_path, result)",
-        "save_path = write_text_file(get_next_available_filename(",
-    ]
-    missing_text_helper_calls = [
-        marker for marker in required_text_helper_calls if marker not in txt_source
-    ]
+    def function_calls(function_node: ast.FunctionDef | None, name: str) -> bool:
+        return bool(
+            function_node
+            and any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == name
+                for node in ast.walk(function_node)
+            )
+        )
+
+    save_extract_calls_write_text_file = function_calls(save_extract_helper, "write_text_file")
+    pretext_calls_write_text_file = function_calls(pretext_helper, "write_text_file")
+    release_call_functions = sorted(
+        function_node.name
+        for function_node in functions.values()
+        if function_calls(function_node, "release_text_file_permissions")
+    )
 
     error_route_path_writes = []
     for index, line in enumerate(lines, 1):
@@ -1194,13 +1200,19 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
     passed = (
         helper is not None
         and save_error_helper is not None
+        and save_extract_helper is not None
         and error_helper_name not in txt_source
         and not direct_write_release_lines
-        and not missing_text_helper_calls
+        and save_extract_calls_write_text_file
+        and pretext_calls_write_text_file
         and not error_route_path_writes
         and "_write_distill_error" not in txt_source
-        and "release_text_file_permissions(error_path)" in txt_source
-        and txt_source.count("release_text_file_permissions(") == 2
+        and release_call_functions == [
+            "process_extract_file",
+            "process_pretext_file",
+            "save_pipeline_error",
+            "write_text_file",
+        ]
     )
 
     print_result(
@@ -1209,12 +1221,14 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
         {
             "helper_exists": helper is not None,
             "direct_write_release_lines": direct_write_release_lines,
-            "missing_text_helper_calls": missing_text_helper_calls,
+            "save_extract_helper_exists": save_extract_helper is not None,
+            "save_extract_calls_write_text_file": save_extract_calls_write_text_file,
+            "pretext_calls_write_text_file": pretext_calls_write_text_file,
             "error_route_path_writes": error_route_path_writes,
             "save_error_helper_exists": save_error_helper is not None,
             "old_error_helper_present": error_helper_name in txt_source,
             "distill_error_helper_exists": "_write_distill_error" in txt_source,
-            "release_calls": txt_source.count("release_text_file_permissions("),
+            "release_call_functions": release_call_functions,
         },
     )
 
@@ -1936,10 +1950,12 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
         **CONFIG,
         "INTERVALS": {
             **CONFIG["INTERVALS"],
-            "WAIT_SECONDS": 0,
+            "WAIT_SECONDS": 0.01,
+            "SCAN_SECONDS": 0,
         },
     }
     pretext_queue = Queue()
+    shutdown_flag = threading.Event()
 
     lock_retry = f"{test_id}_queue_lock_retry"
     transient_error = f"{test_id}_queue_transient_error"
@@ -1953,9 +1969,6 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
     primed_lock = threading.Lock()
     primed_lock.acquire()
     released_primed_lock = False
-
-    class StopLoop(Exception):
-        pass
 
     class FakeHandler:
         def process_pretext(self, file_path: str) -> None:
@@ -1971,33 +1984,26 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
                     reason="mock permanent failure",
                 )
             processed.append(file_path)
-
-    original_sleep = txt_process_module.time.sleep
+            if success in processed and lock_retry in processed:
+                shutdown_flag.set()
 
     try:
-        def fake_sleep(_seconds: float) -> None:
+        def release_lock_scan() -> None:
             nonlocal released_primed_lock
-            if not released_primed_lock and lock_retry in pretext_queue.queue:
+            queued_items = list(pretext_queue.queue)
+            if (
+                not released_primed_lock
+                and lock_retry in queued_items
+                and queued_items[0] != lock_retry
+            ):
                 primed_lock.release()
                 released_primed_lock = True
-            if pretext_queue.empty() and success in processed and lock_retry in processed:
-                raise StopLoop()
-            original_sleep(0)
 
         with txt_process_module._file_locks_mutex:
             txt_process_module._file_locks[lock_retry] = primed_lock
-        txt_process_module.time.sleep = fake_sleep
 
-        stopped = False
-        try:
-            txt_process_module.process_queue(
-                config,
-                pretext_queue,
-                FakeHandler().process_pretext,
-                "process_pretext",
-            )
-        except StopLoop:
-            stopped = True
+        txt_process_module.process_queue(config, pretext_queue, FakeHandler().process_pretext, "process_pretext", release_lock_scan, shutdown_flag)
+        stopped = shutdown_flag.is_set()
 
         passed = (
             stopped
@@ -2024,7 +2030,6 @@ def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: 
             txt_process_module._file_locks.pop(lock_retry, None)
         if primed_lock.locked():
             primed_lock.release()
-        txt_process_module.time.sleep = original_sleep
 
 
 def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, list[Path]]:
@@ -2069,6 +2074,7 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
     index_existed = whisper_index.exists()
     index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
     captured_llm_options = []
+    captured_distill_prompts = []
 
     try:
         def fake_call_llm(**kwargs) -> str:
@@ -2079,6 +2085,7 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
                     "retry_delay": kwargs.get("retry_delay"),
                 }
             )
+            captured_distill_prompts.append(str(kwargs.get("user_text", "")))
             file_path = str(kwargs.get("file_path", ""))
             if fail_base in file_path:
                 raise RuntimeError(f"mock distill failure {test_id}")
@@ -2114,7 +2121,10 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
             and failure_raised
             and not error_file.exists()
             and len(captured_llm_options) == 2
+            and len(captured_distill_prompts) == 2
             and all(options == expected_llm_options for options in captured_llm_options)
+            and f"--- Source 1: {success_extract.name} ---" in captured_distill_prompts[0]
+            and f"--- Source 1: {fail_extract.name} ---" in captured_distill_prompts[1]
         )
 
         print_result(
@@ -2126,6 +2136,10 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
                 "error_file": error_file,
                 "failure_raised": failure_raised,
                 "llm_options": captured_llm_options,
+                "distill_headers": [
+                    len(captured_distill_prompts) > 0 and f"--- Source 1: {success_extract.name} ---" in captured_distill_prompts[0],
+                    len(captured_distill_prompts) > 1 and f"--- Source 1: {fail_extract.name} ---" in captured_distill_prompts[1],
+                ],
             },
         )
 

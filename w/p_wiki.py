@@ -249,6 +249,7 @@ class WikilinkCleaner:
             backup_path = self.backup_dir / backup_name
 
             shutil.copy2(file_path, backup_path)
+            release_text_file_permissions(backup_path)
             if self.logger:
                 self.logger.debug(
                     "WikilinkCleaner: Created backup: %s", backup_path
@@ -300,6 +301,7 @@ class WikilinkCleaner:
                     continue
 
                 shutil.move(str(file_path), str(destination_path))
+                release_text_file_permissions(destination_path)
                 if self.logger:
                     self.logger.info(
                         "WikilinkCleaner: Moved ontology file %s to %s",

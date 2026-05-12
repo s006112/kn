@@ -8,6 +8,7 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 from helper.helper_ytd import clean_url, classify_url, download
+from .helper_files import release_text_file_permissions
 
 
 _ytd_list_lock = threading.Lock()
@@ -57,6 +58,7 @@ def remove_download_url_line(list_file, url):
         if line.strip() == url:
             del lines[index]
             path.write_text("".join(lines), encoding="utf-8", newline="")
+            release_text_file_permissions(path)
             return True
     return False
 
@@ -98,6 +100,7 @@ def process_ytd_pipeline(config, shutdown_flag) -> None:
                         output_dir=target_folder,
                         resolve_timeout=ytd_resolve_timeout_seconds,
                     )
+                    release_text_file_permissions(output_path)
                 except Exception as exc:
                     logging.error("YTDPipeline: Download failed for %s: %s", short_log_name(url), exc)
                     skipped_urls.add(url)
