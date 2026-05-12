@@ -1,230 +1,70 @@
 # Proposals
 
-## Proposal 001
+Candidate rules extracted from real work but not yet stable.
 
-Pattern:
-- AI tends to over-abstract small local duplication.
+Promotion rule:
+- Promote only after repeated validation and explicit human approval.
+- Merge or delete proposals that become redundant with stable assets.
 
-Suggested Rule:
-- Do not introduce new helper functions unless they reduce overall cognitive complexity.
-
-Criteria:
-- Helper reduces repeated logic across real call sites.
-- Helper gives a better name to a meaningful concept.
-- Helper reduces future edit risk.
-
-Boundary:
-- Do not add helper only to reduce 2-3 local lines.
-- Do not add helper if reader must jump around more to understand the flow.
-
-Store Location:
-- assets.md / Code Iteration Principles
-
-Status:
-- pending
-
-## Proposal 002
+## Proposal 001 — Prefer explicit dependency passing over hidden global state
 
 Pattern:
 - Hidden global state makes runtime ownership unclear.
 
-Suggested Rule:
+Suggested rule:
 - Prefer explicit dependency passing over module-level mutable state.
 
 Criteria:
 - A function can receive the needed object directly.
-- Runtime handle already exists.
-- Global state only exists for convenience.
+- Runtime state already exists in a visible scope.
+- The global exists only for convenience.
 
 Boundary:
-- Temporary global state is acceptable only for true singleton process interfaces or compatibility shims.
-- If removing global state breaks a public interface, preserve compatibility deliberately or document the interface break.
+- Temporary global state is acceptable for true singleton process interfaces or compatibility shims.
+- If removing global state breaks a public interface, preserve compatibility deliberately or document the break.
 
-Store Location:
-- assets.md / Code Iteration Principles
+Store location:
+- `assets.md` / Code Iteration Principles
 
 Status:
 - pending
 
-## Proposal 003
+## Proposal 002 — Keep lightweight semantic bundles only when they clarify ownership
 
 Pattern:
-- Not every class-like structure is over-engineering.
+- Not every class-like or grouped structure is over-engineering, but many become vague state containers.
 
-Suggested Rule:
-- Keep lightweight semantic bundles when they clarify runtime ownership.
+Suggested rule:
+- Keep lightweight bundles only when they make runtime ownership clearer than passing raw loose values.
 
 Criteria:
-- The object groups related runtime handles.
+- The bundle groups related runtime handles.
 - Field names improve readability.
 - It prevents fragile tuple ordering.
+- It does not hide execution flow.
 
 Boundary:
-- Do not convert a data bundle into a behavior-heavy class without need.
-- Do not replace a named bundle with raw tuple/dict if that weakens meaning.
+- Do not convert a data bundle into a behavior-heavy class.
+- Do not use vague names like generic context objects when concrete names would be clearer.
+- Do not replace a readable function signature with a hidden bag of state.
 
-Store Location:
-- assets.md / Code Iteration Principles
+Store location:
+- `assets.md` / Code Iteration Principles
 
 Status:
 - pending
 
-## Proposal 004
-
-Pattern:
-- Guardrails and convenience defaults can become noise when deployment assumptions are stable.
-
-Suggested Rule:
-- Remove defensive setup code when failure is non-fatal, externally guaranteed, and the code no longer earns its cognitive cost.
-
-Criteria:
-- Missing condition is already guaranteed by environment, deployment, or manual setup.
-- Failure would be obvious and easy to diagnose.
-- The removed code does not protect data integrity or irreversible actions.
-
-Boundary:
-- Do not remove guardrails protecting data loss, duplicate execution, financial loss, or silent corruption.
-- Do not remove checks only because they look boring.
-
-Store Location:
-- assets.md / Code Iteration Principles
-
-Status:
-- pending
-
-## Proposal 005
-
-Pattern:
-- Line-count reduction can create semantic loss.
-
-Suggested Rule:
-- Optimize for cognitive compression, not raw brevity.
-
-Criteria:
-- Code becomes easier to explain.
-- Runtime ownership becomes clearer.
-- Fewer concepts are needed to understand the flow.
-- Behavior remains equivalent unless the change is explicitly accepted.
-
-Boundary:
-- Do not inline meaningful concepts merely to reduce files or lines.
-- Do not keep abstractions that no longer carry useful meaning.
-
-Store Location:
-- assets.md / Code Iteration Principles
-
-Status:
-- pending
-
-## Proposal 006
-
-Pattern:
-- AI refactor often changes interface shape accidentally.
-
-Suggested Rule:
-- Treat public function signatures as contracts.
-
-Criteria:
-- Before changing a signature, identify all likely callers.
-- If compatibility is not needed, make the break explicit.
-- If compatibility is needed, preserve old entry point or provide a shim.
-
-Boundary:
-- Internal-only functions can change more freely.
-- Public or test-facing functions require stricter review.
-
-Store Location:
-- assets.md / Code Iteration Principles
-
-Status:
-- pending
-
-## Proposal 007
-
-Pattern:
-- Adding a useful feature before the foundation is clean can increase long-term complexity.
-
-Suggested Rule:
-- Fix extension surfaces before adding extension features.
-
-Criteria:
-- New feature requires a new route, queue, processor, model group, folder, or runtime thread.
-- Existing architecture has unclear ownership boundaries.
-- The new feature would copy an existing special case instead of following a clean template.
-
-Boundary:
-- Do not block small bug fixes.
-- Do not use foundation cleanup as an excuse for unlimited refactor.
-- Feature pause is justified only when the feature exposes real structural debt.
-
-Store Location:
-- assets.md / Code Iteration Principles
-
-Status:
-- pending
-
-## Proposal 008
-
-Pattern:
-- Runtime services, file routes, workers, processors, and model policies are often mixed into one layer.
-
-Suggested Rule:
-- Separate pipeline system concepts before optimizing code shape.
-
-Criteria:
-- Runtime service: long-lived loop or scheduler.
-- File route: intake path from folder/file type to queue.
-- Worker: queue consumer.
-- Processor: single-job executor.
-- Model policy: model list and distillation/merge behavior.
-
-Boundary:
-- Do not create heavy framework abstractions.
-- Do not split files only for visual neatness.
-- Separation can be conceptual first, then reflected in code when useful.
-
-Store Location:
-- assets.md / Code Iteration Principles
-
-Status:
-- pending
-
-## Proposal 009
-
-Pattern:
-- Misnamed components cause repeated design confusion even when the code works.
-
-Suggested Rule:
-- Rename components when the current name describes mechanism instead of responsibility.
-
-Criteria:
-- The name forces repeated explanation.
-- The component is mistaken for another architectural layer.
-- The name hides ownership, boundary, or lifecycle.
-- A better name reduces future patch risk.
-
-Boundary:
-- Do not rename stable public APIs casually.
-- Do not rename only for style preference.
-- Rename when semantic clarity improves future maintenance.
-
-Store Location:
-- assets.md / Code Iteration Principles
-
-Status:
-- pending
-
-## Proposal 010
+## Proposal 003 — Intake should respect route enablement
 
 Pattern:
 - A scanner that ignores pipeline toggles creates hidden work and unclear system state.
 
-Suggested Rule:
+Suggested rule:
 - Intake should respect route enablement.
 
 Criteria:
-- Disabled worker means its intake route should normally stop enqueueing new work.
-- Scanner should not keep creating backlog for disabled routes unless explicitly intended.
+- Disabled worker normally means its intake route should stop enqueueing new work.
+- Scanner should not create backlog for disabled routes unless explicitly intended.
 - Toggle behavior should match the operator's mental model.
 
 Boundary:
@@ -232,8 +72,57 @@ Boundary:
 - Some runtime services may remain always-on if their purpose is independent of route processing.
 - The rule applies to intake routes, not necessarily all background services.
 
-Store Location:
-- assets.md / Code Iteration Principles
+Store location:
+- `assets.md` / Pipeline Concepts
+
+Status:
+- pending
+
+## Proposal 004 — Keep error behavior centralized by stage when it reduces branches
+
+Pattern:
+- Per-model and per-stage error handling can sprawl into repeated local branches.
+
+Suggested rule:
+- Centralize error save/log behavior when the stage-level semantics are identical.
+
+Criteria:
+- Error marker path format is shared.
+- Log format is shared.
+- Failure routing is shared.
+- Centralization removes repeated local code without hiding different behavior.
+
+Boundary:
+- Do not centralize errors that require different recovery semantics.
+- Do not hide destructive moves or retry decisions inside a generic helper.
+- Do not catch exceptions only to continue silently.
+
+Store location:
+- `assets.md` / Code Iteration Principles
+
+Status:
+- pending
+
+## Proposal 005 — Prefer route names with operational meaning
+
+Pattern:
+- Ambiguous labels like full/light or generic context names cause repeated clarification.
+
+Suggested rule:
+- Use route and variable names that describe operational meaning directly.
+
+Criteria:
+- The name tells what happens next.
+- The name matches the operator's mental model.
+- The name avoids vague intensity words when the real distinction is route, policy, or output type.
+
+Boundary:
+- Do not rename stable public APIs casually.
+- Do not rename only for taste.
+- Rename when it reduces future misunderstanding.
+
+Store location:
+- `assets.md` / Naming Principles
 
 Status:
 - pending

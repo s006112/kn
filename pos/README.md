@@ -1,29 +1,49 @@
 # pos
 
-Personal operating system folder.
+Personal operating system for reusable judgment.
 
 ## Purpose
-- Store reusable judgment assets.
-- Store important decisions.
-- Store pending proposals extracted from real work.
-- Help AI collaborate using long-term criteria, boundaries, and review discipline.
 
-## Operating Principle
-This system evolves slowly through real tasks and human approval.
+`pos` is not a note dump. It is a small operating layer for preserving judgment that improves future code review, refactor decisions, project steering, and AI-agent collaboration.
 
-Do not turn every thought into a stable rule. Use this folder to separate:
-- current context
+It stores:
+
+- current working context
 - accepted decisions
 - pending proposals
-- stable reusable assets
+- stable reusable judgment assets
+- rules for AI agents working in this folder
 
-## Files
-- `context.md`: current focus, active concerns, and near-term direction.
-- `decisions.md`: accepted decisions and their reasons.
-- `proposals.md`: candidate rules extracted from real work.
-- `assets.md`: stable reusable patterns.
-- `AGENTS.md`: rules for AI agents working inside this folder.
+## Core principle
+
+Evolve through real work, not theory.
+
+A thought becomes useful only when it helps future judgment. Do not turn every observation into a rule. Do not add structure because it looks organized. Add only what reduces future cognitive load or improves decision quality.
+
+## File roles
+
+- `context.md`: current focus, active concerns, near-term direction.
+- `decisions.md`: accepted decisions with reasons and boundaries.
+- `proposals.md`: candidate rules extracted from real work but not yet stable.
+- `assets.md`: stable reusable patterns and rules.
+- `AGENTS.md`: operating rules for AI agents editing or using this folder.
 
 ## Boundary
-The goal is not to collect notes.
-The goal is to preserve reusable judgment that improves future code review, refactor, project steering, and AI-agent collaboration.
+
+The system should stay small.
+
+Good POS content:
+
+- improves future review
+- clarifies responsibility boundaries
+- prevents repeated bad patterns
+- captures reusable judgment from real work
+- helps AI produce smaller, cleaner, more bounded changes
+
+Bad POS content:
+
+- records temporary implementation details
+- preserves one-off opinions as rules
+- creates framework language without operational value
+- adds categories before repeated use proves the need
+- makes future work slower to understand

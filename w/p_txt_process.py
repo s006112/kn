@@ -118,14 +118,9 @@ def process_extract_file(config, file_path):
         logging.info("Extract: Start %s", filename_log)
         content, _ = read_file_with_encodings(file_path)
 
-        classifier_result = ""
-        try:
-            classifier_result = (call_text_llm(config, config["MODEL_PRETEXT"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper()
-        except Exception as exc:
-            logging.error("Extract: Classifier failed for %s, route=OTHER: %s", filename_log, exc)
+        classifier_result = "OTHER"
+        classifier_result = (call_text_llm(config, config["MODEL_PRETEXT"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper()
         route = "CORE" if classifier_result == "CORE" else "OTHER"
-        if classifier_result not in ("CORE", "OTHER"):
-            logging.info("Extract: Classifier returned %r for %s, route=OTHER", classifier_result, filename_log)
         logging.info("Extract: |%s| for %s", route, filename_log)
 
         payload = f"《{base}》\n{content}"
@@ -241,8 +236,7 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
         distilled = call_text_llm(config, distill_model, config["DISTILL_PROMPT"], "\n\n".join(payload), extracts[0][2])
 
         os.makedirs(extract_folder, exist_ok=True)
-        save_path = get_next_available_filename(extract_folder, base_name, f"_{sanitize_filename(distill_model)}")
-        write_text_file(save_path, distilled)
+        save_path = write_text_file(get_next_available_filename(extract_folder, base_name, f"_{sanitize_filename(distill_model)}"), distilled)
 
         if md_path:
             merge_to_markdown(md_path, [distilled], "", [f"{distill_model} distilled"], whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"), whisper_link_name=Path(md_path).stem, md_is_new=False)
@@ -251,7 +245,7 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
         return save_path
 
     except Exception as exc:
-        save_pipeline_error(config, "distill", base_name, exc, filename=base_name, model=distill_model or "distill")
+        save_pipeline_error(config, "distill", base_name, exc, filename=base_name, model=distill_model)
         raise
 
 
@@ -324,13 +318,12 @@ def process_queue(config, queue, process, method_name, scan_files=None, shutdown
             locked = lock.acquire(blocking=False)
             if not locked:
                 queue.put(file_path)
-            else:
-                try:
-                    process(file_path)
-                except LLMPermanentFailure as exc:
-                    logging.error("Resilient Queue: OpenAI API permanent failure for file %s (model: %s): %s", short_log_name(exc.file_path), exc.model, exc.reason)
-                except Exception as exc:
-                    logging.error("%s queue error: %s", method_name, exc)
+                continue
+
+            try:
+                process(file_path)
+            except LLMPermanentFailure as exc:
+                logging.error("Resilient Queue: OpenAI API permanent failure for file %s (model: %s): %s", short_log_name(exc.file_path), exc.model, exc.reason)
 
         except Exception as exc:
             logging.error("%s queue error: %s", method_name, exc)
@@ -340,11 +333,9 @@ def process_queue(config, queue, process, method_name, scan_files=None, shutdown
                 with _file_locks_mutex:
                     _file_locks.pop(file_path, None)
                 lock.release()
-
             queue.task_done()
 
         sleep(wait_seconds)
-
 
 def process_text_pipeline(config, shutdown_flag):
     pretext_queue, extract_queue = Queue(), Queue()
