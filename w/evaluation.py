@@ -586,28 +586,34 @@ def test_audio_move_to_done_removes_wav(test_id: str) -> tuple[bool, list[Path]]
 
 def test_pretext_scan_deduplicates_queue(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
+    extract_suffix = extract_input_suffix()
     watch_dir = ROOT_DIR / f"{test_id}_pretext_scan_watch"
     source = watch_dir / f"{test_id}_pretext{pretext_suffix}"
+    excluded = watch_dir / f"{test_id}_already_extract{extract_suffix}"
 
-    cleanup = [source, watch_dir]
+    cleanup = [source, excluded, watch_dir]
 
     watch_dir.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"dummy pretext queue source {test_id}\n", encoding="utf-8")
     release_text_file_permissions(source)
+    excluded.write_text(f"dummy pretext excluded source {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(excluded)
 
     config = extract_text_config(PRETEXT_WATCH_FOLDER=str(watch_dir))
     pretext_queue = Queue()
     processed_files_global = set()
     processed_files_lock = threading.Lock()
-    txt_process_module.scan_pretext_files(config, pretext_queue, processed_files_global, processed_files_lock)
-    txt_process_module.scan_pretext_files(config, pretext_queue, processed_files_global, processed_files_lock)
+    txt_process_module.scan_text_files(config["PRETEXT_WATCH_FOLDER"], pretext_queue, config["PRETEXT_SUFFIX"], config["EXTRACT_SUFFIX"], processed_files_global, processed_files_lock)
+    txt_process_module.scan_text_files(config["PRETEXT_WATCH_FOLDER"], pretext_queue, config["PRETEXT_SUFFIX"], config["EXTRACT_SUFFIX"], processed_files_global, processed_files_lock)
     queued_paths = list(pretext_queue.queue)
     normalized = str(source.resolve())
+    excluded_normalized = str(excluded.resolve())
 
     passed = (
         queued_paths == [normalized]
         and normalized in processed_files_global
+        and excluded_normalized not in processed_files_global
     )
 
     print_result(
@@ -615,6 +621,7 @@ def test_pretext_scan_deduplicates_queue(test_id: str) -> tuple[bool, list[Path]
         passed,
         {
             "source": source,
+            "excluded": excluded,
             "queued_paths": queued_paths,
             "processed_files": sorted(processed_files_global),
         },
@@ -894,17 +901,22 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
     extract_suffix = extract_input_suffix()
     watch_dir = ROOT_DIR / f"{test_id}_extract_scan_watch"
     source = watch_dir / f"{test_id}_extract{extract_suffix}"
+    long_base = f"{test_id}_extract_" + "x" * 70
+    long_source = watch_dir / f"{long_base}{extract_suffix}"
+    long_renamed = watch_dir / f"{sanitize_and_trim_filename(long_base)}{extract_suffix}"
     ignored = PATHS.download_target / f"{test_id}_ignored{extract_suffix}"
     markdown = watch_dir / f"{test_id}_extract.md"
     error_file = watch_dir / f"{test_id}_extract.error"
 
-    cleanup = [source, ignored, markdown, error_file, watch_dir]
+    cleanup = [source, long_source, long_renamed, ignored, markdown, error_file, watch_dir]
 
     watch_dir.mkdir(parents=True, exist_ok=True)
     PATHS.download_target.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"extract queue candidate {test_id}\n", encoding="utf-8")
     release_text_file_permissions(source)
+    long_source.write_text(f"extract long queue candidate {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(long_source)
     ignored.write_text(f"wrong folder candidate {test_id}\n", encoding="utf-8")
     release_text_file_permissions(ignored)
     markdown.write_text(f"markdown is not extract input {test_id}\n", encoding="utf-8")
@@ -914,16 +926,21 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
 
     config = extract_text_config(EXTRACT_WATCH_FOLDER=str(watch_dir))
     extract_queue = Queue()
-    txt_process_module.scan_extract_files(config, extract_queue)
-    txt_process_module.scan_extract_files(config, extract_queue)
+    txt_process_module.scan_text_files(config["EXTRACT_WATCH_FOLDER"], extract_queue, config["EXTRACT_SUFFIX"])
+    txt_process_module.scan_text_files(config["EXTRACT_WATCH_FOLDER"], extract_queue, config["EXTRACT_SUFFIX"])
 
     queued_paths = list(extract_queue.queue)
+    source_normalized = str(source.resolve())
+    long_renamed_normalized = str(long_renamed.resolve())
 
     passed = (
-        queued_paths.count(str(source)) == 1
-        and str(ignored) not in queued_paths
-        and str(markdown) not in queued_paths
-        and str(error_file) not in queued_paths
+        queued_paths.count(source_normalized) == 1
+        and queued_paths.count(long_renamed_normalized) == 1
+        and not long_source.exists()
+        and long_renamed.is_file()
+        and str(ignored.resolve()) not in queued_paths
+        and str(markdown.resolve()) not in queued_paths
+        and str(error_file.resolve()) not in queued_paths
     )
 
     print_result(
@@ -931,6 +948,8 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
         passed,
         {
             "source": source,
+            "long_source": long_source,
+            "long_renamed": long_renamed,
             "ignored": ignored,
             "markdown": markdown,
             "error_file": error_file,
@@ -965,9 +984,8 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
     }
     required_names = {
         "process_pretext_file",
-        "scan_pretext_files",
+        "scan_text_files",
         "process_extract_file",
-        "scan_extract_files",
         "save_pipeline_error",
         "process_queue",
         "process_text_pipeline",
@@ -1610,13 +1628,8 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
     processed_files_global = set()
     processed_files_lock = threading.Lock()
     config = extract_text_config(PRETEXT_WATCH_FOLDER=str(pretext_dir), EXTRACT_WATCH_FOLDER=str(extract_dir))
-    txt_process_module.scan_pretext_files(
-        config,
-        pretext_queue,
-        processed_files_global,
-        processed_files_lock,
-    )
-    txt_process_module.scan_extract_files(config, extract_queue)
+    txt_process_module.scan_text_files(config["PRETEXT_WATCH_FOLDER"], pretext_queue, config["PRETEXT_SUFFIX"], config["EXTRACT_SUFFIX"], processed_files_global, processed_files_lock)
+    txt_process_module.scan_text_files(config["EXTRACT_WATCH_FOLDER"], extract_queue, config["EXTRACT_SUFFIX"])
 
     pretext_paths = list(pretext_queue.queue)
     extract_paths = list(extract_queue.queue)
@@ -1625,9 +1638,9 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
         not raw.exists()
         and renamed.is_file()
         and str(renamed.resolve()) in pretext_paths
-        and str(extract) in extract_paths
+        and str(extract.resolve()) in extract_paths
         and str(pretext_error.resolve()) not in pretext_paths
-        and str(extract_error) not in extract_paths
+        and str(extract_error.resolve()) not in extract_paths
     )
 
     print_result(
@@ -1720,6 +1733,7 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
     }
 
     captured: dict[str, object] = {}
+    captured_scan_args: dict[str, tuple] = {}
     captured_queues = {}
     original_process_queue = txt_process_module.process_queue
     threads = {}
@@ -1728,6 +1742,7 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
     try:
         def fake_process_queue(_config, queue, _process, method_name, scan_files=None, shutdown_flag=None, *scan_args):
             captured[method_name] = getattr(scan_files, "func", scan_files)
+            captured_scan_args[method_name] = scan_args
             captured_queues[method_name] = queue
 
         txt_process_module.process_queue = fake_process_queue
@@ -1738,11 +1753,25 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
         shutdown_flag.set()
         txt_process_module.process_queue = original_process_queue
 
+    pretext_scan_args = captured_scan_args.get("process_pretext", ())
+    extract_scan_args = captured_scan_args.get("process_extract", ())
+    lock_type = type(threading.Lock())
     passed = (
         captured == {
-            "process_pretext": txt_process_module.scan_pretext_files,
-            "process_extract": txt_process_module.scan_extract_files,
+            "process_pretext": txt_process_module.scan_text_files,
+            "process_extract": txt_process_module.scan_text_files,
         }
+        and len(pretext_scan_args) == 6
+        and pretext_scan_args[0] == config["PRETEXT_WATCH_FOLDER"]
+        and pretext_scan_args[1] is captured_queues["process_pretext"]
+        and pretext_scan_args[2] == config["PRETEXT_SUFFIX"]
+        and pretext_scan_args[3] == config["EXTRACT_SUFFIX"]
+        and isinstance(pretext_scan_args[4], set)
+        and isinstance(pretext_scan_args[5], lock_type)
+        and len(extract_scan_args) == 3
+        and extract_scan_args[0] == config["EXTRACT_WATCH_FOLDER"]
+        and extract_scan_args[1] is captured_queues["process_extract"]
+        and extract_scan_args[2] == config["EXTRACT_SUFFIX"]
         and set(threads) == {
             "TextPipeline-Pretext",
             "TextPipeline-Extract",
@@ -1760,6 +1789,8 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
             "raw": raw,
             "extract": extract,
             "captured": sorted(captured),
+            "pretext_scan_args": pretext_scan_args,
+            "extract_scan_args": extract_scan_args,
         },
     )
 

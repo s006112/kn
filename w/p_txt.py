@@ -204,19 +204,19 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
 	return save_path
 
 
-def scan_pretext_files(config, pretext_queue, processed_files, processed_files_lock) -> None:
-	pretext_watch_folder = os.fspath(config["PRETEXT_WATCH_FOLDER"])
-	pretext_suffix, extract_suffix = str(config["PRETEXT_SUFFIX"]).lower(), str(config["EXTRACT_SUFFIX"]).lower()
+def scan_text_files(folder, queue, suffix, exclude_suffix=None, processed_files=None, processed_files_lock=None) -> None:
+	folder, suffix = os.fspath(folder), str(suffix).lower()
+	exclude_suffix = str(exclude_suffix).lower() if exclude_suffix else None
 
-	for filename in os.listdir(pretext_watch_folder):
+	for filename in os.listdir(folder):
 		filename_lower = filename.lower()
-		if not filename_lower.endswith(pretext_suffix) or filename_lower.endswith(extract_suffix):
+		if not filename_lower.endswith(suffix) or (exclude_suffix and filename_lower.endswith(exclude_suffix)):
 			continue
 
-		file_path = os.path.join(pretext_watch_folder, filename)
-		if len(os.path.splitext(filename)[0]) > 60:
-			new_name = sanitize_and_trim_filename(os.path.splitext(filename)[0]) + pretext_suffix
-			new_path = os.path.join(pretext_watch_folder, new_name)
+		base, file_path = filename[: -len(suffix)], os.path.join(folder, filename)
+		if len(base) > 60:
+			new_name = sanitize_and_trim_filename(base) + suffix
+			new_path = os.path.join(folder, new_name)
 			try:
 				if not os.path.exists(new_path):
 					safe_rename(file_path, new_path)
@@ -227,20 +227,13 @@ def scan_pretext_files(config, pretext_queue, processed_files, processed_files_l
 				continue
 
 		file_path = os.path.abspath(os.fspath(file_path))
-		with processed_files_lock:
-			if file_path not in processed_files:
-				processed_files.add(file_path)
-				pretext_queue.put(file_path)
-
-
-def scan_extract_files(config, extract_queue) -> None:
-	extract_suffix = str(config["EXTRACT_SUFFIX"]).lower()
-	for filename in os.listdir(os.fspath(config["EXTRACT_WATCH_FOLDER"])):
-		if filename.lower().endswith(extract_suffix):
-			file_path = os.path.join(os.fspath(config["EXTRACT_WATCH_FOLDER"]), filename)
-			if file_path not in extract_queue.queue:
-				extract_queue.put(file_path)
-
+		if processed_files is None:
+			if file_path not in queue.queue: queue.put(file_path)
+		else:
+			with processed_files_lock:
+				if file_path not in processed_files:
+					processed_files.add(file_path)
+					queue.put(file_path)
 
 def process_queue(config, queue, process, method_name, scan_files=None, shutdown_flag=None, *scan_args):
 	intervals = config.get("INTERVALS", {})
@@ -298,7 +291,7 @@ def process_text_pipeline(config, shutdown_flag):
 	processed_files_lock = threading.Lock()
 	threads = {}
 
-	if config["PIPELINES"]["PRETEXT"]: _start_text_thread(threads, "TextPipeline-Pretext", config, pretext_queue, lambda path: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_pretext_files, shutdown_flag, config, pretext_queue, processed_files_global, processed_files_lock)
-	if config["PIPELINES"]["EXTRACT"]: _start_text_thread(threads, "TextPipeline-Extract", config, extract_queue, lambda path: process_extract_file(config, path), "process_extract", scan_extract_files, shutdown_flag, config, extract_queue)
+	if config["PIPELINES"]["PRETEXT"]: _start_text_thread(threads, "TextPipeline-Pretext", config, pretext_queue, lambda path: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_text_files, shutdown_flag, config["PRETEXT_WATCH_FOLDER"], pretext_queue, config["PRETEXT_SUFFIX"], config["EXTRACT_SUFFIX"], processed_files_global, processed_files_lock)
+	if config["PIPELINES"]["EXTRACT"]: _start_text_thread(threads, "TextPipeline-Extract", config, extract_queue, lambda path: process_extract_file(config, path), "process_extract", scan_text_files, shutdown_flag, config["EXTRACT_WATCH_FOLDER"], extract_queue, config["EXTRACT_SUFFIX"])
 
 	return threads
