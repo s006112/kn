@@ -42,6 +42,7 @@ from w.helper_files import (
     get_next_available_filename,
     read_file_with_encodings,
     safe_rename,
+    release_text_file_permissions,
 )
 from helper.helper_llm import LLMPermanentFailure
 
@@ -166,6 +167,7 @@ def test_torrent_move(test_id: str) -> tuple[bool, list[Path]]:
     PATHS.whisper.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"dummy torrent test {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(source)
     time.sleep(2)
 
     moved_count = scan_torrent_watch_folder(CONFIG)
@@ -197,7 +199,9 @@ def test_torrent_move_avoids_overwrite(test_id: str) -> tuple[bool, list[Path]]:
     PATHS.whisper.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"new torrent source {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(source)
     existing_target.write_text(f"existing torrent target {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(existing_target)
 
     moved = move_torrent_to_whisper(str(source), str(PATHS.whisper))
 
@@ -295,6 +299,7 @@ plain subtitle line two {test_id}
     PATHS.original.mkdir(parents=True, exist_ok=True)
 
     source.write_text(content, encoding="utf-8")
+    release_text_file_permissions(source)
 
     handle_ttml(
         str(source),
@@ -374,6 +379,7 @@ def test_ytd_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[b
     PATHS.download_target.mkdir(parents=True, exist_ok=True)
 
     list_file.write_text(f"\nnot a url\n{url}\n", encoding="utf-8")
+    release_text_file_permissions(list_file)
 
     config = {
         **CONFIG,
@@ -398,6 +404,7 @@ def test_ytd_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[b
             resolve_timeout: float,
         ) -> tuple[str, None]:
             output.write_text(f"fake download for {test_id}\n", encoding="utf-8")
+            release_text_file_permissions(output)
             return str(output), None
 
         ytd_module.download = fake_download
@@ -455,10 +462,12 @@ def test_wikilink_cleaner_removes_broken_link(test_id: str) -> tuple[bool, list[
     PATHS.obsidian.mkdir(parents=True, exist_ok=True)
 
     valid_note.write_text(f"valid note for {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(valid_note)
     source.write_text(
         f"Keep [[{valid_name}]]\nRemove [[{test_id}_missing]] please\n",
         encoding="utf-8",
     )
+    release_text_file_permissions(source)
 
     cleaner = WikilinkCleaner(str(PATHS.obsidian), create_backup=False)
     processed = cleaner.process_file(source)
@@ -496,7 +505,9 @@ def test_markdown_merge_updates_index(test_id: str) -> tuple[bool, list[Path]]:
     PATHS.download_target.mkdir(parents=True, exist_ok=True)
 
     note.write_text(f"# Existing\n\nbody for {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(note)
     whisper_index.write_text("# Whisper\n---\n", encoding="utf-8")
+    release_text_file_permissions(whisper_index)
 
     merge_to_markdown(
         str(note),
@@ -546,7 +557,9 @@ def test_audio_move_to_done_removes_wav(test_id: str) -> tuple[bool, list[Path]]
     PATHS.audio_done.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"dummy audio source {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(source)
     wav.write_text(f"dummy wav temp {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(wav)
 
     move_files_to_done(
         str(source),
@@ -581,6 +594,7 @@ def test_pretext_scan_deduplicates_queue(test_id: str) -> tuple[bool, list[Path]
     watch_dir.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"dummy pretext queue source {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(source)
 
     config = extract_text_config(PRETEXT_WATCH_FOLDER=str(watch_dir))
     pretext_queue = Queue()
@@ -625,6 +639,7 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
     PATHS.obsidian.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"dummy pretext source {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(source)
 
     config = {
         **extract_text_config(),
@@ -726,6 +741,7 @@ def test_pretext_partial_error_filename_and_content_unchanged(test_id: str) -> t
     PATHS.original.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"dummy pretext partial source {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(source)
 
     config = {
         **extract_text_config(),
@@ -797,8 +813,11 @@ def test_distill_collects_extract_outputs(test_id: str) -> tuple[bool, list[Path
     PATHS.extract.mkdir(parents=True, exist_ok=True)
 
     first.write_text(f"alpha extract for {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(first)
     second.write_text(f"beta extract for {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(second)
     ignored.write_text(f"ignored extract for {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(ignored)
 
     extracts = txt_process_module.collect_extracts(str(PATHS.extract), base_name, pretext_suffix)
     labels = [label for label, _, _ in extracts]
@@ -885,9 +904,13 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
     PATHS.download_target.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"extract queue candidate {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(source)
     ignored.write_text(f"wrong folder candidate {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(ignored)
     markdown.write_text(f"markdown is not extract input {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(markdown)
     error_file.write_text(f"error marker is not extract input {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(error_file)
 
     config = extract_text_config(EXTRACT_WATCH_FOLDER=str(watch_dir))
     extract_queue = Queue()
