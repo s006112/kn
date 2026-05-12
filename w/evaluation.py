@@ -16,7 +16,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 import w.p as orchestrator_module
-import w.p_txt_process as txt_process_module
+import w.p_txt as txt_process_module
 from w.p import CONFIG
 pipelines = orchestrator_module
 
@@ -919,7 +919,7 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
 
 
 def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list[Path]]:
-    text_process_path = ROOT_DIR / "w" / "p_txt_process.py"
+    text_process_path = ROOT_DIR / "w" / "p_txt.py"
     outdated_text_process_path = ROOT_DIR / "w" / ("p_txt" + "_processing.py")
     removed_pretext_path = ROOT_DIR / "w" / ("p_" + "pretext.py")
     removed_extract_path = ROOT_DIR / "w" / ("p_" + "extract.py")
@@ -970,7 +970,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
     p_source = (ROOT_DIR / "w" / "p.py").read_text(encoding="utf-8")
     txt_source = text_process_path.read_text(encoding="utf-8")
     txt_tree = ast.parse(txt_source)
-    p_txt_import_line = "from w.p_txt_process import process_text_pipeline"
+    p_txt_import_line = "from w.p_txt import process_text_pipeline"
     forbidden_p_imports = sorted(
         name for name in forbidden_p_import_names if name in p_source
     )
@@ -1054,7 +1054,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         and not removed_extract_path.exists()
         and not removed_distill_path.exists()
         and p_txt_import_line in p_source
-        and p_source.count("from w.p_txt_process import") == 1
+        and p_source.count("from w.p_txt import") == 1
         and "process_text_pipeline(config, shutdown_flag)" in p_source
         and outdated_entrypoint not in p_source
         and outdated_module_name not in p_source
@@ -1095,7 +1095,7 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
 
 
 def test_text_process_compression_line_count(test_id: str) -> tuple[bool, list[Path]]:
-    text_process_path = ROOT_DIR / "w" / "p_txt_process.py"
+    text_process_path = ROOT_DIR / "w" / "p_txt.py"
     line_count = len(text_process_path.read_text(encoding="utf-8").splitlines())
     max_lines = 500
     passed = line_count <= max_lines
@@ -1110,7 +1110,7 @@ def test_text_process_compression_line_count(test_id: str) -> tuple[bool, list[P
 
 
 def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path]]:
-    text_process_path = ROOT_DIR / "w" / "p_txt_process.py"
+    text_process_path = ROOT_DIR / "w" / "p_txt.py"
     txt_source = text_process_path.read_text(encoding="utf-8")
     txt_tree = ast.parse(txt_source)
     helper = next(

@@ -12,7 +12,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from w.helper_files import configure_logging
 from w.p_audio import process_audio_pipeline
-from w.p_txt_process import process_text_pipeline
+from w.p_txt import process_text_pipeline
 from w.p_torrent import process_torrent_pipeline
 from w.p_ttml import process_ttml_pipeline
 from w.p_wiki import process_wikilink_cleaning

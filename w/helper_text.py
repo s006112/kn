@@ -4,7 +4,7 @@ Text utilities for filename sanitization and chunking/merging long strings.
 
 Used by:
 * w/p_audio.py
-* w/p_txt_process.py
+* w/p_txt.py
 
 Pipelines:
 - raw_name -> unicode_normalize -> char_filter -> whitespace_collapse -> safe_name

@@ -5,7 +5,7 @@ Shared helpers for text file IO and filename management used by Whisper pipeline
 Used by:
 * w/p_audio.py
 * w/p.py
-* w/p_txt_process.py
+* w/p_txt.py
 * w/p_ttml.py
 * w/helper_md.py
 * w/p_wiki.py

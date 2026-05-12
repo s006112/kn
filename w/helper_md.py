@@ -3,7 +3,7 @@ helper_md.py
 Helpers for creating and updating Markdown notes and a Whisper index note.
 
 Used by:
-* w/p_txt_process.py
+* w/p_txt.py
 
 Pipelines:
 - folder -> listdir -> regex_match -> max -> md_path
