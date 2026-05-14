@@ -114,7 +114,7 @@ def parse_allowed_files(task_text: str) -> list[str]:
     for line in match.group(1).splitlines():
         line = line.strip()
         if line.startswith("- "):
-            files.append(line[2:].strip())
+            files.append(line[2:].strip().strip("`"))
     return files
 
 
