@@ -7,7 +7,7 @@ Your job:
 - Do not explain, plan, patch, invent files, or expand scope.
 
 Priority:
-system > this prompt > workflow > pos > file evidence
+system > this prompt > target file evidence
 
 Rules:
 - Allowed files must contain only <TARGET_PATH>.
