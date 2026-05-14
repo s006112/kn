@@ -6,7 +6,6 @@ python agent/agent.py --revise-last  # step 3
 python agent/agent.py --status
 python agent/agent.py --show-last
 python agent/agent.py --accept-last  # step 4
-python agent/agent.py --clear-trace
 python agent/agent.py --show-final
 python agent/agent.py --check-ready
 python agent/agent.py --show-commands
@@ -14,6 +13,7 @@ python agent/agent.py --make-patch  # step 5
 python agent/agent.py --check-patch  # step 6
 python agent/agent.py --apply-patch  # step 7
 python agent/agent.py --run-verify  # step 8
+python agent/agent.py --clear-trace
 
 Workflow: plan -> review -> revise -> accept -> make patch -> check patch -> apply patch -> run verify
 '''
@@ -46,7 +46,7 @@ WORKFLOW_FILES = (
     "agent/workflow.md",
 )
 
-DEFAULT_MODEL = "gpt-5.4-mini"
+DEFAULT_MODEL = "gpt-5.4"
 S0_TASK_PROMPT = REPO_ROOT / "agent" / "agent_s0_task.txt"
 S1_PLAN_PROMPT = REPO_ROOT / "agent" / "agent_s1_plan.txt"
 S2_REVIEW_PROMPT = REPO_ROOT / "agent" / "agent_s2_review.txt"
@@ -225,6 +225,7 @@ def clear_trace() -> None:
         LAST_PLAN_PATH,
         LAST_REVIEW_PATH,
         LAST_REVISED_PLAN_PATH,
+        LAST_PATCH_PATH,
     )
 
     for path in paths:
@@ -234,7 +235,7 @@ def clear_trace() -> None:
         else:
             print(f"missing: {path}")
 
-    print("Trace cleared. final_plan.md preserved.")
+    print("Trace cleared. task.md and final_plan.md preserved.")
 
 
 def show_final_plan() -> None:
