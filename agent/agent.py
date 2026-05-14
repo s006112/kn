@@ -1,5 +1,5 @@
 '''
-python agent/agent.py --draft-task w/p_ytd.py     # step 0
+python agent/agent.py --draft-task agent/agent.py       # step 0, w/p_ytd.py
 python agent/agent.py --run-task  # step 1
 python agent/agent.py --review-last  # step 2
 python agent/agent.py --revise-last  # step 3
@@ -19,16 +19,22 @@ Workflow: plan -> review -> revise -> accept -> make patch -> check patch -> app
 '''
 from __future__ import annotations
 
+
+import tempfile
 import re
 import subprocess
 import sys
 from pathlib import Path
-from helper.helper_llm import call_llm  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-DEFAULT_MODEL = "gpt-5.4-mini"
+from helper.helper_llm import call_llm  # noqa: E402
+
+DEFAULT_MODEL = "codex" # codex, gpt-5.4-mini
+
+CODEX_MODEL = "gpt-5.5"
+CODEX_REASONING_EFFORT = "low"
 
 POS_FILES = (
     "AGENTS.md",
@@ -64,6 +70,39 @@ def read_optional(path: Path) -> str:
 def ensure_agent_data_dir() -> None:
     AGENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+def call_codex_cli(system_prompt: str, user_text: str, file_path: Path, *, timeout: int = 900) -> str:
+    ensure_agent_data_dir()
+    prompt_text = "\n\n".join(part for part in (system_prompt.strip(), user_text.strip()) if part)
+
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md", dir=AGENT_DATA_DIR, delete=False) as temp:
+        output_path = Path(temp.name)
+
+    try:
+        cmd = [
+            "codex", "exec",
+            "--cd", str(REPO_ROOT),
+            "--yolo",
+            "--color", "never",
+            "--model", CODEX_MODEL,
+            "-c", f'model_reasoning_effort="{CODEX_REASONING_EFFORT}"',
+            "--output-last-message", str(output_path),
+            "-",
+        ]
+
+        result = subprocess.run(cmd, input=prompt_text, text=True, cwd=REPO_ROOT, capture_output=True, timeout=timeout)
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip()
+            raise RuntimeError(f"Codex CLI failed for {repo_rel(file_path)}:\n{detail}")
+
+        output = read_text(output_path).strip()
+        return output or result.stdout.strip()
+    finally:
+        output_path.unlink(missing_ok=True)
+
+def call_agent_llm(system_prompt: str, user_text: str, file_path: Path) -> str:
+    if DEFAULT_MODEL == "codex":
+        return call_codex_cli(system_prompt, user_text, file_path)
+    return call_llm(DEFAULT_MODEL, system_prompt=system_prompt, user_text=user_text, file_path=str(file_path), max_retries=2, timeout=120)
 
 def agent_data_file(path: Path) -> Path:
     return AGENT_DATA_DIR / path.name if path.suffix.lower() in {".md", ".txt"} else path
@@ -470,13 +509,10 @@ def draft_task(task_path: Path, target_arg: str) -> None:
     ensure_agent_data_dir()
     LAST_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
 
-    output = call_llm(
-        DEFAULT_MODEL,
+    output = call_agent_llm(
         system_prompt="You are a strict minimal-scope repo task drafting agent.",
         user_text=prompt_text,
-        file_path=str(target_path),
-        max_retries=2,
-        timeout=120,
+        file_path=target_path,
     )
 
     task_path.write_text(output, encoding="utf-8")
@@ -507,13 +543,10 @@ def run_task(task_path: Path, task_text: str) -> None:
         print(f"Saved prompt: {LAST_PROMPT_PATH}")
         return
 
-    output = call_llm(
-        DEFAULT_MODEL,
+    output = call_agent_llm(
         system_prompt="You are a strict minimal-change repo planning agent.",
         user_text=prompt_text,
-        file_path=str(task_path),
-        max_retries=2,
-        timeout=120,
+        file_path=task_path,
     )
 
     ensure_agent_data_dir()
@@ -586,13 +619,10 @@ def main() -> None:
     # LLM refinement modes: read previous artifacts and produce next artifact.
     if "--review-last" in sys.argv:
         plan_text = read_text(LAST_PLAN_PATH)
-        review = call_llm(
-            DEFAULT_MODEL,
+        review = call_agent_llm(
             system_prompt="You are a strict minimal-change repo plan reviewer.",
             user_text=build_review_prompt(task_text, plan_text),
-            file_path=str(LAST_PLAN_PATH),
-            max_retries=2,
-            timeout=120,
+            file_path=LAST_PLAN_PATH,
         )
         ensure_agent_data_dir()
         LAST_REVIEW_PATH.write_text(review, encoding="utf-8")
@@ -603,13 +633,10 @@ def main() -> None:
     if "--revise-last" in sys.argv:
         plan_text = read_text(LAST_PLAN_PATH)
         review_text = read_text(LAST_REVIEW_PATH)
-        revised = call_llm(
-            DEFAULT_MODEL,
+        revised = call_agent_llm(
             system_prompt="You are a strict minimal-change repo plan revision agent.",
             user_text=build_revise_prompt(task_text, plan_text, review_text),
-            file_path=str(LAST_REVIEW_PATH),
-            max_retries=2,
-            timeout=120,
+            file_path=LAST_REVIEW_PATH,
         )
         ensure_agent_data_dir()
         LAST_REVISED_PLAN_PATH.write_text(revised, encoding="utf-8")
@@ -627,13 +654,10 @@ def main() -> None:
         file_context = load_allowed_file_context(allowed_files)
         final_plan_text = read_text(FINAL_PLAN_PATH)
 
-        patch = call_llm(
-            DEFAULT_MODEL,
+        patch = call_agent_llm(
             system_prompt="You are a strict minimal-change SEARCH/REPLACE patch generator.",
             user_text=build_patch_prompt(task_text=task_text, final_plan_text=final_plan_text, allowed_files=allowed_files, file_context=file_context),
-            file_path=str(FINAL_PLAN_PATH),
-            max_retries=2,
-            timeout=120,
+            file_path=FINAL_PLAN_PATH,
         )
 
         ensure_agent_data_dir()
