@@ -31,7 +31,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from helper.helper_llm import call_llm  # noqa: E402
 
-DEFAULT_MODEL = "codex" # codex, gpt-5.4-mini
+DEFAULT_MODEL = "gpt-5.4-mini" # codex, gpt-5.4-mini
 
 CODEX_MODEL = "gpt-5.5"
 CODEX_REASONING_EFFORT = "low"
@@ -666,7 +666,6 @@ def main() -> None:
         print("Next: python agent/agent.py --check-patch")
         return
 
-   # run_task(task_path, task_text)
 
 
 if __name__ == "__main__":
