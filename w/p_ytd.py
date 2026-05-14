@@ -7,7 +7,7 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 from helper.helper_ytd import clean_url, classify_url, download
-from .helper_files import release_text_file_permissions
+from .helper_files import release_text_file_permissions, write_text_file
 
 
 _ytd_list_lock = threading.Lock()
@@ -47,17 +47,14 @@ def read_next_download_url(list_file, skipped_urls):
 def remove_download_url_line(list_file, url):
     path = resolve_download_url_list_file(list_file)
     try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines(
-            keepends=True
-        )
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
     except FileNotFoundError:
         return False
 
     for index, line in enumerate(lines):
         if line.strip() == url:
             del lines[index]
-            path.write_text("".join(lines), encoding="utf-8", newline="")
-            release_text_file_permissions(path)
+            write_text_file(path, "".join(lines), newline="")
             return True
     return False
 
@@ -68,6 +65,7 @@ def download_ytd_url(url, target_folder, resolve_timeout):
     output_path, _ = download(url, "720p", output_dir=target_folder, resolve_timeout=resolve_timeout)
     release_text_file_permissions(output_path)
     return cleaned_url, output_path
+
 
 def process_ytd_pipeline(config, shutdown_flag) -> None:
     threading.current_thread().name = "YTDPipeline"
@@ -99,7 +97,8 @@ def process_ytd_pipeline(config, shutdown_flag) -> None:
 
                 try:
                     cleaned_url, output_path = download_ytd_url(url, target_folder, ytd_resolve_timeout_seconds)
-                except Exception:
+                except Exception as exc:
+                    logging.error("YTDPipeline: Download failed for %s: %s", short_log_name(url), exc)
                     skipped_urls.add(url)
                     continue
 

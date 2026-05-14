@@ -14,7 +14,7 @@ if str(ROOT_DIR) not in sys.path:
 	sys.path.insert(0, str(ROOT_DIR))
 
 from helper.helper_llm import LLMPermanentFailure, call_llm
-from .helper_files import get_next_available_filename, read_file_with_encodings, release_text_file_permissions, safe_rename
+from .helper_files import get_next_available_filename, read_file_with_encodings, release_text_file_permissions, safe_rename, write_text_file
 from .helper_md import create_or_find_note_for_base_name, merge_to_markdown, write_pretext_markdown
 from .helper_text import chunk_text, intelligent_merge_chunks, sanitize_and_trim_filename, sanitize_filename, short_log_name
 
@@ -26,13 +26,6 @@ _file_locks_mutex = threading.Lock()
 def call_text_llm(config, model, system_prompt, user_text, file_path):
 	intervals = config["INTERVALS"]
 	return call_llm(model=model, system_prompt=system_prompt, user_text=user_text, file_path=file_path, max_retries=intervals.get("LLM_MAX_RETRIES", 2), timeout=intervals.get("LLM_TIMEOUT_SECONDS", 90), retry_delay=intervals.get("LLM_RETRY_DELAY_SECONDS", 10))
-
-
-def write_text_file(path, content):
-	with open(path, "w", encoding="utf-8") as f:
-		f.write(content)
-	release_text_file_permissions(path)
-	return path
 
 
 def save_extract_result(config, base_name, model, result, md_path=None, link_name=None, md_is_new=False, merge_label=None):

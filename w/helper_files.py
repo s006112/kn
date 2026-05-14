@@ -65,6 +65,14 @@ def read_file_with_encodings(
 	raise ValueError(f"Unable to read file: {file_path}")
 
 
+def write_text_file(path: os.PathLike | str, content: str, *, newline=None) -> os.PathLike | str:
+	"""Write UTF-8 text and make the created file editable."""
+	with open(path, "w", encoding="utf-8", newline=newline) as f:
+		f.write(content)
+	release_text_file_permissions(path)
+	return path
+
+
 def get_next_available_filename(
 	base_path: str, base_name: str, suffix: str = "_e"
 ) -> str:
