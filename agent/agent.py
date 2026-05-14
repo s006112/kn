@@ -70,7 +70,7 @@ def read_optional(path: Path) -> str:
 def ensure_agent_data_dir() -> None:
     AGENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-def call_codex_cli(system_prompt: str, user_text: str, file_path: Path, *, timeout: int = 900) -> str:
+def call_codex_cli(system_prompt: str, user_text: str, context_path: Path, *, timeout: int = 900) -> str:
     ensure_agent_data_dir()
     prompt_text = "\n\n".join(part for part in (system_prompt.strip(), user_text.strip()) if part)
 
@@ -92,7 +92,7 @@ def call_codex_cli(system_prompt: str, user_text: str, file_path: Path, *, timeo
         result = subprocess.run(cmd, input=prompt_text, text=True, cwd=REPO_ROOT, capture_output=True, timeout=timeout)
         if result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip()
-            raise RuntimeError(f"Codex CLI failed for {repo_rel(file_path)}:\n{detail}")
+            raise RuntimeError(f"Codex CLI failed for {repo_rel(context_path)}:\n{detail}")
 
         output = read_text(output_path).strip()
         return output or result.stdout.strip()
@@ -101,7 +101,7 @@ def call_codex_cli(system_prompt: str, user_text: str, file_path: Path, *, timeo
 
 def call_agent_llm(system_prompt: str, user_text: str, file_path: Path) -> str:
     if DEFAULT_MODEL == "codex":
-        return call_codex_cli(system_prompt, user_text, file_path)
+        return call_codex_cli(system_prompt, user_text, context_path=file_path)
     return call_llm(DEFAULT_MODEL, system_prompt=system_prompt, user_text=user_text, file_path=str(file_path), max_retries=2, timeout=120)
 
 def agent_data_file(path: Path) -> Path:
