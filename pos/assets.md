@@ -7,27 +7,33 @@ Stable reusable judgment patterns.
 Pattern:
 - AI-generated code often adds local guards, fallback branches, exception blocks, and logs to appear robust.
 - This can make code locally defensible but globally harder to understand.
+- In personal/internal tools, excessive fallback handling often protects recoverable operator mistakes while making the normal path harder to simulate.
 
 Rule:
 - Add defensive code only when it protects a real system boundary.
 - Prefer the smallest structure that preserves behavior and makes the runtime model easier to simulate.
+- Prefer visible crash over guardrail bloat for recoverable manual workflow mistakes.
 
 Criteria:
 - The guard prevents data loss, duplicate execution, financial loss, irreversible action, silent corruption, or hard-to-diagnose failure.
 - The fallback matches business semantics.
 - The log helps future diagnosis instead of repeating obvious state.
 - The branch represents a real decision, not theoretical completeness.
+- The failure would be harder to diagnose if allowed to crash visibly.
 
 Boundary:
 - Do not remove protection around destructive operations, external side effects, money, file movement, or silent data corruption.
 - Do not add `try/except` only because an API might fail if failure should stop the current operation.
 - Do not add invalid-result branches when the default route already safely handles invalid output.
+- Do not add verbose fallback code only to handle skipped intermediate CLI steps, missing trace artifacts, or other recoverable personal workflow mistakes.
+- Keep hard guards around real file mutation, scope boundaries, destructive actions, irreversible actions, silent corruption, money, or external side effects.
 
 Success criteria:
 - The code is easier to explain.
 - The failure behavior is intentional.
 - The normal path stays visible.
 - The fallback is business-semantic, not generic panic handling.
+- Personal workflow mistakes fail loudly enough to fix without adding long defensive branches.
 
 ## Extract Helpers Only From Real Reuse
 

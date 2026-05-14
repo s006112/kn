@@ -17,19 +17,18 @@ python agent/agent.py --clear-trace
 
 Workflow: plan -> review -> revise -> accept -> make patch -> check patch -> apply patch -> run verify
 '''
-
 from __future__ import annotations
 
 import re
 import subprocess
 import sys
 from pathlib import Path
+from helper.helper_llm import call_llm  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from helper.helper_llm import call_llm  # noqa: E402
-
+DEFAULT_MODEL = "gpt-5.4-mini"
 
 POS_FILES = (
     "AGENTS.md",
@@ -39,14 +38,6 @@ POS_FILES = (
     "assets.md",
 )
 
-WORKFLOW_FILES = (
-    "agent.md",
-    "workflow.md",
-    "agent/agent.md",
-    "agent/workflow.md",
-)
-
-DEFAULT_MODEL = "gpt-5.4"
 S0_TASK_PROMPT = REPO_ROOT / "agent" / "agent_s0_task.txt"
 S1_PLAN_PROMPT = REPO_ROOT / "agent" / "agent_s1_plan.txt"
 S2_REVIEW_PROMPT = REPO_ROOT / "agent" / "agent_s2_review.txt"
@@ -128,16 +119,6 @@ def load_pos_context() -> str:
     return "\n\n---\n\n".join(parts)
 
 
-def load_workflow_context() -> str:
-    parts: list[str] = []
-    for name in WORKFLOW_FILES:
-        path = REPO_ROOT / name
-        text = read_optional(path).strip()
-        if text:
-            parts.append(f"# {name}\n\n{text}")
-    return "\n\n---\n\n".join(parts)
-
-
 def load_single_file_context(path: Path) -> str:
     rel = repo_rel(path)
     if not path.exists():
@@ -154,12 +135,6 @@ def load_allowed_file_context(file_paths: list[str]) -> str:
             continue
         parts.append(f"# {rel}\n\n```text\n{read_text(path)}\n```")
     return "\n\n---\n\n".join(parts)
-
-
-def build_task_prompt(target_path: str, pos_context: str, workflow_context: str, file_context: str) -> str:
-    # Step 0: draft task.
-    template = read_text(S0_TASK_PROMPT)
-    return template.format(target_path=target_path, pos_context=pos_context, workflow_context=workflow_context, file_context=file_context)
 
 
 def build_plan_prompt(task_text: str, pos_context: str, file_context: str) -> str:
