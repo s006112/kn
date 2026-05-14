@@ -22,6 +22,7 @@ Rules:
 - SEARCH text must be copied exactly from <ALLOWED_FILE_CONTEXT>.
 - Each SEARCH block must match exactly one location in the target file.
 - REPLACE text must be the smallest necessary replacement.
+- The patch must satisfy <FINAL_PLAN> semantically, not only produce valid SEARCH/REPLACE blocks.
 - Use one or more FILE/SEARCH/REPLACE/END blocks.
 - Do not touch files outside <ALLOWED_FILES>.
 - Do not add files.
@@ -29,6 +30,9 @@ Rules:
 - Do not include markdown fences.
 - Do not use ellipsis.
 - Do not use placeholders.
+- Do not leave whitespace-only replacement lines.
+- If <FINAL_PLAN> says to remove a local variable, the replacement must remove all local uses of that variable in the planned edit scope.
+- If a returned value becomes intentionally unused after removing a local variable, bind that return position to `_` instead of preserving the removed variable name.
 - If an exact SEARCH block cannot be produced from the provided context, output exactly:
   PATCH_NOT_SAFE
 
@@ -38,12 +42,20 @@ Patch safety rule:
   2. Target files are listed in <ALLOWED_FILES>.
   3. Exact SEARCH text is visible in <ALLOWED_FILE_CONTEXT>.
   4. The change is a small local edit.
+  5. The replacements satisfy the stop condition in <FINAL_PLAN>.
 
 - Output PATCH_NOT_SAFE only if:
   1. Required source text is missing.
   2. The patch would need files outside <ALLOWED_FILES>.
   3. The requested change requires broad refactor.
   4. No exact SEARCH block can be formed.
+  5. A valid SEARCH/REPLACE patch can be formed syntactically but would not satisfy <FINAL_PLAN>.
+
+Before outputting the patch, self-check:
+- Does any variable, import, helper, or branch that <FINAL_PLAN> says to remove still remain in replacement text?
+- Does any REPLACE block introduce whitespace-only blank lines?
+- Does the patch achieve the stop condition in <FINAL_PLAN>?
+- If any answer is unsafe, output exactly PATCH_NOT_SAFE.
 
 Current task-specific guidance:
 - Moving a helper between two allowed files is safe if both file contents are present.
