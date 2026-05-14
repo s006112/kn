@@ -18,7 +18,7 @@ import logging
 import re
 from datetime import datetime
 
-from .helper_files import release_text_file_permissions
+from .helper_files import write_text_file
 
 
 def find_most_recent_md_by_prefix(folder, prefix):
@@ -60,9 +60,7 @@ def write_pretext_markdown(config, base_name: str, content: str) -> str:
 	md_path, link_name, _ = create_or_find_note_for_base_name(
 		config, base_name, allow_existing=False
 	)
-	with open(md_path, 'w', encoding='utf-8') as f:
-		f.write(content)
-	release_text_file_permissions(md_path)
+	write_text_file(md_path, content)
 
 	whisper_md_path = os.path.join(
 		config['OBSIDIAN_SYNC_FOLDER'], 'Whisper 000000.md'
@@ -86,9 +84,7 @@ def merge_to_markdown(md_path, extracts, original_text, labels, whisper_md_path,
 
 	full_content = new_content.strip() + "\n\n\n" + existing_content.strip()
 
-	with open(md_path, 'w', encoding='utf-8') as f:
-		f.write(full_content)
-	release_text_file_permissions(md_path)
+	write_text_file(md_path, full_content)
 
 	if not md_is_new:
 		return
@@ -107,12 +103,9 @@ def merge_to_markdown(md_path, extracts, original_text, labels, whisper_md_path,
 					insert_at = i + 1
 					break
 			lines.insert(insert_at, link_code)
-			with open(whisper_md_path, 'w', encoding='utf-8') as f:
-				f.writelines(lines)
+			write_text_file(whisper_md_path, "".join(lines))
 		else:
-			with open(whisper_md_path, 'w', encoding='utf-8') as f:
-				f.write(link_code)
-		release_text_file_permissions(whisper_md_path)
+			write_text_file(whisper_md_path, link_code)
 	except Exception as e:
 		logging.error(f"Error updating Whisper.md: {str(e)}")
 
@@ -143,11 +136,8 @@ def update_whisper_index_for_pretext(whisper_md_path: str, note_name: str) -> No
 			else:
 				lines = [link_code]
 
-			with open(whisper_md_path, 'w', encoding='utf-8') as f:
-				f.writelines(lines)
+			write_text_file(whisper_md_path, "".join(lines))
 		else:
-			with open(whisper_md_path, 'w', encoding='utf-8') as f:
-				f.write(link_code)
-		release_text_file_permissions(whisper_md_path)
+			write_text_file(whisper_md_path, link_code)
 	except Exception as e:
 		logging.error(f"Error updating Whisper.md: {str(e)}")

@@ -158,21 +158,27 @@ def test_summary(results: list[bool]) -> None:
 
 
 def test_torrent_move(test_id: str) -> tuple[bool, list[Path]]:
+    watch_dir = ROOT_DIR / f"{test_id}_torrent_move_watch"
+    whisper_dir = ROOT_DIR / f"{test_id}_torrent_move_whisper"
     filename = f"{test_id}.torrent"
-    source = PATHS.watch / filename
-    target = PATHS.whisper / filename
+    source = watch_dir / filename
+    target = whisper_dir / filename
 
-    cleanup = [source, target]
-    cleanup.append(target.with_suffix(".torrent.qbt_rejected"))
+    cleanup = [watch_dir, whisper_dir]
 
-    PATHS.watch.mkdir(parents=True, exist_ok=True)
-    PATHS.whisper.mkdir(parents=True, exist_ok=True)
+    watch_dir.mkdir(parents=True, exist_ok=True)
+    whisper_dir.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"dummy torrent test {test_id}\n", encoding="utf-8")
     release_text_file_permissions(source)
-    time.sleep(2)
 
-    moved_count = scan_torrent_watch_folder(CONFIG)
+    config = {
+        **CONFIG,
+        "WATCH_FOLDER": watch_dir,
+        "WHISPER_FOLDER": whisper_dir,
+    }
+
+    moved_count = scan_torrent_watch_folder(config)
 
     passed = moved_count >= 1 and not source.exists() and target.is_file()
 
@@ -190,22 +196,24 @@ def test_torrent_move(test_id: str) -> tuple[bool, list[Path]]:
 
 
 def test_torrent_move_avoids_overwrite(test_id: str) -> tuple[bool, list[Path]]:
+    watch_dir = ROOT_DIR / f"{test_id}_torrent_duplicate_watch"
+    whisper_dir = ROOT_DIR / f"{test_id}_torrent_duplicate_whisper"
     filename = f"{test_id}_duplicate.torrent"
-    source = PATHS.watch / filename
-    existing_target = PATHS.whisper / filename
-    collision_target = PATHS.whisper / f"{test_id}_duplicate_1.torrent"
+    source = watch_dir / filename
+    existing_target = whisper_dir / filename
+    collision_target = whisper_dir / f"{test_id}_duplicate_1.torrent"
 
-    cleanup = [source, existing_target, collision_target]
+    cleanup = [watch_dir, whisper_dir]
 
-    PATHS.watch.mkdir(parents=True, exist_ok=True)
-    PATHS.whisper.mkdir(parents=True, exist_ok=True)
+    watch_dir.mkdir(parents=True, exist_ok=True)
+    whisper_dir.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"new torrent source {test_id}\n", encoding="utf-8")
     release_text_file_permissions(source)
     existing_target.write_text(f"existing torrent target {test_id}\n", encoding="utf-8")
     release_text_file_permissions(existing_target)
 
-    moved = move_torrent_to_whisper(str(source), str(PATHS.whisper))
+    moved = move_torrent_to_whisper(str(source), str(whisper_dir))
 
     existing_content = existing_target.read_text(encoding="utf-8")
     collision_content = (
@@ -690,6 +698,87 @@ def test_markdown_merge_updates_index(test_id: str) -> tuple[bool, list[Path]]:
     )
 
     return passed, cleanup
+
+
+def test_helper_md_uses_shared_write_text_file_static(test_id: str) -> tuple[bool, list[Path]]:
+    helper_md_path = ROOT_DIR / "w" / "helper_md.py"
+    helper_md_source = helper_md_path.read_text(encoding="utf-8")
+    helper_md_tree = ast.parse(helper_md_source)
+    functions = {
+        node.name: node
+        for node in helper_md_tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
+
+    imports_write_text_file = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module in {"helper_files", "w.helper_files"}
+        and any(alias.name == "write_text_file" for alias in node.names)
+        for node in helper_md_tree.body
+    )
+    imports_release_directly = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module in {"helper_files", "w.helper_files"}
+        and any(alias.name == "release_text_file_permissions" for alias in node.names)
+        for node in helper_md_tree.body
+    )
+
+    direct_write_release_lines = []
+    lines = helper_md_source.splitlines()
+    for index, line in enumerate(lines, 1):
+        if (
+            "with open(" in line
+            and "encoding=" in line
+            and ('"w"' in line or "'w'" in line)
+        ):
+            window = "\n".join(lines[index - 1 : index + 5])
+            if "release_text_file_permissions(" in window:
+                direct_write_release_lines.append(index)
+
+    def function_calls(function_node: ast.FunctionDef | None, name: str) -> bool:
+        return bool(
+            function_node
+            and any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == name
+                for node in ast.walk(function_node)
+            )
+        )
+
+    write_pretext_calls_write_text_file = function_calls(
+        functions.get("write_pretext_markdown"), "write_text_file"
+    )
+    merge_calls_write_text_file = function_calls(
+        functions.get("merge_to_markdown"), "write_text_file"
+    )
+    update_index_calls_write_text_file = function_calls(
+        functions.get("update_whisper_index_for_pretext"), "write_text_file"
+    )
+
+    passed = (
+        imports_write_text_file
+        and not imports_release_directly
+        and not direct_write_release_lines
+        and write_pretext_calls_write_text_file
+        and merge_calls_write_text_file
+        and update_index_calls_write_text_file
+    )
+
+    print_result(
+        "helper md uses shared write text file static",
+        passed,
+        {
+            "imports_write_text_file": imports_write_text_file,
+            "imports_release_directly": imports_release_directly,
+            "direct_write_release_lines": direct_write_release_lines,
+            "write_pretext_calls_write_text_file": write_pretext_calls_write_text_file,
+            "merge_calls_write_text_file": merge_calls_write_text_file,
+            "update_index_calls_write_text_file": update_index_calls_write_text_file,
+        },
+    )
+
+    return passed, []
 
 
 def test_audio_move_to_done_removes_wav(test_id: str) -> tuple[bool, list[Path]]:
@@ -3362,6 +3451,7 @@ def main() -> int:
             test_ytd_remove_uses_shared_write_text_file_contract,
             test_wikilink_cleaner_removes_broken_link,
             test_markdown_merge_updates_index,
+            test_helper_md_uses_shared_write_text_file_static,
             test_audio_move_to_done_removes_wav,
             test_pretext_scan_deduplicates_queue,
             test_pretext_full_process_writes_pretext_markdown_and_archive,

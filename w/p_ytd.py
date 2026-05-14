@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import logging
-from .helper_text import short_log_name
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from helper.helper_ytd import clean_url, classify_url, download
+
+from helper.helper_ytd import classify_url, download
 from .helper_files import release_text_file_permissions, write_text_file
+from .helper_text import short_log_name
 
 
 _ytd_list_lock = threading.Lock()
@@ -61,10 +62,9 @@ def remove_download_url_line(list_file, url):
 
 def download_ytd_url(url, target_folder, resolve_timeout):
     logging.info("YTDPipeline: Downloading %s", short_log_name(url))
-    cleaned_url = clean_url(url)
     output_path, _ = download(url, "720p", output_dir=target_folder, resolve_timeout=resolve_timeout)
     release_text_file_permissions(output_path)
-    return cleaned_url, output_path
+    return output_path
 
 
 def process_ytd_pipeline(config, shutdown_flag) -> None:
@@ -75,9 +75,7 @@ def process_ytd_pipeline(config, shutdown_flag) -> None:
 
     while not shutdown_flag.is_set():
         try:
-            target_folder = Path(
-                config.get("DOWNLOAD_TARGET_FOLDER", config["WHISPER_FOLDER"])
-            )
+            target_folder = Path(config.get("DOWNLOAD_TARGET_FOLDER", config["WHISPER_FOLDER"]))
             list_file = Path(config["YTD_LIST_FILE"])
             active_list_file = resolve_download_url_list_file(list_file)
             target_folder.mkdir(parents=True, exist_ok=True)
@@ -87,16 +85,13 @@ def process_ytd_pipeline(config, shutdown_flag) -> None:
                 with list_file_lock() as locked:
                     if not locked:
                         break
-                    url, active_list_file = read_next_download_url(
-                        active_list_file,
-                        skipped_urls,
-                    )
+                    url, active_list_file = read_next_download_url(active_list_file, skipped_urls)
 
                 if not url:
                     break
 
                 try:
-                    cleaned_url, output_path = download_ytd_url(url, target_folder, ytd_resolve_timeout_seconds)
+                    output_path = download_ytd_url(url, target_folder, ytd_resolve_timeout_seconds)
                 except Exception as exc:
                     logging.error("YTDPipeline: Download failed for %s: %s", short_log_name(url), exc)
                     skipped_urls.add(url)
@@ -106,12 +101,9 @@ def process_ytd_pipeline(config, shutdown_flag) -> None:
                     removed = remove_download_url_line(active_list_file, url) if locked else False
 
                 if removed:
-                    logging.info("YTDPipeline: Downloaded %s -> %s", short_log_name(cleaned_url), short_log_name(output_path))
+                    logging.info("YTDPipeline: Downloaded %s -> %s", short_log_name(url), short_log_name(output_path))
                 else:
-                    logging.warning(
-                        "YTDPipeline: Downloaded %s but URL line was not removed",
-                        short_log_name(url),
-                    )
+                    logging.warning("YTDPipeline: Downloaded %s but URL line was not removed", short_log_name(url))
                     skipped_urls.add(url)
 
         except Exception as exc:
