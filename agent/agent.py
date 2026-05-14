@@ -1,18 +1,20 @@
 '''
-python agent/agent.py agent/task.md
-python agent/agent.py agent/task.md --review-last
-python agent/agent.py agent/task.md --revise-last
+python agent/agent.py agent/task.md  # step 1
+python agent/agent.py agent/task.md --review-last  # step 2
+python agent/agent.py agent/task.md --revise-last  # step 3
 python agent/agent.py agent/task.md --status
 python agent/agent.py agent/task.md --show-last
-python agent/agent.py agent/task.md --accept-last
+python agent/agent.py agent/task.md --accept-last  # step 4
 python agent/agent.py agent/task.md --clear-trace
 python agent/agent.py agent/task.md --show-final
 python agent/agent.py agent/task.md --check-ready
 python agent/agent.py agent/task.md --show-commands
-python agent/agent.py agent/task.md --make-patch
-python agent/agent.py agent/task.md --check-patch
-python agent/agent.py agent/task.md --apply-patch
-python agent/agent.py agent/task.md --run-verify
+python agent/agent.py agent/task.md --make-patch  # step 5
+python agent/agent.py agent/task.md --check-patch  # step 6
+python agent/agent.py agent/task.md --apply-patch  # step 7
+python agent/agent.py agent/task.md --run-verify  # step 8
+
+Workflow: plan -> review -> revise -> accept -> make patch -> check patch -> apply patch -> run verify
 '''
 
 from __future__ import annotations
@@ -37,10 +39,10 @@ POS_FILES = (
 )
 
 DEFAULT_MODEL = "gpt-5.4-mini"
-PLAN_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_plan.txt"
-REVIEW_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_review.txt"
-REVISE_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_revise.txt"
-PATCH_PROMPT_PATH = REPO_ROOT / "prompt" / "agent_repo_patch.txt"
+S1_PLAN_PROMPT = REPO_ROOT / "prompt" / "agent_s1_plan.txt"
+S2_REVIEW_PROMPT = REPO_ROOT / "prompt" / "agent_s2_review.txt"
+S3_REVISE_PROMPT = REPO_ROOT / "prompt" / "agent_s3_revise.txt"
+S5_PATCH_PROMPT = REPO_ROOT / "prompt" / "agent_s5_patch.txt"
 LAST_PATCH_PATH = REPO_ROOT / "agent" / "last_patch.txt"
 
 LAST_PROMPT_PATH = REPO_ROOT / "agent" / "last_prompt.md"
@@ -94,7 +96,8 @@ def load_allowed_file_context(file_paths: list[str]) -> str:
 
 
 def build_plan_prompt(task_text: str, pos_context: str, file_context: str) -> str:
-    template = read_text(PLAN_PROMPT_PATH)
+    # Step 1: plan.
+    template = read_text(S1_PLAN_PROMPT)
     return template.format(
         task_text=task_text,
         pos_context=pos_context,
@@ -102,14 +105,16 @@ def build_plan_prompt(task_text: str, pos_context: str, file_context: str) -> st
     )
 
 def build_review_prompt(task_text: str, plan_text: str) -> str:
-    template = read_text(REVIEW_PROMPT_PATH)
+    # Step 2: review.
+    template = read_text(S2_REVIEW_PROMPT)
     return template.format(
         task_text=task_text,
         plan_text=plan_text,
     )
 
 def build_revise_prompt(task_text: str, plan_text: str, review_text: str) -> str:
-    template = read_text(REVISE_PROMPT_PATH)
+    # Step 3: revise.
+    template = read_text(S3_REVISE_PROMPT)
     return template.format(
         task_text=task_text,
         plan_text=plan_text,
@@ -141,6 +146,7 @@ def show_last_plan() -> None:
     print(read_text(path))
 
 def accept_last_plan() -> None:
+    # Step 4: accept.
     source = LAST_REVISED_PLAN_PATH if LAST_REVISED_PLAN_PATH.exists() else LAST_PLAN_PATH
     if not source.exists():
         print("No plan found to accept.")
@@ -240,6 +246,7 @@ def show_commands() -> None:
 
 
 def run_verify() -> None:
+    # Step 8: run verify.
     if not FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return
@@ -266,7 +273,8 @@ def build_patch_prompt(
     allowed_files: list[str],
     file_context: str,
 ) -> str:
-    template = read_text(PATCH_PROMPT_PATH)
+    # Step 5: make patch.
+    template = read_text(S5_PATCH_PROMPT)
     return template.format(
         task_text=task_text,
         final_plan_text=final_plan_text,
@@ -354,6 +362,7 @@ def validate_patch_blocks(task_path: Path, blocks: list[tuple[str, str, str]]) -
 
 
 def check_patch(task_path: Path) -> None:
+    # Step 6: check patch.
     if not LAST_PATCH_PATH.exists():
         print("No patch found.")
         return
@@ -376,6 +385,7 @@ def check_patch(task_path: Path) -> None:
 
 
 def apply_patch(task_path: Path) -> None:
+    # Step 7: apply patch.
     if not LAST_PATCH_PATH.exists():
         print("No patch found.")
         return
@@ -521,7 +531,7 @@ def main() -> None:
 
     print("=== Repo Planning Agent ===")
     print(f"task: {task_path}")
-    print(f"prompt: {PLAN_PROMPT_PATH}")
+    print(f"prompt: {S1_PLAN_PROMPT}")
     print(f"model: {DEFAULT_MODEL}")
     print("allowed files:")
     for file_path in allowed_files or ["<none>"]:
