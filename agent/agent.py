@@ -1,4 +1,5 @@
 '''
+python agent/agent.py agent/task.md --draft-task w/p_ytd.py     # step 0
 python agent/agent.py agent/task.md  # step 1
 python agent/agent.py agent/task.md --review-last  # step 2
 python agent/agent.py agent/task.md --revise-last  # step 3
@@ -38,19 +39,26 @@ POS_FILES = (
     "assets.md",
 )
 
+WORKFLOW_FILES = (
+    "agent.md",
+    "workflow.md",
+    "agent/agent.md",
+    "agent/workflow.md",
+)
+
 DEFAULT_MODEL = "gpt-5.4-mini"
+S0_TASK_PROMPT = REPO_ROOT / "prompt" / "agent_s0_task.txt"
 S1_PLAN_PROMPT = REPO_ROOT / "prompt" / "agent_s1_plan.txt"
 S2_REVIEW_PROMPT = REPO_ROOT / "prompt" / "agent_s2_review.txt"
 S3_REVISE_PROMPT = REPO_ROOT / "prompt" / "agent_s3_revise.txt"
 S5_PATCH_PROMPT = REPO_ROOT / "prompt" / "agent_s5_patch.txt"
-LAST_PATCH_PATH = REPO_ROOT / "agent" / "last_patch.txt"
 
+LAST_PATCH_PATH = REPO_ROOT / "agent" / "last_patch.txt"
 LAST_PROMPT_PATH = REPO_ROOT / "agent" / "last_prompt.md"
 LAST_PLAN_PATH = REPO_ROOT / "agent" / "last_plan.md"
 LAST_REVIEW_PATH = REPO_ROOT / "agent" / "last_review.md"
 LAST_REVISED_PLAN_PATH = REPO_ROOT / "agent" / "last_revised_plan.md"
 FINAL_PLAN_PATH = REPO_ROOT / "agent" / "final_plan.md"
-
 
 
 def read_text(path: Path) -> str:
@@ -59,6 +67,20 @@ def read_text(path: Path) -> str:
 
 def read_optional(path: Path) -> str:
     return read_text(path) if path.exists() else ""
+
+
+def repo_rel(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def flag_value(flag: str) -> str | None:
+    if flag not in sys.argv:
+        return None
+    index = sys.argv.index(flag)
+    return sys.argv[index + 1] if index + 1 < len(sys.argv) else None
 
 
 def parse_allowed_files(task_text: str) -> list[str]:
@@ -84,6 +106,23 @@ def load_pos_context() -> str:
     return "\n\n---\n\n".join(parts)
 
 
+def load_workflow_context() -> str:
+    parts: list[str] = []
+    for name in WORKFLOW_FILES:
+        path = REPO_ROOT / name
+        text = read_optional(path).strip()
+        if text:
+            parts.append(f"# {name}\n\n{text}")
+    return "\n\n---\n\n".join(parts)
+
+
+def load_single_file_context(path: Path) -> str:
+    rel = repo_rel(path)
+    if not path.exists():
+        return f"# {rel}\n\n<FILE NOT FOUND>"
+    return f"# {rel}\n\n```text\n{read_text(path)}\n```"
+
+
 def load_allowed_file_context(file_paths: list[str]) -> str:
     parts: list[str] = []
     for rel in file_paths:
@@ -95,31 +134,29 @@ def load_allowed_file_context(file_paths: list[str]) -> str:
     return "\n\n---\n\n".join(parts)
 
 
+def build_task_prompt(target_path: str, pos_context: str, workflow_context: str, file_context: str) -> str:
+    # Step 0: draft task.
+    template = read_text(S0_TASK_PROMPT)
+    return template.format(target_path=target_path, pos_context=pos_context, workflow_context=workflow_context, file_context=file_context)
+
+
 def build_plan_prompt(task_text: str, pos_context: str, file_context: str) -> str:
     # Step 1: plan.
     template = read_text(S1_PLAN_PROMPT)
-    return template.format(
-        task_text=task_text,
-        pos_context=pos_context,
-        file_context=file_context,
-    )
+    return template.format(task_text=task_text, pos_context=pos_context, file_context=file_context)
+
 
 def build_review_prompt(task_text: str, plan_text: str) -> str:
     # Step 2: review.
     template = read_text(S2_REVIEW_PROMPT)
-    return template.format(
-        task_text=task_text,
-        plan_text=plan_text,
-    )
+    return template.format(task_text=task_text, plan_text=plan_text)
+
 
 def build_revise_prompt(task_text: str, plan_text: str, review_text: str) -> str:
     # Step 3: revise.
     template = read_text(S3_REVISE_PROMPT)
-    return template.format(
-        task_text=task_text,
-        plan_text=plan_text,
-        review_text=review_text,
-    )
+    return template.format(task_text=task_text, plan_text=plan_text, review_text=review_text)
+
 
 def print_status(task_path: Path) -> None:
     paths = {
@@ -135,6 +172,7 @@ def print_status(task_path: Path) -> None:
         status = "exists" if path.exists() else "missing"
         print(f"{name}: {status} - {path}")
 
+
 def show_last_plan() -> None:
     path = LAST_REVISED_PLAN_PATH if LAST_REVISED_PLAN_PATH.exists() else LAST_PLAN_PATH
     if not path.exists():
@@ -145,6 +183,7 @@ def show_last_plan() -> None:
     print(f"source: {path}\n")
     print(read_text(path))
 
+
 def accept_last_plan() -> None:
     # Step 4: accept.
     source = LAST_REVISED_PLAN_PATH if LAST_REVISED_PLAN_PATH.exists() else LAST_PLAN_PATH
@@ -153,11 +192,9 @@ def accept_last_plan() -> None:
         return
 
     content = read_text(source)
-    FINAL_PLAN_PATH.write_text(
-        f"# Final Accepted Plan\n\nSource: `{source}`\n\n---\n\n{content}",
-        encoding="utf-8",
-    )
+    FINAL_PLAN_PATH.write_text(f"# Final Accepted Plan\n\nSource: `{source}`\n\n---\n\n{content}", encoding="utf-8")
     print(f"Accepted plan: {FINAL_PLAN_PATH}")
+
 
 def clear_trace() -> None:
     paths = (
@@ -176,6 +213,7 @@ def clear_trace() -> None:
 
     print("Trace cleared. final_plan.md preserved.")
 
+
 def show_final_plan() -> None:
     if not FINAL_PLAN_PATH.exists():
         print("No final plan found.")
@@ -184,6 +222,7 @@ def show_final_plan() -> None:
     print("=== Final Accepted Plan ===")
     print(f"source: {FINAL_PLAN_PATH}\n")
     print(read_text(FINAL_PLAN_PATH))
+
 
 def check_ready(task_path: Path) -> None:
     checks = []
@@ -212,6 +251,7 @@ def check_ready(task_path: Path) -> None:
 
     print()
     print("READY" if ok else "NOT READY")
+
 
 def get_final_plan_commands() -> list[str]:
     text = read_text(FINAL_PLAN_PATH)
@@ -267,20 +307,11 @@ def run_verify() -> None:
 
     print("VERIFY_OK", flush=True)
 
-def build_patch_prompt(
-    task_text: str,
-    final_plan_text: str,
-    allowed_files: list[str],
-    file_context: str,
-) -> str:
+
+def build_patch_prompt(task_text: str, final_plan_text: str, allowed_files: list[str], file_context: str) -> str:
     # Step 5: make patch.
     template = read_text(S5_PATCH_PROMPT)
-    return template.format(
-        task_text=task_text,
-        final_plan_text=final_plan_text,
-        allowed_files_text="\n".join(f"- {p}" for p in allowed_files),
-        file_context=file_context,
-    )
+    return template.format(task_text=task_text, final_plan_text=final_plan_text, allowed_files_text="\n".join(f"- {p}" for p in allowed_files), file_context=file_context)
 
 
 def parse_patch_blocks(patch_text: str) -> tuple[list[tuple[str, str, str]], list[str]]:
@@ -413,11 +444,48 @@ def apply_patch(task_path: Path) -> None:
     print("Next: python agent/agent.py agent/task.md --run-verify")
 
 
+def draft_task(task_path: Path, target_arg: str) -> None:
+    # Step 0: draft task.md from one target source file.
+    target_path = Path(target_arg)
+    if not target_path.is_absolute():
+        target_path = REPO_ROOT / target_path
+
+    try:
+        target_rel = target_path.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        print(f"Target must be inside repo: {target_path}")
+        return
+
+    prompt_text = build_task_prompt(target_rel, load_pos_context(), load_workflow_context(), load_single_file_context(target_path))
+    LAST_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
+
+    output = call_llm(
+        DEFAULT_MODEL,
+        system_prompt="You are a strict minimal-scope repo task drafting agent.",
+        user_text=prompt_text,
+        file_path=str(target_path),
+        max_retries=2,
+        timeout=120,
+    )
+
+    task_path.parent.mkdir(parents=True, exist_ok=True)
+    task_path.write_text(output, encoding="utf-8")
+    print(output)
+    print(f"\nSaved task: {task_path}")
+
 
 def main() -> None:
     task_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("task.md")
     if not task_path.is_absolute():
         task_path = Path.cwd() / task_path
+
+    draft_target = flag_value("--draft-task")
+    if "--draft-task" in sys.argv:
+        if not draft_target:
+            print("Usage: python agent/agent.py agent/task.md --draft-task path/to/file.py")
+            return
+        draft_task(task_path, draft_target)
+        return
 
     # Inspection / state-management modes: no LLM call.
     if "--status" in sys.argv:
@@ -431,10 +499,10 @@ def main() -> None:
     if "--accept-last" in sys.argv:
         accept_last_plan()
         return
-    
+
     if "--clear-trace" in sys.argv:
         clear_trace()
-        return    
+        return
 
     if "--show-final" in sys.argv:
         show_final_plan()
@@ -447,7 +515,7 @@ def main() -> None:
     if "--show-commands" in sys.argv:
         show_commands()
         return
-    
+
     if "--check-patch" in sys.argv:
         check_patch(task_path)
         return
@@ -476,7 +544,7 @@ def main() -> None:
         LAST_REVIEW_PATH.write_text(review, encoding="utf-8")
         print(review)
         print(f"\nSaved review: {LAST_REVIEW_PATH}")
-        return 
+        return
 
     if "--revise-last" in sys.argv:
         plan_text = read_text(LAST_PLAN_PATH)
@@ -507,12 +575,7 @@ def main() -> None:
         patch = call_llm(
             DEFAULT_MODEL,
             system_prompt="You are a strict minimal-change SEARCH/REPLACE patch generator.",
-            user_text=build_patch_prompt(
-                task_text=task_text,
-                final_plan_text=final_plan_text,
-                allowed_files=allowed_files,
-                file_context=file_context,
-            ),
+            user_text=build_patch_prompt(task_text=task_text, final_plan_text=final_plan_text, allowed_files=allowed_files, file_context=file_context),
             file_path=str(FINAL_PLAN_PATH),
             max_retries=2,
             timeout=120,
@@ -521,8 +584,7 @@ def main() -> None:
         LAST_PATCH_PATH.write_text(patch, encoding="utf-8")
         print(f"Saved patch: {LAST_PATCH_PATH}")
         print("Next: python agent/agent.py agent/task.md --check-patch")
-        return  
-
+        return
 
     # Default mode: build context and generate the first plan.
     allowed_files = parse_allowed_files(task_text)
