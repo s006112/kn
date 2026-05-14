@@ -63,16 +63,11 @@ def remove_download_url_line(list_file, url):
 
 
 def download_ytd_url(url, target_folder, resolve_timeout):
-    try:
-        logging.info("YTDPipeline: Downloading %s", short_log_name(url))
-        cleaned_url = clean_url(url)
-        output_path, _ = download(url, "720p", output_dir=target_folder, resolve_timeout=resolve_timeout)
-        release_text_file_permissions(output_path)
-        return cleaned_url, output_path
-    except Exception as exc:
-        logging.error("YTDPipeline: Download failed for %s: %s", short_log_name(url), exc)
-        raise
-
+    logging.info("YTDPipeline: Downloading %s", short_log_name(url))
+    cleaned_url = clean_url(url)
+    output_path, _ = download(url, "720p", output_dir=target_folder, resolve_timeout=resolve_timeout)
+    release_text_file_permissions(output_path)
+    return cleaned_url, output_path
 
 def process_ytd_pipeline(config, shutdown_flag) -> None:
     threading.current_thread().name = "YTDPipeline"
