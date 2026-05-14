@@ -456,7 +456,25 @@ def draft_task(task_path: Path, target_arg: str) -> None:
         print(f"Target must be inside repo: {target_path}")
         return
 
-    prompt_text = build_task_prompt(target_rel, load_pos_context(), load_workflow_context(), load_single_file_context(target_path))
+    template = read_text(S0_TASK_PROMPT)
+    prompt_text = f"""{template}
+
+<TARGET_PATH>
+{target_rel}
+</TARGET_PATH>
+
+<WORKFLOW_CONTEXT>
+{load_workflow_context()}
+</WORKFLOW_CONTEXT>
+
+<POS_CONTEXT>
+{load_pos_context()}
+</POS_CONTEXT>
+
+<FILE_CONTEXT>
+{load_single_file_context(target_path)}
+</FILE_CONTEXT>
+"""
     LAST_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
 
     output = call_llm(
@@ -472,7 +490,6 @@ def draft_task(task_path: Path, target_arg: str) -> None:
     task_path.write_text(output, encoding="utf-8")
     print(output)
     print(f"\nSaved task: {task_path}")
-
 
 def main() -> None:
     task_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("task.md")
