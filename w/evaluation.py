@@ -16,6 +16,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 import w.p as orchestrator_module
+import w.helper_files as helper_files_module
 import w.p_txt as txt_process_module
 from w.p import CONFIG
 pipelines = orchestrator_module
@@ -43,6 +44,7 @@ from w.helper_files import (
     read_file_with_encodings,
     safe_rename,
     release_text_file_permissions,
+    write_text_file,
 )
 from helper.helper_llm import LLMPermanentFailure
 
@@ -451,6 +453,150 @@ def test_ytd_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[b
     finally:
         ytd_module.download = original_download
         shutdown_flag.set()
+
+def test_ytd_uses_shared_write_text_file_static(test_id: str) -> tuple[bool, list[Path]]:
+    ytd_path = ROOT_DIR / "w" / "p_ytd.py"
+    ytd_source = ytd_path.read_text(encoding="utf-8")
+    ytd_tree = ast.parse(ytd_source)
+    functions = {
+        node.name: node
+        for node in ytd_tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
+    remove_helper = functions.get("remove_download_url_line")
+    download_helper = functions.get("download_ytd_url")
+    pipeline_helper = functions.get("process_ytd_pipeline")
+    imports_write_text_file = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module in {"helper_files", "w.helper_files"}
+        and any(alias.name == "write_text_file" for alias in node.names)
+        for node in ytd_tree.body
+    )
+
+    def calls_name(function_node: ast.FunctionDef | None, name: str) -> bool:
+        return bool(
+            function_node
+            and any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == name
+                for node in ast.walk(function_node)
+            )
+        )
+
+    def nodes_call_name(nodes: list[ast.stmt], name: str) -> bool:
+        return any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == name
+            for statement in nodes
+            for node in ast.walk(statement)
+        )
+
+    remove_calls_write_text_file = calls_name(remove_helper, "write_text_file")
+    remove_calls_path_write_text = bool(
+        remove_helper
+        and any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "write_text"
+            for node in ast.walk(remove_helper)
+        )
+    )
+    remove_preserves_newline = bool(
+        remove_helper
+        and any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "write_text_file"
+            and any(
+                keyword.arg == "newline"
+                and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value == ""
+                for keyword in node.keywords
+            )
+            for node in ast.walk(remove_helper)
+        )
+    )
+    download_has_try = bool(download_helper and any(isinstance(node, ast.Try) for node in ast.walk(download_helper)))
+    pipeline_download_try_logs_failure = bool(
+        pipeline_helper
+        and any(
+            isinstance(node, ast.Try)
+            and nodes_call_name(node.body, "download_ytd_url")
+            and "YTDPipeline: Download failed" in (ast.get_source_segment(ytd_source, node) or "")
+            for node in ast.walk(pipeline_helper)
+        )
+    )
+
+    passed = (
+        imports_write_text_file
+        and remove_calls_write_text_file
+        and not remove_calls_path_write_text
+        and remove_preserves_newline
+        and not download_has_try
+        and pipeline_download_try_logs_failure
+    )
+
+    print_result(
+        "ytd uses shared write text file static",
+        passed,
+        {
+            "imports_write_text_file": imports_write_text_file,
+            "remove_calls_write_text_file": remove_calls_write_text_file,
+            "remove_calls_path_write_text": remove_calls_path_write_text,
+            "remove_preserves_newline": remove_preserves_newline,
+            "download_has_try": download_has_try,
+            "pipeline_download_try_logs_failure": pipeline_download_try_logs_failure,
+        },
+    )
+
+    return passed, []
+
+def test_ytd_remove_uses_shared_write_text_file_contract(test_id: str) -> tuple[bool, list[Path]]:
+    first_url = f"https://www.youtube.com/watch?v={test_id}one"
+    next_url = f"https://youtu.be/{test_id}two"
+    source = PATHS.download_target / f"{test_id}_ytd_shared_write_urls.txt"
+    cleanup = [source]
+    captured = {}
+
+    PATHS.download_target.mkdir(parents=True, exist_ok=True)
+    source.write_text(f"\ninvalid text\n{first_url}\n{next_url}\n", encoding="utf-8")
+
+    original_write_text_file = ytd_module.write_text_file
+
+    try:
+        def fake_write_text_file(path, content, *, newline=None):
+            captured.update({"path": path, "content": content, "newline": newline})
+            return path
+
+        ytd_module.write_text_file = fake_write_text_file
+        removed = remove_download_url_line(source, first_url)
+        written_content = captured.get("content", "")
+
+        passed = (
+            removed
+            and captured.get("path") == source
+            and captured.get("newline") == ""
+            and first_url not in written_content
+            and "invalid text" in written_content
+            and next_url in written_content
+        )
+
+        print_result(
+            "ytd remove uses shared write text file contract",
+            passed,
+            {
+                "source": source,
+                "removed": removed,
+                "captured": captured,
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        ytd_module.write_text_file = original_write_text_file
 
 def test_wikilink_cleaner_removes_broken_link(test_id: str) -> tuple[bool, list[Path]]:
     valid_name = f"{test_id}_valid"
@@ -993,7 +1139,6 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         "run_distillation",
         "collect_extracts",
         "save_extract_result",
-        "write_text_file",
     }
     forbidden_premium_markers = {
         "PREMIUM_EXTRACT",
@@ -1014,6 +1159,23 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
     p_source = (ROOT_DIR / "w" / "p.py").read_text(encoding="utf-8")
     txt_source = text_process_path.read_text(encoding="utf-8")
     txt_tree = ast.parse(txt_source)
+    txt_functions = {
+        node.name
+        for node in txt_tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
+    txt_imports_write_text_file = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module in {"helper_files", "w.helper_files"}
+        and any(alias.name == "write_text_file" for alias in node.names)
+        for node in txt_tree.body
+    )
+    txt_calls_write_text_file = any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "write_text_file"
+        for node in ast.walk(txt_tree)
+    )
     p_txt_import_line = "from w.p_txt import process_text_pipeline"
     forbidden_p_imports = sorted(
         name for name in forbidden_p_import_names if name in p_source
@@ -1088,6 +1250,9 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
         and not exposed_removed
         and not missing_required
         and not text_process_classes
+        and "write_text_file" not in txt_functions
+        and txt_imports_write_text_file
+        and txt_calls_write_text_file
         and not forbidden_text_wiring
         and not hardcoded_desktop
         and call_llm_nodes
@@ -1117,6 +1282,9 @@ def test_text_process_module_function_boundary(test_id: str) -> tuple[bool, list
             "exposed_removed": exposed_removed,
             "missing_required": missing_required,
             "text_process_classes": text_process_classes,
+            "defines_write_text_file": "write_text_file" in txt_functions,
+            "imports_write_text_file": txt_imports_write_text_file,
+            "calls_write_text_file": txt_calls_write_text_file,
             "forbidden_text_wiring": forbidden_text_wiring,
             "hardcoded_desktop": hardcoded_desktop,
             "call_text_llm_exists": bool(call_text_llm_nodes),
@@ -1155,16 +1323,28 @@ def test_text_process_compression_line_count(test_id: str) -> tuple[bool, list[P
 
 def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path]]:
     text_process_path = ROOT_DIR / "w" / "p_txt.py"
+    helper_files_path = ROOT_DIR / "w" / "helper_files.py"
     txt_source = text_process_path.read_text(encoding="utf-8")
+    helper_source = helper_files_path.read_text(encoding="utf-8")
     txt_tree = ast.parse(txt_source)
-    functions = {
+    helper_tree = ast.parse(helper_source)
+    txt_functions = {
         node.name: node
         for node in txt_tree.body
         if isinstance(node, ast.FunctionDef)
     }
-    helper = functions.get("write_text_file")
-    helper_start = helper.lineno if helper else 0
-    helper_end = helper.end_lineno if helper else 0
+    helper_functions = {
+        node.name: node
+        for node in helper_tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
+    helper = helper_functions.get("write_text_file")
+    txt_imports_write_text_file = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module in {"helper_files", "w.helper_files"}
+        and any(alias.name == "write_text_file" for alias in node.names)
+        for node in txt_tree.body
+    )
 
     direct_write_release_lines = []
     lines = txt_source.splitlines()
@@ -1175,15 +1355,12 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
             and ('"w"' in line or "'w'" in line)
         ):
             window = "\n".join(lines[index - 1 : index + 5])
-            if (
-                "release_text_file_permissions(" in window
-                and not (helper_start <= index <= helper_end)
-            ):
+            if "release_text_file_permissions(" in window:
                 direct_write_release_lines.append(index)
     error_helper_name = "_write_" + "error_file"
-    save_error_helper = functions.get("save_pipeline_error")
-    save_extract_helper = functions.get("save_extract_result")
-    pretext_helper = functions.get("process_pretext_file")
+    save_error_helper = txt_functions.get("save_pipeline_error")
+    save_extract_helper = txt_functions.get("save_extract_result")
+    pretext_helper = txt_functions.get("process_pretext_file")
     save_error_start = save_error_helper.lineno if save_error_helper else 0
     save_error_end = save_error_helper.end_lineno if save_error_helper else 0
 
@@ -1202,7 +1379,7 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
     pretext_calls_write_text_file = function_calls(pretext_helper, "write_text_file")
     release_call_functions = sorted(
         function_node.name
-        for function_node in functions.values()
+        for function_node in txt_functions.values()
         if function_calls(function_node, "release_text_file_permissions")
     )
 
@@ -1217,6 +1394,8 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
 
     passed = (
         helper is not None
+        and "write_text_file" not in txt_functions
+        and txt_imports_write_text_file
         and save_error_helper is not None
         and save_extract_helper is not None
         and error_helper_name not in txt_source
@@ -1229,7 +1408,6 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
             "process_extract_file",
             "process_pretext_file",
             "save_pipeline_error",
-            "write_text_file",
         ]
     )
 
@@ -1238,6 +1416,8 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
         passed,
         {
             "helper_exists": helper is not None,
+            "txt_defines_write_text_file": "write_text_file" in txt_functions,
+            "txt_imports_write_text_file": txt_imports_write_text_file,
             "direct_write_release_lines": direct_write_release_lines,
             "save_extract_helper_exists": save_extract_helper is not None,
             "save_extract_calls_write_text_file": save_extract_calls_write_text_file,
@@ -1313,24 +1493,24 @@ def test_call_text_llm_forwards_options(test_id: str) -> tuple[bool, list[Path]]
 
 def test_write_text_file_helper_contract(test_id: str) -> tuple[bool, list[Path]]:
     target = PATHS.download_target / f"{test_id}_write_text_helper.txt"
-    cleanup = [target]
+    newline_target = PATHS.download_target / f"{test_id}_write_text_helper_newline.txt"
+    cleanup = [target, newline_target]
     content = f"exact helper content {test_id}\nlatin: café\ncjk: 中文\n"
 
     PATHS.download_target.mkdir(parents=True, exist_ok=True)
 
-    original_release = txt_process_module.release_text_file_permissions
+    original_release = helper_files_module.release_text_file_permissions
     release_calls = []
 
     try:
         def fake_release(path) -> None:
             release_calls.append(path)
 
-        txt_process_module.release_text_file_permissions = fake_release
-        returned = txt_process_module.write_text_file(target, content)
+        helper_files_module.release_text_file_permissions = fake_release
+        returned = helper_files_module.write_text_file(target, content)
 
         raw = target.read_bytes() if target.exists() else b""
-
-        passed = (
+        first_call_ok = (
             target.is_file()
             and raw == content.encode("utf-8")
             and raw.decode("utf-8") == content
@@ -1338,20 +1518,35 @@ def test_write_text_file_helper_contract(test_id: str) -> tuple[bool, list[Path]
             and returned == target
         )
 
+        release_calls.clear()
+        newline_returned = helper_files_module.write_text_file(newline_target, "a\nb\n", newline="")
+        newline_raw = newline_target.read_bytes() if newline_target.exists() else b""
+
+        passed = (
+            first_call_ok
+            and newline_target.is_file()
+            and newline_raw == b"a\nb\n"
+            and newline_raw.decode("utf-8") == "a\nb\n"
+            and release_calls == [newline_target]
+            and newline_returned == newline_target
+        )
+
         print_result(
             "write text file helper contract",
             passed,
             {
                 "target": target,
+                "newline_target": newline_target,
                 "release_calls": release_calls,
                 "returned": returned,
+                "newline_returned": newline_returned,
             },
         )
 
         return passed, cleanup
 
     finally:
-        txt_process_module.release_text_file_permissions = original_release
+        helper_files_module.release_text_file_permissions = original_release
 
 
 def test_save_pipeline_error_helper_contract(test_id: str) -> tuple[bool, list[Path]]:
@@ -3163,6 +3358,8 @@ def main() -> int:
             test_ttml_plain_text_branch_converts_and_archives,
             test_ytd_list_remove_completed,
             test_ytd_pipeline_mocked_loop_removes_completed_url,
+            test_ytd_uses_shared_write_text_file_static,
+            test_ytd_remove_uses_shared_write_text_file_contract,
             test_wikilink_cleaner_removes_broken_link,
             test_markdown_merge_updates_index,
             test_audio_move_to_done_removes_wav,
