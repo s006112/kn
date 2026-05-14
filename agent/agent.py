@@ -47,11 +47,11 @@ WORKFLOW_FILES = (
 )
 
 DEFAULT_MODEL = "gpt-5.4-mini"
-S0_TASK_PROMPT = REPO_ROOT / "prompt" / "agent_s0_task.txt"
-S1_PLAN_PROMPT = REPO_ROOT / "prompt" / "agent_s1_plan.txt"
-S2_REVIEW_PROMPT = REPO_ROOT / "prompt" / "agent_s2_review.txt"
-S3_REVISE_PROMPT = REPO_ROOT / "prompt" / "agent_s3_revise.txt"
-S5_PATCH_PROMPT = REPO_ROOT / "prompt" / "agent_s5_patch.txt"
+S0_TASK_PROMPT = REPO_ROOT / "agent" / "agent_s0_task.txt"
+S1_PLAN_PROMPT = REPO_ROOT / "agent" / "agent_s1_plan.txt"
+S2_REVIEW_PROMPT = REPO_ROOT / "agent" / "agent_s2_review.txt"
+S3_REVISE_PROMPT = REPO_ROOT / "agent" / "agent_s3_revise.txt"
+S5_PATCH_PROMPT = REPO_ROOT / "agent" / "agent_s5_patch.txt"
 
 LAST_PATCH_PATH = REPO_ROOT / "agent" / "last_patch.txt"
 LAST_PROMPT_PATH = REPO_ROOT / "agent" / "last_prompt.md"
