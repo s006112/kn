@@ -482,14 +482,13 @@ def draft_task(task_path: Path, target_arg: str) -> None:
 
     template = read_text(S0_TASK_PROMPT)
     prompt_text = f"""
-<TARGET_PATH>
-{target_rel}
-</TARGET_PATH>
-
 <FILE_CONTEXT>
 {load_single_file_context(target_path)}
 </FILE_CONTEXT>
 
+<TARGET_PATH>
+{target_rel}
+</TARGET_PATH>
 {template}
 """
     ensure_agent_data_dir()
@@ -507,6 +506,44 @@ def draft_task(task_path: Path, target_arg: str) -> None:
     task_path.write_text(output, encoding="utf-8")
     print(output)
     print(f"\nSaved task: {task_path}")
+
+
+def run_task(task_path: Path, task_text: str) -> None:
+    # Step 1: build context and generate the first plan.
+    allowed_files = parse_allowed_files(task_text)
+    pos_context = load_pos_context()
+    file_context = load_allowed_file_context(allowed_files)
+
+    print("=== Repo Planning Agent ===")
+    print(f"task: {task_path}")
+    print(f"prompt: {S1_PLAN_PROMPT}")
+    print(f"model: {DEFAULT_MODEL}")
+    print("allowed files:")
+    for file_path in allowed_files or ["<none>"]:
+        print(f"  - {file_path}")
+    print()
+
+    prompt_text = build_plan_prompt(task_text, pos_context, file_context)
+    ensure_agent_data_dir()
+    LAST_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
+
+    if "--dry-context" in sys.argv:
+        print(f"Saved prompt: {LAST_PROMPT_PATH}")
+        return
+
+    output = call_llm(
+        DEFAULT_MODEL,
+        system_prompt="You are a strict minimal-change repo planning agent.",
+        user_text=prompt_text,
+        file_path=str(task_path),
+        max_retries=2,
+        timeout=120,
+    )
+
+    ensure_agent_data_dir()
+    LAST_PLAN_PATH.write_text(output, encoding="utf-8")
+    print(output)
+    print(f"\nSaved plan: {LAST_PLAN_PATH}")
 
 
 def main() -> None:
@@ -565,6 +602,10 @@ def main() -> None:
         return
 
     task_text = read_text(task_path)
+
+    if "--run-task" in sys.argv:
+        run_task(task_path, task_text)
+        return
 
     # LLM refinement modes: read previous artifacts and produce next artifact.
     if "--review-last" in sys.argv:
@@ -625,41 +666,7 @@ def main() -> None:
         print("Next: python agent/agent.py --check-patch")
         return
 
-    # Default mode: build context and generate the first plan.
-    allowed_files = parse_allowed_files(task_text)
-    pos_context = load_pos_context()
-    file_context = load_allowed_file_context(allowed_files)
-
-    print("=== Repo Planning Agent ===")
-    print(f"task: {task_path}")
-    print(f"prompt: {S1_PLAN_PROMPT}")
-    print(f"model: {DEFAULT_MODEL}")
-    print("allowed files:")
-    for file_path in allowed_files or ["<none>"]:
-        print(f"  - {file_path}")
-    print()
-
-    prompt_text = build_plan_prompt(task_text, pos_context, file_context)
-    ensure_agent_data_dir()
-    LAST_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
-
-    if "--dry-context" in sys.argv:
-        print(f"Saved prompt: {LAST_PROMPT_PATH}")
-        return
-
-    output = call_llm(
-        DEFAULT_MODEL,
-        system_prompt="You are a strict minimal-change repo planning agent.",
-        user_text=prompt_text,
-        file_path=str(task_path),
-        max_retries=2,
-        timeout=120,
-    )
-
-    ensure_agent_data_dir()
-    LAST_PLAN_PATH.write_text(output, encoding="utf-8")
-    print(output)
-    print(f"\nSaved plan: {LAST_PLAN_PATH}")
+   # run_task(task_path, task_text)
 
 
 if __name__ == "__main__":
