@@ -1,19 +1,19 @@
 '''
-python agent/agent.py agent/task.md --draft-task w/p_ytd.py     # step 0
-python agent/agent.py agent/task.md  # step 1
-python agent/agent.py agent/task.md --review-last  # step 2
-python agent/agent.py agent/task.md --revise-last  # step 3
-python agent/agent.py agent/task.md --status
-python agent/agent.py agent/task.md --show-last
-python agent/agent.py agent/task.md --accept-last  # step 4
-python agent/agent.py agent/task.md --clear-trace
-python agent/agent.py agent/task.md --show-final
-python agent/agent.py agent/task.md --check-ready
-python agent/agent.py agent/task.md --show-commands
-python agent/agent.py agent/task.md --make-patch  # step 5
-python agent/agent.py agent/task.md --check-patch  # step 6
-python agent/agent.py agent/task.md --apply-patch  # step 7
-python agent/agent.py agent/task.md --run-verify  # step 8
+python agent/agent.py --draft-task w/p_ytd.py     # step 0
+python agent/agent.py --run-task  # step 1
+python agent/agent.py --review-last  # step 2
+python agent/agent.py --revise-last  # step 3
+python agent/agent.py --status
+python agent/agent.py --show-last
+python agent/agent.py --accept-last  # step 4
+python agent/agent.py --clear-trace
+python agent/agent.py --show-final
+python agent/agent.py --check-ready
+python agent/agent.py --show-commands
+python agent/agent.py --make-patch  # step 5
+python agent/agent.py --check-patch  # step 6
+python agent/agent.py --apply-patch  # step 7
+python agent/agent.py --run-verify  # step 8
 
 Workflow: plan -> review -> revise -> accept -> make patch -> check patch -> apply patch -> run verify
 '''
@@ -53,12 +53,13 @@ S2_REVIEW_PROMPT = REPO_ROOT / "agent" / "agent_s2_review.txt"
 S3_REVISE_PROMPT = REPO_ROOT / "agent" / "agent_s3_revise.txt"
 S5_PATCH_PROMPT = REPO_ROOT / "agent" / "agent_s5_patch.txt"
 
-LAST_PATCH_PATH = REPO_ROOT / "agent" / "last_patch.txt"
-LAST_PROMPT_PATH = REPO_ROOT / "agent" / "last_prompt.md"
-LAST_PLAN_PATH = REPO_ROOT / "agent" / "last_plan.md"
-LAST_REVIEW_PATH = REPO_ROOT / "agent" / "last_review.md"
-LAST_REVISED_PLAN_PATH = REPO_ROOT / "agent" / "last_revised_plan.md"
-FINAL_PLAN_PATH = REPO_ROOT / "agent" / "final_plan.md"
+AGENT_DATA_DIR = REPO_ROOT / "data" / "agent"
+LAST_PATCH_PATH = AGENT_DATA_DIR / "last_patch.txt"
+LAST_PROMPT_PATH = AGENT_DATA_DIR / "last_prompt.md"
+LAST_PLAN_PATH = AGENT_DATA_DIR / "last_plan.md"
+LAST_REVIEW_PATH = AGENT_DATA_DIR / "last_review.md"
+LAST_REVISED_PLAN_PATH = AGENT_DATA_DIR / "last_revised_plan.md"
+FINAL_PLAN_PATH = AGENT_DATA_DIR / "final_plan.md"
 
 
 def read_text(path: Path) -> str:
@@ -67,6 +68,21 @@ def read_text(path: Path) -> str:
 
 def read_optional(path: Path) -> str:
     return read_text(path) if path.exists() else ""
+
+
+def ensure_agent_data_dir() -> None:
+    AGENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def agent_data_file(path: Path) -> Path:
+    return AGENT_DATA_DIR / path.name if path.suffix.lower() in {".md", ".txt"} else path
+
+
+def normalize_task_path(path: Path) -> Path:
+    data_path = agent_data_file(path)
+    if data_path != path and (data_path.exists() or not path.exists()):
+        return data_path
+    return path
 
 
 def repo_rel(path: Path) -> str:
@@ -81,6 +97,12 @@ def flag_value(flag: str) -> str | None:
         return None
     index = sys.argv.index(flag)
     return sys.argv[index + 1] if index + 1 < len(sys.argv) else None
+
+
+def task_arg() -> Path:
+    if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
+        return Path(sys.argv[1])
+    return AGENT_DATA_DIR / "task.md"
 
 
 def parse_allowed_files(task_text: str) -> list[str]:
@@ -192,6 +214,7 @@ def accept_last_plan() -> None:
         return
 
     content = read_text(source)
+    ensure_agent_data_dir()
     FINAL_PLAN_PATH.write_text(f"# Final Accepted Plan\n\nSource: `{source}`\n\n---\n\n{content}", encoding="utf-8")
     print(f"Accepted plan: {FINAL_PLAN_PATH}")
 
@@ -441,11 +464,12 @@ def apply_patch(task_path: Path) -> None:
         path.write_text(text.replace(search, replace, 1), encoding="utf-8")
 
     print("PATCH_APPLIED")
-    print("Next: python agent/agent.py agent/task.md --run-verify")
+    print("Next: python agent/agent.py --run-verify")
 
 
 def draft_task(task_path: Path, target_arg: str) -> None:
     # Step 0: draft task.md from one target source file.
+    task_path = agent_data_file(task_path)
     target_path = Path(target_arg)
     if not target_path.is_absolute():
         target_path = REPO_ROOT / target_path
@@ -457,24 +481,18 @@ def draft_task(task_path: Path, target_arg: str) -> None:
         return
 
     template = read_text(S0_TASK_PROMPT)
-    prompt_text = f"""{template}
-
+    prompt_text = f"""
 <TARGET_PATH>
 {target_rel}
 </TARGET_PATH>
 
-<WORKFLOW_CONTEXT>
-{load_workflow_context()}
-</WORKFLOW_CONTEXT>
-
-<POS_CONTEXT>
-{load_pos_context()}
-</POS_CONTEXT>
-
 <FILE_CONTEXT>
 {load_single_file_context(target_path)}
 </FILE_CONTEXT>
+
+{template}
 """
+    ensure_agent_data_dir()
     LAST_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
 
     output = call_llm(
@@ -486,20 +504,21 @@ def draft_task(task_path: Path, target_arg: str) -> None:
         timeout=120,
     )
 
-    task_path.parent.mkdir(parents=True, exist_ok=True)
     task_path.write_text(output, encoding="utf-8")
     print(output)
     print(f"\nSaved task: {task_path}")
 
+
 def main() -> None:
-    task_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("task.md")
+    task_path = task_arg()
     if not task_path.is_absolute():
         task_path = Path.cwd() / task_path
+    task_path = normalize_task_path(task_path)
 
     draft_target = flag_value("--draft-task")
     if "--draft-task" in sys.argv:
         if not draft_target:
-            print("Usage: python agent/agent.py agent/task.md --draft-task path/to/file.py")
+            print("Usage: python agent/agent.py --draft-task path/to/file.py")
             return
         draft_task(task_path, draft_target)
         return
@@ -558,6 +577,7 @@ def main() -> None:
             max_retries=2,
             timeout=120,
         )
+        ensure_agent_data_dir()
         LAST_REVIEW_PATH.write_text(review, encoding="utf-8")
         print(review)
         print(f"\nSaved review: {LAST_REVIEW_PATH}")
@@ -574,6 +594,7 @@ def main() -> None:
             max_retries=2,
             timeout=120,
         )
+        ensure_agent_data_dir()
         LAST_REVISED_PLAN_PATH.write_text(revised, encoding="utf-8")
         print(revised)
         print(f"\nSaved revised plan: {LAST_REVISED_PLAN_PATH}")
@@ -598,9 +619,10 @@ def main() -> None:
             timeout=120,
         )
 
+        ensure_agent_data_dir()
         LAST_PATCH_PATH.write_text(patch, encoding="utf-8")
         print(f"Saved patch: {LAST_PATCH_PATH}")
-        print("Next: python agent/agent.py agent/task.md --check-patch")
+        print("Next: python agent/agent.py --check-patch")
         return
 
     # Default mode: build context and generate the first plan.
@@ -618,6 +640,7 @@ def main() -> None:
     print()
 
     prompt_text = build_plan_prompt(task_text, pos_context, file_context)
+    ensure_agent_data_dir()
     LAST_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
 
     if "--dry-context" in sys.argv:
@@ -633,6 +656,7 @@ def main() -> None:
         timeout=120,
     )
 
+    ensure_agent_data_dir()
     LAST_PLAN_PATH.write_text(output, encoding="utf-8")
     print(output)
     print(f"\nSaved plan: {LAST_PLAN_PATH}")
