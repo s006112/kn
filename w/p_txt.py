@@ -109,7 +109,8 @@ def process_extract_file(config, file_path):
 		logging.info("Extract: Start %s", filename_log)
 		content, _ = read_file_with_encodings(file_path)
 
-		classifier_result = (call_text_llm(config, config["MODEL_PRETEXT"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper()
+		if len(content) < 20000:
+			classifier_result = (call_text_llm(config, config["MODEL_PRETEXT"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper()
 		route = "CORE" if classifier_result == "CORE" else "OTHER"
 		logging.info("Extract: |%s| for %s", route, filename_log)
 

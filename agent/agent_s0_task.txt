@@ -28,6 +28,10 @@ Choose the task:
 3. Else clarify the smallest confusing local boundary, if safe.
 4. Else write a narrow inspection-only task.
 
+Language rule:
+- Answer in Chinese.
+
+
 Output format:
 
 # Task

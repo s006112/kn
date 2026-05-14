@@ -38,7 +38,7 @@ CONFIG = {
         "PRETEXT": True,
         "EXTRACT": True,
         "WIKI": True,
-        "YTD": True,
+        "YTD": False,
     },
     "INTERVALS": {
         "SCAN_SECONDS": 60,
