@@ -63,7 +63,7 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
 		filename_log = short_log_name(original_filename)
 
 		chunks, all_results = chunk_text(content), []
-		logging.info("Pretext: Split into %d chunks", filename_log, len(chunks))
+		logging.info("Pretext: Split %s into %d chunks", filename_log, len(chunks))
 
 		for i, chunk in enumerate(chunks, 1):
 			chunk_result = call_text_llm(config, pretext_model, config["PRETEXT_PROMPT"], chunk, normalized_path)
