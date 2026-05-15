@@ -59,30 +59,18 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
 	pretext_model = config["PRETEXT_MODEL"]
 
 	try:
-		os.makedirs(config["ORIGINAL_FOLDER"], exist_ok=True)
-		if not os.path.exists(normalized_path):
-			return
-
 		content, encoding_used = read_file_with_encodings(normalized_path)
 		filename_log = short_log_name(original_filename)
-		logging.info("Pretext: Start %s (characters: %s)", filename_log, f"{len(content):,}")
-		logging.debug("File read successfully using %s encoding, content length: %s", encoding_used, f"{len(content):,}")
 
 		chunks, all_results = chunk_text(content), []
-		logging.info("Pretext: Split into %d chunks", len(chunks))
+		logging.info("Pretext: Split into %d chunks", filename_log, len(chunks))
 
 		for i, chunk in enumerate(chunks, 1):
-			logging.debug("Pretext: API call %d/%d for %s using %s", i, len(chunks), filename_log, pretext_model)
 			chunk_result = call_text_llm(config, pretext_model, config["PRETEXT_PROMPT"], chunk, normalized_path)
-			if not chunk_result: raise ValueError(f"Empty response from OpenAI API for chunk {i}")
+			if not chunk_result: raise ValueError(f"Empty response from API for chunk {i}")
 			all_results.append(chunk_result)
-			logging.debug("Pretext: API call %d/%d successful, response length: %s", i, len(chunks), f"{len(chunk_result):,}")
 
 		pretext_result = intelligent_merge_chunks(all_results)
-		if not pretext_result:
-			raise ValueError("Empty combined response from OpenAI API")
-
-		logging.info("Pretext: Completed %s (%s : %s)", filename_log, pretext_model, f"{len(pretext_result):,}")
 		pretext_target_path = write_text_file(os.path.join(config["PRETEXT_WATCH_FOLDER"], f"{base_name}{config['EXTRACT_SUFFIX']}"), pretext_result)
 		logging.info("Pretext: Created %s", short_log_name(pretext_target_path))
 
@@ -208,6 +196,9 @@ def scan_text_files(folder, queue, suffix, exclude_suffix=None, processed_files=
 			continue
 
 		base, file_path = filename[: -len(suffix)], os.path.join(folder, filename)
+		if os.path.islink(file_path) or not os.path.isfile(file_path):   # pretext scanner ignore symlink。
+			continue
+
 		if len(base) > 60:
 			new_name = sanitize_and_trim_filename(base) + suffix
 			new_path = os.path.join(folder, new_name)

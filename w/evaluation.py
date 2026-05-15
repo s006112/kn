@@ -825,8 +825,9 @@ def test_pretext_scan_deduplicates_queue(test_id: str) -> tuple[bool, list[Path]
     watch_dir = ROOT_DIR / f"{test_id}_pretext_scan_watch"
     source = watch_dir / f"{test_id}_pretext{pretext_suffix}"
     excluded = watch_dir / f"{test_id}_already_extract{extract_suffix}"
+    symlink = watch_dir / "X.txt"
 
-    cleanup = [source, excluded, watch_dir]
+    cleanup = [source, excluded, symlink, watch_dir]
 
     watch_dir.mkdir(parents=True, exist_ok=True)
 
@@ -834,6 +835,7 @@ def test_pretext_scan_deduplicates_queue(test_id: str) -> tuple[bool, list[Path]
     release_text_file_permissions(source)
     excluded.write_text(f"dummy pretext excluded source {test_id}\n", encoding="utf-8")
     release_text_file_permissions(excluded)
+    symlink.symlink_to(source)
 
     config = extract_text_config(PRETEXT_WATCH_FOLDER=str(watch_dir))
     pretext_queue = Queue()
@@ -844,11 +846,13 @@ def test_pretext_scan_deduplicates_queue(test_id: str) -> tuple[bool, list[Path]
     queued_paths = list(pretext_queue.queue)
     normalized = str(source.resolve())
     excluded_normalized = str(excluded.resolve())
+    symlink_normalized = str(symlink.absolute())
 
     passed = (
         queued_paths == [normalized]
         and normalized in processed_files_global
         and excluded_normalized not in processed_files_global
+        and symlink_normalized not in processed_files_global
     )
 
     print_result(
