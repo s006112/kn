@@ -63,7 +63,7 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
 		filename_log = short_log_name(original_filename)
 
 		chunks, all_results = chunk_text(content), []
-		logging.info("Pretext: Split %s into %d chunks", filename_log, len(chunks))
+		logging.info("Pretext: %s Split into (%d chunks)", filename_log, len(chunks))
 
 		for i, chunk in enumerate(chunks, 1):
 			chunk_result = call_text_llm(config, pretext_model, config["PRETEXT_PROMPT"], chunk, normalized_path)
@@ -105,10 +105,11 @@ def process_extract_file(config, file_path):
 		payload = f"《{base}》\n{content}"
 		md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(config, base, allow_existing=True)
 
-		extract_models = list(config.get("EXTRACT_MODELS", {}).get("CORE", []))
-		distill_model = (config.get("DISTILL_MODEL") or "").strip()
-		if route == "OTHER":
-			extract_models = extract_models[:1]
+		if route == "CORE":
+			extract_models = list(config.get("EXTRACT_MODELS", {}).get("CORE", []))
+			distill_model = (config.get("DISTILL_MODEL") or "").strip()
+		else:
+			extract_models = list(config.get("EXTRACT_MODELS", {}).get("OTHER", []))
 			distill_model = None
 
 		extract_count = 0

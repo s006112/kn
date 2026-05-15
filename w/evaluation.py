@@ -2572,21 +2572,23 @@ def test_extract_multi_model_failure_is_terminal(test_id: str) -> tuple[bool, li
             whisper_index.unlink()
 
 
-def test_extract_other_route_uses_first_model_and_skips_distill(test_id: str) -> tuple[bool, list[Path]]:
+def test_extract_other_route_uses_other_models_and_skips_distill(test_id: str) -> tuple[bool, list[Path]]:
     extract_suffix = extract_input_suffix()
     base_name = f"{test_id}_extract_other"
-    first_model = "evaluation-first-model"
-    second_model = "evaluation-second-model"
+    core_model = "evaluation-core-model"
+    first_other_model = "evaluation-first-other-model"
+    second_other_model = "evaluation-second-other-model"
     distill_model = "evaluation-distill-model"
 
     source = PATHS.extract_watch / f"{base_name}{extract_suffix}"
     archived = PATHS.pretext_done / source.name
-    first_output = PATHS.extract / f"{base_name}_{first_model}.txt"
-    second_output = PATHS.extract / f"{base_name}_{second_model}.txt"
+    core_output = PATHS.extract / f"{base_name}_{core_model}.txt"
+    first_output = PATHS.extract / f"{base_name}_{first_other_model}.txt"
+    second_output = PATHS.extract / f"{base_name}_{second_other_model}.txt"
     distill_output = PATHS.extract / f"{base_name}_{distill_model}.txt"
     whisper_index = PATHS.obsidian / "Whisper 000000.md"
 
-    cleanup = [source, archived, first_output, second_output, distill_output]
+    cleanup = [source, archived, core_output, first_output, second_output, distill_output]
 
     PATHS.extract_watch.mkdir(parents=True, exist_ok=True)
     PATHS.extract.mkdir(parents=True, exist_ok=True)
@@ -2601,7 +2603,8 @@ def test_extract_other_route_uses_first_model_and_skips_distill(test_id: str) ->
         "DISTILL_MODEL": distill_model,
         "EXTRACT_MODELS": {
             **CONFIG.get("EXTRACT_MODELS", {}),
-            "CORE": [first_model, second_model],
+            "CORE": [core_model],
+            "OTHER": [first_other_model, second_other_model],
         },
     }
 
@@ -2615,8 +2618,8 @@ def test_extract_other_route_uses_first_model_and_skips_distill(test_id: str) ->
             call_sequence.append((kwargs.get("system_prompt"), kwargs.get("model")))
             if kwargs.get("system_prompt") == config["CLASSIFIER_PROMPT"]:
                 return "OTHER"
-            if kwargs.get("model") == first_model:
-                return f"mock other extract result {test_id}"
+            if kwargs.get("model") in {first_other_model, second_other_model}:
+                return f"mock other extract result {kwargs.get('model')} {test_id}"
             raise RuntimeError(f"unexpected LLM call: {kwargs.get('model')}")
 
         txt_process_module.call_llm = fake_call_llm
@@ -2630,30 +2633,36 @@ def test_extract_other_route_uses_first_model_and_skips_distill(test_id: str) ->
         cleanup.extend(error_files)
 
         first_text = first_output.read_text(encoding="utf-8") if first_output.exists() else ""
+        second_text = second_output.read_text(encoding="utf-8") if second_output.exists() else ""
         note_text = note.read_text(encoding="utf-8") if note and note.exists() else ""
 
         passed = (
             not source.exists()
             and archived.is_file()
+            and not core_output.exists()
             and first_output.is_file()
-            and f"mock other extract result {test_id}" in first_text
-            and not second_output.exists()
+            and f"mock other extract result {first_other_model} {test_id}" in first_text
+            and second_output.is_file()
+            and f"mock other extract result {second_other_model} {test_id}" in second_text
             and not distill_output.exists()
             and note is not None
-            and f"mock other extract result {test_id}" in note_text
+            and f"mock other extract result {first_other_model} {test_id}" in note_text
+            and f"mock other extract result {second_other_model} {test_id}" in note_text
             and not error_files
             and call_sequence
             == [
                 (config["CLASSIFIER_PROMPT"], config["PRETEXT_MODEL"]),
-                (config["EXTRACT_PROMPT"], first_model),
+                (config["EXTRACT_PROMPT"], first_other_model),
+                (config["EXTRACT_PROMPT"], second_other_model),
             ]
         )
 
         print_result(
-            "extract OTHER route uses first model and skips distill",
+            "extract OTHER route uses OTHER models and skips distill",
             passed,
             {
                 "archived": archived,
+                "core_output": core_output,
                 "first_output": first_output,
                 "second_output": second_output,
                 "distill_output": distill_output,
@@ -3482,7 +3491,7 @@ def main() -> int:
             test_process_queue_handles_lock_miss_errors_and_permanent_failures,
             test_distillation_success_skip_and_error_paths,
             test_extract_multi_model_failure_is_terminal,
-            test_extract_other_route_uses_first_model_and_skips_distill,
+            test_extract_other_route_uses_other_models_and_skips_distill,
             test_pretext_multichunk_and_failure_discards_processed_path,
             test_audio_failure_paths_archive_or_cleanup,
             test_ttml_invalid_xml_restores_source_and_chinese_normalizes,
