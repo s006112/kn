@@ -1138,8 +1138,10 @@ def test_distillation_read_error_raises_without_sidecar(test_id: str) -> tuple[b
 
 def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, list[Path]]:
     extract_suffix = extract_input_suffix()
+    premium_suffix = str(CONFIG["PREMIUM_SUFFIX"])
     watch_dir = ROOT_DIR / f"{test_id}_extract_scan_watch"
     source = watch_dir / f"{test_id}_extract{extract_suffix}"
+    premium_source = watch_dir / f"{test_id}_premium{premium_suffix}"
     long_base = f"{test_id}_extract_" + "x" * 70
     long_source = watch_dir / f"{long_base}{extract_suffix}"
     long_renamed = watch_dir / f"{sanitize_and_trim_filename(long_base)}{extract_suffix}"
@@ -1147,13 +1149,15 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
     markdown = watch_dir / f"{test_id}_extract.md"
     error_file = watch_dir / f"{test_id}_extract.error"
 
-    cleanup = [source, long_source, long_renamed, ignored, markdown, error_file, watch_dir]
+    cleanup = [source, premium_source, long_source, long_renamed, ignored, markdown, error_file, watch_dir]
 
     watch_dir.mkdir(parents=True, exist_ok=True)
     PATHS.download_target.mkdir(parents=True, exist_ok=True)
 
     source.write_text(f"extract queue candidate {test_id}\n", encoding="utf-8")
     release_text_file_permissions(source)
+    premium_source.write_text(f"premium extract queue candidate {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(premium_source)
     long_source.write_text(f"extract long queue candidate {test_id}\n", encoding="utf-8")
     release_text_file_permissions(long_source)
     ignored.write_text(f"wrong folder candidate {test_id}\n", encoding="utf-8")
@@ -1165,15 +1169,17 @@ def test_extract_worker_scan_queues_candidate_once(test_id: str) -> tuple[bool, 
 
     config = extract_text_config(EXTRACT_WATCH_FOLDER=str(watch_dir))
     extract_queue = Queue()
-    txt_process_module.scan_text_files(config["EXTRACT_WATCH_FOLDER"], extract_queue, config["EXTRACT_SUFFIX"])
-    txt_process_module.scan_text_files(config["EXTRACT_WATCH_FOLDER"], extract_queue, config["EXTRACT_SUFFIX"])
+    txt_process_module.scan_text_files(config["EXTRACT_WATCH_FOLDER"], extract_queue, (config["EXTRACT_SUFFIX"], config["PREMIUM_SUFFIX"]))
+    txt_process_module.scan_text_files(config["EXTRACT_WATCH_FOLDER"], extract_queue, (config["EXTRACT_SUFFIX"], config["PREMIUM_SUFFIX"]))
 
     queued_paths = list(extract_queue.queue)
     source_normalized = str(source.resolve())
+    premium_source_normalized = str(premium_source.resolve())
     long_renamed_normalized = str(long_renamed.resolve())
 
     passed = (
         queued_paths.count(source_normalized) == 1
+        and queued_paths.count(premium_source_normalized) == 1
         and queued_paths.count(long_renamed_normalized) == 1
         and not long_source.exists()
         and long_renamed.is_file()
@@ -2059,7 +2065,7 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
         and len(extract_scan_args) == 3
         and extract_scan_args[0] == config["EXTRACT_WATCH_FOLDER"]
         and extract_scan_args[1] is captured_queues["process_extract"]
-        and extract_scan_args[2] == config["EXTRACT_SUFFIX"]
+        and extract_scan_args[2] == (config["EXTRACT_SUFFIX"], config["PREMIUM_SUFFIX"])
         and set(threads) == {
             "TextPipeline-Pretext",
             "TextPipeline-Extract",

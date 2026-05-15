@@ -33,7 +33,7 @@ CONFIG = {
         "OTHER": [
             "gpt-5.4-mini",  # grok-4.3, grok-4-1-fast-reasoning
             "grok-4.3",  # gemini-3.1-flash-lite-preview, gemini-3.1-pro-preview"
-        ],        
+        ],
     },
     "PIPELINES": {
         "TORRENT": True,
@@ -70,6 +70,7 @@ CONFIG = {
     "LOG_DIR": ROOT_DIR / "data" / "logs",
     "PRETEXT_SUFFIX": ".txt",
     "EXTRACT_SUFFIX": "_p.txt",
+    "PREMIUM_SUFFIX": "_x.txt",
     "PRETEXT_PROMPT": (ROOT_DIR / "prompt" / "prompt_pretext.txt").read_text(encoding="utf-8").strip(),
     "EXTRACT_PROMPT": (ROOT_DIR / "prompt" / "prompt_extract.txt").read_text(encoding="utf-8").strip(),
     "DISTILL_PROMPT": (ROOT_DIR / "prompt" / "prompt_distill.txt").read_text(encoding="utf-8").strip(),
