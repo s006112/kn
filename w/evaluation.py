@@ -885,7 +885,7 @@ def test_pretext_full_process_writes_pretext_markdown_and_archive(test_id: str) 
 
     config = {
         **extract_text_config(),
-        "MODEL_PRETEXT": "evaluation-model",
+        "PRETEXT_MODEL": "evaluation-model",
         "PRETEXT_PROMPT": "evaluation pretext prompt",
         "INTERVALS": {
             **CONFIG["INTERVALS"],
@@ -987,7 +987,7 @@ def test_pretext_partial_error_filename_and_content_unchanged(test_id: str) -> t
 
     config = {
         **extract_text_config(),
-        "MODEL_PRETEXT": "evaluation-model",
+        "PRETEXT_MODEL": "evaluation-model",
         "PRETEXT_PROMPT": "evaluation pretext prompt",
     }
 
@@ -1095,10 +1095,10 @@ def test_distillation_read_error_raises_without_sidecar(test_id: str) -> tuple[b
 
     config = {
         **CONFIG,
-        "MODEL_DISTILL": "evaluation-distill-model",
+        "DISTILL_MODEL": "evaluation-distill-model",
         "DISTILL_PROMPT": "evaluation distill prompt",
     }
-    error_file = PATHS.watch / f"{base_name}.{sanitize_filename(config['MODEL_DISTILL'])}.error"
+    error_file = PATHS.watch / f"{base_name}.{sanitize_filename(config['DISTILL_MODEL'])}.error"
     cleanup = [error_file]
 
     original_collect_extracts = txt_process_module.collect_extracts
@@ -1714,16 +1714,16 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
 
     config = {
         **extract_text_config(),
-        "MODEL_DISTILL": "",
+        "DISTILL_MODEL": "",
         "INTERVALS": {
             **CONFIG["INTERVALS"],
             "LLM_MAX_RETRIES": 5,
             "LLM_TIMEOUT_SECONDS": 55,
             "LLM_RETRY_DELAY_SECONDS": 7,
         },
-        "MODEL_EXTRACT_MATRIX": {
-            **CONFIG.get("MODEL_EXTRACT_MATRIX", {}),
-            "EXTRACT_WATCH_FOLDER": [model],
+        "EXTRACT_MODELS": {
+            **CONFIG.get("EXTRACT_MODELS", {}),
+            "CORE": [model],
         },
     }
     expected_llm_options = {
@@ -1773,7 +1773,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
             and captured_llm_calls
             == [
                 {
-                    "model": config["MODEL_PRETEXT"],
+                    "model": config["PRETEXT_MODEL"],
                     "system_prompt": config["CLASSIFIER_PROMPT"],
                     **expected_llm_options,
                 },
@@ -1828,10 +1828,10 @@ def test_extract_failure_renames_source_in_place(test_id: str) -> tuple[bool, li
     config = {
         **extract_text_config(),
         "EXTRACT_WATCH_FOLDER": str(watch_dir),
-        "MODEL_DISTILL": "",
-        "MODEL_EXTRACT_MATRIX": {
-            **CONFIG.get("MODEL_EXTRACT_MATRIX", {}),
-            "EXTRACT_WATCH_FOLDER": [model],
+        "DISTILL_MODEL": "",
+        "EXTRACT_MODELS": {
+            **CONFIG.get("EXTRACT_MODELS", {}),
+            "CORE": [model],
         },
     }
 
@@ -1861,7 +1861,7 @@ def test_extract_failure_renames_source_in_place(test_id: str) -> tuple[bool, li
             and not top_level_error.exists()
             and call_sequence
             == [
-                (config["CLASSIFIER_PROMPT"], config["MODEL_PRETEXT"]),
+                (config["CLASSIFIER_PROMPT"], config["PRETEXT_MODEL"]),
                 (config["EXTRACT_PROMPT"], model),
             ]
         )
@@ -2370,7 +2370,7 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
 
     config = {
         **extract_text_config(),
-        "MODEL_DISTILL": model,
+        "DISTILL_MODEL": model,
         "DISTILL_PROMPT": "evaluation distill prompt",
         "INTERVALS": {
             **CONFIG["INTERVALS"],
@@ -2494,10 +2494,10 @@ def test_extract_multi_model_failure_is_terminal(test_id: str) -> tuple[bool, li
     config = {
         **extract_text_config(),
         "EXTRACT_WATCH_FOLDER": str(watch_dir),
-        "MODEL_DISTILL": "",
-        "MODEL_EXTRACT_MATRIX": {
-            **CONFIG.get("MODEL_EXTRACT_MATRIX", {}),
-            "EXTRACT_WATCH_FOLDER": [bad_model, later_model],
+        "DISTILL_MODEL": "",
+        "EXTRACT_MODELS": {
+            **CONFIG.get("EXTRACT_MODELS", {}),
+            "CORE": [bad_model, later_model],
         },
     }
 
@@ -2539,7 +2539,7 @@ def test_extract_multi_model_failure_is_terminal(test_id: str) -> tuple[bool, li
             and not error_files
             and call_sequence
             == [
-                (config["CLASSIFIER_PROMPT"], config["MODEL_PRETEXT"]),
+                (config["CLASSIFIER_PROMPT"], config["PRETEXT_MODEL"]),
                 (config["EXTRACT_PROMPT"], bad_model),
             ]
         )
@@ -2594,10 +2594,10 @@ def test_extract_other_route_uses_first_model_and_skips_distill(test_id: str) ->
 
     config = {
         **extract_text_config(),
-        "MODEL_DISTILL": distill_model,
-        "MODEL_EXTRACT_MATRIX": {
-            **CONFIG.get("MODEL_EXTRACT_MATRIX", {}),
-            "EXTRACT_WATCH_FOLDER": [first_model, second_model],
+        "DISTILL_MODEL": distill_model,
+        "EXTRACT_MODELS": {
+            **CONFIG.get("EXTRACT_MODELS", {}),
+            "CORE": [first_model, second_model],
         },
     }
 
@@ -2640,7 +2640,7 @@ def test_extract_other_route_uses_first_model_and_skips_distill(test_id: str) ->
             and not error_files
             and call_sequence
             == [
-                (config["CLASSIFIER_PROMPT"], config["MODEL_PRETEXT"]),
+                (config["CLASSIFIER_PROMPT"], config["PRETEXT_MODEL"]),
                 (config["EXTRACT_PROMPT"], first_model),
             ]
         )
@@ -2694,7 +2694,7 @@ def test_pretext_multichunk_and_failure_discards_processed_path(test_id: str) ->
 
     config = {
         **extract_text_config(),
-        "MODEL_PRETEXT": "evaluation-pretext-model",
+        "PRETEXT_MODEL": "evaluation-pretext-model",
         "PRETEXT_PROMPT": "evaluation pretext prompt",
     }
 
@@ -3210,8 +3210,9 @@ def test_start_system_creates_expected_threads_and_stop(test_id: str) -> tuple[b
         "TextPipeline-Extract",
         "AudioPipeline-GPU",
         "WikilinkCleaner",
-        "YTDPipeline",
     }
+    if CONFIG["PIPELINES"]["YTD"]:
+        expected_threads.add("YTDPipeline")
 
     started_workers: set[str] = set()
 
@@ -3304,8 +3305,9 @@ def test_start_system_pretext_extract_toggle_matrix(test_id: str) -> tuple[bool,
         "TTMLPipeline",
         "AudioPipeline-GPU",
         "WikilinkCleaner",
-        "YTDPipeline",
     }
+    if CONFIG["PIPELINES"]["YTD"]:
+        base_threads.add("YTDPipeline")
 
     cases = [
         (False, False, base_threads),

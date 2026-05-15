@@ -56,7 +56,7 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
 	normalized_path = os.path.abspath(os.fspath(file_path))
 	original_filename = os.path.basename(normalized_path)
 	base_name = sanitize_and_trim_filename(os.path.splitext(original_filename)[0])
-	pretext_model = config["MODEL_PRETEXT"]
+	pretext_model = config["PRETEXT_MODEL"]
 
 	try:
 		os.makedirs(config["ORIGINAL_FOLDER"], exist_ok=True)
@@ -110,15 +110,15 @@ def process_extract_file(config, file_path):
 		content, _ = read_file_with_encodings(file_path)
 
 		if len(content) < 20000:
-			classifier_result = (call_text_llm(config, config["MODEL_PRETEXT"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper()
+			classifier_result = (call_text_llm(config, config["PRETEXT_MODEL"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper()
 		route = "CORE" if classifier_result == "CORE" else "OTHER"
 		logging.info("Extract: |%s| for %s", route, filename_log)
 
 		payload = f"《{base}》\n{content}"
 		md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(config, base, allow_existing=True)
 
-		extract_models = list(config.get("MODEL_EXTRACT_MATRIX", {}).get("EXTRACT_WATCH_FOLDER", []))
-		distill_model = (config.get("MODEL_DISTILL") or "").strip()
+		extract_models = list(config.get("EXTRACT_MODELS", {}).get("CORE", []))
+		distill_model = (config.get("DISTILL_MODEL") or "").strip()
 		if route == "OTHER":
 			extract_models = extract_models[:1]
 			distill_model = None
@@ -175,10 +175,10 @@ def collect_extracts(extract_folder: str, base_name: str, pretext_suffix: str):
 
 def run_distillation(config, base_name: str, md_path: str | None = None) -> str | None:
 	extract_folder = os.fspath(config["EXTRACT_FOLDER"])
-	distill_model = (config.get("MODEL_DISTILL") or "").strip()
+	distill_model = (config.get("DISTILL_MODEL") or "").strip()
 
 	if not distill_model:
-		logging.info("Distillation: MODEL_DISTILL not configured, skipping for %s", short_log_name(base_name))
+		logging.info("Distillation: DISTILL_MODEL not configured, skipping for %s", short_log_name(base_name))
 		return None
 
 	extracts = collect_extracts(extract_folder, base_name, str(config["PRETEXT_SUFFIX"]))

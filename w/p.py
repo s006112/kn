@@ -22,10 +22,10 @@ WATCH_FOLDER = Path("/desktop")
 WHISPER_FOLDER = Path("/desktop/Sync/Whisper")
 
 CONFIG = {
-    "MODEL_PRETEXT": "gpt-5.4-mini",
-    "MODEL_DISTILL": "o3",
-    "MODEL_EXTRACT_MATRIX": {
-        "EXTRACT_WATCH_FOLDER": [
+    "PRETEXT_MODEL": "gpt-5.4-mini",
+    "DISTILL_MODEL": "o3",
+    "EXTRACT_MODELS": {
+        "CORE": [
             "grok-4.3",  # grok-4.3, grok-4-1-fast-reasoning
             "gemini-3.1-pro-preview",  # gemini-3.1-flash-lite-preview, gemini-3.1-pro-preview"
             "gpt-5.4",
