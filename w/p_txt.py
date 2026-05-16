@@ -29,7 +29,6 @@ def call_text_llm(config, model, system_prompt, user_text, file_path):
 
 
 def save_extract_result(config, base_name, model, result, md_path=None, link_name=None, md_is_new=False, merge_label=None):
-	os.makedirs(config["EXTRACT_FOLDER"], exist_ok=True)
 	save_path = write_text_file(get_next_available_filename(config["EXTRACT_FOLDER"], base_name, f"_{sanitize_filename(model)}"), result)
 	if md_path:
 		merge_to_markdown(md_path, [result], "", [merge_label or f"{model} "], whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"), whisper_link_name=link_name or Path(md_path).stem, md_is_new=md_is_new)
@@ -100,7 +99,7 @@ def process_extract_file(config, file_path):
 		logging.info("Extract: Start %s", filename_log)
 		content, _ = read_file_with_encodings(file_path)
 
-		if len(content) < 20000:
+		if len(content) < 6000:
 			classifier_result = (call_text_llm(config, config["PRETEXT_MODEL"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper()
 		route = "CORE" if matched_suffix == premium_suffix or classifier_result == "CORE" else "OTHER"
 		logging.info("Extract: |%s| for %s", route, filename_log)
@@ -123,11 +122,9 @@ def process_extract_file(config, file_path):
 			logging.info("Extract: %s (%s : %s)", filename_log, model, f"{len(result):,}")
 
 		if distill_model:
-			# logging.info("Extract: Distillation Model %s for %s", distill_model, filename_log)
 			run_distillation(config, base_name=base, md_path=md_path)
 			logging.info("Extract: Distillation %s (%s)", filename_log, distill_model)
 
-		#os.makedirs(config["PRETEXT_DONE_FOLDER"], exist_ok=True)
 		archive_path = os.path.join(config["PRETEXT_DONE_FOLDER"], filename)
 		shutil.move(file_path, archive_path)
 		release_text_file_permissions(archive_path)
@@ -186,15 +183,23 @@ def run_distillation(config, base_name: str, md_path: str | None = None) -> str 
 	return save_path
 
 
+def _suffixes(value):
+	if value is None:
+		return ()
+	if isinstance(value, tuple):
+		return tuple(str(item).lower() for item in value)
+	return (str(value).lower(),)
+
+
 def scan_text_files(folder, queue, suffix, exclude_suffix=None, processed_files=None, processed_files_lock=None) -> None:
 	folder = os.fspath(folder)
-	suffixes = tuple(str(item).lower() for item in suffix) if isinstance(suffix, tuple) else (str(suffix).lower(),)
-	exclude_suffix = str(exclude_suffix).lower() if exclude_suffix else None
+	suffixes = _suffixes(suffix)
+	exclude_suffixes = _suffixes(exclude_suffix)
 
 	for filename in os.listdir(folder):
 		filename_lower = filename.lower()
 		matched_suffix = next((item for item in suffixes if filename_lower.endswith(item)), "")
-		if not matched_suffix or (exclude_suffix and filename_lower.endswith(exclude_suffix)):
+		if not matched_suffix or any(filename_lower.endswith(item) for item in exclude_suffixes):
 			continue
 
 		base, file_path = filename[: -len(matched_suffix)], os.path.join(folder, filename)
@@ -221,6 +226,7 @@ def scan_text_files(folder, queue, suffix, exclude_suffix=None, processed_files=
 				if file_path not in processed_files:
 					processed_files.add(file_path)
 					queue.put(file_path)
+
 
 def process_queue(config, queue, process, method_name, scan_files=None, shutdown_flag=None, *scan_args):
 	intervals = config.get("INTERVALS", {})
@@ -278,7 +284,7 @@ def process_text_pipeline(config, shutdown_flag):
 	processed_files_lock = threading.Lock()
 	threads = {}
 
-	if config["PIPELINES"]["PRETEXT"]: _start_text_thread(threads, "TextPipeline-Pretext", config, pretext_queue, lambda path: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_text_files, shutdown_flag, config["PRETEXT_WATCH_FOLDER"], pretext_queue, config["PRETEXT_SUFFIX"], config["EXTRACT_SUFFIX"], processed_files_global, processed_files_lock)
+	if config["PIPELINES"]["PRETEXT"]: _start_text_thread(threads, "TextPipeline-Pretext", config, pretext_queue, lambda path: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_text_files, shutdown_flag, config["PRETEXT_WATCH_FOLDER"], pretext_queue, config["PRETEXT_SUFFIX"], (config["EXTRACT_SUFFIX"], config["PREMIUM_SUFFIX"]), processed_files_global, processed_files_lock)
 	if config["PIPELINES"]["EXTRACT"]: _start_text_thread(threads, "TextPipeline-Extract", config, extract_queue, lambda path: process_extract_file(config, path), "process_extract", scan_text_files, shutdown_flag, config["EXTRACT_WATCH_FOLDER"], extract_queue, (config["EXTRACT_SUFFIX"], config["PREMIUM_SUFFIX"]))
 
 	return threads

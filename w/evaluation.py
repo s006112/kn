@@ -822,12 +822,14 @@ def test_audio_move_to_done_removes_wav(test_id: str) -> tuple[bool, list[Path]]
 def test_pretext_scan_deduplicates_queue(test_id: str) -> tuple[bool, list[Path]]:
     pretext_suffix = str(CONFIG["PRETEXT_SUFFIX"])
     extract_suffix = extract_input_suffix()
+    premium_suffix = str(CONFIG["PREMIUM_SUFFIX"])
     watch_dir = ROOT_DIR / f"{test_id}_pretext_scan_watch"
     source = watch_dir / f"{test_id}_pretext{pretext_suffix}"
     excluded = watch_dir / f"{test_id}_already_extract{extract_suffix}"
+    premium_excluded = watch_dir / f"{test_id}_already_premium{premium_suffix}"
     symlink = watch_dir / "X.txt"
 
-    cleanup = [source, excluded, symlink, watch_dir]
+    cleanup = [source, excluded, premium_excluded, symlink, watch_dir]
 
     watch_dir.mkdir(parents=True, exist_ok=True)
 
@@ -835,23 +837,27 @@ def test_pretext_scan_deduplicates_queue(test_id: str) -> tuple[bool, list[Path]
     release_text_file_permissions(source)
     excluded.write_text(f"dummy pretext excluded source {test_id}\n", encoding="utf-8")
     release_text_file_permissions(excluded)
+    premium_excluded.write_text(f"dummy pretext premium excluded source {test_id}\n", encoding="utf-8")
+    release_text_file_permissions(premium_excluded)
     symlink.symlink_to(source)
 
     config = extract_text_config(PRETEXT_WATCH_FOLDER=str(watch_dir))
     pretext_queue = Queue()
     processed_files_global = set()
     processed_files_lock = threading.Lock()
-    txt_process_module.scan_text_files(config["PRETEXT_WATCH_FOLDER"], pretext_queue, config["PRETEXT_SUFFIX"], config["EXTRACT_SUFFIX"], processed_files_global, processed_files_lock)
-    txt_process_module.scan_text_files(config["PRETEXT_WATCH_FOLDER"], pretext_queue, config["PRETEXT_SUFFIX"], config["EXTRACT_SUFFIX"], processed_files_global, processed_files_lock)
+    txt_process_module.scan_text_files(config["PRETEXT_WATCH_FOLDER"], pretext_queue, config["PRETEXT_SUFFIX"], (config["EXTRACT_SUFFIX"], config["PREMIUM_SUFFIX"]), processed_files_global, processed_files_lock)
+    txt_process_module.scan_text_files(config["PRETEXT_WATCH_FOLDER"], pretext_queue, config["PRETEXT_SUFFIX"], (config["EXTRACT_SUFFIX"], config["PREMIUM_SUFFIX"]), processed_files_global, processed_files_lock)
     queued_paths = list(pretext_queue.queue)
     normalized = str(source.resolve())
     excluded_normalized = str(excluded.resolve())
+    premium_excluded_normalized = str(premium_excluded.resolve())
     symlink_normalized = str(symlink.absolute())
 
     passed = (
         queued_paths == [normalized]
         and normalized in processed_files_global
         and excluded_normalized not in processed_files_global
+        and premium_excluded_normalized not in processed_files_global
         and symlink_normalized not in processed_files_global
     )
 
@@ -1922,8 +1928,8 @@ def test_text_worker_scans_route_text_inputs(test_id: str) -> tuple[bool, list[P
     processed_files_global = set()
     processed_files_lock = threading.Lock()
     config = extract_text_config(PRETEXT_WATCH_FOLDER=str(pretext_dir), EXTRACT_WATCH_FOLDER=str(extract_dir))
-    txt_process_module.scan_text_files(config["PRETEXT_WATCH_FOLDER"], pretext_queue, config["PRETEXT_SUFFIX"], config["EXTRACT_SUFFIX"], processed_files_global, processed_files_lock)
-    txt_process_module.scan_text_files(config["EXTRACT_WATCH_FOLDER"], extract_queue, config["EXTRACT_SUFFIX"])
+    txt_process_module.scan_text_files(config["PRETEXT_WATCH_FOLDER"], pretext_queue, config["PRETEXT_SUFFIX"], (config["EXTRACT_SUFFIX"], config["PREMIUM_SUFFIX"]), processed_files_global, processed_files_lock)
+    txt_process_module.scan_text_files(config["EXTRACT_WATCH_FOLDER"], extract_queue, (config["EXTRACT_SUFFIX"], config["PREMIUM_SUFFIX"]))
 
     pretext_paths = list(pretext_queue.queue)
     extract_paths = list(extract_queue.queue)
@@ -2059,7 +2065,7 @@ def test_text_workers_own_scan_functions(test_id: str) -> tuple[bool, list[Path]
         and pretext_scan_args[0] == config["PRETEXT_WATCH_FOLDER"]
         and pretext_scan_args[1] is captured_queues["process_pretext"]
         and pretext_scan_args[2] == config["PRETEXT_SUFFIX"]
-        and pretext_scan_args[3] == config["EXTRACT_SUFFIX"]
+        and pretext_scan_args[3] == (config["EXTRACT_SUFFIX"], config["PREMIUM_SUFFIX"])
         and isinstance(pretext_scan_args[4], set)
         and isinstance(pretext_scan_args[5], lock_type)
         and len(extract_scan_args) == 3
