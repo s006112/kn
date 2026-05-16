@@ -33,7 +33,7 @@ _INVALID_FILENAME_CHARS = set("#[]`/\\?*<>|：:｜")
 _CONTROL_CHAR_PATTERN = re.compile(r"[\u0000-\u001f\u007f]")
 _REPLACEMENT_CHAR = "・"
 
-def short_log_name(name, keep=10):
+def short_log_name(name, keep=20):
     name = os.path.basename(os.fspath(name))
     stem, ext = os.path.splitext(name)
     suffix = f"_p{ext}" if stem.lower().endswith("_p") else ext

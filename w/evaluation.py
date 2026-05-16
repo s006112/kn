@@ -89,9 +89,9 @@ PATHS = EvalPaths(
     pretext_done=Path(CONFIG["PRETEXT_DONE_FOLDER"]),
 
     extract_watch=Path(CONFIG["EXTRACT_WATCH_FOLDER"]),
-    extract=Path(CONFIG["EXTRACT_FOLDER"]),
+    extract=Path(CONFIG["EXTRACT_DONE_FOLDER"]),
 
-    original=Path(CONFIG["ORIGINAL_FOLDER"]),
+    original=Path(CONFIG["RAW_ARCHIVE_FOLDER"]),
 
     audio_watch_folders=tuple(Path(p) for p in CONFIG["AUDIO_WATCH_FOLDERS"]),
     audio_done=Path(CONFIG["AUDIO_DONE_FOLDER"]),

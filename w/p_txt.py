@@ -29,7 +29,7 @@ def call_text_llm(config, model, system_prompt, user_text, file_path):
 
 
 def save_extract_result(config, base_name, model, result, md_path=None, link_name=None, md_is_new=False, merge_label=None):
-	save_path = write_text_file(get_next_available_filename(config["EXTRACT_FOLDER"], base_name, f"_{sanitize_filename(model)}"), result)
+	save_path = write_text_file(get_next_available_filename(config["EXTRACT_DONE_FOLDER"], base_name, f"_{sanitize_filename(model)}"), result)
 	if md_path:
 		merge_to_markdown(md_path, [result], "", [merge_label or f"{model} "], whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"), whisper_link_name=link_name or Path(md_path).stem, md_is_new=md_is_new)
 	return save_path
@@ -74,7 +74,7 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
 		logging.info("Pretext: Created %s", short_log_name(pretext_target_path))
 
 		write_pretext_markdown(config, base_name, pretext_result)
-		original_path = os.path.join(config["ORIGINAL_FOLDER"], f"{base_name}.txt")
+		original_path = os.path.join(config["RAW_ARCHIVE_FOLDER"], f"{base_name}.txt")
 		shutil.move(normalized_path, original_path)
 		release_text_file_permissions(original_path)
 
@@ -114,6 +114,7 @@ def process_extract_file(config, file_path):
 			extract_models = list(config.get("EXTRACT_MODELS", {}).get("OTHER", []))
 			distill_model = None
 
+		#distill_model = (config.get("DISTILL_MODEL") or "").strip()
 		extract_count = 0
 		for model in extract_models:
 			result = call_text_llm(config, model, config["EXTRACT_PROMPT"], payload, file_path)
@@ -121,13 +122,13 @@ def process_extract_file(config, file_path):
 			extract_count += 1
 			logging.info("Extract: %s (%s : %s)", filename_log, model, f"{len(result):,}")
 
-		if distill_model:
-			run_distillation(config, base_name=base, md_path=md_path)
-			logging.info("Extract: Distillation %s (%s)", filename_log, distill_model)
-
 		archive_path = os.path.join(config["PRETEXT_DONE_FOLDER"], filename)
 		shutil.move(file_path, archive_path)
 		release_text_file_permissions(archive_path)
+
+		if distill_model:
+			run_distillation(config, base_name=base, md_path=md_path)
+			logging.info("Extract: Distillation %s (%s)", filename_log, distill_model)
 
 	except Exception as exc:
 		if isinstance(exc, FileNotFoundError) or not os.path.exists(file_path):
@@ -159,7 +160,7 @@ def collect_extracts(extract_folder: str, base_name: str, pretext_suffix: str):
 
 
 def run_distillation(config, base_name: str, md_path: str | None = None) -> str | None:
-	extract_folder = os.fspath(config["EXTRACT_FOLDER"])
+	extract_folder = os.fspath(config["EXTRACT_DONE_FOLDER"])
 	distill_model = (config.get("DISTILL_MODEL") or "").strip()
 
 	if not distill_model:

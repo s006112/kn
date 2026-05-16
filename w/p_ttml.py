@@ -55,7 +55,7 @@ def _is_file_ready(path, wait=1.0):
 def process_ttml_pipeline(config, ttml_queue, shutdown_flag):
     ttml_watch_folder = os.path.abspath(os.fspath(config["TTML_WATCH_FOLDER"]))
     pretext_watch_folder = os.fspath(config["PRETEXT_WATCH_FOLDER"])
-    original_folder = os.fspath(config["ORIGINAL_FOLDER"])
+    raw_archive_folder = os.fspath(config["RAW_ARCHIVE_FOLDER"])
     intervals = config.get("INTERVALS", {})
     wait_seconds = intervals.get("WAIT_SECONDS", 1.0)
 
@@ -99,7 +99,7 @@ def process_ttml_pipeline(config, ttml_queue, shutdown_flag):
                 handle_ttml(
                     src,
                     pretext_watch_folder,
-                    original_folder,
+                    raw_archive_folder,
                     sanitize_and_trim_filename,
                     str(config["PRETEXT_SUFFIX"]),
                 )
