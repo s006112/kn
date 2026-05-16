@@ -26,13 +26,12 @@ CONFIG = {
     "DISTILL_MODEL": "o3",
     "EXTRACT_MODELS": {
         "CORE": [
-            "grok-4.3",  # grok-4.3, grok-4-1-fast-reasoning
             "gemini-3.1-pro-preview",  # gemini-3.1-flash-lite-preview, gemini-3.1-pro-preview"
             "gpt-5.4",
         ],
         "OTHER": [
             "gpt-5.4-mini",  # grok-4.3, grok-4-1-fast-reasoning
-            "grok-4.3",  # gemini-3.1-flash-lite-preview, gemini-3.1-pro-preview"
+            "gemini-3.1-flash-lite-preview",  # gemini-3.1-flash-lite-preview, gemini-3.1-pro-preview"
         ],
     },
     "PIPELINES": {
@@ -60,9 +59,9 @@ CONFIG = {
     "AUDIO_WATCH_FOLDERS": (WATCH_FOLDER, WHISPER_FOLDER),
     "AUDIO_DONE_FOLDER": Path("/desktop/YT1"),
     "PRETEXT_WATCH_FOLDER": WATCH_FOLDER,
-    "PRETEXT_DONE_FOLDER": WHISPER_FOLDER / "_p",
     "RAW_ARCHIVE_FOLDER": WHISPER_FOLDER / "_p" / "Raw",
-    "EXTRACT_DONE_FOLDER": WHISPER_FOLDER / "_p" / "Extract",
+    "PRETEXT_DONE_FOLDER": WHISPER_FOLDER / "_p",
+    "EXTRACT_DONE_FOLDER": WHISPER_FOLDER / "_p",
     "LINK_BACKUP_FOLDER": WHISPER_FOLDER / "_p" / "link_backup",
     "OBSIDIAN_SYNC_FOLDER": Path("/desktop/Obsidian/O_2025"),
     "YTD_LIST_FILE": WHISPER_FOLDER / "X" / "X.txt",

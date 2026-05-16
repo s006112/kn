@@ -2584,7 +2584,7 @@ def test_extract_multi_model_failure_is_terminal(test_id: str) -> tuple[bool, li
             whisper_index.unlink()
 
 
-def test_extract_other_route_uses_other_models_and_skips_distill(test_id: str) -> tuple[bool, list[Path]]:
+def test_extract_other_route_uses_other_models_and_distills(test_id: str) -> tuple[bool, list[Path]]:
     extract_suffix = extract_input_suffix()
     base_name = f"{test_id}_extract_other"
     core_model = "evaluation-core-model"
@@ -2632,6 +2632,8 @@ def test_extract_other_route_uses_other_models_and_skips_distill(test_id: str) -
                 return "OTHER"
             if kwargs.get("model") in {first_other_model, second_other_model}:
                 return f"mock other extract result {kwargs.get('model')} {test_id}"
+            if kwargs.get("model") == distill_model:
+                return f"mock distilled other result {test_id}"
             raise RuntimeError(f"unexpected LLM call: {kwargs.get('model')}")
 
         txt_process_module.call_llm = fake_call_llm
@@ -2646,6 +2648,7 @@ def test_extract_other_route_uses_other_models_and_skips_distill(test_id: str) -
 
         first_text = first_output.read_text(encoding="utf-8") if first_output.exists() else ""
         second_text = second_output.read_text(encoding="utf-8") if second_output.exists() else ""
+        distill_text = distill_output.read_text(encoding="utf-8") if distill_output.exists() else ""
         note_text = note.read_text(encoding="utf-8") if note and note.exists() else ""
 
         passed = (
@@ -2656,21 +2659,24 @@ def test_extract_other_route_uses_other_models_and_skips_distill(test_id: str) -
             and f"mock other extract result {first_other_model} {test_id}" in first_text
             and second_output.is_file()
             and f"mock other extract result {second_other_model} {test_id}" in second_text
-            and not distill_output.exists()
+            and distill_output.is_file()
+            and f"mock distilled other result {test_id}" in distill_text
             and note is not None
             and f"mock other extract result {first_other_model} {test_id}" in note_text
             and f"mock other extract result {second_other_model} {test_id}" in note_text
+            and f"mock distilled other result {test_id}" in note_text
             and not error_files
             and call_sequence
             == [
                 (config["CLASSIFIER_PROMPT"], config["PRETEXT_MODEL"]),
                 (config["EXTRACT_PROMPT"], first_other_model),
                 (config["EXTRACT_PROMPT"], second_other_model),
+                (config["DISTILL_PROMPT"], distill_model),
             ]
         )
 
         print_result(
-            "extract OTHER route uses OTHER models and skips distill",
+            "extract OTHER route uses OTHER models and distills",
             passed,
             {
                 "archived": archived,
@@ -3503,7 +3509,7 @@ def main() -> int:
             test_process_queue_handles_lock_miss_errors_and_permanent_failures,
             test_distillation_success_skip_and_error_paths,
             test_extract_multi_model_failure_is_terminal,
-            test_extract_other_route_uses_other_models_and_skips_distill,
+            test_extract_other_route_uses_other_models_and_distills,
             test_pretext_multichunk_and_failure_discards_processed_path,
             test_audio_failure_paths_archive_or_cleanup,
             test_ttml_invalid_xml_restores_source_and_chinese_normalizes,

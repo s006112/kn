@@ -99,6 +99,7 @@ def process_extract_file(config, file_path):
 		logging.info("Extract: Start %s", filename_log)
 		content, _ = read_file_with_encodings(file_path)
 
+		classifier_result = ""
 		if len(content) < 6000:
 			classifier_result = (call_text_llm(config, config["PRETEXT_MODEL"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper()
 		route = "CORE" if matched_suffix == premium_suffix or classifier_result == "CORE" else "OTHER"
@@ -109,12 +110,9 @@ def process_extract_file(config, file_path):
 
 		if route == "CORE":
 			extract_models = list(config.get("EXTRACT_MODELS", {}).get("CORE", []))
-			distill_model = (config.get("DISTILL_MODEL") or "").strip()
 		else:
 			extract_models = list(config.get("EXTRACT_MODELS", {}).get("OTHER", []))
-			distill_model = None
 
-		#distill_model = (config.get("DISTILL_MODEL") or "").strip()
 		extract_count = 0
 		for model in extract_models:
 			result = call_text_llm(config, model, config["EXTRACT_PROMPT"], payload, file_path)
@@ -126,6 +124,7 @@ def process_extract_file(config, file_path):
 		shutil.move(file_path, archive_path)
 		release_text_file_permissions(archive_path)
 
+		distill_model = (config.get("DISTILL_MODEL") or "").strip()
 		if distill_model:
 			run_distillation(config, base_name=base, md_path=md_path)
 			logging.info("Extract: Distillation %s (%s)", filename_log, distill_model)
