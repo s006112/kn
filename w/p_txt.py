@@ -108,10 +108,7 @@ def process_extract_file(config, file_path):
 		payload = f"《{base}》\n{content}"
 		md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(config, base, allow_existing=True)
 
-		if route == "CORE":
-			extract_models = list(config.get("EXTRACT_MODELS", {}).get("CORE", []))
-		else:
-			extract_models = list(config.get("EXTRACT_MODELS", {}).get("OTHER", []))
+		extract_models = list(config.get("EXTRACT_MODELS", {}).get(route, []))
 
 		extract_count = 0
 		for model in extract_models:
@@ -124,9 +121,9 @@ def process_extract_file(config, file_path):
 		shutil.move(file_path, archive_path)
 		release_text_file_permissions(archive_path)
 
-		distill_model = (config.get("DISTILL_MODEL") or "").strip()
+		distill_model = (config.get("DISTILL_MODEL", {}).get(route) or "").strip()
 		if distill_model:
-			run_distillation(config, base_name=base, md_path=md_path)
+			run_distillation({**config, "DISTILL_MODEL": distill_model}, base_name=base, md_path=md_path)
 			logging.info("Extract: Distillation %s (%s)", filename_log, distill_model)
 
 	except Exception as exc:

@@ -23,7 +23,10 @@ WHISPER_FOLDER = Path("/desktop/Sync/Whisper")
 
 CONFIG = {
     "PRETEXT_MODEL": "gpt-5.4-mini",
-    "DISTILL_MODEL": "grok-4.3",
+    "DISTILL_MODEL": {
+        "CORE": "o3",  # gemini-3.1-flash-lite-preview, gemini-3.1-pro-preview"
+        "OTHER": "grok-4.3"
+    },
     "EXTRACT_MODELS": {
         "CORE": [
             "gemini-3.1-pro-preview",  # gemini-3.1-flash-lite-preview, gemini-3.1-pro-preview"

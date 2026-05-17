@@ -2612,7 +2612,9 @@ def test_extract_other_route_uses_other_models_and_distills(test_id: str) -> tup
 
     config = {
         **extract_text_config(),
-        "DISTILL_MODEL": distill_model,
+        "DISTILL_MODEL": {
+            "OTHER": distill_model,
+        },
         "EXTRACT_MODELS": {
             **CONFIG.get("EXTRACT_MODELS", {}),
             "CORE": [core_model],
