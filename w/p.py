@@ -25,7 +25,7 @@ CONFIG = {
     "PRETEXT_MODEL": "gpt-5.4-mini",
     "DISTILL_MODEL": {
         "CORE": "o3",  # gemini-3.1-flash-lite-preview, gemini-3.1-pro-preview"
-        "OTHER": "grok-4.3"
+        "OTHER": "o3"
     },
     "EXTRACT_MODELS": {
         "CORE": [
@@ -62,7 +62,7 @@ CONFIG = {
     "AUDIO_WATCH_FOLDERS": (WATCH_FOLDER, WHISPER_FOLDER),
     "AUDIO_DONE_FOLDER": Path("/desktop/YT1"),
     "PRETEXT_WATCH_FOLDER": WATCH_FOLDER,
-    "RAW_ARCHIVE_FOLDER": WHISPER_FOLDER / "_p" / "Raw",
+    "RAW_ARCHIVE_FOLDER": Path("/desktop/YT1/Raw"),
     "PRETEXT_DONE_FOLDER": WHISPER_FOLDER / "_p",
     "EXTRACT_DONE_FOLDER": WHISPER_FOLDER / "_p",
     "LINK_BACKUP_FOLDER": WHISPER_FOLDER / "_p" / "link_backup",

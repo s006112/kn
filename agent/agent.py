@@ -34,7 +34,7 @@ from helper.helper_llm import call_llm  # noqa: E402
 DEFAULT_MODEL = "gpt-5.4-mini" # codex, gpt-5.4-mini
 
 CODEX_MODEL = "gpt-5.5"
-CODEX_REASONING_EFFORT = "low"
+CODEX_REASONING_EFFORT = "low" # "mid", "high", "xhigh"
 
 POS_FILES = (
     "AGENTS.md",
