@@ -174,8 +174,8 @@ def run_distillation(config, base_name: str, md_path: str | None = None, extract
 	payload = [f"《{base_name}》", "Below are outputs from multiple expert extraction models for the same source. Please distill them into one final, coherent result according to the system instructions."]
 	for i, (fname, content, path) in enumerate(extracts, 1):
 		payload += [f"--- Extraction input {i}: {fname} ---", content.strip()]	# include extract content as primary input for distillation.
-	if pretext_content:
-		payload += ["--- Pretext input ---", pretext_content.strip()]	# include pretext content as reference for distillation.
+	#if pretext_content:
+	#	payload += ["--- Pretext input ---", pretext_content.strip()]	# include pretext content as reference for distillation.
 
 	logging.info("Distillation: Start %s %s (%d inputs)", short_log_name(base_name), distill_model, len(extracts))
 	distilled = call_text_llm(config, distill_model, config["DISTILL_PROMPT"], "\n\n".join(payload), extracts[0][2])
