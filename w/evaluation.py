@@ -2452,8 +2452,8 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
             and len(captured_llm_options) == 2
             and len(captured_distill_prompts) == 2
             and all(options == expected_llm_options for options in captured_llm_options)
-            and f"--- Source 1: {success_extract.name} ---" in captured_distill_prompts[0]
-            and f"--- Source 1: {fail_extract.name} ---" in captured_distill_prompts[1]
+            and f"--- Extraction input 1: {success_extract.name} ---" in captured_distill_prompts[0]
+            and f"--- Extraction input 1: {fail_extract.name} ---" in captured_distill_prompts[1]
         )
 
         print_result(
@@ -2466,8 +2466,8 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
                 "failure_raised": failure_raised,
                 "llm_options": captured_llm_options,
                 "distill_headers": [
-                    len(captured_distill_prompts) > 0 and f"--- Source 1: {success_extract.name} ---" in captured_distill_prompts[0],
-                    len(captured_distill_prompts) > 1 and f"--- Source 1: {fail_extract.name} ---" in captured_distill_prompts[1],
+                    len(captured_distill_prompts) > 0 and f"--- Extraction input 1: {success_extract.name} ---" in captured_distill_prompts[0],
+                    len(captured_distill_prompts) > 1 and f"--- Extraction input 1: {fail_extract.name} ---" in captured_distill_prompts[1],
                 ],
             },
         )
@@ -2624,6 +2624,7 @@ def test_extract_other_route_uses_other_models_and_distills(test_id: str) -> tup
     index_existed = whisper_index.exists()
     index_before = whisper_index.read_text(encoding="utf-8") if index_existed else None
     call_sequence = []
+    captured_distill_prompts = []
 
     try:
         def fake_call_llm(**kwargs) -> str:
@@ -2633,6 +2634,7 @@ def test_extract_other_route_uses_other_models_and_distills(test_id: str) -> tup
             if kwargs.get("model") in {first_other_model, second_other_model}:
                 return f"mock other extract result {kwargs.get('model')} {test_id}"
             if kwargs.get("model") == distill_model:
+                captured_distill_prompts.append(str(kwargs.get("user_text", "")))
                 return f"mock distilled other result {test_id}"
             raise RuntimeError(f"unexpected LLM call: {kwargs.get('model')}")
 
@@ -2662,6 +2664,10 @@ def test_extract_other_route_uses_other_models_and_distills(test_id: str) -> tup
             and f"mock other extract result {second_other_model} {test_id}" in note_text
             and f"mock distilled other result {test_id}" in note_text
             and not error_files
+            and len(captured_distill_prompts) == 1
+            and "--- Pretext input ---" in captured_distill_prompts[0]
+            and f"other route source {test_id}" in captured_distill_prompts[0]
+            and captured_distill_prompts[0].strip().endswith(f"other route source {test_id}")
             and call_sequence
             == [
                 (config["CLASSIFIER_PROMPT"], config["PRETEXT_MODEL"]),
@@ -2682,6 +2688,7 @@ def test_extract_other_route_uses_other_models_and_distills(test_id: str) -> tup
                 "distill_output": distill_output,
                 "markdown": note,
                 "error_files": error_files,
+                "distill_prompt_has_pretext": bool(captured_distill_prompts) and f"other route source {test_id}" in captured_distill_prompts[0],
                 "call_sequence": call_sequence,
             },
         )

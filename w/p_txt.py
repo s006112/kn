@@ -121,7 +121,7 @@ def process_extract_file(config, file_path):
 
 		distill_model = (config.get("DISTILL_MODEL", {}).get(route) or "").strip()
 		if distill_model:
-			run_distillation({**config, "DISTILL_MODEL": distill_model}, base_name=base, md_path=md_path, extracts=extracts)
+			run_distillation({**config, "DISTILL_MODEL": distill_model}, base_name=base, md_path=md_path, extracts=extracts, pretext_content=content)
 			logging.info("Extract: Distillation %s (%s)", filename_log, distill_model)
 
 		archive_path = os.path.join(config["PRETEXT_DONE_FOLDER"], filename)
@@ -157,7 +157,7 @@ def collect_extracts(extract_folder: str, base_name: str, pretext_suffix: str):
 	return extracts
 
 
-def run_distillation(config, base_name: str, md_path: str | None = None, extracts=None) -> str | None:
+def run_distillation(config, base_name: str, md_path: str | None = None, extracts=None, pretext_content: str | None = None) -> str | None:
 	extract_folder = os.fspath(config["EXTRACT_DONE_FOLDER"])
 	distill_model = (config.get("DISTILL_MODEL") or "").strip()
 
@@ -173,7 +173,9 @@ def run_distillation(config, base_name: str, md_path: str | None = None, extract
 
 	payload = [f"《{base_name}》", "Below are outputs from multiple expert extraction models for the same source. Please distill them into one final, coherent result according to the system instructions."]
 	for i, (fname, content, path) in enumerate(extracts, 1):
-		payload += [f"--- Source {i}: {fname} ---", content.strip()]
+		payload += [f"--- Extraction input {i}: {fname} ---", content.strip()]	# include extract content as primary input for distillation.
+	if pretext_content:
+		payload += ["--- Pretext input ---", pretext_content.strip()]	# include pretext content as reference for distillation.
 
 	logging.info("Distillation: Start %s %s (%d inputs)", short_log_name(base_name), distill_model, len(extracts))
 	distilled = call_text_llm(config, distill_model, config["DISTILL_PROMPT"], "\n\n".join(payload), extracts[0][2])
