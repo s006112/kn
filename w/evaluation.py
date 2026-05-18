@@ -1709,7 +1709,7 @@ def test_save_pipeline_error_helper_contract(test_id: str) -> tuple[bool, list[P
     return passed, cleanup
 
 
-def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) -> tuple[bool, list[Path]]:
+def test_extract_full_process_writes_extract_markdown_and_archives_input(test_id: str) -> tuple[bool, list[Path]]:
     extract_suffix = extract_input_suffix()
     base_name = f"{test_id}_extract_full"
     model = "evaluation-model"
@@ -1730,7 +1730,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
 
     config = {
         **extract_text_config(),
-        "DISTILL_MODEL": "",
+        "DISTILL_MODEL": {},
         "INTERVALS": {
             **CONFIG["INTERVALS"],
             "LLM_MAX_RETRIES": 5,
@@ -1776,14 +1776,12 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
         note = notes[-1] if notes else None
         cleanup.extend(notes)
 
-        extract_text = extract_output.read_text(encoding="utf-8") if extract_output.exists() else ""
         note_text = note.read_text(encoding="utf-8") if note and note.exists() else ""
 
         passed = (
             not source.exists()
             and archived.is_file()
-            and extract_output.is_file()
-            and f"mock extract result {test_id}" in extract_text
+            and not extract_output.exists()
             and note is not None
             and f"mock extract result {test_id}" in note_text
             and captured_llm_calls
@@ -1802,7 +1800,7 @@ def test_extract_full_process_writes_extract_markdown_and_archive(test_id: str) 
         )
 
         print_result(
-            "extract full process writes extract markdown and archive",
+            "extract full process writes extract markdown and archives input",
             passed,
             {
                 "source": source,
@@ -1844,7 +1842,7 @@ def test_extract_failure_renames_source_in_place(test_id: str) -> tuple[bool, li
     config = {
         **extract_text_config(),
         "EXTRACT_WATCH_FOLDER": str(watch_dir),
-        "DISTILL_MODEL": "",
+        "DISTILL_MODEL": {},
         "EXTRACT_MODELS": {
             **CONFIG.get("EXTRACT_MODELS", {}),
             "CORE": [model],
@@ -2510,7 +2508,7 @@ def test_extract_multi_model_failure_is_terminal(test_id: str) -> tuple[bool, li
     config = {
         **extract_text_config(),
         "EXTRACT_WATCH_FOLDER": str(watch_dir),
-        "DISTILL_MODEL": "",
+        "DISTILL_MODEL": {},
         "EXTRACT_MODELS": {
             **CONFIG.get("EXTRACT_MODELS", {}),
             "CORE": [bad_model, later_model],
@@ -2648,8 +2646,6 @@ def test_extract_other_route_uses_other_models_and_distills(test_id: str) -> tup
         cleanup.extend(notes)
         cleanup.extend(error_files)
 
-        first_text = first_output.read_text(encoding="utf-8") if first_output.exists() else ""
-        second_text = second_output.read_text(encoding="utf-8") if second_output.exists() else ""
         distill_text = distill_output.read_text(encoding="utf-8") if distill_output.exists() else ""
         note_text = note.read_text(encoding="utf-8") if note and note.exists() else ""
 
@@ -2657,10 +2653,8 @@ def test_extract_other_route_uses_other_models_and_distills(test_id: str) -> tup
             not source.exists()
             and archived.is_file()
             and not core_output.exists()
-            and first_output.is_file()
-            and f"mock other extract result {first_other_model} {test_id}" in first_text
-            and second_output.is_file()
-            and f"mock other extract result {second_other_model} {test_id}" in second_text
+            and not first_output.exists()
+            and not second_output.exists()
             and distill_output.is_file()
             and f"mock distilled other result {test_id}" in distill_text
             and note is not None
@@ -3500,7 +3494,7 @@ def main() -> int:
             test_call_text_llm_forwards_options,
             test_write_text_file_helper_contract,
             test_save_pipeline_error_helper_contract,
-            test_extract_full_process_writes_extract_markdown_and_archive,
+            test_extract_full_process_writes_extract_markdown_and_archives_input,
             test_extract_failure_renames_source_in_place,
             test_text_worker_scans_route_text_inputs,
             test_torrent_scan_moves_torrent,
