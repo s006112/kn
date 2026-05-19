@@ -22,14 +22,18 @@ if load_dotenv is not None:
 TRACKING_KEYS = {"fbclid", "feature", "pp", "si", "t"}
 PLATFORM_X = "x/twitter"
 PLATFORM_YTDLP = "yt-dlp"
+PLATFORM_YOUTUBE = "youtube"
 X_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 X_DOMAINS = ("x.com", "twitter.com")
-YTDLP_DOMAINS = (
+YOUTUBE_DOMAINS = (
     "youtube.com",
+    "youtube-nocookie.com",
+    "youtu.be",
+)
+YTDLP_DOMAINS = (
     "facebook.com",
     "instagram.com",
 )
-
 FORMATS = {
     "worst": ["-f", "(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst"],
     "720p": [
@@ -63,6 +67,8 @@ def classify_url(url):
     host = _host(url)
     if _host_in(host, X_DOMAINS):
         return PLATFORM_X
+    if _host_in(host, YOUTUBE_DOMAINS):
+        return PLATFORM_YOUTUBE
     if _host_in(host, YTDLP_DOMAINS):
         return PLATFORM_YTDLP
     return ""
@@ -175,7 +181,7 @@ def _command(url, mode, temp_dir, resolve_timeout):
             resolved_url,
         ]
 
-    if platform == PLATFORM_YTDLP:
+    if platform in (PLATFORM_YOUTUBE, PLATFORM_YTDLP):
         if mode not in FORMATS:
             raise RuntimeError("无效下载模式。")
         return url, [
@@ -280,15 +286,8 @@ def download(url, mode, output_dir=None, resolve_timeout=20):
     _, path, temp_dir = _download(url, mode, output_dir=output_dir, resolve_timeout=resolve_timeout)
     return path, temp_dir
 
-
-
-def _is_youtube_url(url):
-    host = _host(url)
-    return _host_in(host, ("youtube.com", "youtube-nocookie.com", "youtu.be"))
-
-
 def _try_download_ttml(url, output_dir=None):
-    langs = [x.strip() for x in os.getenv("YTD_SUB_LANGS", "zh-Hans,zh-Hant,zh,en,ja").split(",") if x.strip()]
+    langs = [x.strip() for x in os.getenv("YTD_SUB_LANGS", "zh-Hans,zh-Hant,zh-HK,yue,zh,en,ja").split(",") if x.strip()]
 
     for lang in langs:
         temp_dir = tempfile.mkdtemp(prefix="ytdlp_ttml_")
@@ -342,7 +341,7 @@ def _try_download_ttml(url, output_dir=None):
 
 def download_ttml_or_video(url, mode="worst", output_dir=None, resolve_timeout=20):
     cleaned_url = clean_url(url)
-    if cleaned_url and _is_youtube_url(cleaned_url):
+    if cleaned_url and classify_url(cleaned_url) == PLATFORM_YOUTUBE:
         result = _try_download_ttml(cleaned_url, output_dir=output_dir)
         if result is not None:
             return result
