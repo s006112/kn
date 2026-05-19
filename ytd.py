@@ -9,8 +9,7 @@ import shutil
 from urllib.parse import parse_qs, quote
 from wsgiref.simple_server import make_server
 
-from helper.helper_ytd import clean_url, download
-
+from helper.helper_ytd import clean_url, download, download_ttml_or_video
 
 MAX_POST_BYTES = 4096
 FORM_HTML = """<!doctype html>
@@ -55,7 +54,10 @@ def app(environ, start_response):
         if not (url := clean_url(params.get("url", [""])[0])):
             raise RuntimeError("请输入有效链接。")
         mode = params.get("mode", ["worst"])[0].strip().lower()
-        path, temp_dir = download(url, mode)
+        if mode == "worst":
+            path, temp_dir = download_ttml_or_video(url, "worst")
+        else:
+            path, temp_dir = download(url, mode)
     except ValueError:
         return reply("Content-Length 无效。", True)
     except RuntimeError as exc:

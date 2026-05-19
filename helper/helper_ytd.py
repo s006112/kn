@@ -280,3 +280,71 @@ def download(url, mode, output_dir=None, resolve_timeout=20):
     _, path, temp_dir = _download(url, mode, output_dir=output_dir, resolve_timeout=resolve_timeout)
     return path, temp_dir
 
+
+
+def _is_youtube_url(url):
+    host = _host(url)
+    return _host_in(host, ("youtube.com", "youtube-nocookie.com", "youtu.be"))
+
+
+def _try_download_ttml(url, output_dir=None):
+    langs = [x.strip() for x in os.getenv("YTD_SUB_LANGS", "zh-Hans,zh-Hant,zh,en,ja").split(",") if x.strip()]
+
+    for lang in langs:
+        temp_dir = tempfile.mkdtemp(prefix="ytdlp_ttml_")
+        cmd = [
+            "yt-dlp",
+            "--newline",
+            "--skip-download",
+            "--no-playlist",
+            "--write-subs",
+            "--write-auto-subs",
+            "--sub-langs",
+            lang,
+            "--sub-format",
+            "ttml",
+            "-o",
+            "%(title).50s.%(ext)s",
+            *build_common_args(),
+            url,
+        ]
+
+        try:
+            print(f"Trying TTML subtitle language: {lang}")
+            print("Running:", " ".join(cmd))
+            proc = subprocess.run(
+                cmd,
+                cwd=temp_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+
+            ttml_files = sorted(Path(temp_dir).glob("*.ttml"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if ttml_files:
+                print(f"Using TTML subtitle language: {lang}")
+                return move_download_to_output_dir(ttml_files[0], temp_dir, output_dir)
+
+            if proc.returncode:
+                tail = "\n".join((proc.stdout or "").splitlines()[-5:])
+                print(f"No TTML for {lang}: {tail or 'yt-dlp failed'}")
+            else:
+                print(f"No TTML for {lang}")
+
+        except Exception as exc:
+            print(f"No TTML for {lang}: {exc}")
+
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    print("TTML unavailable for all preferred languages, fallback to video.")
+    return None
+
+
+def download_ttml_or_video(url, mode="worst", output_dir=None, resolve_timeout=20):
+    cleaned_url = clean_url(url)
+    if cleaned_url and _is_youtube_url(cleaned_url):
+        result = _try_download_ttml(cleaned_url, output_dir=output_dir)
+        if result is not None:
+            return result
+
+    return download(cleaned_url or url, mode, output_dir=output_dir, resolve_timeout=resolve_timeout)
