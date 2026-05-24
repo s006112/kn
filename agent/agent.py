@@ -36,12 +36,15 @@ DEFAULT_MODEL = "gpt-5.4-mini" # codex, gpt-5.4-mini
 CODEX_MODEL = "gpt-5.5"
 CODEX_REASONING_EFFORT = "low" # "mid", "high", "xhigh"
 
-POS_FILES = (
-    "AGENTS.md",
-    "context.md",
+POS_ACTIVE_FILES = (
+    "AGENTS.md", # agent 怎樣使用 POS，不要污染系統
+    "context.md", # 當前方向、當前重點、近期約束
+    "assets.md", # 已穩定、可調用的判斷規則
+)
+
+POS_ARCHIVE_FILES = (
     "decisions.md",
     "proposals.md",
-    "assets.md",
 )
 
 S0_TASK_PROMPT = REPO_ROOT / "agent" / "agent_s0_task.txt"
@@ -150,7 +153,7 @@ def parse_allowed_files(task_text: str) -> list[str]:
 
 def load_pos_context() -> str:
     parts: list[str] = []
-    for name in POS_FILES:
+    for name in POS_ACTIVE_FILES:
         path = REPO_ROOT / "pos" / name
         text = read_optional(path).strip()
         if text:
@@ -182,17 +185,15 @@ def build_plan_prompt(task_text: str, pos_context: str, file_context: str) -> st
     return template.format(task_text=task_text, pos_context=pos_context, file_context=file_context)
 
 
-def build_review_prompt(task_text: str, plan_text: str) -> str:
+def build_review_prompt(task_text: str, plan_text: str, pos_context: str) -> str:
     # Step 2: review.
     template = read_text(S2_REVIEW_PROMPT)
-    return template.format(task_text=task_text, plan_text=plan_text)
+    return template.format(task_text=task_text, plan_text=plan_text, pos_context=pos_context)
 
-
-def build_revise_prompt(task_text: str, plan_text: str, review_text: str) -> str:
+def build_revise_prompt(task_text: str, plan_text: str, review_text: str, pos_context: str) -> str:
     # Step 3: revise.
     template = read_text(S3_REVISE_PROMPT)
-    return template.format(task_text=task_text, plan_text=plan_text, review_text=review_text)
-
+    return template.format(task_text=task_text, plan_text=plan_text, review_text=review_text, pos_context=pos_context)
 
 def print_status(task_path: Path) -> None:
     paths = {
@@ -345,11 +346,10 @@ def run_verify() -> None:
 
     print("VERIFY_OK", flush=True)
 
-
-def build_patch_prompt(task_text: str, final_plan_text: str, allowed_files: list[str], file_context: str) -> str:
-    # Step 5: make patch.
+def build_patch_prompt(task_text: str, final_plan_text: str, allowed_files: list[str], file_context: str, pos_context: str) -> str:
+    # Step 5: make patch
     template = read_text(S5_PATCH_PROMPT)
-    return template.format(task_text=task_text, final_plan_text=final_plan_text, allowed_files_text="\n".join(f"- {p}" for p in allowed_files), file_context=file_context)
+    return template.format(task_text=task_text, final_plan_text=final_plan_text, allowed_files_text="\n".join(f"- {p}" for p in allowed_files), file_context=file_context, pos_context=pos_context)
 
 
 def parse_patch_blocks(patch_text: str) -> tuple[list[tuple[str, str, str]], list[str]]:
@@ -496,7 +496,12 @@ def draft_task(task_path: Path, target_arg: str) -> None:
         return
 
     template = read_text(S0_TASK_PROMPT)
+    pos_context = load_pos_context()
     prompt_text = f"""
+<POS_CONTEXT>
+{pos_context}
+</POS_CONTEXT>
+
 <FILE_CONTEXT>
 {load_single_file_context(target_path)}
 </FILE_CONTEXT>
@@ -504,6 +509,7 @@ def draft_task(task_path: Path, target_arg: str) -> None:
 <TARGET_PATH>
 {target_rel}
 </TARGET_PATH>
+
 {template}
 """
     ensure_agent_data_dir()
@@ -518,7 +524,6 @@ def draft_task(task_path: Path, target_arg: str) -> None:
     task_path.write_text(output, encoding="utf-8")
     print(output)
     print(f"\nSaved task: {task_path}")
-
 
 def run_task(task_path: Path, task_text: str) -> None:
     # Step 1: build context and generate the first plan.
