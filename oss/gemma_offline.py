@@ -4,9 +4,11 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # ⚠️ 注意：將此路徑設置為直接包含 model.safetensors 和 tokenizer.json 的目錄。
 #MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-270m-it/"
-MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-1b-it/"
+#MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-1b-it/"
 #MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-4b-it/"
 #MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-12b-it/"
+MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-4-E4B-it/"
+
 
 # 設置計算設備
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -17,12 +19,12 @@ if not os.path.exists(os.path.join(MODEL_PATH, "tokenizer.model")) and os.path.e
         MODEL_PATH = os.path.join(MODEL_PATH, "snapshots", f.read().strip())
 
 # 載入模型和分詞器
-tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True)
+tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True, extra_special_tokens={})
 
 #    - 這是原始代碼中不使用量化時最穩定的載入方式。
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_PATH,
-    dtype=torch.float32,   # float32, bfloat16
+    dtype=torch.bfloat16,   # float32, bfloat16
     device_map="auto",
     # 移除 quantization_config
     local_files_only=True
