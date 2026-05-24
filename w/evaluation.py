@@ -1505,7 +1505,7 @@ def test_text_write_helper_cleanup_static(test_id: str) -> tuple[bool, list[Path
         and save_extract_helper is not None
         and error_helper_name not in txt_source
         and not direct_write_release_lines
-        and save_extract_calls_write_text_file
+        and not save_extract_calls_write_text_file
         and pretext_calls_write_text_file
         and not error_route_path_writes
         and "_write_distill_error" not in txt_source
@@ -2422,10 +2422,7 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
 
         txt_process_module.call_llm = fake_call_llm
 
-        success_path = Path(
-            txt_process_module.run_distillation(config, success_base, md_path=str(md_path))
-            or ""
-        )
+        success_path = txt_process_module.run_distillation(config, success_base, md_path=str(md_path))
         skip_path = txt_process_module.run_distillation(config, skip_base, md_path=None)
 
         failure_raised = False
@@ -2437,14 +2434,11 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
         error_file = PATHS.watch / f"{fail_base}.{sanitize_filename(model)}.error"
         cleanup.append(error_file)
 
-        success_text = success_path.read_text(encoding="utf-8") if success_path.exists() else ""
         md_text = md_path.read_text(encoding="utf-8") if md_path.exists() else ""
 
         passed = (
-            success_path.is_file()
-            and success_path == expected_success_output
-            and success_path.name == f"{success_base}_{model}.txt"
-            and f"mock distilled result {test_id}" in success_text
+            success_path is None
+            and not expected_success_output.exists()
             and f"mock distilled result {test_id}" in md_text
             and skip_path is None
             and failure_raised
@@ -2461,6 +2455,7 @@ def test_distillation_success_skip_and_error_paths(test_id: str) -> tuple[bool, 
             passed,
             {
                 "success_path": success_path,
+                "expected_success_output_exists": expected_success_output.exists(),
                 "skip_path": skip_path,
                 "error_file": error_file,
                 "failure_raised": failure_raised,
@@ -2648,7 +2643,6 @@ def test_extract_other_route_uses_other_models_and_distills(test_id: str) -> tup
         cleanup.extend(notes)
         cleanup.extend(error_files)
 
-        distill_text = distill_output.read_text(encoding="utf-8") if distill_output.exists() else ""
         note_text = note.read_text(encoding="utf-8") if note and note.exists() else ""
 
         passed = (
@@ -2657,17 +2651,17 @@ def test_extract_other_route_uses_other_models_and_distills(test_id: str) -> tup
             and not core_output.exists()
             and not first_output.exists()
             and not second_output.exists()
-            and distill_output.is_file()
-            and f"mock distilled other result {test_id}" in distill_text
+            and not distill_output.exists()
             and note is not None
             and f"mock other extract result {first_other_model} {test_id}" in note_text
             and f"mock other extract result {second_other_model} {test_id}" in note_text
             and f"mock distilled other result {test_id}" in note_text
             and not error_files
             and len(captured_distill_prompts) == 1
-            and "--- Pretext input ---" in captured_distill_prompts[0]
-            and f"other route source {test_id}" in captured_distill_prompts[0]
-            and captured_distill_prompts[0].strip().endswith(f"other route source {test_id}")
+            and f"--- Extraction input 1: {base_name}_{sanitize_filename(first_other_model)}.txt ---" in captured_distill_prompts[0]
+            and f"--- Extraction input 2: {base_name}_{sanitize_filename(second_other_model)}.txt ---" in captured_distill_prompts[0]
+            and f"mock other extract result {first_other_model} {test_id}" in captured_distill_prompts[0]
+            and f"mock other extract result {second_other_model} {test_id}" in captured_distill_prompts[0]
             and call_sequence
             == [
                 (config["CLASSIFIER_PROMPT"], config["PRETEXT_MODEL"]),
@@ -2688,7 +2682,9 @@ def test_extract_other_route_uses_other_models_and_distills(test_id: str) -> tup
                 "distill_output": distill_output,
                 "markdown": note,
                 "error_files": error_files,
-                "distill_prompt_has_pretext": bool(captured_distill_prompts) and f"other route source {test_id}" in captured_distill_prompts[0],
+                "distill_prompt_has_extracts": bool(captured_distill_prompts)
+                and f"mock other extract result {first_other_model} {test_id}" in captured_distill_prompts[0]
+                and f"mock other extract result {second_other_model} {test_id}" in captured_distill_prompts[0],
                 "call_sequence": call_sequence,
             },
         )

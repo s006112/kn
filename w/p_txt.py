@@ -14,7 +14,7 @@ if str(ROOT_DIR) not in sys.path:
 	sys.path.insert(0, str(ROOT_DIR))
 
 from helper.helper_llm import LLMPermanentFailure, call_llm
-from .helper_files import get_next_available_filename, read_file_with_encodings, release_text_file_permissions, safe_rename, write_text_file
+from .helper_files import read_file_with_encodings, release_text_file_permissions, safe_rename, write_text_file
 from .helper_md import create_or_find_note_for_base_name, merge_to_markdown, write_pretext_markdown
 from .helper_text import chunk_text, intelligent_merge_chunks, sanitize_and_trim_filename, sanitize_filename, short_log_name
 
@@ -28,11 +28,9 @@ def call_text_llm(config, model, system_prompt, user_text, file_path):
 	return call_llm(model=model, system_prompt=system_prompt, user_text=user_text, file_path=file_path, max_retries=intervals.get("LLM_MAX_RETRIES", 2), timeout=intervals.get("LLM_TIMEOUT_SECONDS", 90), retry_delay=intervals.get("LLM_RETRY_DELAY_SECONDS", 10))
 
 
-def save_extract_result(config, base_name, model, result, md_path=None, link_name=None, md_is_new=False, merge_label=None, save_file=True):
-	save_path = write_text_file(get_next_available_filename(config["EXTRACT_DONE_FOLDER"], base_name, f"_{sanitize_filename(model)}"), result) if save_file else None
+def save_extract_result(config, model, result, md_path=None, link_name=None, md_is_new=False, merge_label=None):
 	if md_path:
 		merge_to_markdown(md_path, [result], "", [merge_label or f"{model} "], whisper_md_path=os.path.join(config["OBSIDIAN_SYNC_FOLDER"], "Whisper 000000.md"), whisper_link_name=link_name or Path(md_path).stem, md_is_new=md_is_new)
-	return save_path
 
 
 def save_pipeline_error(config, stage, base_name, error, *, filename=None, model=None, file_path=None):
@@ -114,7 +112,7 @@ def process_extract_file(config, file_path):
 		extracts = []
 		for model in extract_models:
 			result = call_text_llm(config, model, config["EXTRACT_PROMPT"], payload, file_path)
-			save_extract_result(config, base, model, result, md_path, link_name, md_is_new_seed and extract_count == 0, save_file=False)
+			save_extract_result(config, model, result, md_path, link_name, md_is_new_seed and extract_count == 0)
 			extracts.append((f"{base}_{sanitize_filename(model)}.txt", result, file_path))
 			extract_count += 1
 			logging.info("Extract: %s (%s : %s)", filename_log, model, f"{len(result):,}")
@@ -157,7 +155,7 @@ def collect_extracts(extract_folder: str, base_name: str, pretext_suffix: str):
 	return extracts
 
 
-def run_distillation(config, base_name: str, md_path: str | None = None, extracts=None, pretext_content: str | None = None) -> str | None:
+def run_distillation(config, base_name: str, md_path: str | None = None, extracts=None, pretext_content: str | None = None) -> None:
 	extract_folder = os.fspath(config["EXTRACT_DONE_FOLDER"])
 	distill_model = (config.get("DISTILL_MODEL") or "").strip()
 
@@ -179,10 +177,9 @@ def run_distillation(config, base_name: str, md_path: str | None = None, extract
 
 	logging.info("Distillation: Start %s %s (%d inputs)", short_log_name(base_name), distill_model, len(extracts))
 	distilled = call_text_llm(config, distill_model, config["DISTILL_PROMPT"], "\n\n".join(payload), extracts[0][2])
-	save_path = save_extract_result(config, base_name, distill_model, distilled, md_path, Path(md_path).stem if md_path else None, False, f"{distill_model} distilled")
+	save_extract_result(config, distill_model, distilled, md_path, Path(md_path).stem if md_path else None, False, f"{distill_model} distilled")
 
-	logging.info("Distillation: Completed %s -> %s", short_log_name(base_name), short_log_name(save_path))
-	return save_path
+	logging.info("Distillation: Completed %s", short_log_name(base_name))
 
 
 def _suffixes(value):
