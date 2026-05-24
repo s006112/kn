@@ -31,6 +31,43 @@ Success criteria:
 - 用更少概念承載更多有效行為。
 - 未來 review 更快、更準、更少重複思考。
 
+## Semantic Compression Over Defensive Completeness
+
+**模式**
+
+- AI-generated code 常為了顯得 robust，而新增 local guards、fallback branches、exception blocks 與 logs。
+- 這會讓 code 在局部看似合理，卻讓整體系統更難理解。
+- 在 personal/internal tools 中，過度 fallback handling 往往只是在保護可恢復的 operator mistakes，卻讓 normal path 更難被心智模擬。
+
+**規則**
+
+- 只有當 defensive code 保護真實 system boundary 時，才新增它。
+- 優先使用能保留行為、並讓 runtime model 更容易心智模擬的最小結構。
+- 對可恢復的 manual workflow mistakes，優先接受 visible crash，而不是堆疊 guardrail bloat。
+
+**條件**
+
+- Guard 能防止 data loss、duplicate execution、financial loss、irreversible action、silent corruption 或 hard-to-diagnose failure。
+- Fallback 符合 business semantics。
+- Log 能幫助未來診斷，而不是重複明顯狀態。
+- Branch 代表真實 decision，而不是 theoretical completeness。
+- 如果允許 visible crash，反而會讓該 failure 更難診斷。
+
+**邊界**
+
+- 不要移除 destructive operations、external side effects、money、file movement 或 silent data corruption 周圍的保護。
+- 不要只因 API 可能失敗就新增 `try/except`；如果 failure 應停止當前 operation，就讓它停止。
+- 當 default route 已能安全處理 invalid output 時，不要新增 invalid-result branches。
+- 不要只為處理 skipped intermediate CLI steps、missing trace artifacts 或其他可恢復 personal workflow mistakes，而新增冗長 fallback code。
+- 對 real file mutation、scope boundaries、destructive actions、irreversible actions、silent corruption、money 或 external side effects，保留 hard guards。
+
+**成功標準**
+
+- Code 更容易解釋。
+- Failure behavior 是有意識設計的。
+- Normal path 保持可見。
+- Fallback 是 business-semantic，而不是 generic panic handling。
+- Personal workflow mistakes 會足夠 loud 地失敗，方便修正，且不需要新增冗長 defensive branches。
 
 ## Extract Helpers Only From Real Reuse
 
@@ -290,13 +327,35 @@ Success criteria:
 9. 如何驗證結果？
 10. 完成後能提取什麼 reusable rule、template 或 checklist？
 
-## Archive Learning Strategy
+## Archive By Reuse Evidence, Not Immediate Taste
+
+**模式**
+
+- 人的即時判斷常會過度保存有吸引力的 ideas，卻低估無聊但可復用的 patterns。
+- 當 input volume 增加時，manual archive decisions 會變得不穩定。
 
 **規則**
 
-Archive 不應由人類即時主觀判斷主導，而應由系統根據 task reuse、result feedback、transferability、failure records 與 long-term value 自動學習保存策略。
+- Archive promotion 應基於 reuse evidence、feedback、transferability、failure records 與 long-term value。
+- Human 應定義 objective、constraints、evaluation 與 final approval，而不是手工控制每個 category。
 
-人類保留 objective、constraint、evaluation 與 final approval，而不是手工控制每個分類與取捨。
+**條件**
+
+- 該 item 已在重複 tasks 中出現。
+- 它改善了未來 judgment 或 action。
+- 它有清楚的 retrieval conditions。
+- 它有已知的 failure boundaries。
+
+**邊界**
+
+- 沒有 human approval，不要自動化 final promotion。
+- 不要只因 raw material 感覺有趣就保存它。
+- 不要讓 archive logic 變成複雜的 taxonomy project。
+
+**成功標準**
+
+- Archive 變得更容易 search、reuse、delete 與 improve。
+- Promotion 依據 evidence，而不是 mood。
 
 ## Guidance / Verification Checklist
 
@@ -326,4 +385,3 @@ Archive 不應由人類即時主觀判斷主導，而應由系統根據 task reu
 - Template？
 - Failure case？
 - Reusable example？
-

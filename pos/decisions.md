@@ -208,3 +208,23 @@ Agent 不得：
 **規則**
 
 - Defensive code 必須通過保護真實 system boundary 來證明自己必要。
+
+## 2026-05-24 - 將 `principles.md` 併入 `assets.md`
+
+**決策**
+
+- 刪除獨立的 `principles.md`。
+- 將可操作的高層原則壓縮後放入 `assets.md` 的 Core Operating Principles。
+- 避免 POS 中同時存在 principles 與 assets 兩個邊界重疊的穩定規則庫。
+
+**原因**
+
+- 減少文件邊界模糊。
+- 避免高層原則變成不可操作的 manifesto。
+- 讓所有穩定可復用判斷集中在 `assets.md` 中。
+
+**邊界**
+
+- 只有可調用、可約束未來判斷的原則才進入 `assets.md`。
+- 一次性感悟、未驗證想法、長篇哲學表述不進入 `assets.md`。
+- 不確定的內容先放入 `proposals.md`。
