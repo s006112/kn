@@ -233,3 +233,22 @@ Success criteria:
 - Risks and stop conditions are stated.
 - Verification commands are included.
 - The accepted plan is clean enough to guide human execution or a future patch agent.
+
+
+
+
+# Rule: Complex Problem Methodology
+
+When facing a complex problem, do not jump to solution.
+
+First define:
+1. What system/object is this?
+2. What state needs to be changed?
+3. What is the success criterion?
+4. What variables affect the result?
+5. What constraints cannot be violated?
+6. What real-world scenarios may occur?
+7. What are the highest-risk failure points?
+8. What should be done first based on risk, cost, and expected return?
+9. How will the result be verified?
+10. What reusable rule/template/checklist can be extracted after completion?

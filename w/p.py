@@ -24,18 +24,18 @@ WHISPER_FOLDER = Path("/desktop/Sync/Whisper")
 CONFIG = {
     "PRETEXT_MODEL": "gpt-5.4-mini",
     "DISTILL_MODEL": {
-        "CORE": "o3",  # gemini-3.1-flash-lite-preview, gemini-3.1-pro-preview"
+        "CORE": "o3",  
         "OTHER": "o3-mini"
     },
     "EXTRACT_MODELS": {
         "CORE": [
-            "grok-4.3",  # grok-4.3, grok-4-1-fast-reasoning
-            "gemini-3.5-flash",  # gemini-3.1-flash-lite-preview, gemini-3.1-pro-preview"
+            "gpt-5.4-mini",  # 
+            "gemini-3.5-flash",  # gemini-3.1-pro-preview"
             "gpt-5.4",
         ],
         "OTHER": [
-            "gpt-5.4-mini",  # grok-4.3, grok-4-1-fast-reasoning
-            "gemini-3.1-flash-lite",  # gemini-3.1-flash-lite-preview, gemini-3.1-pro-preview"
+            "gpt-5.4-mini",  # grok-4.3
+            "gemini-3.1-flash-lite",
         ],
     },
     "PIPELINES": {
@@ -52,7 +52,7 @@ CONFIG = {
         "WAIT_SECONDS": 1.0,
         "LLM_MAX_RETRIES": 2,
         "LLM_RETRY_DELAY_SECONDS": 10,
-        "LLM_TIMEOUT_SECONDS": 60,
+        "LLM_TIMEOUT_SECONDS": 180,
         "YTD_RESOLVE_TIMEOUT_SECONDS": 10,
     },
     "WATCH_FOLDER": WATCH_FOLDER,

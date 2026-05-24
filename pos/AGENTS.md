@@ -2,6 +2,14 @@
 
 This folder stores reusable judgment assets, not ordinary notes.
 
+
+| 原則   | 在 POS 裡的落地                                  |
+| ---- | ------------------------------------------- |
+| 精良單元 | 每個 principle / rule / concept 都要能被調用，不只是被收藏 |
+| 簡潔結構 | 少分類、少層級、少概念膨脹，保留最短調用路徑                      |
+| 冗餘空間 | 保留 review、distill、merge、delete 的節奏，不讓系統塞滿垃圾 |
+
+
 ## Operating rules
 
 - Preserve the boundary between context, decisions, proposals, and stable assets.

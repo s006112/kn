@@ -99,7 +99,7 @@ def process_file(file_path):
     if end_token != "0":
         cmd.extend(["-to", end_time])
     cmd.extend([
-        #"-vf", "transpose=2",  # Rotate video 90 degrees counterclockwise (useful for vertical videos).
+        #"-vf", "transpose=2",  # Rotate 90 degrees clockwise (1) counterclockwise (2)
         #"-vf", "scale=640:360",  # Resize video to 640x360.
         "-c:v", "libx264",  # Encode video with H.264.
         #"-crf", "24",  # CRF quality range is typically 18-32; smaller means better quality and larger files.

@@ -3,7 +3,7 @@ import json
 from datetime import timedelta
 import yt_dlp
 
-target_channel = "https://www.youtube.com/channel/UC8GV6XwiucpdgLxvqdS_X6w/videos"
+target_channel = "https://www.youtube.com/@nowhereman_44/videos"
 
 def get_channel_videos(channel_url):
     ydl_opts = {
