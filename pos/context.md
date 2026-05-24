@@ -1,38 +1,43 @@
-# Context
+# Context（上下文）
 
-Current focus:
-- Building a lightweight personal operating system (`pos`).
-- Exploring AI-assisted judgment asset accumulation.
-- Keeping the system minimal, low-friction, and driven by real tasks.
-- Cleaning project foundations before adding new feature routes.
-- Treating live code work as evidence for reusable code-iteration judgment.
+## 當前焦點
 
-Current concerns:
-- Avoid over-engineering.
-- Avoid rule explosion.
-- Prefer small reusable patterns.
-- Avoid AI-generated helper/function/class inflation.
-- Preserve explicit runtime boundaries.
-- Keep code iteration focused on reducing cognitive load, not only reducing line count.
-- Do not add feature routes before the underlying extension surface can absorb them cleanly.
-- Separate runtime services, file routes, queues, processors, and model policies.
+- 建立輕量級個人作業系統（`pos`）。
+- 探索 AI 輔助的判斷資產累積。
+- 保持系統最小、低摩擦，並由真實任務驅動。
+- 在新增 feature routes 前，先清理專案基礎。
+- 將實際 code work 視為可復用 code-iteration 判斷的證據。
 
-Active project direction:
-- Pause non-essential feature expansion.
-- First clean the pipeline foundation.
-- Clarify the boundary between runtime services and business pipelines.
-- Reframe scanner-like components as file intake and queue routing services.
-- Make future route expansion predictable before adding more routes.
+## 當前關切
 
-Current pipeline cleanup target:
-- Scanner services only discover files and enqueue enabled routes.
-- Workers only consume their own queues.
-- Processors only process one job type.
-- Config separates route, folder, model list, and processing policy.
+- 避免 over-engineering。
+- 避免 rule explosion。
+- 優先保留小型可復用模式。
+- 避免 AI 生成 helper、function、class 膨脹。
+- 保持明確的 runtime 邊界。
+- 讓 code iteration 專注於降低認知負荷，而不只是減少行數。
+- 在底層 extension surface 能乾淨承接之前，不新增 feature routes。
+- 區分 runtime services、file routes、queues、processors 與 model policies。
 
-Near-term priority:
-1. Rename and clarify scanner-service semantics.
-2. Make intake scanning respect enabled route toggles.
-3. Split intake logic into clear route-level sections.
-4. Clean route / folder / model naming.
-5. Revisit feature routing only after the foundation is clean.
+## 活躍專案方向
+
+- 暫停非必要 feature expansion。
+- 先清理 pipeline foundation。
+- 釐清 runtime services 與 business pipelines 的邊界。
+- 將 scanner-like components 重新定義為 file intake 與 queue routing services。
+- 在新增更多 routes 前，讓未來 route expansion 變得可預期。
+
+## 當前 Pipeline 清理目標
+
+- Scanner services 只負責發現 files 並 enqueue 已啟用的 routes。
+- Workers 只消費自己的 queues。
+- Processors 只處理單一 job type。
+- Config 區分 route、folder、model list 與 processing policy。
+
+## 近期優先順序
+
+1. 重新命名並釐清 scanner-service 語義。
+2. 讓 intake scanning 遵守已啟用的 route toggles。
+3. 將 intake logic 拆成清楚的 route-level sections。
+4. 清理 route、folder、model 命名。
+5. 在 foundation 乾淨後，再重新評估 feature routing。

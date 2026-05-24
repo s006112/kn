@@ -1,257 +1,329 @@
-# Assets
+# Assets（判斷資產）
 
-Stable reusable judgment patterns.
+穩定可復用的判斷模式。
 
-## Semantic Compression Over Defensive Completeness
+## Core Operating Principles
+
+### Complexity Compression First
 
 Pattern:
-- AI-generated code often adds local guards, fallback branches, exception blocks, and logs to appear robust.
-- This can make code locally defensible but globally harder to understand.
-- In personal/internal tools, excessive fallback handling often protects recoverable operator mistakes while making the normal path harder to simulate.
+- AI 時代的主要成本不再是生成，而是理解、約束、收斂與驗證。
+- AI 生成物只是候選毛坯，不應直接進入長期系統。
+- 人的核心責任是保留語義主權：確認因果、守住不變式、降低認知負荷。
 
 Rule:
-- Add defensive code only when it protects a real system boundary.
-- Prefer the smallest structure that preserves behavior and makes the runtime model easier to simulate.
-- Prefer visible crash over guardrail bloat for recoverable manual workflow mistakes.
+- 處理任何 AI 生成物時，先刪除、再合併、再要求剩餘部分證明必要性。
+- 無法說清「非它不可」的內容，默認不保留。
 
 Criteria:
-- The guard prevents data loss, duplicate execution, financial loss, irreversible action, silent corruption, or hard-to-diagnose failure.
-- The fallback matches business semantics.
-- The log helps future diagnosis instead of repeating obvious state.
-- The branch represents a real decision, not theoretical completeness.
-- The failure would be harder to diagnose if allowed to crash visibly.
+- 是否降低未來認知負荷？
+- 是否改善判斷質量？
+- 是否能被未來任務直接調用？
+- 是否有清楚邊界？
+- 是否避免概念膨脹？
 
 Boundary:
-- Do not remove protection around destructive operations, external side effects, money, file movement, or silent data corruption.
-- Do not add `try/except` only because an API might fail if failure should stop the current operation.
-- Do not add invalid-result branches when the default route already safely handles invalid output.
-- Do not add verbose fallback code only to handle skipped intermediate CLI steps, missing trace artifacts, or other recoverable personal workflow mistakes.
-- Keep hard guards around real file mutation, scope boundaries, destructive actions, irreversible actions, silent corruption, money, or external side effects.
+- 不保留漂亮但不可操作的概念。
+- 不把一次性感悟升級成穩定規則。
+- 不因為 AI 輸出流暢就把它納入 POS。
 
 Success criteria:
-- The code is easier to explain.
-- The failure behavior is intentional.
-- The normal path stays visible.
-- The fallback is business-semantic, not generic panic handling.
-- Personal workflow mistakes fail loudly enough to fix without adding long defensive branches.
+- 用更少概念承載更多有效行為。
+- 未來 review 更快、更準、更少重複思考。
+
 
 ## Extract Helpers Only From Real Reuse
 
-Pattern:
-- AI tends to over-abstract small local duplication into helpers.
+**模式**
 
-Rule:
-- Do not introduce a helper unless it reduces total cognitive complexity.
+- AI 容易把小範圍 local duplication 過度抽象成 helpers。
 
-Criteria:
-- The helper is used by real repeated call sites.
-- The helper names a meaningful concept.
-- The helper reduces future edit risk.
-- The helper hides mechanical detail, not business decisions.
+**規則**
 
-Boundary:
-- Do not add a helper only to hide two or three local lines.
-- Do not add a helper if readers must jump around more to understand the flow.
-- Do not extract workflow-specific logic into a vague shared helper file.
+- 除非 helper 能降低總體 cognitive complexity，否則不要引入。
 
-Success criteria:
-- The top-level flow is easier to read after extraction.
-- The helper has low-context inputs.
-- The helper does not require many parameters to recreate hidden context.
+**條件**
+
+- Helper 被真實重複 call sites 使用。
+- Helper 命名一個有意義的 concept。
+- Helper 降低未來 edit risk。
+- Helper 隱藏 mechanical detail，而不是 business decisions。
+
+**邊界**
+
+- 不要只為隱藏兩三行 local code 而新增 helper。
+- 如果 reader 需要跳轉更多地方才能理解 flow，不要新增 helper。
+- 不要把 workflow-specific logic 提取到模糊的 shared helper file。
+
+**成功標準**
+
+- Extraction 後 top-level flow 更容易閱讀。
+- Helper 具有 low-context inputs。
+- Helper 不需要大量 parameters 才能重建 hidden context。
 
 ## Optimize For Cognitive Compression, Not Raw Line Count
 
-Pattern:
-- Line-count reduction can create semantic loss.
-- Line-count increase can also hide structural bloat behind formal completeness.
+**模式**
 
-Rule:
-- Optimize for fewer concepts, clearer ownership, and easier mental simulation.
+- 減少行數可能造成 semantic loss。
+- 增加行數也可能用 formal completeness 掩蓋 structural bloat。
 
-Criteria:
-- Runtime ownership becomes clearer.
-- Execution order becomes easier to follow.
-- Behavior remains equivalent unless a change is explicitly accepted.
-- The change removes real concepts, branches, or indirection, not just whitespace.
+**規則**
 
-Boundary:
-- Do not inline meaningful concepts merely to reduce files or lines.
-- Do not keep abstractions that no longer carry useful meaning.
-- Do not accept code growth unless it buys a clearer boundary or safer behavior.
+- 優化 fewer concepts、clearer ownership 與 easier mental simulation。
 
-Success criteria:
-- The code becomes shorter or conceptually smaller.
-- Future patch risk decreases.
-- A reviewer can explain the flow with fewer moving parts.
+**條件**
+
+- Runtime ownership 變得更清楚。
+- Execution order 變得更容易跟隨。
+- 除非明確接受 behavior change，否則 behavior 保持等價。
+- 變更移除真實 concepts、branches 或 indirection，而不只是 whitespace。
+
+**邊界**
+
+- 不要為了減少 files 或 lines 而 inline 有意義的 concepts。
+- 不要保留已不再承載有用意義的 abstractions。
+- 除非 code growth 換來更清楚的 boundary 或更安全的 behavior，否則不要接受。
+
+**成功標準**
+
+- Code 變得更短，或 conceptually smaller。
+- Future patch risk 降低。
+- Reviewer 能用更少 moving parts 解釋 flow。
 
 ## No Custom OOP Unless External Interface Requires It
 
-Pattern:
-- Personal code should default to explicit functions, small modules, and plain data structures.
-- Custom classes often hide state and invite Manager/Service/Controller-style inflation.
+**模式**
 
-Rule:
-- Do not add custom object-oriented classes unless an external library or framework requires a class, subclass, handler, or callback object.
+- Personal code 應預設使用 explicit functions、small modules 與 plain data structures。
+- Custom classes 常隱藏狀態，並誘發 Manager、Service、Controller-style inflation。
 
-Criteria:
-- A class is allowed only when external code requires a class-shaped interface.
-- The class must remain a thin adapter.
-- Core business logic should stay in explicit functions whenever practical.
+**規則**
 
-Boundary:
-- Do not add classes for architecture neatness, grouping functions, lifecycle wrapping, state containers, managers, services, controllers, orchestrators, registries, or future extensibility.
-- Do not replace a class with a giant implicit object hidden in a dict.
-- If shared runtime state is needed, prefer plain concrete names and visible function inputs/outputs.
+- 除非 external library 或 framework 要求 class、subclass、handler 或 callback object，否則不新增 custom object-oriented classes。
 
-Success criteria:
-- Reading the top-level flow does not require following `self.*` chains.
-- AI patching cannot introduce abstraction layers without a hard reason.
-- Runtime ownership remains explicit and locally reviewable.
+**條件**
+
+- 只有 external code 要求 class-shaped interface 時，class 才允許存在。
+- Class 必須保持 thin adapter。
+- Core business logic 應盡量留在 explicit functions 中。
+
+**邊界**
+
+- 不要為 architecture neatness、grouping functions、lifecycle wrapping、state containers、managers、services、controllers、orchestrators、registries 或 future extensibility 而新增 classes。
+- 不要用藏在 dict 裡的巨大 implicit object 取代 class。
+- 若需要 shared runtime state，優先使用 plain concrete names 與可見 function inputs/outputs。
+
+**成功標準**
+
+- 閱讀 top-level flow 時，不需要追蹤 `self.*` chains。
+- AI patching 無法在沒有硬理由的情況下引入 abstraction layers。
+- Runtime ownership 保持 explicit 且可局部 review。
 
 ## Treat Public Function Signatures As Contracts
 
-Pattern:
-- AI refactor often changes interface shape accidentally.
+**模式**
 
-Rule:
-- Before changing a public or test-facing function signature, identify likely callers and compatibility impact.
+- AI refactor 常意外改變 interface shape。
 
-Criteria:
-- Keep the old entry point if compatibility matters.
-- Make intentional breaks explicit.
-- Update evaluation code when behavior or interface shape legitimately changes.
+**規則**
 
-Boundary:
-- Internal-only functions can change more freely.
-- Public, test-facing, or cross-module functions require stricter review.
+- 在改動 public 或 test-facing function signature 前，先識別可能 callers 與 compatibility impact。
 
-Success criteria:
-- Evaluation failures reflect real behavior changes, not accidental interface drift.
-- Callers remain aligned.
-- Compatibility shims are deliberate and temporary, not accidental clutter.
+**條件**
+
+- 如果 compatibility 重要，保留舊 entry point。
+- 將 intentional breaks 明確化。
+- 當 behavior 或 interface shape 合法改變時，同步更新 evaluation code。
+
+**邊界**
+
+- Internal-only functions 可以更自由地改動。
+- Public、test-facing 或 cross-module functions 需要更嚴格 review。
+
+**成功標準**
+
+- Evaluation failures 反映真實 behavior changes，而不是 accidental interface drift。
+- Callers 保持一致。
+- Compatibility shims 是有意識且暫時的，而不是 accidental clutter。
 
 ## Build Extension Foundation Before Extension Features
 
-Pattern:
-- Adding a useful feature before the foundation is clean often creates another special case.
+**模式**
 
-Rule:
-- Fix extension surfaces before adding extension features.
+- 在 foundation 乾淨前新增有用 feature，常會創造另一個 special case。
 
-Criteria:
-- The new feature requires a route, queue, processor, model group, folder, or runtime thread.
-- Existing ownership boundaries are unclear.
-- The feature would copy a special case instead of following a clean template.
+**規則**
 
-Boundary:
-- Do not block small bug fixes.
-- Do not use foundation cleanup as an excuse for unlimited refactor.
-- Feature pause is justified only when the feature exposes real structural debt.
+- 先修 extension surfaces，再新增 extension features。
 
-Success criteria:
-- New routes can be added by following an existing pattern.
-- Route, queue, worker, processor, and model policy responsibilities are visible.
-- The next feature does not require another one-off path.
+**條件**
+
+- New feature 需要 route、queue、processor、model group、folder 或 runtime thread。
+- 既有 ownership boundaries 不清楚。
+- Feature 會複製 special case，而不是遵循乾淨 template。
+
+**邊界**
+
+- 不要阻擋小 bug fixes。
+- 不要把 foundation cleanup 當作 unlimited refactor 的藉口。
+- 只有當 feature 暴露真實 structural debt 時，feature pause 才合理。
+
+**成功標準**
+
+- New routes 可以依照既有 pattern 新增。
+- Route、queue、worker、processor 與 model policy responsibilities 清楚可見。
+- 下一個 feature 不需要另一條 one-off path。
 
 ## Separate Pipeline Concepts Before Optimizing Code Shape
 
-Pattern:
-- Runtime services, file routes, workers, processors, and model policies are often mixed into one layer.
+**模式**
 
-Rule:
-- Separate concepts before deciding whether to split files, extract helpers, or rewrite flow.
+- Runtime services、file routes、workers、processors 與 model policies 常被混入同一層。
 
-Criteria:
-- Runtime service: long-lived loop, watcher, or scheduler.
-- File route: intake path from folder or file type to queue.
-- Worker: queue consumer.
-- Processor: single-job executor.
-- Model policy: model list, routing behavior, merge behavior, and distillation behavior.
+**規則**
 
-Boundary:
-- Do not create heavy framework abstractions.
-- Do not split files only for visual neatness.
-- Conceptual separation can exist before file separation.
+- 在決定 split files、extract helpers 或 rewrite flow 前，先區分 concepts。
 
-Success criteria:
-- Each component can be named by responsibility.
-- Toggles and queues match the operator's mental model.
-- Future route expansion has a clear insertion point.
+**條件**
+
+- Runtime service：long-lived loop、watcher 或 scheduler。
+- File route：從 folder 或 file type 到 queue 的 intake path。
+- Worker：queue consumer。
+- Processor：single-job executor。
+- Model policy：model list、routing behavior、merge behavior 與 distillation behavior。
+
+**邊界**
+
+- 不要建立 heavy framework abstractions。
+- 不要只為 visual neatness split files。
+- Conceptual separation 可以先於 file separation 存在。
+
+**成功標準**
+
+- 每個 component 都能按 responsibility 命名。
+- Toggles 與 queues 符合 operator 的 mental model。
+- Future route expansion 有清楚 insertion point。
 
 ## Name Components By Responsibility
 
-Pattern:
-- Misnamed components cause repeated design confusion even when the code works.
+**模式**
 
-Rule:
-- Rename components when the current name describes mechanism instead of responsibility.
+- 即使 code 能運作，命名錯誤的 components 仍會造成反覆 design confusion。
 
-Criteria:
-- The name forces repeated explanation.
-- The component is mistaken for another architectural layer.
-- The name hides ownership, boundary, or lifecycle.
-- A better name reduces future patch risk.
+**規則**
 
-Boundary:
-- Do not rename stable public APIs casually.
-- Do not rename only for style preference.
-- Rename only when semantic clarity improves future maintenance.
+- 當現有名稱描述 mechanism，而不是 responsibility 時，重新命名 component。
 
-Success criteria:
-- The name tells the reader what the component owns.
-- Scheduling mechanism does not masquerade as business purpose.
-- Future patches are less likely to attach logic to the wrong layer.
+**條件**
+
+- 名稱迫使人反覆解釋。
+- Component 被誤認為另一個 architectural layer。
+- 名稱隱藏 ownership、boundary 或 lifecycle。
+- 更好的名稱能降低 future patch risk。
+
+**邊界**
+
+- 不要隨意重新命名 stable public APIs。
+- 不要只因 style preference 重新命名。
+- 只有在 semantic clarity 能改善 future maintenance 時才重新命名。
+
+**成功標準**
+
+- 名稱告訴 reader 這個 component 擁有什麼。
+- Scheduling mechanism 不偽裝成 business purpose。
+- Future patches 較不容易把 logic 掛到錯誤 layer。
 
 ## Repo Polish Agent Pattern
 
-Pattern:
-- Use a bounded judgment loop before allowing repo-changing automation.
+**模式**
 
-Loop:
-- Plan: generate a minimal patch plan from task context, long-term rules, and allowed files.
-- Review: critique the plan against task constraints, boundaries, and risks.
-- Revise: produce a clean standalone plan that can be accepted or rejected.
-- Accept: human approval promotes the chosen plan into an accepted execution artifact.
+- 在允許 repo-changing automation 前，使用有邊界的 judgment loop。
 
-Boundary:
-- Runtime trace is evidence, not a stable asset.
-- Accepted plans are execution artifacts, not automatically permanent rules.
-- Long-term assets should contain reusable patterns, not temporary run outputs.
-- Model output must remain separate from human acceptance.
+**流程**
 
-Rules:
-- Keep planning separate from execution.
-- Keep review separate from revision.
-- Keep model output separate from human acceptance.
-- Do not automate repo edits before the plan is accepted.
-- Do not expand agent capability faster than the quality of its judgment loop.
+- Plan：根據 task context、long-term rules 與 allowed files，生成 minimal patch plan。
+- Review：依照 task constraints、boundaries 與 risks 批判 plan。
+- Revise：產生乾淨、可接受或可拒絕的 standalone plan。
+- Accept：human approval 將被選定的 plan 提升為 accepted execution artifact。
 
-Success criteria:
-- The plan is minimal.
-- Touched files are explicit.
-- Behavior-preservation boundary is clear.
-- Risks and stop conditions are stated.
-- Verification commands are included.
-- The accepted plan is clean enough to guide human execution or a future patch agent.
+**邊界**
 
+- Runtime trace 是 evidence，不是 stable asset。
+- Accepted plans 是 execution artifacts，不會自動變成 permanent rules。
+- Long-term assets 應包含 reusable patterns，而不是 temporary run outputs。
+- Model output 必須與 human acceptance 保持分離。
 
+**規則**
 
+- Planning 與 execution 保持分離。
+- Review 與 revision 保持分離。
+- Model output 與 human acceptance 保持分離。
+- Plan 被接受前，不自動化 repo edits。
+- Agent capability 不應比 judgment loop 的品質擴張得更快。
 
-# Rule: Complex Problem Methodology
+**成功標準**
 
-When facing a complex problem, do not jump to solution.
+- Plan 是 minimal。
+- Touched files 明確。
+- Behavior-preservation boundary 清楚。
+- Risks 與 stop conditions 已說明。
+- Verification commands 已包含。
+- Accepted plan 足夠乾淨，可指導 human execution 或 future patch agent。
 
-First define:
-1. What system/object is this?
-2. What state needs to be changed?
-3. What is the success criterion?
-4. What variables affect the result?
-5. What constraints cannot be violated?
-6. What real-world scenarios may occur?
-7. What are the highest-risk failure points?
-8. What should be done first based on risk, cost, and expected return?
-9. How will the result be verified?
-10. What reusable rule/template/checklist can be extracted after completion?
+## Complex Problem Methodology
 
+**規則**
 
-Archive 不應由人類即時主觀判斷主導，而應由系統根據任務復用、結果反饋、遷移能力、失效記錄與長期價值自動學習保存策略。人類保留 objective、constraint、evaluation 和 final approval，而不是手工控制每個分類與取捨。
+面對複雜問題時，不要直接跳到 solution。
+
+先定義：
+
+1. 這是什麼 system/object？
+2. 哪個 state 需要被改變？
+3. Success criterion 是什麼？
+4. 哪些 variables 會影響結果？
+5. 哪些 constraints 不能被違反？
+6. 可能出現哪些 real-world scenarios？
+7. 最高風險的 failure points 是什麼？
+8. 根據 risk、cost 與 expected return，應先做什麼？
+9. 如何驗證結果？
+10. 完成後能提取什麼 reusable rule、template 或 checklist？
+
+## Archive Learning Strategy
+
+**規則**
+
+Archive 不應由人類即時主觀判斷主導，而應由系統根據 task reuse、result feedback、transferability、failure records 與 long-term value 自動學習保存策略。
+
+人類保留 objective、constraint、evaluation 與 final approval，而不是手工控制每個分類與取捨。
+
+## Guidance / Verification Checklist
+
+### 1. Learning Engine
+
+- 這個任務由誰處理：LLM、script、human 還是 agent？
+- 它需要吸收什麼 input？
+- 它產出什麼 output？
+
+### 2. Guidance Layer
+
+- 什麼算好？
+- 什麼算壞？
+- 什麼錯誤必須避免？
+- 有哪些 domain-specific rules？
+
+### 3. Verification Layer
+
+- 如何驗證 output？
+- 有沒有 test、compiler、rubric 或 review checklist？
+- 失敗時如何 rollback 或 retry？
+
+### 4. Asset Loop
+
+- 這次經驗能沉澱成什麼？
+- Rule？
+- Template？
+- Failure case？
+- Reusable example？
+

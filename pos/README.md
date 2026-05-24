@@ -1,49 +1,49 @@
-# pos
+# POS
 
-Personal operating system for reusable judgment.
+用於保存可復用判斷的個人作業系統。
 
-## Purpose
+## 目的
 
-`pos` is not a note dump. It is a small operating layer for preserving judgment that improves future code review, refactor decisions, project steering, and AI-agent collaboration.
+`pos` 不是筆記堆放區，而是一個小型作業層，用來保存能改善未來 code review、重構決策、專案方向判斷與 AI-agent 協作的判斷資產。
 
-It stores:
+它保存：
 
-- current working context
-- accepted decisions
-- pending proposals
-- stable reusable judgment assets
-- rules for AI agents working in this folder
+- 當前工作上下文
+- 已接受的決策
+- 待驗證的提案
+- 穩定可復用的判斷資產
+- AI agents 在此資料夾中工作時應遵守的規則
 
-## Core principle
+## 核心原則
 
-Evolve through real work, not theory.
+通過真實工作演化，而不是通過理論演化。
 
-A thought becomes useful only when it helps future judgment. Do not turn every observation into a rule. Do not add structure because it looks organized. Add only what reduces future cognitive load or improves decision quality.
+一個想法只有在能幫助未來判斷時才有用。不要把每個觀察都變成規則。不要因為看起來更有結構就新增結構。只加入能降低未來認知負荷或提高決策品質的內容。
 
-## File roles
+## 檔案角色
 
-- `context.md`: current focus, active concerns, near-term direction.
-- `decisions.md`: accepted decisions with reasons and boundaries.
-- `proposals.md`: candidate rules extracted from real work but not yet stable.
-- `assets.md`: stable reusable patterns and rules.
-- `AGENTS.md`: operating rules for AI agents editing or using this folder.
+- `context.md`：當前焦點、活躍關切、近期方向。
+- `decisions.md`：已接受的決策，以及原因與邊界。
+- `proposals.md`：從真實工作中提取、但尚未穩定的候選規則，還沒驗證的想法。
+- `assets.md`：穩定可復用的模式與規則。
+- `AGENTS.md`：AI agents 編輯或使用此資料夾時的作業規則。
 
-## Boundary
+## 邊界
 
-The system should stay small.
+這個系統應保持小而清晰。
 
-Good POS content:
+好的 POS 內容：
 
-- improves future review
-- clarifies responsibility boundaries
-- prevents repeated bad patterns
-- captures reusable judgment from real work
-- helps AI produce smaller, cleaner, more bounded changes
+- 改善未來 review
+- 釐清責任邊界
+- 避免重複出現壞模式
+- 從真實工作中捕捉可復用判斷
+- 幫助 AI 產出更小、更乾淨、邊界更清楚的變更
 
-Bad POS content:
+壞的 POS 內容：
 
-- records temporary implementation details
-- preserves one-off opinions as rules
-- creates framework language without operational value
-- adds categories before repeated use proves the need
-- makes future work slower to understand
+- 記錄臨時實作細節
+- 把一次性意見保存成規則
+- 創造沒有操作價值的框架語言
+- 在重複使用證明需求之前新增分類
+- 讓未來工作更難理解

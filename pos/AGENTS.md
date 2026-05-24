@@ -1,29 +1,29 @@
-# pos/AGENTS.md
+# POS Agent 規則
 
-This folder stores reusable judgment assets, not ordinary notes.
+此資料夾保存可復用判斷資產，而不是普通筆記。
 
+## 核心取向
 
-| 原則   | 在 POS 裡的落地                                  |
-| ---- | ------------------------------------------- |
-| 精良單元 | 每個 principle / rule / concept 都要能被調用，不只是被收藏 |
-| 簡潔結構 | 少分類、少層級、少概念膨脹，保留最短調用路徑                      |
-| 冗餘空間 | 保留 review、distill、merge、delete 的節奏，不讓系統塞滿垃圾 |
+| 原則 | 在 POS 中的落地 |
+| --- | --- |
+| 精良單元 | 每個 principle、rule、concept 都要能被調用，不只是被收藏。 |
+| 簡潔結構 | 少分類、少層級、少概念膨脹，保留最短調用路徑。 |
+| 冗餘空間 | 保留 review、distill、merge、delete 的節奏，不讓系統塞滿垃圾。 |
 
+## 作業規則
 
-## Operating rules
+- 保持 context、decisions、proposals 與 stable assets 之間的邊界。
+- 未經明確人工批准，不得將 proposals 提升為 assets。
+- 不要把臨時實作細節轉成永久規則。
+- 除非重複使用證明有必要，不要擴張 POS 結構。
+- 優先保留小而持久的判斷模式，而不是大型理論框架。
+- 不確定時，先把內容放入 proposal，而不是 asset。
 
-- Preserve the boundary between context, decisions, proposals, and stable assets.
-- Do not promote proposals into assets without explicit human approval.
-- Do not convert temporary implementation details into permanent rules.
-- Do not expand POS structure unless repeated usage proves the need.
-- Prefer small durable judgment patterns over large theoretical frameworks.
-- When uncertain, store the item as a proposal, not an asset.
+## Asset 品質
 
-## Asset quality
+穩定 asset 必須幫助未來 code review、重構、專案方向判斷或 AI-agent 行為。
 
-A stable asset must help future code review, refactor, project steering, or AI-agent behavior.
-
-Each asset should normally include:
+每個 asset 通常應包含：
 
 - Pattern
 - Rule
@@ -31,33 +31,33 @@ Each asset should normally include:
 - Boundary
 - Success criteria
 
-Keep entries short, scoped, and reusable.
+條目應保持短小、有邊界、可復用。
 
-## Code-iteration capture
+## Code-Iteration 捕捉
 
-Extract rules only from real code work.
+只從真實 code work 中提取規則。
 
-Do not preserve every frustration as a rule. Capture only the part that is likely to recur and likely to improve future decisions.
+不要把每次挫折都保存為規則。只捕捉可能重複出現，且可能改善未來決策的部分。
 
-Separate:
+需要區分：
 
-- runtime trace from accepted artifact
-- accepted decision from reusable rule
-- local implementation fact from general pattern
-- proposal from stable asset
+- runtime trace 與 accepted artifact
+- accepted decision 與 reusable rule
+- local implementation fact 與 general pattern
+- proposal 與 stable asset
 
-## AI-agent discipline
+## AI-Agent 紀律
 
-AI must optimize for semantic compression, not defensive verbosity.
+AI 必須優化 semantic compression，而不是 defensive verbosity。
 
-Before adding code, helpers, wrappers, classes, branches, validations, or error handling, identify the real responsibility being protected.
+在新增 code、helpers、wrappers、classes、branches、validations 或 error handling 前，先識別真正需要保護的責任。
 
-Reject changes that add:
+拒絕以下變更：
 
-- local formal completeness without system value
-- defensive branches that do not protect data, money, irreversible action, or silent corruption
-- helper functions that reduce line count but increase navigation cost
-- abstraction names that hide concrete runtime ownership
-- framework-shaped structure before repeated use proves the need
+- 只有局部形式完整、但沒有系統價值的變更
+- 不保護 data、money、irreversible action 或 silent corruption 的 defensive branches
+- 只減少行數、卻增加導航成本的 helper functions
+- 隱藏具體 runtime ownership 的 abstraction names
+- 在重複使用證明需求前建立 framework-shaped structure
 
-Default to the smallest behavior-preserving change that makes the runtime model easier to simulate.
+預設採用最小的 behavior-preserving change，讓 runtime model 更容易被心智模擬。

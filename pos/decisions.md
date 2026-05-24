@@ -1,174 +1,210 @@
-# Decisions
+# Decisions（已接受決策）
 
-Accepted decisions with reasons and boundaries.
+已接受的決策，以及其原因與邊界。
 
-## 2026-05-08 — Keep `pos` inside the existing private repo
+## 2026-05-08 - 將 `pos` 保留在現有 private repo 中
 
-Decision:
-- Start `pos` inside the existing private repo instead of creating a new repository.
+**決策**
 
-Reason:
-- Minimize friction.
-- Start immediately.
-- Avoid premature architecture.
-- Prioritize real usage over structural purity.
-- Let the system evolve slowly through real tasks.
+- 先在現有 private repo 中建立 `pos`，而不是建立新 repository。
 
-Boundary:
-- Do not split `pos` into a separate repo until repeated usage proves the benefit.
+**原因**
 
-## 2026-05-09 — Capture code-iteration principles as proposals first
+- 降低摩擦。
+- 立即開始使用。
+- 避免 premature architecture。
+- 優先真實使用，而不是結構純度。
+- 讓系統通過真實任務緩慢演化。
 
-Decision:
-- Capture code-iteration principles from real refactor work into proposals before promoting them into stable assets.
+**邊界**
 
-Reason:
-- The principles came from real code review and cleanup.
-- They are useful but need repeated validation.
-- Stable assets should not expand too quickly.
+- 在重複使用證明有明確收益之前，不將 `pos` 拆成獨立 repo。
 
-Boundary:
-- Repeated validated patterns may be promoted later with human approval.
+## 2026-05-09 - 先將 code-iteration principles 捕捉為 proposals
 
-## 2026-05-09 — Do not extract agent-specific helpers prematurely
+**決策**
 
-Decision:
-- Keep agent workflow helpers inside `agent/agent.py` while the agent is still small and read-only.
-- Extract only when repeated usage appears across at least two real call sites.
-- Generic file IO helpers may belong in shared helper modules.
-- Agent-specific parsing, POS loading, and prompt assembly should stay near the agent workflow.
+- 從真實 refactor work 中提取 code-iteration principles 時，先放入 proposals，再考慮提升為 stable assets。
 
-Reason:
-- Avoid vague helper collections.
-- Preserve local readability of the running flow.
-- Prevent helper sprawl caused by visual tidiness instead of real reuse.
-- Keep shared helpers limited to stable, generic, low-context operations.
+**原因**
 
-Boundary:
-- Good helper extraction:
-  - generic text read/write
-  - optional file read
-  - safe filename or path handling
-  - repeated low-context utilities used by multiple modules
-- Bad helper extraction:
-  - single-caller parsing helpers
-  - POS-loading helpers with no second caller
-  - prompt assembly helpers that hide workflow decisions
-  - helpers requiring many parameters to recreate local context
+- 這些 principles 來自真實 code review 與 cleanup。
+- 它們有用，但需要重複驗證。
+- Stable assets 不應過快擴張。
 
-Rule:
-- Extract from real repetition, not imagined future reuse.
+**邊界**
 
-## 2026-05-09 — Establish the repo polish agent loop
+- 經過重複驗證的 patterns，可在人工批准後提升為 assets。
 
-Decision:
-- Establish the repo polish agent loop as Plan → Review → Revise → Accept.
-- Keep the agent in planning and judgment mode before adding execution automation.
-- Treat `agent/final_plan.md` as the human-accepted execution artifact.
-- Treat trace files as runtime evidence, not stable assets.
+## 2026-05-09 - 不要過早提取 agent-specific helpers
 
-Reason:
-- The goal is not a flashy autonomous coding agent.
-- The goal is structured, reviewable, reusable repo polishing.
-- Planning quality must stabilize before patch execution is automated.
-- Human approval remains the gate between model output and repo-changing action.
+**決策**
 
-Boundary:
-- Agent may:
-  - read task context
-  - read POS context
-  - read allowed repo files
-  - generate a minimal patch plan
-  - review the plan
-  - revise the plan
-  - save an accepted final plan after human approval
-- Agent must not:
-  - edit repo files automatically
-  - apply patches automatically
-  - promote runtime trace into POS assets automatically
-  - expand scope beyond allowed files
-  - treat model output as accepted without human approval
+- 在 agent 仍然很小且 read-only 時，將 agent workflow helpers 保留在 `agent/agent.py` 中。
+- 只有當至少兩個真實 call sites 出現重複使用時，才提取 helper。
+- 通用 file IO helpers 可以放入 shared helper modules。
+- Agent-specific parsing、POS loading 與 prompt assembly 應靠近 agent workflow。
 
-Rule:
-- Do not add execution automation until the planning loop consistently produces clean, bounded, verifiable plans.
+**原因**
 
-## 2026-05-10 — Pause GOSSIP extraction shortcut until foundation is clean
+- 避免模糊的 helper collections。
+- 保留運行流程的局部可讀性。
+- 防止因視覺整潔而不是實際復用導致 helper sprawl。
+- 讓 shared helpers 僅限於穩定、通用、低上下文的操作。
 
-Decision:
-- Pause the planned GOSSIP extraction shortcut.
-- Clean the pipeline foundation first.
-- Treat route expansion as blocked until intake, queue, worker, and processor boundaries are clearer.
+**邊界**
 
-Reason:
-- The shortcut is directionally useful but would currently increase structural debt.
-- The runtime mixes scanner service, file intake route, processing worker, queue ownership, and model policy.
-- Adding a route now would create another special case instead of a reusable extension pattern.
+好的 helper extraction：
 
-Boundary:
-- Do not add GOSSIP routing yet.
-- Do not change pretext, extract, audio, or ttml processing internals as part of foundation cleanup.
-- First clarify orchestration, scanner semantics, route enablement, and naming.
-- Feature routes may resume after the foundation can absorb them cleanly.
+- 通用 text read/write
+- optional file read
+- 安全 filename 或 path handling
+- 被多個 modules 使用的重複低上下文 utilities
 
-Rule:
-- Build the extension foundation before adding extension features.
+壞的 helper extraction：
 
-## 2026-05-10 — Treat `PeriodicScanner` as file intake, not a business pipeline
+- single-caller parsing helpers
+- 沒有第二個 caller 的 POS-loading helpers
+- 隱藏 workflow decisions 的 prompt assembly helpers
+- 需要大量 parameters 才能重建 local context 的 helpers
 
-Decision:
-- Treat `PeriodicScanner` as a misnamed runtime service, not a business pipeline.
-- Reframe it as file intake and queue routing.
+**規則**
 
-Reason:
-- It supplies multiple pipelines instead of processing one business route.
-- Disabling workers while scanner still enqueues files creates semantic mismatch.
-- The name describes timing behavior, not responsibility.
-- Future routes need a clear intake location.
+- 從真實重複中提取，而不是從想像中的未來復用中提取。
 
-Boundary:
-- Rename conceptually toward file intake responsibility.
-- Scanner should only discover files and enqueue enabled routes.
-- Workers should only consume queues.
-- Processors should only process jobs.
-- Do not make the scanner a processor.
+## 2026-05-09 - 建立 repo polish agent loop
 
-Rule:
-- Name runtime components by responsibility, not by scheduling mechanism.
+**決策**
 
-## 2026-05-10 — Forbid custom OOP by default
+- 將 repo polish agent loop 建立為 Plan -> Review -> Revise -> Accept。
+- 在新增 execution automation 前，讓 agent 保持 planning 與 judgment mode。
+- 將 `agent/final_plan.md` 視為人工接受的 execution artifact。
+- 將 trace files 視為 runtime evidence，而不是 stable assets。
 
-Decision:
-- Establish a strict no-custom-OOP rule for the personal codebase.
-- The only accepted exception is when an external library or framework requires a class, subclass, handler, or callback object.
+**原因**
 
-Reason:
-- Keep execution flow explicit.
-- Prevent AI-generated Manager/Service/Controller abstraction layers.
-- Avoid hidden state behind `self.*`.
-- Improve local readability, patch review, and long-term maintainability.
+- 目標不是華麗的 autonomous coding agent。
+- 目標是結構化、可 review、可復用的 repo polishing。
+- 在 patch execution 自動化前，planning quality 必須先穩定。
+- Human approval 仍然是 model output 與 repo-changing action 之間的 gate。
 
-Boundary:
-- Do not use custom classes for grouping functions, architecture neatness, lifecycle wrappers, state containers, orchestrators, registries, or future extensibility.
-- If a class is forced by an external interface, keep it thin and push core logic back into functions.
+**邊界**
 
-Rule:
-- No custom OOP unless required by an external interface.
+Agent 可以：
 
-## 2026-05-12 — Treat defensive code as a semantic boundary decision
+- 讀取 task context
+- 讀取 POS context
+- 讀取 allowed repo files
+- 生成 minimal patch plan
+- review plan
+- revise plan
+- 在 human approval 後保存 accepted final plan
 
-Decision:
-- Do not let AI add defensive branches, fallback paths, or exception handling by default.
-- Require each defensive structure to justify the real boundary it protects.
+Agent 不得：
 
-Reason:
-- AI coding often creates local formal completeness while increasing global complexity.
-- Many guards, logs, and invalid-state branches do not protect real data or behavior.
-- The goal is code that is easier to mentally simulate, not code that appears safe in isolation.
+- 自動編輯 repo files
+- 自動 apply patches
+- 自動將 runtime trace 提升為 POS assets
+- 擴張到 allowed files 之外的範圍
+- 在沒有 human approval 時將 model output 視為 accepted
 
-Boundary:
-- Keep defensive code when it protects data integrity, irreversible actions, external side effects, financial loss, duplicate execution, or silent corruption.
-- Remove or reject defensive code when the default route already handles the case safely.
-- A fallback should express business semantics, not generic fear.
+**規則**
 
-Rule:
-- Defensive code must earn its place by protecting a real system boundary.
+- 在 planning loop 能穩定產生乾淨、有邊界、可驗證的 plans 之前，不新增 execution automation。
+
+## 2026-05-10 - 在 foundation 乾淨前暫停 GOSSIP extraction shortcut
+
+**決策**
+
+- 暫停計畫中的 GOSSIP extraction shortcut。
+- 先清理 pipeline foundation。
+- 在 intake、queue、worker 與 processor 邊界更清楚之前，將 route expansion 視為 blocked。
+
+**原因**
+
+- 這個 shortcut 方向上有用，但目前會增加 structural debt。
+- Runtime 混合了 scanner service、file intake route、processing worker、queue ownership 與 model policy。
+- 現在新增 route 會創造另一個 special case，而不是可復用的 extension pattern。
+
+**邊界**
+
+- 暫不新增 GOSSIP routing。
+- 不在 foundation cleanup 中改動 pretext、extract、audio 或 ttml processing internals。
+- 先釐清 orchestration、scanner semantics、route enablement 與 naming。
+- Foundation 能乾淨承接後，再恢復 feature routes。
+
+**規則**
+
+- 先建立 extension foundation，再新增 extension features。
+
+## 2026-05-10 - 將 `PeriodicScanner` 視為 file intake，而不是 business pipeline
+
+**決策**
+
+- 將 `PeriodicScanner` 視為命名不當的 runtime service，而不是 business pipeline。
+- 將它重新框定為 file intake 與 queue routing。
+
+**原因**
+
+- 它供給多個 pipelines，而不是處理單一 business route。
+- Workers 停用時 scanner 仍 enqueue files，會造成語義不一致。
+- 這個名稱描述的是 timing behavior，而不是 responsibility。
+- 未來 routes 需要清楚的 intake location。
+
+**邊界**
+
+- 概念上往 file intake responsibility 重新命名。
+- Scanner 只應發現 files，並 enqueue 已啟用的 routes。
+- Workers 只應消費 queues。
+- Processors 只應處理 jobs。
+- 不要讓 scanner 變成 processor。
+
+**規則**
+
+- 依 responsibility 命名 runtime components，而不是依 scheduling mechanism 命名。
+
+## 2026-05-10 - 預設禁止 custom OOP
+
+**決策**
+
+- 為個人 codebase 建立嚴格的 no-custom-OOP 規則。
+- 唯一例外是 external library 或 framework 要求 class、subclass、handler 或 callback object。
+
+**原因**
+
+- 保持 execution flow 明確。
+- 防止 AI 生成 Manager、Service、Controller 抽象層。
+- 避免將狀態隱藏在 `self.*` 後面。
+- 改善局部可讀性、patch review 與長期 maintainability。
+
+**邊界**
+
+- 不要為了 grouping functions、architecture neatness、lifecycle wrappers、state containers、orchestrators、registries 或 future extensibility 而使用 custom classes。
+- 如果 class 是 external interface 強制要求的，保持它很薄，並將核心邏輯推回 functions。
+
+**規則**
+
+- 除非 external interface 要求，否則不使用 custom OOP。
+
+## 2026-05-12 - 將 defensive code 視為 semantic boundary decision
+
+**決策**
+
+- 不讓 AI 預設新增 defensive branches、fallback paths 或 exception handling。
+- 每個 defensive structure 都必須說明它保護的真實 boundary。
+
+**原因**
+
+- AI coding 常製造局部形式完整，卻增加全局複雜度。
+- 許多 guards、logs 與 invalid-state branches 並不保護真實 data 或 behavior。
+- 目標是讓 code 更容易心智模擬，而不是讓 code 在局部看起來安全。
+
+**邊界**
+
+- 當 defensive code 保護 data integrity、irreversible actions、external side effects、financial loss、duplicate execution 或 silent corruption 時，保留它。
+- 當 default route 已能安全處理該情況時，移除或拒絕 defensive code。
+- Fallback 應表達 business semantics，而不是 generic fear。
+
+**規則**
+
+- Defensive code 必須通過保護真實 system boundary 來證明自己必要。
