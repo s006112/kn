@@ -252,3 +252,6 @@ First define:
 8. What should be done first based on risk, cost, and expected return?
 9. How will the result be verified?
 10. What reusable rule/template/checklist can be extracted after completion?
+
+
+Archive 不應由人類即時主觀判斷主導，而應由系統根據任務復用、結果反饋、遷移能力、失效記錄與長期價值自動學習保存策略。人類保留 objective、constraint、evaluation 和 final approval，而不是手工控制每個分類與取捨。

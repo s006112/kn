@@ -256,4 +256,4 @@ def get_service() -> WhisperService:
     Failure modes:
     - None (construction is lazy and does not load model weights).
     """
-    return WhisperService("large-v3-turbo")
+    return WhisperService("large-v3")
