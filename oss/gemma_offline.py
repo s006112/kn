@@ -1,14 +1,20 @@
+import os
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # ⚠️ 注意：將此路徑設置為直接包含 model.safetensors 和 tokenizer.json 的目錄。
-#MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-270m-it/snapshots/ac82b4e820549b854eebf28ce6dedaf9fdfa17b3"
-#MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752"
+#MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-270m-it/"
+MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-1b-it/"
 #MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-4b-it/"
-MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-12b-it/"
+#MODEL_PATH = "/root/.cache/huggingface/hub/google-gemma-3-12b-it/"
 
 # 設置計算設備
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+refs_main = os.path.join(MODEL_PATH, "refs", "main")
+if not os.path.exists(os.path.join(MODEL_PATH, "tokenizer.model")) and os.path.exists(refs_main):
+    with open(refs_main, "r", encoding="utf-8") as f:
+        MODEL_PATH = os.path.join(MODEL_PATH, "snapshots", f.read().strip())
 
 # 載入模型和分詞器
 tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True)
