@@ -135,7 +135,6 @@ def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename,
         os.rename(path, lock)
 
         first = content.split('\n')[0] if content else ''
-        content_length = len(content)
 
         base_name = sanitize_and_trim_filename(os.path.splitext(filename)[0])
         out_txt = os.path.join(watch_folder, base_name + pretext_suffix)
@@ -143,7 +142,7 @@ def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename,
         if not first.lstrip().startswith('<'):
             with open(out_txt, 'w', encoding='utf-8') as f:
                 f.write(content)
-            output_length = content_length
+            output_length = char_count
         else:
             dom = parse(lock)
             raw_lines = extract_text(dom.documentElement).splitlines()
