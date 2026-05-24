@@ -6,6 +6,9 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 def resolve_snapshot_path(base_cache: Path) -> Path:
     """Return the newest local snapshot directory for the requested model."""
+    if (base_cache / "config.json").exists():
+        return base_cache
+
     snapshot_root = base_cache / "snapshots"
     if not snapshot_root.exists():
         raise FileNotFoundError(f"Missing cache directory at {snapshot_root}")
@@ -21,7 +24,7 @@ def resolve_snapshot_path(base_cache: Path) -> Path:
     return snapshots[0]
 
 
-cache_root = Path("/root/.cache/huggingface/hub/models--Qwen--Qwen3-4B-Instruct-2507")
+cache_root = Path("/root/.cache/huggingface/hub/Qwen3-14B")
 model_path = resolve_snapshot_path(cache_root)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
