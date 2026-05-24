@@ -121,7 +121,7 @@ def process_ttml_pipeline(config, ttml_queue, shutdown_flag):
             ttml_queue.task_done()
 
 
-def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename, pretext_suffix: str):
+def handle_ttml(path, watch_folder, original_folder, filename_sanitizer, pretext_suffix: str):
     """Convert a TTML file to plain text and archive the original."""
     lock = path + '.processing'
     filename = os.path.basename(path)
@@ -136,7 +136,7 @@ def handle_ttml(path, watch_folder, original_folder, sanitize_and_trim_filename,
 
         first = content.split('\n')[0] if content else ''
 
-        base_name = sanitize_and_trim_filename(os.path.splitext(filename)[0])
+        base_name = filename_sanitizer(os.path.splitext(filename)[0])
         out_txt = os.path.join(watch_folder, base_name + pretext_suffix)
 
         if not first.lstrip().startswith('<'):
