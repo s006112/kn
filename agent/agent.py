@@ -15,6 +15,13 @@ python agent/agent.py --apply-patch  # step 6, includes run verify internally
 python agent/agent.py --clear-trace
 
 Workflow: plan -> review -> revise -> accept -> make/check patch -> apply patch/run verify
+
+Invariants:
+1. LLM stages produce artifacts, not direct repo mutations.
+2. Human acceptance is required before patch generation.
+3. Patch generation must be constrained by allowed files.
+4. Patch application must pass exact SEARCH/REPLACE validation.
+5. Verification commands run only from the accepted final plan.
 '''
 from __future__ import annotations
 
@@ -42,7 +49,7 @@ POS_ACTIVE_FILES = (
     "assets.md", # 已穩定、可調用的判斷規則
 )
 
-POS_ARCHIVE_FILES = (
+POS_ARCHIVE_FILES = ( # not actively used by agent, but kept for record and future reference
     "decisions.md",
     "proposals.md",
 )
@@ -76,6 +83,10 @@ def ensure_agent_data_dir() -> None:
     AGENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 def call_codex_cli(system_prompt: str, user_text: str, context_path: Path, *, timeout: int = 900) -> str:
+# Safety boundary:
+# This backend is used as a text-generation backend for planning/review/patch artifacts.
+# If Codex CLI is run with write-capable flags, it may violate the intended invariant
+# that repo mutation only happens through apply_patch().
     ensure_agent_data_dir()
     prompt_text = "\n\n".join(part for part in (system_prompt.strip(), user_text.strip()) if part)
 
@@ -86,7 +97,7 @@ def call_codex_cli(system_prompt: str, user_text: str, context_path: Path, *, ti
         cmd = [
             "codex", "exec",
             "--cd", str(REPO_ROOT),
-            "--yolo",
+            # "--yolo", Codex backend is trusted high-risk backend
             "--color", "never",
             "--model", CODEX_MODEL,
             "-c", f'model_reasoning_effort="{CODEX_REASONING_EFFORT}"',
@@ -271,7 +282,7 @@ def clear_trace() -> None:
         else:
             print(f"missing: {path}")
 
-    print("Trace cleared. s0_task.md preserved.")
+    print("Trace cleared.")
 
 
 def show_final_plan() -> None:
@@ -629,6 +640,8 @@ def revise_last_plan(task_text: str) -> str:
 
 
 def iterate_run_task(task_path: Path, task_text: str) -> None:
+    # Auto-run Step 1-3 until review approves, an unknown verdict appears, or iteration limit is reached.
+    # It intentionally reuses the same artifact paths as manual --run-task / --review-last / --revise-last.
     run_task(task_path, task_text)
     if "--dry-context" in sys.argv:
         return
