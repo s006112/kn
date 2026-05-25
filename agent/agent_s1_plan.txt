@@ -63,6 +63,9 @@
 5. Evaluation command
 6. Stop condition
 
+語言規則：
+- 用中文回答。
+
 <TASK>
 {task_text}
 </TASK>

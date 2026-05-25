@@ -31,7 +31,7 @@ CONFIG = {
         "CORE": [
             "gpt-5.4-mini",  # 
             "gemini-3.5-flash",  # gemini-3.1-pro-preview"
-            "gpt-5.4",
+            "gpt-5.5",
         ],
         "OTHER": [
             "gpt-5.4-mini",  # grok-4.3
@@ -45,7 +45,7 @@ CONFIG = {
         "PRETEXT": True,
         "EXTRACT": True,
         "WIKI": True,
-        "YTD": False,
+        "YTD": True,
     },
     "INTERVALS": {
         "SCAN_SECONDS": 60,

@@ -26,7 +26,7 @@ Review criteria：
 - 是否清楚區分 ownership boundaries？
 
 語言規則：
-- 除非 <TASK> 明確要求其他語言，否則用中文回答。
+- 中文回答。
 
 輸出格式：
 1. Verdict

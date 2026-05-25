@@ -27,7 +27,7 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from .helper_files import release_text_file_permissions
 
@@ -43,7 +43,7 @@ _cleaning_stats = {
 }
 
 
-def get_cleaning_stats() -> Dict[str, any]:
+def get_cleaning_stats() -> Dict[str, Any]:
     """Return a snapshot of aggregated cleaning statistics."""
     return _cleaning_stats.copy()
 
@@ -76,7 +76,7 @@ def clean_dead_links(
     create_backup: bool = True,
     dry_run: bool = False,
     max_files: int = 50,
-) -> Dict[str, any]:
+) -> Dict[str, Any]:
     """Move ontology notes and clean broken wikilinks from selected Markdown files."""
     global _cleaning_stats
 
@@ -150,7 +150,7 @@ class WikilinkCleaner:
         if self.backup_enabled:
             self.backup_dir.mkdir(parents=True, exist_ok=True)
 
-    def get_stats(self) -> Dict[str, any]:
+    def get_stats(self) -> Dict[str, Any]:
         """Return a snapshot of stats for this cleaner instance."""
         return self.stats.copy()
 
@@ -159,11 +159,10 @@ class WikilinkCleaner:
         target_files: List[Path] = []
 
         if not self.target_dir.exists():
-            if self.logger:
-                self.logger.error(
-                    "WikilinkCleaner: Target directory does not exist: %s",
-                    short_log_name(self.target_dir),
-                )
+            self.logger.error(
+                "WikilinkCleaner: Target directory does not exist: %s",
+                short_log_name(self.target_dir),
+            )
             return target_files
 
         search_specs = [
@@ -176,24 +175,21 @@ class WikilinkCleaner:
             for file_path in self.target_dir.glob(pattern):
                 if file_path.is_file():
                     target_files.append(file_path)
-                    if self.logger:
-                        self.logger.debug(
-                            "WikilinkCleaner: %s: %s", msg, short_log_name(file_path.name)
-                        )
+                    self.logger.debug(
+                        "WikilinkCleaner: %s: %s", msg, short_log_name(file_path.name)
+                    )
 
         if len(target_files) > self.max_files:
             target_files = target_files[: self.max_files]
-            if self.logger:
-                self.logger.info(
-                    "WikilinkCleaner: Limited to %d files per cleaning cycle",
-                    self.max_files,
-                )
-
-        if self.logger:
-            self.logger.debug(
-                "WikilinkCleaner: Found %d target markdown files to process",
-                len(target_files),
+            self.logger.info(
+                "WikilinkCleaner: Limited to %d files per cleaning cycle",
+                self.max_files,
             )
+
+        self.logger.debug(
+            "WikilinkCleaner: Found %d target markdown files to process",
+            len(target_files),
+        )
         return target_files
 
     def get_existing_files(self, directory: Path) -> Set[str]:

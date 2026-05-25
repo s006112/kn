@@ -28,6 +28,9 @@ system > this prompt > target file evidence
 3. 否則，如果安全，釐清最小的 confusing local boundary。
 4. 否則，寫一個 narrow inspection-only task。
 
+語言規則：
+- 用中文回答。
+
 輸出格式：
 
 # Task
