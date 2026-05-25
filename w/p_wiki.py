@@ -396,51 +396,34 @@ class WikilinkCleaner:
                 if i in removed_line_indices:
                     continue
                 if line.strip() == "":
-                    is_adjacent_to_removed = False
-                    adjacent_reason = ""
-
-                    if i > 0 and (i - 1) in removed_line_indices:
-                        is_adjacent_to_removed = True
-                        adjacent_reason = f"after removed line {i}"
-
-                    if i < len(lines) - 1 and (i + 1) in removed_line_indices:
-                        is_adjacent_to_removed = True
-                        if adjacent_reason:
-                            adjacent_reason = (
-                                f"between removed lines {i} and {i + 2}"
-                            )
-                        else:
-                            adjacent_reason = (
-                                f"before removed line {i + 2}"
-                            )
-
-                    if is_adjacent_to_removed:
-                        should_preserve = False
-
-                        prev_has_active = (
+                    adjacent_reason = (
+                        f"after removed line {i}"
+                        if i == len(lines) - 1 or (i + 1) not in removed_line_indices
+                        else f"between removed lines {i} and {i + 2}"
+                    )
+                    adjacent_is_removed = (
+                        (i > 0 and (i - 1) in removed_line_indices)
+                        or (
+                            i < len(lines) - 1
+                            and (i + 1) in removed_line_indices
+                        )
+                    )
+                    if adjacent_is_removed:
+                        if (
                             i > 0
                             and (i - 1) not in removed_line_indices
-                            and self._has_active_wikilink(
-                                lines[i - 1], existing_files
-                            )
-                        )
-                        next_has_active = (
+                            and self._has_active_wikilink(lines[i - 1], existing_files)
+                        ) and (
                             i < len(lines) - 1
                             and (i + 1) not in removed_line_indices
-                            and self._has_active_wikilink(
-                                lines[i + 1], existing_files
-                            )
-                        )
-
-                        if prev_has_active and next_has_active:
-                            should_preserve = True
+                            and self._has_active_wikilink(lines[i + 1], existing_files)
+                        ):
                             if self.logger:
                                 self.logger.debug(
                                     "WikilinkCleaner: Preserving empty line %d - needed spacing between active wikilinks",
                                     i + 1,
                                 )
-
-                        if not should_preserve:
+                        else:
                             adjacent_empty_lines_to_remove.add(i)
                             if self.logger:
                                 self.logger.debug(

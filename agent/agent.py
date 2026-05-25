@@ -1,5 +1,5 @@
 '''
-python agent/agent.py --draft-task w/p_ttml.py      # step 0, w/p_ytd.py
+python agent/agent.py --draft-task w/p_wiki.py      # step 0, w/p_ytd.py
 python agent/agent.py --run-task  # step 1
 python agent/agent.py --review-last  # step 2
 python agent/agent.py --revise-last  # step 3
@@ -9,13 +9,12 @@ python agent/agent.py --accept-last  # step 4
 python agent/agent.py --show-final
 python agent/agent.py --check-ready
 python agent/agent.py --show-commands
-python agent/agent.py --make-patch  # step 5
-python agent/agent.py --check-patch  # step 6
-python agent/agent.py --apply-patch  # step 7
-python agent/agent.py --run-verify  # step 8
+python agent/agent.py --make-patch  # step 5, includes check_patch internally
+python agent/agent.py --apply-patch  # step 6
+python agent/agent.py --run-verify  # step 7
 python agent/agent.py --clear-trace
 
-Workflow: plan -> review -> revise -> accept -> make patch -> check patch -> apply patch -> run verify
+Workflow: plan -> review -> revise -> accept -> make/check patch -> apply patch -> run verify
 '''
 from __future__ import annotations
 
@@ -325,7 +324,7 @@ def show_commands() -> None:
 
 
 def run_verify() -> None:
-    # Step 8: run verify.
+    # Step 7: run verify.
     if not FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return
@@ -430,16 +429,16 @@ def validate_patch_blocks(task_path: Path, blocks: list[tuple[str, str, str]]) -
     return errors
 
 
-def check_patch(task_path: Path) -> None:
-    # Step 6: check patch.
+def check_patch(task_path: Path) -> bool:
+    # Check patch.
     if not LAST_PATCH_PATH.exists():
         print("No patch found.")
-        return
+        return False
 
     patch_text = read_text(LAST_PATCH_PATH)
     if patch_text.strip() == "PATCH_NOT_SAFE":
         print("PATCH_NOT_SAFE")
-        return
+        return False
 
     blocks, errors = parse_patch_blocks(patch_text)
     errors.extend(validate_patch_blocks(task_path, blocks))
@@ -448,13 +447,14 @@ def check_patch(task_path: Path) -> None:
         print("PATCH_INVALID")
         for error in errors:
             print(error)
-        return
+        return False
 
     print("PATCH_OK")
+    return True
 
 
 def apply_patch(task_path: Path) -> None:
-    # Step 7: apply patch.
+    # Step 6: apply patch.
     if not LAST_PATCH_PATH.exists():
         print("No patch found.")
         return
@@ -589,8 +589,8 @@ def revise_last_plan(task_text: str) -> None:
     print(f"\nSaved revised plan: {LAST_REVISED_PLAN_PATH}")
 
 
-def make_patch(task_text: str) -> None:
-    # Step 5: make patch.
+def make_patch(task_path: Path, task_text: str) -> None:
+    # Step 5: make/check patch.
     if not FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return
@@ -608,7 +608,8 @@ def make_patch(task_text: str) -> None:
     ensure_agent_data_dir()
     LAST_PATCH_PATH.write_text(patch, encoding="utf-8")
     print(f"Saved patch: {LAST_PATCH_PATH}")
-    print("Next: python agent/agent.py --check-patch")
+    if check_patch(task_path):
+        print("Next: python agent/agent.py --apply-patch")
 
 
 def main() -> None:
@@ -654,10 +655,6 @@ def main() -> None:
         show_commands()
         return
 
-    if "--check-patch" in sys.argv:
-        check_patch(task_path)
-        return
-
     if "--apply-patch" in sys.argv:
         apply_patch(task_path)
         return
@@ -682,7 +679,7 @@ def main() -> None:
         return
 
     if "--make-patch" in sys.argv:
-        make_patch(task_text)
+        make_patch(task_path, task_text)
         return
 
 
