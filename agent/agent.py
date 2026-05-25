@@ -560,6 +560,57 @@ def run_task(task_path: Path, task_text: str) -> None:
     print(f"\nSaved plan: {LAST_PLAN_PATH}")
 
 
+def review_last_plan(task_text: str) -> None:
+    # Step 2: review.
+    plan_text = read_text(LAST_PLAN_PATH)
+    review = call_agent_llm(
+        system_prompt="You are a strict minimal-change repo plan reviewer.",
+        user_text=build_review_prompt(task_text, plan_text, pos_context=load_pos_context()),
+        file_path=LAST_PLAN_PATH,
+    )
+    ensure_agent_data_dir()
+    LAST_REVIEW_PATH.write_text(review, encoding="utf-8")
+    print(review)
+    print(f"\nSaved review: {LAST_REVIEW_PATH}")
+
+
+def revise_last_plan(task_text: str) -> None:
+    # Step 3: revise.
+    plan_text = read_text(LAST_PLAN_PATH)
+    review_text = read_text(LAST_REVIEW_PATH)
+    revised = call_agent_llm(
+        system_prompt="You are a strict minimal-change repo plan revision agent.",
+        user_text=build_revise_prompt(task_text, plan_text, review_text, pos_context=load_pos_context()),
+        file_path=LAST_REVIEW_PATH,
+    )
+    ensure_agent_data_dir()
+    LAST_REVISED_PLAN_PATH.write_text(revised, encoding="utf-8")
+    print(revised)
+    print(f"\nSaved revised plan: {LAST_REVISED_PLAN_PATH}")
+
+
+def make_patch(task_text: str) -> None:
+    # Step 5: make patch.
+    if not FINAL_PLAN_PATH.exists():
+        print("No final plan found.")
+        return
+
+    allowed_files = parse_allowed_files(task_text)
+    file_context = load_allowed_file_context(allowed_files)
+    final_plan_text = read_text(FINAL_PLAN_PATH)
+
+    patch = call_agent_llm(
+        system_prompt="You are a strict minimal-change SEARCH/REPLACE patch generator.",
+        user_text=build_patch_prompt(task_text=task_text, final_plan_text=final_plan_text, allowed_files=allowed_files, file_context=file_context, pos_context=load_pos_context()),
+        file_path=FINAL_PLAN_PATH,
+    )
+
+    ensure_agent_data_dir()
+    LAST_PATCH_PATH.write_text(patch, encoding="utf-8")
+    print(f"Saved patch: {LAST_PATCH_PATH}")
+    print("Next: python agent/agent.py --check-patch")
+
+
 def main() -> None:
     task_path = task_arg()
     if not task_path.is_absolute():
@@ -623,52 +674,15 @@ def main() -> None:
 
     # LLM refinement modes: read previous artifacts and produce next artifact.
     if "--review-last" in sys.argv:
-        plan_text = read_text(LAST_PLAN_PATH)
-        review = call_agent_llm(
-            system_prompt="You are a strict minimal-change repo plan reviewer.",
-            user_text=build_review_prompt(task_text, plan_text, pos_context=load_pos_context()),
-            file_path=LAST_PLAN_PATH,
-        )
-        ensure_agent_data_dir()
-        LAST_REVIEW_PATH.write_text(review, encoding="utf-8")
-        print(review)
-        print(f"\nSaved review: {LAST_REVIEW_PATH}")
+        review_last_plan(task_text)
         return
 
     if "--revise-last" in sys.argv:
-        plan_text = read_text(LAST_PLAN_PATH)
-        review_text = read_text(LAST_REVIEW_PATH)
-        revised = call_agent_llm(
-            system_prompt="You are a strict minimal-change repo plan revision agent.",
-            user_text=build_revise_prompt(task_text, plan_text, review_text, pos_context=load_pos_context()),
-            file_path=LAST_REVIEW_PATH,
-        )
-        ensure_agent_data_dir()
-        LAST_REVISED_PLAN_PATH.write_text(revised, encoding="utf-8")
-        print(revised)
-        print(f"\nSaved revised plan: {LAST_REVISED_PLAN_PATH}")
+        revise_last_plan(task_text)
         return
 
     if "--make-patch" in sys.argv:
-        if not FINAL_PLAN_PATH.exists():
-            print("No final plan found.")
-            return
-
-        task_text = read_text(task_path)
-        allowed_files = parse_allowed_files(task_text)
-        file_context = load_allowed_file_context(allowed_files)
-        final_plan_text = read_text(FINAL_PLAN_PATH)
-
-        patch = call_agent_llm(
-            system_prompt="You are a strict minimal-change SEARCH/REPLACE patch generator.",
-            user_text=build_patch_prompt(task_text=task_text, final_plan_text=final_plan_text, allowed_files=allowed_files, file_context=file_context, pos_context=load_pos_context()),
-            file_path=FINAL_PLAN_PATH,
-        )
-
-        ensure_agent_data_dir()
-        LAST_PATCH_PATH.write_text(patch, encoding="utf-8")
-        print(f"Saved patch: {LAST_PATCH_PATH}")
-        print("Next: python agent/agent.py --check-patch")
+        make_patch(task_text)
         return
 
 
