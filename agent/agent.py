@@ -10,11 +10,10 @@ python agent/agent.py --show-final
 python agent/agent.py --check-ready
 python agent/agent.py --show-commands
 python agent/agent.py --make-patch  # step 5, includes check_patch internally
-python agent/agent.py --apply-patch  # step 6
-python agent/agent.py --run-verify  # step 7
+python agent/agent.py --apply-patch  # step 6, includes run verify internally
 python agent/agent.py --clear-trace
 
-Workflow: plan -> review -> revise -> accept -> make/check patch -> apply patch -> run verify
+Workflow: plan -> review -> revise -> accept -> make/check patch -> apply patch/run verify
 '''
 from __future__ import annotations
 
@@ -240,6 +239,7 @@ def clear_trace() -> None:
         LAST_REVIEW_PATH,
         LAST_REVISED_PLAN_PATH,
         LAST_PATCH_PATH,
+        FINAL_PLAN_PATH,
     )
 
     for path in paths:
@@ -324,7 +324,7 @@ def show_commands() -> None:
 
 
 def run_verify() -> None:
-    # Step 7: run verify.
+    # Run verify commands from the accepted plan.
     if not FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return
@@ -454,7 +454,7 @@ def check_patch(task_path: Path) -> bool:
 
 
 def apply_patch(task_path: Path) -> None:
-    # Step 6: apply patch.
+    # Step 6: apply patch and run verify.
     if not LAST_PATCH_PATH.exists():
         print("No patch found.")
         return
@@ -479,7 +479,7 @@ def apply_patch(task_path: Path) -> None:
         path.write_text(text.replace(search, replace, 1), encoding="utf-8")
 
     print("PATCH_APPLIED")
-    print("Next: python agent/agent.py --run-verify")
+    run_verify()
 
 
 def draft_task(task_path: Path, target_arg: str) -> None:
