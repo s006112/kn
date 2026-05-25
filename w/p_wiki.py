@@ -376,12 +376,11 @@ class WikilinkCleaner:
                                 "WikilinkCleaner: Marked line %d for removal (contained only broken wikilinks)",
                                 i + 1,
                             )
-                    else:
-                        if self.logger:
-                            self.logger.debug(
-                                "WikilinkCleaner: Line %d has other content besides broken wikilinks, keeping it",
-                                i + 1,
-                            )
+                    elif self.logger:
+                        self.logger.debug(
+                            "WikilinkCleaner: Line %d has other content besides broken wikilinks, keeping it",
+                            i + 1,
+                        )
 
                 if (
                     line_had_broken_links

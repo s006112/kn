@@ -1,6 +1,7 @@
 '''
 python agent/agent.py --draft-task w/p_wiki.py      # step 0, w/p_ytd.py
 python agent/agent.py --run-task  # step 1
+python agent/agent.py --run-task --iterate  # steps 1-3 until review approve
 python agent/agent.py --review-last  # step 2
 python agent/agent.py --revise-last  # step 3
 python agent/agent.py --status
@@ -33,6 +34,7 @@ DEFAULT_MODEL = "gpt-5.4-mini" # codex, gpt-5.4-mini
 
 CODEX_MODEL = "gpt-5.5"
 CODEX_REASONING_EFFORT = "low" # "mid", "high", "xhigh"
+ITERATION_LIMIT = 3
 
 POS_ACTIVE_FILES = (
     "AGENTS.md", # agent 怎樣使用 POS，不要污染系統
@@ -193,6 +195,19 @@ def build_revise_prompt(task_text: str, plan_text: str, review_text: str, pos_co
     template = read_text(S3_REVISE_PROMPT)
     return template.format(task_text=task_text, plan_text=plan_text, review_text=review_text, pos_context=pos_context)
 
+
+def latest_plan_path() -> Path | None:
+    if LAST_REVISED_PLAN_PATH.exists():
+        return LAST_REVISED_PLAN_PATH
+    if LAST_PLAN_PATH.exists():
+        return LAST_PLAN_PATH
+    return None
+
+
+def review_verdict(review_text: str) -> str | None:
+    match = re.search(r"(?im)^\s*-?\s*\*{0,2}(APPROVE|REVISE)\*{0,2}\s*$", review_text)
+    return match.group(1) if match else None
+
 def print_status(task_path: Path) -> None:
     paths = {
         "task": task_path,
@@ -209,8 +224,8 @@ def print_status(task_path: Path) -> None:
 
 
 def show_last_plan() -> None:
-    path = LAST_REVISED_PLAN_PATH if LAST_REVISED_PLAN_PATH.exists() else LAST_PLAN_PATH
-    if not path.exists():
+    path = latest_plan_path()
+    if path is None:
         print("No plan found.")
         return
 
@@ -221,8 +236,8 @@ def show_last_plan() -> None:
 
 def accept_last_plan() -> None:
     # Step 4: accept.
-    source = LAST_REVISED_PLAN_PATH if LAST_REVISED_PLAN_PATH.exists() else LAST_PLAN_PATH
-    if not source.exists():
+    source = latest_plan_path()
+    if source is None:
         print("No plan found to accept.")
         return
 
@@ -543,6 +558,8 @@ def run_task(task_path: Path, task_text: str) -> None:
     prompt_text = build_plan_prompt(task_text, pos_context, file_context)
     ensure_agent_data_dir()
     LAST_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
+    LAST_REVIEW_PATH.unlink(missing_ok=True)
+    LAST_REVISED_PLAN_PATH.unlink(missing_ok=True)
 
     if "--dry-context" in sys.argv:
         print(f"Saved prompt: {LAST_PROMPT_PATH}")
@@ -560,23 +577,37 @@ def run_task(task_path: Path, task_text: str) -> None:
     print(f"\nSaved plan: {LAST_PLAN_PATH}")
 
 
-def review_last_plan(task_text: str) -> None:
+def review_last_plan(task_text: str) -> str:
     # Step 2: review.
-    plan_text = read_text(LAST_PLAN_PATH)
+    plan_path = latest_plan_path()
+    if plan_path is None:
+        print("No plan found to review.")
+        return ""
+
+    plan_text = read_text(plan_path)
     review = call_agent_llm(
         system_prompt="You are a strict minimal-change repo plan reviewer.",
         user_text=build_review_prompt(task_text, plan_text, pos_context=load_pos_context()),
-        file_path=LAST_PLAN_PATH,
+        file_path=plan_path,
     )
     ensure_agent_data_dir()
     LAST_REVIEW_PATH.write_text(review, encoding="utf-8")
     print(review)
     print(f"\nSaved review: {LAST_REVIEW_PATH}")
+    return review
 
 
-def revise_last_plan(task_text: str) -> None:
+def revise_last_plan(task_text: str) -> str:
     # Step 3: revise.
-    plan_text = read_text(LAST_PLAN_PATH)
+    plan_path = latest_plan_path()
+    if plan_path is None:
+        print("No plan found to revise.")
+        return ""
+    if not LAST_REVIEW_PATH.exists():
+        print("No review found to revise from.")
+        return ""
+
+    plan_text = read_text(plan_path)
     review_text = read_text(LAST_REVIEW_PATH)
     revised = call_agent_llm(
         system_prompt="You are a strict minimal-change repo plan revision agent.",
@@ -587,6 +618,31 @@ def revise_last_plan(task_text: str) -> None:
     LAST_REVISED_PLAN_PATH.write_text(revised, encoding="utf-8")
     print(revised)
     print(f"\nSaved revised plan: {LAST_REVISED_PLAN_PATH}")
+    return revised
+
+
+def iterate_run_task(task_path: Path, task_text: str) -> None:
+    run_task(task_path, task_text)
+    if "--dry-context" in sys.argv:
+        return
+
+    for index in range(ITERATION_LIMIT):
+        review = review_last_plan(task_text)
+        verdict = review_verdict(review)
+
+        if verdict == "APPROVE":
+            print("ITERATE_APPROVED")
+            return
+
+        if verdict != "REVISE":
+            print("ITERATE_STOPPED: unknown review verdict")
+            return
+
+        if index == ITERATION_LIMIT - 1:
+            print("ITERATE_STOPPED: max iterations reached")
+            return
+
+        revise_last_plan(task_text)
 
 
 def make_patch(task_path: Path, task_text: str) -> None:
@@ -666,7 +722,10 @@ def main() -> None:
     task_text = read_text(task_path)
 
     if "--run-task" in sys.argv:
-        run_task(task_path, task_text)
+        if "--iterate" in sys.argv:
+            iterate_run_task(task_path, task_text)
+        else:
+            run_task(task_path, task_text)
         return
 
     # LLM refinement modes: read previous artifacts and produce next artifact.
