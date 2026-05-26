@@ -379,14 +379,13 @@ class WikilinkCleaner:
                                 "WikilinkCleaner: Marked line %d for removal (contained only broken wikilinks)",
                                 i + 1,
                             )
-                    else:
-                        if self.logger:
-                            self.logger.debug(
-                                "WikilinkCleaner: Line %d has other content besides broken wikilinks, keeping it",
-                                i + 1,
-                            )
-                        if not self.dry_run:
-                            lines[i] = modified_line
+                    elif self.logger:
+                        self.logger.debug(
+                            "WikilinkCleaner: Line %d has other content besides broken wikilinks, keeping it",
+                            i + 1,
+                        )
+                    if modified_line.strip() != "" and not self.dry_run:
+                        lines[i] = modified_line
 
             adjacent_empty_lines_to_remove: Set[int] = set()
 
@@ -394,15 +393,14 @@ class WikilinkCleaner:
                 if i in removed_line_indices or line.strip() != "":
                     continue
 
-                adjacent_reason = (
-                    f"after removed line {i}"
-                    if i == len(lines) - 1 or (i + 1) not in removed_line_indices
-                    else f"between removed lines {i} and {i + 2}"
-                )
                 left_removed = i > 0 and (i - 1) in removed_line_indices
                 right_removed = i < len(lines) - 1 and (i + 1) in removed_line_indices
-                adjacent_is_removed = left_removed or right_removed
-                if adjacent_is_removed:
+                if left_removed or right_removed:
+                    adjacent_reason = (
+                        f"after removed line {i}"
+                        if i == len(lines) - 1 or (i + 1) not in removed_line_indices
+                        else f"between removed lines {i} and {i + 2}"
+                    )
                     left_has_active_wikilink = (
                         i > 0
                         and not left_removed

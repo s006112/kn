@@ -1,18 +1,18 @@
 '''
-python agent/agent.py --draft-task w/p_wiki.py      # step 0, w/p_ytd.py
-python agent/agent.py --run-task --iterate  # steps 1-3 until review approve
-python agent/agent.py --run-task  # step 1
-python agent/agent.py --review-last  # step 2
-python agent/agent.py --revise-last  # step 3
-python agent/agent.py --status
-python agent/agent.py --show-last
-python agent/agent.py --accept-last  # step 4
-python agent/agent.py --show-final
-python agent/agent.py --check-ready
-python agent/agent.py --show-commands
-python agent/agent.py --make-patch  # step 5, includes check_patch internally
-python agent/agent.py --apply-patch  # step 6, includes run verify internally
-python agent/agent.py --clear-trace
+python3 agent/agent.py --draft-task w/p_wiki.py      # step 0, w/p_ytd.py
+python3 agent/agent.py --run-task --iterate  # steps 1-3 until review approve
+python3 agent/agent.py --run-task  # step 1
+python3 agent/agent.py --review-last  # step 2
+python3 agent/agent.py --revise-last  # step 3
+python3 agent/agent.py --status
+python3 agent/agent.py --show-last
+python3 agent/agent.py --accept-last  # step 4
+python3 agent/agent.py --show-final
+python3 agent/agent.py --check-ready
+python3 agent/agent.py --show-commands
+python3 agent/agent.py --make-patch  # step 5, includes check_patch internally
+python3 agent/agent.py --apply-patch  # step 6, includes run verify internally
+python3 agent/agent.py --clear-trace
 
 Workflow: plan -> review -> revise -> accept -> make/check patch -> apply patch/run verify
 
@@ -149,6 +149,21 @@ def task_arg() -> Path:
     if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
         return Path(sys.argv[1])
     return S0_TASK_PATH
+
+
+def resolve_task_path() -> Path:
+    task_path = task_arg()
+    if not task_path.is_absolute():
+        task_path = Path.cwd() / task_path
+    return normalize_task_path(task_path)
+
+
+def draft_task_target_file_arg() -> str | None:
+    target = flag_value("--draft-task")
+    if target:
+        return target
+    print("Usage: python agent/agent.py --draft-task path/to/file.py")
+    return None
 
 
 def parse_allowed_files(task_text: str) -> list[str]:
@@ -689,15 +704,11 @@ def make_patch(task_path: Path, task_text: str) -> None:
 
 
 def main() -> None:
-    task_path = task_arg()
-    if not task_path.is_absolute():
-        task_path = Path.cwd() / task_path
-    task_path = normalize_task_path(task_path)
+    task_path = resolve_task_path()
 
-    draft_target = flag_value("--draft-task")
     if "--draft-task" in sys.argv:
+        draft_target = draft_task_target_file_arg()
         if not draft_target:
-            print("Usage: python agent/agent.py --draft-task path/to/file.py")
             return
         draft_task(task_path, draft_target)
         return
