@@ -120,17 +120,6 @@ def call_agent_llm(system_prompt: str, user_text: str, file_path: Path) -> str:
         return call_codex_cli(system_prompt, user_text, context_path=file_path)
     return call_llm(DEFAULT_MODEL, system_prompt=system_prompt, user_text=user_text, file_path=str(file_path), max_retries=2, timeout=120)
 
-def agent_data_file(path: Path) -> Path:
-    return AGENT_DATA_DIR / path.name if path.suffix.lower() in {".md", ".txt"} else path
-
-
-def normalize_task_path(path: Path) -> Path:
-    data_path = agent_data_file(path)
-    if data_path != path and (data_path.exists() or not path.exists()):
-        return data_path
-    return path
-
-
 def repo_rel(path: Path) -> str:
     try:
         return path.resolve().relative_to(REPO_ROOT).as_posix()
@@ -145,17 +134,8 @@ def flag_value(flag: str) -> str | None:
     return sys.argv[index + 1] if index + 1 < len(sys.argv) else None
 
 
-def task_arg() -> Path:
-    if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
-        return Path(sys.argv[1])
-    return S0_TASK_PATH
-
-
 def resolve_task_path() -> Path:
-    task_path = task_arg()
-    if not task_path.is_absolute():
-        task_path = Path.cwd() / task_path
-    return normalize_task_path(task_path)
+    return S0_TASK_PATH
 
 
 def draft_task_target_file_arg() -> str | None:
@@ -532,7 +512,6 @@ def apply_patch(task_path: Path) -> None:
 
 def draft_task(task_path: Path, target_arg: str) -> None:
     # Step 0: draft s0_task.md from one target source file.
-    task_path = agent_data_file(task_path)
     target_path = Path(target_arg)
     if not target_path.is_absolute():
         target_path = REPO_ROOT / target_path
@@ -704,50 +683,13 @@ def make_patch(task_path: Path, task_text: str) -> None:
 
 
 def main() -> None:
-    task_path = resolve_task_path()
-
+    task_path = resolve_task_path() 
+    
     if "--draft-task" in sys.argv:
         draft_target = draft_task_target_file_arg()
         if not draft_target:
             return
         draft_task(task_path, draft_target)
-        return
-
-    # Inspection / state-management modes: no LLM call.
-    if "--status" in sys.argv:
-        print_status(task_path)
-        return
-
-    if "--show-last" in sys.argv:
-        show_last_plan()
-        return
-
-    if "--accept-last" in sys.argv:
-        accept_last_plan()
-        return
-
-    if "--clear-trace" in sys.argv:
-        clear_trace()
-        return
-
-    if "--show-final" in sys.argv:
-        show_final_plan()
-        return
-
-    if "--check-ready" in sys.argv:
-        check_ready(task_path)
-        return
-
-    if "--show-commands" in sys.argv:
-        show_commands()
-        return
-
-    if "--apply-patch" in sys.argv:
-        apply_patch(task_path)
-        return
-
-    if "--run-verify" in sys.argv:
-        run_verify()
         return
 
     task_text = read_text(task_path)
@@ -760,18 +702,20 @@ def main() -> None:
         return
 
     # LLM refinement modes: read previous artifacts and produce next artifact.
-    if "--review-last" in sys.argv:
-        review_last_plan(task_text)
-        return
+    if "--review-last" in sys.argv: review_last_plan(task_text); return
+    if "--revise-last" in sys.argv: revise_last_plan(task_text); return
+    if "--make-patch" in sys.argv: make_patch(task_path, task_text); return
 
-    if "--revise-last" in sys.argv:
-        revise_last_plan(task_text)
-        return
-
-    if "--make-patch" in sys.argv:
-        make_patch(task_path, task_text)
-        return
-
+    # Inspection / state-management modes: no LLM call.
+    if "--status" in sys.argv: print_status(task_path); return
+    if "--show-last" in sys.argv: show_last_plan(); return
+    if "--accept-last" in sys.argv: accept_last_plan(); return
+    if "--clear-trace" in sys.argv: clear_trace(); return
+    if "--show-final" in sys.argv: show_final_plan(); return
+    if "--check-ready" in sys.argv: check_ready(task_path); return
+    if "--show-commands" in sys.argv: show_commands(); return
+    if "--apply-patch" in sys.argv: apply_patch(task_path); return
+    if "--run-verify" in sys.argv: run_verify(); return
 
 
 if __name__ == "__main__":

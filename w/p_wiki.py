@@ -390,41 +390,43 @@ class WikilinkCleaner:
             adjacent_empty_lines_to_remove: Set[int] = set()
 
             for i, line in enumerate(lines):
-                if i in removed_line_indices or line.strip() != "":
+                if line.strip() != "" or i in removed_line_indices:
                     continue
 
                 left_removed = i > 0 and (i - 1) in removed_line_indices
                 right_removed = i < len(lines) - 1 and (i + 1) in removed_line_indices
-                if left_removed or right_removed:
-                    adjacent_reason = (
-                        f"after removed line {i}"
-                        if i == len(lines) - 1 or (i + 1) not in removed_line_indices
-                        else f"between removed lines {i} and {i + 2}"
-                    )
-                    left_has_active_wikilink = (
-                        i > 0
-                        and not left_removed
-                        and self._has_active_wikilink(lines[i - 1], existing_files)
-                    )
-                    right_has_active_wikilink = (
-                        i < len(lines) - 1
-                        and not right_removed
-                        and self._has_active_wikilink(lines[i + 1], existing_files)
-                    )
-                    if left_has_active_wikilink and right_has_active_wikilink:
-                        if self.logger:
-                            self.logger.debug(
-                                "WikilinkCleaner: Preserving empty line %d - needed spacing between active wikilinks",
-                                i + 1,
-                            )
-                    else:
-                        adjacent_empty_lines_to_remove.add(i)
-                        if self.logger:
-                            self.logger.debug(
-                                "WikilinkCleaner: Marked adjacent empty line %d for removal (%s)",
-                                i + 1,
-                                adjacent_reason,
-                            )
+                if not (left_removed or right_removed):
+                    continue
+
+                adjacent_reason = (
+                    f"after removed line {i}"
+                    if i == len(lines) - 1 or (i + 1) not in removed_line_indices
+                    else f"between removed lines {i} and {i + 2}"
+                )
+                left_has_active_wikilink = (
+                    i > 0
+                    and not left_removed
+                    and self._has_active_wikilink(lines[i - 1], existing_files)
+                )
+                right_has_active_wikilink = (
+                    i < len(lines) - 1
+                    and not right_removed
+                    and self._has_active_wikilink(lines[i + 1], existing_files)
+                )
+                if left_has_active_wikilink and right_has_active_wikilink:
+                    if self.logger:
+                        self.logger.debug(
+                            "WikilinkCleaner: Preserving empty line %d - needed spacing between active wikilinks",
+                            i + 1,
+                        )
+                else:
+                    adjacent_empty_lines_to_remove.add(i)
+                    if self.logger:
+                        self.logger.debug(
+                            "WikilinkCleaner: Marked adjacent empty line %d for removal (%s)",
+                            i + 1,
+                            adjacent_reason,
+                        )
 
             all_removed_indices = removed_line_indices.union(
                 adjacent_empty_lines_to_remove
