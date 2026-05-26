@@ -55,11 +55,11 @@ POS_ARCHIVE_FILES = ( # not actively used by agent, but kept for record and futu
     "proposals.md",
 )
 
-S0_TASK_PROMPT = REPO_ROOT / "agent" / "agent_s0_task.txt"
-S1_PLAN_PROMPT = REPO_ROOT / "agent" / "agent_s1_plan.txt"
-S2_REVIEW_PROMPT = REPO_ROOT / "agent" / "agent_s2_review.txt"
-S3_REVISE_PROMPT = REPO_ROOT / "agent" / "agent_s3_revise.txt"
-S5_PATCH_PROMPT = REPO_ROOT / "agent" / "agent_s5_patch.txt"
+S0_TASK_PROMPT = REPO_ROOT / "agent" / "prompt_s0_agent_task.txt"
+S1_PLAN_PROMPT = REPO_ROOT / "agent" / "prompt_s1_agent_plan.txt"
+S2_REVIEW_PROMPT = REPO_ROOT / "agent" / "prompt_s2_agent_review.txt"
+S3_REVISE_PROMPT = REPO_ROOT / "agent" / "prompt_s3_agent_revise.txt"
+S5_PATCH_PROMPT = REPO_ROOT / "agent" / "prompt_s5_agent_patch.txt"
 
 AGENT_DATA_DIR = REPO_ROOT / "data" / "agent"
 S0_TASK_PATH = AGENT_DATA_DIR / "s0_task.md"
