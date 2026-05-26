@@ -14,7 +14,7 @@ system > this prompt > target file evidence
 - Task 必須基於 <FILE_CONTEXT> 中可見的具體 code。
 - 指出具體 functions、variables、duplicated patterns、stale wrappers 或不清楚的 local ownership。
 - 保持 behavior 不變。
-- 優先選擇一個小而可逆的 cleanup。
+- 優先選擇一個代碼量瘦身 cleanup。
 - 避免 broad refactor、new files、premature helpers，以及像 "improve structure" 這樣模糊的 goals。
 - 如果可能需要另一個 file，只能在 Risks / possible extra files 中提及。
 - 如果看不到安全 edit，起草一個 narrow inspection task，並指出確切的不清楚區域。
@@ -23,11 +23,12 @@ system > this prompt > target file evidence
 - Stop condition 必須明確。
 
 任務選擇順序：
-0. 壓縮代碼複雜度，總体代碼量瘦身。 
+0. 壓縮代碼複雜度，總體代碼量瘦身。
 1. 如果可見，移除最小且明確 stale/dead 的 local code。
-2. 否則，如果可見，減少最小的重複 local logic。
-3. 否則，如果安全，釐清最小的 confusing local boundary。
-4. 否則，寫一個 narrow inspection-only task。
+2. 否則，如果某個非通用 helper / wrapper 只在一處使用，且看起來像 technical debt，考慮最小安全 inline、合併或重命名。
+3. 否則，如果可見，減少最小的重複 local logic。
+4. 否則，如果安全，釐清最小的 confusing local boundary。
+5. 否則，寫一個 narrow inspection-only task。
 
 語言規則：
 - 用中文回答。

@@ -1,6 +1,6 @@
 '''
 python3 agent/agent.py --draft-task w/p_wiki.py      # step 0, w/p_ytd.py
-python3 agent/agent.py --run-task --iterate  # steps 1-3 until review approve
+python3 agent/agent.py --run-iterate-task  # steps 1-3 until review approve
 python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2
 python3 agent/agent.py --revise-last  # step 3
@@ -37,7 +37,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from helper.helper_llm import call_llm  # noqa: E402
 
-DEFAULT_MODEL = "gpt-5.4-mini" # codex, gpt-5.4-mini
+DEFAULT_MODEL = "gpt-5.4" # codex, gpt-5.4-mini
 
 CODEX_MODEL = "gpt-5.5"
 CODEX_REASONING_EFFORT = "low" # "mid", "high", "xhigh"
@@ -127,23 +127,11 @@ def repo_rel(path: Path) -> str:
         return path.as_posix()
 
 
-def flag_value(flag: str) -> str | None:
+def argv_value_after(flag: str) -> str | None:
     if flag not in sys.argv:
         return None
     index = sys.argv.index(flag)
     return sys.argv[index + 1] if index + 1 < len(sys.argv) else None
-
-
-def resolve_task_path() -> Path:
-    return S0_TASK_PATH
-
-
-def draft_task_target_file_arg() -> str | None:
-    target = flag_value("--draft-task")
-    if target:
-        return target
-    print("Usage: python agent/agent.py --draft-task path/to/file.py")
-    return None
 
 
 def parse_allowed_files(task_text: str) -> list[str]:
@@ -510,8 +498,13 @@ def apply_patch(task_path: Path) -> None:
     run_verify()
 
 
-def draft_task(task_path: Path, target_arg: str) -> None:
+def draft_task(task_path: Path) -> None:
     # Step 0: draft s0_task.md from one target source file.
+    target_arg = argv_value_after("--draft-task")
+    if not target_arg:
+        print("Usage: python agent/agent.py --draft-task path/to/file.py")
+        return
+
     target_path = Path(target_arg)
     if not target_path.is_absolute():
         target_path = REPO_ROOT / target_path
@@ -552,8 +545,9 @@ def draft_task(task_path: Path, target_arg: str) -> None:
     print(output)
     print(f"\nSaved task: {task_path}")
 
-def run_task(task_path: Path, task_text: str) -> None:
+def run_task(task_path: Path) -> None:
     # Step 1: build context and generate the first plan.
+    task_text = read_text(task_path)
     allowed_files = parse_allowed_files(task_text)
     pos_context = load_pos_context()
     file_context = load_allowed_file_context(allowed_files)
@@ -589,13 +583,14 @@ def run_task(task_path: Path, task_text: str) -> None:
     print(f"\nSaved plan: {S1_PLAN_PATH}")
 
 
-def review_last_plan(task_text: str) -> str:
+def review_last_plan(task_path: Path) -> str:
     # Step 2: review.
     plan_path = latest_plan_path()
     if plan_path is None:
         print("No plan found to review.")
         return ""
 
+    task_text = read_text(task_path)
     plan_text = read_text(plan_path)
     review = call_agent_llm(
         system_prompt="You are a strict minimal-change repo plan reviewer.",
@@ -609,7 +604,7 @@ def review_last_plan(task_text: str) -> str:
     return review
 
 
-def revise_last_plan(task_text: str) -> str:
+def revise_last_plan(task_path: Path) -> str:
     # Step 3: revise.
     plan_path = latest_plan_path()
     if plan_path is None:
@@ -619,6 +614,7 @@ def revise_last_plan(task_text: str) -> str:
         print("No review found to revise from.")
         return ""
 
+    task_text = read_text(task_path)
     plan_text = read_text(plan_path)
     review_text = read_text(S2_REVIEW_PATH)
     revised = call_agent_llm(
@@ -633,15 +629,15 @@ def revise_last_plan(task_text: str) -> str:
     return revised
 
 
-def iterate_run_task(task_path: Path, task_text: str) -> None:
+def run_iterate_task(task_path: Path) -> None:
     # Auto-run Step 1-3 until review approves, an unknown verdict appears, or iteration limit is reached.
     # It intentionally reuses the same artifact paths as manual --run-task / --review-last / --revise-last.
-    run_task(task_path, task_text)
+    run_task(task_path)
     if "--dry-context" in sys.argv:
         return
 
     for index in range(ITERATION_LIMIT):
-        review = review_last_plan(task_text)
+        review = review_last_plan(task_path)
         verdict = review_verdict(review)
 
         if verdict == "APPROVE":
@@ -656,15 +652,16 @@ def iterate_run_task(task_path: Path, task_text: str) -> None:
             print("ITERATE_STOPPED: max iterations reached")
             return
 
-        revise_last_plan(task_text)
+        revise_last_plan(task_path)
 
 
-def make_patch(task_path: Path, task_text: str) -> None:
+def make_patch(task_path: Path) -> None:
     # Step 5: make/check patch.
     if not S4_FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return
 
+    task_text = read_text(task_path)
     allowed_files = parse_allowed_files(task_text)
     file_context = load_allowed_file_context(allowed_files)
     final_plan_text = read_text(S4_FINAL_PLAN_PATH)
@@ -683,38 +680,24 @@ def make_patch(task_path: Path, task_text: str) -> None:
 
 
 def main() -> None:
-    task_path = resolve_task_path() 
-    
-    if "--draft-task" in sys.argv:
-        draft_target = draft_task_target_file_arg()
-        if not draft_target:
-            return
-        draft_task(task_path, draft_target)
-        return
+    if "--draft-task" in sys.argv: draft_task(S0_TASK_PATH); return
+    if "--run-iterate-task" in sys.argv: run_iterate_task(S0_TASK_PATH); return
+    if "--run-task" in sys.argv: run_task(S0_TASK_PATH); return
 
-    task_text = read_text(task_path)
-
-    if "--run-task" in sys.argv:
-        if "--iterate" in sys.argv:
-            iterate_run_task(task_path, task_text)
-        else:
-            run_task(task_path, task_text)
-        return
-
-    # LLM refinement modes: read previous artifacts and produce next artifact.
-    if "--review-last" in sys.argv: review_last_plan(task_text); return
-    if "--revise-last" in sys.argv: revise_last_plan(task_text); return
-    if "--make-patch" in sys.argv: make_patch(task_path, task_text); return
+    # Continue LLM stages from the current task and saved artifacts.
+    if "--review-last" in sys.argv: review_last_plan(S0_TASK_PATH); return
+    if "--revise-last" in sys.argv: revise_last_plan(S0_TASK_PATH); return
+    if "--make-patch" in sys.argv: make_patch(S0_TASK_PATH); return
 
     # Inspection / state-management modes: no LLM call.
-    if "--status" in sys.argv: print_status(task_path); return
+    if "--status" in sys.argv: print_status(S0_TASK_PATH); return
     if "--show-last" in sys.argv: show_last_plan(); return
     if "--accept-last" in sys.argv: accept_last_plan(); return
     if "--clear-trace" in sys.argv: clear_trace(); return
     if "--show-final" in sys.argv: show_final_plan(); return
-    if "--check-ready" in sys.argv: check_ready(task_path); return
+    if "--check-ready" in sys.argv: check_ready(S0_TASK_PATH); return
     if "--show-commands" in sys.argv: show_commands(); return
-    if "--apply-patch" in sys.argv: apply_patch(task_path); return
+    if "--apply-patch" in sys.argv: apply_patch(S0_TASK_PATH); return
     if "--run-verify" in sys.argv: run_verify(); return
 
 
