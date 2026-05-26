@@ -11,6 +11,7 @@ python3 agent/agent.py --show-final
 python3 agent/agent.py --check-ready
 python3 agent/agent.py --show-commands
 python3 agent/agent.py --make-patch  # step 5, includes check_patch internally
+python3 agent/agent.py --run-verify  
 python3 agent/agent.py --apply-patch  # step 6, includes run verify internally
 python3 agent/agent.py --clear-trace
 
