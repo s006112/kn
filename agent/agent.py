@@ -1,6 +1,6 @@
 '''
-python3 agent/agent.py --draft-task w/p_wiki.py      # step 0, w/p_ytd.py
-python3 agent/agent.py --run-iterate-task  # steps 1-3 until review approve
+python3 agent/agent.py --run-iterate-task w/p_wiki.py # steps 0-3 with auto-iteration until APPROVE or unknown verdict
+python3 agent/agent.py --draft-task w/p_wiki.py      # step 0
 python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2
 python3 agent/agent.py --revise-last  # step 3
@@ -37,7 +37,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from helper.helper_llm import call_llm  # noqa: E402
 
-DEFAULT_MODEL = "gpt-5.4" # codex, gpt-5.4-mini
+DEFAULT_MODEL = "gpt-5.4-mini" # codex, gpt-5.4-mini
 
 CODEX_MODEL = "gpt-5.5"
 CODEX_REASONING_EFFORT = "low" # "mid", "high", "xhigh"
@@ -131,7 +131,10 @@ def argv_value_after(flag: str) -> str | None:
     if flag not in sys.argv:
         return None
     index = sys.argv.index(flag)
-    return sys.argv[index + 1] if index + 1 < len(sys.argv) else None
+    if index + 1 >= len(sys.argv):
+        return None
+    value = sys.argv[index + 1]
+    return None if value.startswith("--") else value
 
 
 def parse_allowed_files(task_text: str) -> list[str]:
@@ -498,9 +501,9 @@ def apply_patch(task_path: Path) -> None:
     run_verify()
 
 
-def draft_task(task_path: Path) -> None:
+def draft_task(task_path: Path, target_arg: str | None = None) -> None:
     # Step 0: draft s0_task.md from one target source file.
-    target_arg = argv_value_after("--draft-task")
+    target_arg = target_arg or argv_value_after("--draft-task")
     if not target_arg:
         print("Usage: python agent/agent.py --draft-task path/to/file.py")
         return
@@ -632,6 +635,9 @@ def revise_last_plan(task_path: Path) -> str:
 def run_iterate_task(task_path: Path) -> None:
     # Auto-run Step 1-3 until review approves, an unknown verdict appears, or iteration limit is reached.
     # It intentionally reuses the same artifact paths as manual --run-task / --review-last / --revise-last.
+    target_arg = argv_value_after("--run-iterate-task")
+    if target_arg:
+        draft_task(task_path, target_arg=target_arg)
     run_task(task_path)
     if "--dry-context" in sys.argv:
         return

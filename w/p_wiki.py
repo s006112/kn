@@ -278,41 +278,37 @@ class WikilinkCleaner:
                 destination_path = ontology_dir / file_path.name
 
                 if self.dry_run:
-                    if self.logger:
-                        self.logger.info(
-                            "WikilinkCleaner: DRY RUN - Would move ontology file %s to %s",
-                            file_path.name,
-                            destination_path,
-                        )
+                    self.logger.info(
+                        "WikilinkCleaner: DRY RUN - Would move ontology file %s to %s",
+                        file_path.name,
+                        destination_path,
+                    )
                     continue
 
                 ontology_dir.mkdir(parents=True, exist_ok=True)
 
                 if not self.create_backup(file_path):
-                    if self.logger:
-                        self.logger.error(
-                            "WikilinkCleaner: Skipping ontology move due to backup failure: %s",
-                            file_path,
-                        )
+                    self.logger.error(
+                        "WikilinkCleaner: Skipping ontology move due to backup failure: %s",
+                        file_path,
+                    )
                     success = False
                     continue
 
                 shutil.move(str(file_path), str(destination_path))
                 release_text_file_permissions(destination_path)
-                if self.logger:
-                    self.logger.info(
-                        "WikilinkCleaner: Moved ontology file %s to %s",
-                        file_path.name,
-                        destination_path,
-                    )
+                self.logger.info(
+                    "WikilinkCleaner: Moved ontology file %s to %s",
+                    file_path.name,
+                    destination_path,
+                )
 
             except Exception as e:
-                if self.logger:
-                    self.logger.error(
-                        "WikilinkCleaner: Error moving ontology file %s: %s",
-                        file_path,
-                        e,
-                    )
+                self.logger.error(
+                    "WikilinkCleaner: Error moving ontology file %s: %s",
+                    file_path,
+                    e,
+                )
                 self.stats["errors"] += 1
                 success = False
 
@@ -321,10 +317,9 @@ class WikilinkCleaner:
     def process_file(self, file_path: Path) -> bool:
         """Remove broken wikilinks and adjacent empty lines from one Markdown file."""
         try:
-            if self.logger:
-                self.logger.debug(
-                    "WikilinkCleaner: Processing file: %s", file_path
-                )
+            self.logger.debug(
+                "WikilinkCleaner: Processing file: %s", file_path
+            )
 
             with open(file_path, "r", encoding="utf-8") as f:
                 original_content = f.read()
@@ -332,10 +327,9 @@ class WikilinkCleaner:
             existing_files = self.get_existing_files(file_path.parent)
 
             if not self.wikilink_pattern.search(original_content):
-                if self.logger:
-                    self.logger.debug(
-                        "WikilinkCleaner: No wikilinks found in %s", file_path
-                    )
+                self.logger.debug(
+                    "WikilinkCleaner: No wikilinks found in %s", file_path
+                )
                 return True
 
             lines = original_content.split("\n")
@@ -351,12 +345,11 @@ class WikilinkCleaner:
                     if not self.is_link_broken(filename, existing_files):
                         continue
 
-                    if self.logger:
-                        self.logger.debug(
-                            "WikilinkCleaner: Found broken wikilink: %s -> %s",
-                            full_match,
-                            filename,
-                        )
+                    self.logger.debug(
+                        "WikilinkCleaner: Found broken wikilink: %s -> %s",
+                        full_match,
+                        filename,
+                    )
                     self.stats["broken_links_found"] += 1
                     broken_links_in_file += 1
                     removed_any_broken_link = True
@@ -364,21 +357,19 @@ class WikilinkCleaner:
 
                     if not self.dry_run:
                         self.stats["broken_links_removed"] += 1
-                        if self.logger:
-                            self.logger.debug(
-                                "WikilinkCleaner: Removed broken wikilink: %s",
-                                full_match,
-                            )
+                        self.logger.debug(
+                            "WikilinkCleaner: Removed broken wikilink: %s",
+                            full_match,
+                        )
 
                 if removed_any_broken_link:
                     if modified_line.strip() == "":
                         removed_line_indices.add(i)
-                        if self.logger:
-                            self.logger.debug(
-                                "WikilinkCleaner: Marked line %d for removal (contained only broken wikilinks)",
-                                i + 1,
-                            )
-                    elif self.logger:
+                        self.logger.debug(
+                            "WikilinkCleaner: Marked line %d for removal (contained only broken wikilinks)",
+                            i + 1,
+                        )
+                    else:
                         self.logger.debug(
                             "WikilinkCleaner: Line %d has other content besides broken wikilinks, keeping it",
                             i + 1,
@@ -408,24 +399,22 @@ class WikilinkCleaner:
                     and self._has_active_wikilink(lines[i + 1], existing_files)
                 )
                 if left_has_active_wikilink and right_has_active_wikilink:
-                    if self.logger:
-                        self.logger.debug(
-                            "WikilinkCleaner: Preserving empty line %d - needed spacing between active wikilinks",
-                            i + 1,
-                        )
+                    self.logger.debug(
+                        "WikilinkCleaner: Preserving empty line %d - needed spacing between active wikilinks",
+                        i + 1,
+                    )
                 else:
                     adjacent_empty_lines_to_remove.add(i)
-                    if self.logger:
-                        self.logger.debug(
-                            "WikilinkCleaner: Marked adjacent empty line %d for removal (%s)",
-                            i + 1,
-                            (
-                                f"after removed line {i}"
-                                if i == len(lines) - 1
-                                or (i + 1) not in removed_line_indices
-                                else f"between removed lines {i} and {i + 2}"
-                            ),
-                        )
+                    self.logger.debug(
+                        "WikilinkCleaner: Marked adjacent empty line %d for removal (%s)",
+                        i + 1,
+                        (
+                            f"after removed line {i}"
+                            if i == len(lines) - 1
+                            or (i + 1) not in removed_line_indices
+                            else f"between removed lines {i} and {i + 2}"
+                        ),
+                    )
 
             all_removed_indices = removed_line_indices.union(
                 adjacent_empty_lines_to_remove
@@ -443,11 +432,10 @@ class WikilinkCleaner:
                     modified_content = "\n".join(modified_lines)
 
                     if not self.create_backup(file_path):
-                        if self.logger:
-                            self.logger.error(
-                                "WikilinkCleaner: Skipping file due to backup failure: %s",
-                                file_path,
-                            )
+                        self.logger.error(
+                            "WikilinkCleaner: Skipping file due to backup failure: %s",
+                            file_path,
+                        )
                         return False
 
                     with open(file_path, "w", encoding="utf-8") as f:
@@ -455,20 +443,19 @@ class WikilinkCleaner:
                     release_text_file_permissions(file_path)
 
                     self.stats["files_modified"] += 1
-                    if self.logger:
-                        extra = (
-                            f", {empty_lines_removed} empty"
-                            if empty_lines_removed > 0
-                            else ""
-                        )
-                        self.logger.info(
-                            "%s (%d broken%s)",
-                            file_path.name,
-                            broken_links_in_file,
-                            extra,
-                        )
+                    extra = (
+                        f", {empty_lines_removed} empty"
+                        if empty_lines_removed > 0
+                        else ""
+                    )
+                    self.logger.info(
+                        "%s (%d broken%s)",
+                        file_path.name,
+                        broken_links_in_file,
+                        extra,
+                    )
 
-                elif self.logger:
+                else:
                     extra = (
                         f" and {empty_lines_removed} adjacent empty lines"
                         if empty_lines_removed > 0
@@ -485,12 +472,11 @@ class WikilinkCleaner:
             return True
 
         except Exception as e:
-            if self.logger:
-                self.logger.error(
-                    "WikilinkCleaner: Error processing file %s: %s",
-                    short_log_name(file_path),
-                    e,
-                )
+            self.logger.error(
+                "WikilinkCleaner: Error processing file %s: %s",
+                short_log_name(file_path),
+                e,
+            )
             self.stats["errors"] += 1
             return False
 
@@ -500,10 +486,9 @@ class WikilinkCleaner:
         target_files = self.find_target_files()
 
         if not target_files:
-            if self.logger:
-                self.logger.debug(
-                    "WikilinkCleaner: No target markdown files found to process"
-                )
+            self.logger.debug(
+                "WikilinkCleaner: No target markdown files found to process"
+            )
             return success
 
         for file_path in target_files:
