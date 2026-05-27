@@ -571,10 +571,6 @@ def run_task(task_path: Path) -> None:
     S2_REVIEW_PATH.unlink(missing_ok=True)
     S3_REVISED_PLAN_PATH.unlink(missing_ok=True)
 
-    if "--dry-context" in sys.argv:
-        print(f"Saved prompt: {S1_PROMPT_PATH}")
-        return
-
     output = call_agent_llm(
         system_prompt="You are a strict minimal-change repo planning agent.",
         user_text=prompt_text,
@@ -640,8 +636,6 @@ def run_iterate_task(task_path: Path) -> None:
     if target_arg:
         draft_task(task_path, target_arg=target_arg)
     run_task(task_path)
-    if "--dry-context" in sys.argv:
-        return
 
     for index in range(ITERATION_LIMIT):
         review = review_last_plan(task_path)
@@ -649,6 +643,7 @@ def run_iterate_task(task_path: Path) -> None:
 
         if verdict == "APPROVE":
             print("ITERATE_APPROVED")
+            accept_last_plan()
             return
 
         if verdict != "REVISE":
