@@ -3,9 +3,7 @@ python3 agent/agent.py --run-iterate-task w/p_wiki.py # steps 0-3 with auto-iter
 python3 agent/agent.py --draft-task w/p_wiki.py      # step 0
 python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2
-python3 agent/agent.py --revise-last  # step 3
 python3 agent/agent.py --status
-python3 agent/agent.py --show-last
 python3 agent/agent.py --accept-last  # step 4
 python3 agent/agent.py --show-final
 python3 agent/agent.py --check-ready
@@ -38,7 +36,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from helper.helper_llm import call_llm  # noqa: E402
 
-DEFAULT_MODEL = "gpt-5.4-mini" # codex, gpt-5.4-mini
+DEFAULT_MODEL = "gpt-5.4" # codex, gpt-5.4-mini
 
 CODEX_MODEL = "gpt-5.5"
 CODEX_REASONING_EFFORT = "low" # "mid", "high", "xhigh"
@@ -70,6 +68,14 @@ S2_REVIEW_PATH = AGENT_DATA_DIR / "s2_review.md"
 S3_REVISED_PLAN_PATH = AGENT_DATA_DIR / "s3_revised_plan.md"
 S4_FINAL_PLAN_PATH = AGENT_DATA_DIR / "s4_final_plan.md"
 S5_PATCH_PATH = AGENT_DATA_DIR / "s5_patch.txt"
+
+
+def plan_path(attempt: int) -> Path:
+    return AGENT_DATA_DIR / f"s1_plan_{attempt}.md"
+
+
+def review_path(attempt: int) -> Path:
+    return AGENT_DATA_DIR / f"s2_review_{attempt}.md"
 
 
 def read_text(path: Path) -> str:
@@ -179,11 +185,10 @@ def load_allowed_file_context(file_paths: list[str]) -> str:
     return "\n\n---\n\n".join(parts)
 
 
-def build_plan_prompt(task_text: str, pos_context: str, file_context: str) -> str:
+def build_plan_prompt(task_text: str, pos_context: str, file_context: str, previous_plan_text: str = "", previous_review_text: str = "") -> str:
     # Step 1: plan.
     template = read_text(S1_PLAN_PROMPT)
-    return template.format(task_text=task_text, pos_context=pos_context, file_context=file_context)
-
+    return template.format(task_text=task_text, pos_context=pos_context, file_context=file_context, previous_plan_text=previous_plan_text, previous_review_text=previous_review_text)
 
 def build_review_prompt(task_text: str, plan_text: str, pos_context: str) -> str:
     # Step 2: review.
@@ -195,13 +200,9 @@ def build_revise_prompt(task_text: str, plan_text: str, review_text: str, pos_co
     template = read_text(S3_REVISE_PROMPT)
     return template.format(task_text=task_text, plan_text=plan_text, review_text=review_text, pos_context=pos_context)
 
-
 def latest_plan_path() -> Path | None:
-    if S3_REVISED_PLAN_PATH.exists():
-        return S3_REVISED_PLAN_PATH
-    if S1_PLAN_PATH.exists():
-        return S1_PLAN_PATH
-    return None
+    attempt = latest_attempt()
+    return plan_path(attempt) if attempt is not None else None
 
 
 def review_verdict(review_text: str) -> str | None:
@@ -209,36 +210,26 @@ def review_verdict(review_text: str) -> str | None:
     return match.group(1) if match else None
 
 def print_status(task_path: Path) -> None:
-    paths = {
-        "task": task_path,
-        "s0_prompt": S0_PROMPT_PATH,
-        "s1_prompt": S1_PROMPT_PATH,
-        "s1_plan": S1_PLAN_PATH,
-        "s2_review": S2_REVIEW_PATH,
-        "s3_revised_plan": S3_REVISED_PLAN_PATH,
-        "s4_final_plan": S4_FINAL_PLAN_PATH,
-        "s5_patch": S5_PATCH_PATH,
-    }
+    attempt = latest_attempt()
+    paths = (
+        ("s0_task", task_path),
+        ("latest_plan", plan_path(attempt) if attempt is not None else None),
+        ("latest_review", review_path(attempt) if attempt is not None else None),
+        ("s4_final_plan", S4_FINAL_PLAN_PATH),
+        ("s5_patch", S5_PATCH_PATH),
+    )
 
     print("=== Agent Trace Status ===")
-    for name, path in paths.items():
+    print(f"latest_attempt: {attempt if attempt is not None else '<none>'}")
+    for name, path in paths:
+        if path is None:
+            print(f"{name}: missing")
+            continue
         status = "exists" if path.exists() else "missing"
         print(f"{name}: {status} - {path}")
 
-
-def show_last_plan() -> None:
-    path = latest_plan_path()
-    if path is None:
-        print("No plan found.")
-        return
-
-    print("=== Last Agent Plan ===")
-    print(f"source: {path}\n")
-    print(read_text(path))
-
-
 def accept_last_plan() -> None:
-    # Step 4: accept.
+    # Accept latest plan attempt as final snapshot.
     source = latest_plan_path()
     if source is None:
         print("No plan found to accept.")
@@ -246,23 +237,30 @@ def accept_last_plan() -> None:
 
     content = read_text(source)
     ensure_agent_data_dir()
-    S4_FINAL_PLAN_PATH.write_text(f"# Final Accepted Plan\n\nSource: `{source}`\n\n---\n\n{content}", encoding="utf-8")
+    S4_FINAL_PLAN_PATH.write_text(f"# Final Accepted Plan\n\nSource: `{repo_rel(source)}`\n\n---\n\n{content}", encoding="utf-8")
     print(f"Accepted plan: {S4_FINAL_PLAN_PATH}")
 
 
 def clear_trace() -> None:
-    paths = (
+    paths = [
         S0_TASK_PATH,
         S0_PROMPT_PATH,
         S1_PROMPT_PATH,
         S1_PLAN_PATH,
         S2_REVIEW_PATH,
         S3_REVISED_PLAN_PATH,
-        S5_PATCH_PATH,
         S4_FINAL_PLAN_PATH,
-    )
+        S5_PATCH_PATH,
+    ]
+    paths.extend(sorted(AGENT_DATA_DIR.glob("s1_plan_*.md")))
+    paths.extend(sorted(AGENT_DATA_DIR.glob("s2_review_*.md")))
 
+    seen = set()
     for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+
         if path.exists():
             path.unlink()
             print(f"removed: {path}")
@@ -549,15 +547,24 @@ def draft_task(task_path: Path, target_arg: str | None = None) -> None:
     print(output)
     print(f"\nSaved task: {task_path}")
 
-def run_task(task_path: Path) -> None:
-    # Step 1: build context and generate the first plan.
+def generate_plan(task_path: Path, attempt: int) -> str:
+    # Generate one planning attempt.
     task_text = read_text(task_path)
     allowed_files = parse_allowed_files(task_text)
     pos_context = load_pos_context()
     file_context = load_allowed_file_context(allowed_files)
+    previous_plan_text = ""
+    previous_review_text = ""
+
+    if attempt > 1:
+        previous_plan_path = plan_path(attempt - 1)
+        previous_review_path = review_path(attempt - 1)
+        previous_plan_text = read_text(previous_plan_path)
+        previous_review_text = read_text(previous_review_path)
 
     print("=== Repo Planning Agent ===")
     print(f"task: {task_path}")
+    print(f"attempt: {attempt}")
     print(f"prompt: {S1_PLAN_PROMPT}")
     print(f"model: {DEFAULT_MODEL}")
     print("allowed files:")
@@ -565,79 +572,85 @@ def run_task(task_path: Path) -> None:
         print(f"  - {file_path}")
     print()
 
-    prompt_text = build_plan_prompt(task_text, pos_context, file_context)
+    prompt_text = build_plan_prompt(task_text, pos_context, file_context, previous_plan_text=previous_plan_text, previous_review_text=previous_review_text)
     ensure_agent_data_dir()
     S1_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
-    S2_REVIEW_PATH.unlink(missing_ok=True)
-    S3_REVISED_PLAN_PATH.unlink(missing_ok=True)
 
     output = call_agent_llm(
-        system_prompt="You are a strict minimal-change repo planning agent.",
+        system_prompt="You are a strict minimal-change repo iteration planning agent.",
         user_text=prompt_text,
         file_path=task_path,
     )
 
-    ensure_agent_data_dir()
-    S1_PLAN_PATH.write_text(output, encoding="utf-8")
+    path = plan_path(attempt)
+    path.write_text(output, encoding="utf-8")
     print(output)
-    print(f"\nSaved plan: {S1_PLAN_PATH}")
+    print(f"\nSaved plan: {path}")
+    return output
 
+
+def run_task(task_path: Path) -> None:
+    # Generate the next plan attempt.
+    attempt = latest_attempt()
+
+    if attempt is None:
+        generate_plan(task_path, 1)
+        return
+
+    current_review_path = review_path(attempt)
+    if not current_review_path.exists():
+        print(f"Latest plan has no review yet: {plan_path(attempt)}")
+        print("Next: python3 agent/agent.py --review-last")
+        return
+
+    generate_plan(task_path, attempt + 1)
+
+def latest_attempt() -> int | None:
+    attempts = []
+    for path in AGENT_DATA_DIR.glob("s1_plan_*.md"):
+        match = re.fullmatch(r"s1_plan_(\d+)\.md", path.name)
+        if match:
+            attempts.append(int(match.group(1)))
+    return max(attempts) if attempts else None
 
 def review_last_plan(task_path: Path) -> str:
-    # Step 2: review.
-    plan_path = latest_plan_path()
-    if plan_path is None:
+    # Step 2: review latest plan attempt.
+    attempt = latest_attempt()
+    if attempt is None:
         print("No plan found to review.")
         return ""
 
+    path = plan_path(attempt)
     task_text = read_text(task_path)
-    plan_text = read_text(plan_path)
+    plan_text = read_text(path)
+
     review = call_agent_llm(
         system_prompt="You are a strict minimal-change repo plan reviewer.",
         user_text=build_review_prompt(task_text, plan_text, pos_context=load_pos_context()),
-        file_path=plan_path,
+        file_path=path,
     )
+
+    output_path = review_path(attempt)
     ensure_agent_data_dir()
-    S2_REVIEW_PATH.write_text(review, encoding="utf-8")
+    output_path.write_text(review, encoding="utf-8")
     print(review)
-    print(f"\nSaved review: {S2_REVIEW_PATH}")
+    print(f"\nSaved review: {output_path}")
     return review
 
-
-def revise_last_plan(task_path: Path) -> str:
-    # Step 3: revise.
-    plan_path = latest_plan_path()
-    if plan_path is None:
-        print("No plan found to revise.")
-        return ""
-    if not S2_REVIEW_PATH.exists():
-        print("No review found to revise from.")
-        return ""
-
-    task_text = read_text(task_path)
-    plan_text = read_text(plan_path)
-    review_text = read_text(S2_REVIEW_PATH)
-    revised = call_agent_llm(
-        system_prompt="You are a strict minimal-change repo plan revision agent.",
-        user_text=build_revise_prompt(task_text, plan_text, review_text, pos_context=load_pos_context()),
-        file_path=S2_REVIEW_PATH,
-    )
-    ensure_agent_data_dir()
-    S3_REVISED_PLAN_PATH.write_text(revised, encoding="utf-8")
-    print(revised)
-    print(f"\nSaved revised plan: {S3_REVISED_PLAN_PATH}")
-    return revised
-
-
 def run_iterate_task(task_path: Path) -> None:
-    # Auto-run Step 1-3 until review approves, an unknown verdict appears, or iteration limit is reached.
-    # It intentionally reuses the same artifact paths as manual --run-task / --review-last / --revise-last.
     target_arg = argv_value_after("--run-iterate-task")
+
+    for path in AGENT_DATA_DIR.glob("s1_plan_*.md"):
+        path.unlink()
+    for path in AGENT_DATA_DIR.glob("s2_review_*.md"):
+        path.unlink()
+
     if target_arg:
         draft_task(task_path, target_arg=target_arg)
-    run_task(task_path)
 
-    for index in range(ITERATION_LIMIT):
+    generate_plan(task_path, 1)
+
+    for attempt in range(1, ITERATION_LIMIT + 1):
         review = review_last_plan(task_path)
         verdict = review_verdict(review)
 
@@ -650,12 +663,11 @@ def run_iterate_task(task_path: Path) -> None:
             print("ITERATE_STOPPED: unknown review verdict")
             return
 
-        if index == ITERATION_LIMIT - 1:
+        if attempt == ITERATION_LIMIT:
             print("ITERATE_STOPPED: max iterations reached")
             return
 
-        revise_last_plan(task_path)
-
+        generate_plan(task_path, attempt + 1)
 
 def make_patch(task_path: Path) -> None:
     # Step 5: make/check patch.
@@ -688,12 +700,10 @@ def main() -> None:
 
     # Continue LLM stages from the current task and saved artifacts.
     if "--review-last" in sys.argv: review_last_plan(S0_TASK_PATH); return
-    if "--revise-last" in sys.argv: revise_last_plan(S0_TASK_PATH); return
     if "--make-patch" in sys.argv: make_patch(S0_TASK_PATH); return
 
     # Inspection / state-management modes: no LLM call.
     if "--status" in sys.argv: print_status(S0_TASK_PATH); return
-    if "--show-last" in sys.argv: show_last_plan(); return
     if "--accept-last" in sys.argv: accept_last_plan(); return
     if "--clear-trace" in sys.argv: clear_trace(); return
     if "--show-final" in sys.argv: show_final_plan(); return
