@@ -547,8 +547,21 @@ def draft_task(task_path: Path, target_arg: str | None = None) -> None:
     print(output)
     print(f"\nSaved task: {task_path}")
 
-def generate_plan(task_path: Path, attempt: int) -> str:
-    # Generate one planning attempt.
+
+def run_task(task_path: Path, attempt: int | None = None) -> str:
+    # Step 1: generate one planning attempt.
+    if attempt is None:
+        latest = latest_attempt()
+        if latest is None:
+            attempt = 1
+        else:
+            current_review_path = review_path(latest)
+            if not current_review_path.exists():
+                print(f"Latest plan has no review yet: {plan_path(latest)}")
+                print("Next: python3 agent/agent.py --review-last")
+                return ""
+            attempt = latest + 1
+
     task_text = read_text(task_path)
     allowed_files = parse_allowed_files(task_text)
     pos_context = load_pos_context()
@@ -557,10 +570,8 @@ def generate_plan(task_path: Path, attempt: int) -> str:
     previous_review_text = ""
 
     if attempt > 1:
-        previous_plan_path = plan_path(attempt - 1)
-        previous_review_path = review_path(attempt - 1)
-        previous_plan_text = read_text(previous_plan_path)
-        previous_review_text = read_text(previous_review_path)
+        previous_plan_text = read_text(plan_path(attempt - 1))
+        previous_review_text = read_text(review_path(attempt - 1))
 
     print("=== Repo Planning Agent ===")
     print(f"task: {task_path}")
@@ -587,23 +598,6 @@ def generate_plan(task_path: Path, attempt: int) -> str:
     print(output)
     print(f"\nSaved plan: {path}")
     return output
-
-
-def run_task(task_path: Path) -> None:
-    # Generate the next plan attempt.
-    attempt = latest_attempt()
-
-    if attempt is None:
-        generate_plan(task_path, 1)
-        return
-
-    current_review_path = review_path(attempt)
-    if not current_review_path.exists():
-        print(f"Latest plan has no review yet: {plan_path(attempt)}")
-        print("Next: python3 agent/agent.py --review-last")
-        return
-
-    generate_plan(task_path, attempt + 1)
 
 def latest_attempt() -> int | None:
     attempts = []
@@ -648,7 +642,7 @@ def run_iterate_task(task_path: Path) -> None:
     if target_arg:
         draft_task(task_path, target_arg=target_arg)
 
-    generate_plan(task_path, 1)
+    run_task(task_path, 1)
 
     for attempt in range(1, ITERATION_LIMIT + 1):
         review = review_last_plan(task_path)
@@ -667,7 +661,7 @@ def run_iterate_task(task_path: Path) -> None:
             print("ITERATE_STOPPED: max iterations reached")
             return
 
-        generate_plan(task_path, attempt + 1)
+        run_task(task_path, attempt + 1)
 
 def make_patch(task_path: Path) -> None:
     # Step 5: make/check patch.

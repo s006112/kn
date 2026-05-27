@@ -217,9 +217,6 @@ class WikilinkCleaner:
             wikilinks.append((full_match, filename))
         return wikilinks
 
-    def is_ontology_instance_file(self, content: str) -> bool:
-        """Return whether content starts with the ontology instance marker."""
-        return content.startswith("Class::")
 
     def is_link_broken(self, filename: str, existing_files: Set[str]) -> bool:
         """Return whether a wikilink target is missing from known note names."""
@@ -259,9 +256,8 @@ class WikilinkCleaner:
             self.stats["errors"] += 1
             return False
 
-    def move_ontology_instance_files(self) -> bool:
+    def move_ontology_instance_files(self) -> None:
         """Move ontology instance Markdown files into the ontology folder."""
-        success = True
         ontology_dir = self.target_dir / "Ontology"
 
         for file_path in self.target_dir.glob("*.md"):
@@ -269,7 +265,7 @@ class WikilinkCleaner:
                 with open(file_path, "r", encoding="utf-8") as f:
                     original_content = f.read()
 
-                if not self.is_ontology_instance_file(original_content):
+                if not original_content.startswith("Class::"):
                     continue
 
                 destination_path = ontology_dir / file_path.name
@@ -289,7 +285,6 @@ class WikilinkCleaner:
                         "WikilinkCleaner: Skipping ontology move due to backup failure: %s",
                         file_path,
                     )
-                    success = False
                     continue
 
                 shutil.move(str(file_path), str(destination_path))
@@ -307,9 +302,6 @@ class WikilinkCleaner:
                     e,
                 )
                 self.stats["errors"] += 1
-                success = False
-
-        return success
 
     def process_file(self, file_path: Path) -> bool:
         """Remove broken wikilinks and adjacent empty lines from one Markdown file."""
@@ -470,17 +462,16 @@ class WikilinkCleaner:
             self.stats["errors"] += 1
             return False
 
-    def run_cleaning(self) -> bool:
+    def run_cleaning(self) -> None:
         """Run ontology moves before processing selected Markdown notes."""
-        success = self.move_ontology_instance_files()
+        self.move_ontology_instance_files()
         target_files = self.find_target_files()
 
         if not target_files:
             self.logger.debug(
                 "WikilinkCleaner: No target markdown files found to process"
             )
-            return success
+            return
 
         for file_path in target_files:
-            success &= bool(self.process_file(file_path))
-        return success
+            self.process_file(file_path)
