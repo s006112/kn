@@ -1,5 +1,5 @@
 '''
-python3 agent/agent.py --run-iterate-task w/p_wiki.py # steps 0-3 with auto-iteration until APPROVE or unknown verdict
+python3 agent/agent.py --run-iterate-task helper/helper_ytd.py # steps 0-3 with auto-iteration until APPROVE or unknown verdict
 python3 agent/agent.py --draft-task w/p_wiki.py      # step 0
 python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2
@@ -36,7 +36,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from helper.helper_llm import call_llm  # noqa: E402
 
-DEFAULT_MODEL = "gpt-5.4" # codex, gpt-5.4-mini
+DEFAULT_MODEL = "gpt-5.4-mini" # codex, gpt-5.4-mini
 
 CODEX_MODEL = "gpt-5.5"
 CODEX_REASONING_EFFORT = "low" # "mid", "high", "xhigh"
@@ -535,7 +535,7 @@ def draft_task(task_path: Path, target_arg: str | None = None) -> None:
 {template}
 """
     ensure_agent_data_dir()
-    S0_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
+    #S0_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
 
     output = call_agent_llm(
         system_prompt="You are a strict minimal-scope repo task drafting agent.",
@@ -585,7 +585,7 @@ def run_task(task_path: Path, attempt: int | None = None) -> str:
 
     prompt_text = build_plan_prompt(task_text, pos_context, file_context, previous_plan_text=previous_plan_text, previous_review_text=previous_review_text)
     ensure_agent_data_dir()
-    S1_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
+    #S1_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
 
     output = call_agent_llm(
         system_prompt="You are a strict minimal-change repo iteration planning agent.",
@@ -662,6 +662,8 @@ def run_iterate_task(task_path: Path) -> None:
             return
 
         run_task(task_path, attempt + 1)
+    
+    make_patch(task_path)
 
 def make_patch(task_path: Path) -> None:
     # Step 5: make/check patch.

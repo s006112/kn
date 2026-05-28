@@ -279,7 +279,6 @@ def _download(url, mode="720p", output_dir=None, resolve_timeout=20):
         path, temp_dir = run_yt_dlp(cmd, temp_dir)
         return resolved_url, *move_download_to_output_dir(path, temp_dir, output_dir)
     except Exception:
-        shutil.rmtree(temp_dir, ignore_errors=True)
         raise
 
 def download(url, mode, output_dir=None, resolve_timeout=20):

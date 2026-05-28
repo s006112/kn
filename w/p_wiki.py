@@ -327,7 +327,7 @@ class WikilinkCleaner:
 
             for i, line in enumerate(lines):
                 modified_line = line
-                removed_any_broken_link = False
+                has_broken_link = False
 
                 for full_match, filename in self.extract_wikilinks(line):
                     if not self.is_link_broken(filename, existing_files):
@@ -340,7 +340,7 @@ class WikilinkCleaner:
                     )
                     self.stats["broken_links_found"] += 1
                     broken_links_in_file += 1
-                    removed_any_broken_link = True
+                    has_broken_link = True
                     modified_line = modified_line.replace(full_match, "")
                     if not self.dry_run:
                         self.stats["broken_links_removed"] += 1
@@ -349,7 +349,7 @@ class WikilinkCleaner:
                             full_match,
                         )
 
-                if not removed_any_broken_link:
+                if not has_broken_link:
                     continue
 
                 if modified_line.strip() == "":
@@ -413,9 +413,8 @@ class WikilinkCleaner:
                 and i not in adjacent_empty_lines_to_remove
             ]
 
+            empty_lines_removed = len(adjacent_empty_lines_to_remove)
             if broken_links_in_file > 0:
-                empty_lines_removed = len(adjacent_empty_lines_to_remove)
-
                 if not self.dry_run:
                     modified_content = "\n".join(modified_lines)
 
