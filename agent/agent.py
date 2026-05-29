@@ -1,5 +1,5 @@
 '''
-python3 agent/agent.py --run-iterate-task helper/helper_ytd.py # steps 0-3 with auto-iteration until APPROVE or unknown verdict
+python3 agent/agent.py --run-iterate-task w/p_wiki.py helper/helper_ytd.py # steps 0-3 with auto-iteration until APPROVE or unknown verdict
 python3 agent/agent.py --draft-task w/p_wiki.py      # step 0
 python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2

@@ -3107,7 +3107,9 @@ def test_wikilink_cleaner_run_level_backup_dry_run_and_ontology(test_id: str) ->
     source.write_text(
         f"Keep [[{test_id}_valid]]\n"
         f"Embedded ![[{test_id}_missing_image]]\n"
-        f"Only [[{test_id}_missing_only]]\n"
+        "\n"
+        f"[[{test_id}_missing_only]]\n"
+        "\n"
         f"Mixed [[{test_id}_missing_mixed]] text\n",
         encoding="utf-8",
     )
@@ -3145,6 +3147,7 @@ def test_wikilink_cleaner_run_level_backup_dry_run_and_ontology(test_id: str) ->
         and f"![[{test_id}_missing_image]]" in source_text
         and f"[[{test_id}_missing_only]]" not in source_text
         and f"[[{test_id}_missing_mixed]]" not in source_text
+        and f"![[{test_id}_missing_image]]\nMixed" in source_text
         and f"Dry [[{test_id}_dry_missing]]" in dry_text
         and dry_stats["broken_links_found"] == 1
         and dry_stats["broken_links_removed"] == 0

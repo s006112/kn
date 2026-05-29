@@ -198,12 +198,16 @@ def _command(url, mode, temp_dir, resolve_timeout):
     raise RuntimeError(f"Unsupported URL: {url}")
 
 
+def _cleanup_temp(temp_dir):
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 def run_yt_dlp(cmd, temp_dir):
     print("Running:", " ".join(cmd))
     try:
         proc = subprocess.Popen(cmd, cwd=temp_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     except FileNotFoundError as exc:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        _cleanup_temp(temp_dir)
         raise RuntimeError("系统里找不到 yt-dlp。") from exc
 
     lines, shown = [], -1
@@ -225,14 +229,14 @@ def run_yt_dlp(cmd, temp_dir):
 
     proc.stdout.close()
     if proc.wait():
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        _cleanup_temp(temp_dir)
         raise RuntimeError("yt-dlp failed:\n" + ("\n".join(lines[-10:]) or "Unknown yt-dlp error."))
     if shown >= 0:
         print()
 
     files = [path for path in Path(temp_dir).iterdir() if path.is_file()]
     if not files:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        _cleanup_temp(temp_dir)
         raise RuntimeError("下载完成，但没有生成文件。")
     return max(files, key=lambda path: path.stat().st_mtime), temp_dir
 
@@ -272,18 +276,14 @@ def _download(url, mode="720p", output_dir=None, resolve_timeout=20):
         raise RuntimeError(f"Invalid URL: {original_url}")
 
     temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
-    try:
-        resolved_url, cmd = _command(url, mode, temp_dir, resolve_timeout)
-        label = PLATFORM_X if classify_url(resolved_url) == PLATFORM_X else mode
-        print(f"Download request: {resolved_url} ({label})")
-        path, temp_dir = run_yt_dlp(cmd, temp_dir)
-        return resolved_url, *move_download_to_output_dir(path, temp_dir, output_dir)
-    except Exception:
-        raise
+    resolved_url, cmd = _command(url, mode, temp_dir, resolve_timeout)
+    label = PLATFORM_X if classify_url(resolved_url) == PLATFORM_X else mode
+    print(f"Download request: {resolved_url} ({label})")
+    path, temp_dir = run_yt_dlp(cmd, temp_dir)
+    return resolved_url, *move_download_to_output_dir(path, temp_dir, output_dir)
 
 def download(url, mode, output_dir=None, resolve_timeout=20):
-    _, path, temp_dir = _download(url, mode, output_dir=output_dir, resolve_timeout=resolve_timeout)
-    return path, temp_dir
+    return _download(url, mode, output_dir=output_dir, resolve_timeout=resolve_timeout)
 
 def _try_download_ttml(url, output_dir=None):
     langs = [x.strip() for x in os.getenv("YTD_SUB_LANGS", "zh-Hans,zh-Hant,zh-HK,yue,zh,en,ja").split(",") if x.strip()]

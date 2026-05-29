@@ -323,7 +323,8 @@ class WikilinkCleaner:
 
             lines = original_content.split("\n")
             broken_links_in_file = 0
-            removed_line_indices: Set[int] = set()
+            empty_lines_removed = 0
+            remove_flags = [False] * len(lines)
 
             for i, line in enumerate(lines):
                 modified_line = line
@@ -349,31 +350,27 @@ class WikilinkCleaner:
                             full_match,
                         )
 
-                if not has_broken_link:
-                    continue
-
-                if modified_line.strip() == "":
-                    removed_line_indices.add(i)
-                    self.logger.debug(
-                        "WikilinkCleaner: Marked line %d for removal (contained only broken wikilinks)",
-                        i + 1,
-                    )
-                else:
-                    self.logger.debug(
-                        "WikilinkCleaner: Line %d has other content besides broken wikilinks, keeping it",
-                        i + 1,
-                    )
-                    if not self.dry_run:
-                        lines[i] = modified_line
-
-            adjacent_empty_lines_to_remove: Set[int] = set()
+                if has_broken_link:
+                    if modified_line.strip() == "":
+                        remove_flags[i] = True
+                        self.logger.debug(
+                            "WikilinkCleaner: Marked line %d for removal (contained only broken wikilinks)",
+                            i + 1,
+                        )
+                    else:
+                        self.logger.debug(
+                            "WikilinkCleaner: Line %d has other content besides broken wikilinks, keeping it",
+                            i + 1,
+                        )
+                        if not self.dry_run:
+                            lines[i] = modified_line
 
             for i, line in enumerate(lines):
-                if line.strip() != "" or i in removed_line_indices:
+                if line.strip() != "" or remove_flags[i]:
                     continue
 
-                left_removed = i > 0 and (i - 1) in removed_line_indices
-                right_removed = i < len(lines) - 1 and (i + 1) in removed_line_indices
+                left_removed = i > 0 and remove_flags[i - 1]
+                right_removed = i < len(lines) - 1 and remove_flags[i + 1]
                 if not (left_removed or right_removed):
                     continue
 
@@ -394,26 +391,21 @@ class WikilinkCleaner:
                         i + 1,
                     )
                 else:
-                    adjacent_empty_lines_to_remove.add(i)
+                    remove_flags[i] = True
+                    empty_lines_removed += 1
                     self.logger.debug(
                         "WikilinkCleaner: Marked adjacent empty line %d for removal (%s)",
                         i + 1,
                         (
                             f"after removed line {i}"
                             if i == len(lines) - 1
-                            or (i + 1) not in removed_line_indices
+                            or not remove_flags[i + 1]
                             else f"between removed lines {i} and {i + 2}"
                         ),
                     )
 
-            modified_lines = [
-                line
-                for i, line in enumerate(lines)
-                if i not in removed_line_indices
-                and i not in adjacent_empty_lines_to_remove
-            ]
+            modified_lines = [lines[i] for i in range(len(lines)) if not remove_flags[i]]
 
-            empty_lines_removed = len(adjacent_empty_lines_to_remove)
             if broken_links_in_file > 0:
                 if not self.dry_run:
                     modified_content = "\n".join(modified_lines)
