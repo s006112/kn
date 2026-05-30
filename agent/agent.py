@@ -186,12 +186,6 @@ def load_allowed_file_context(file_paths: list[str]) -> str:
         parts.append(f"# {rel}\n\n```text\n{read_text(path)}\n```")
     return "\n\n---\n\n".join(parts)
 
-
-def build_plan_prompt(task_text: str, pos_context: str, file_context: str, previous_plan_text: str = "", previous_review_text: str = "") -> str:
-    # Step 1: plan.
-    template = read_text(S1_PLAN_PROMPT)
-    return template.format(task_text=task_text, pos_context=pos_context, file_context=file_context, previous_plan_text=previous_plan_text, previous_review_text=previous_review_text)
-
 def latest_plan_path() -> Path | None:
     attempt = latest_attempt()
     return plan_path(attempt) if attempt is not None else None
@@ -234,31 +228,10 @@ def accept_last_plan() -> None:
 
 
 def clear_trace() -> None:
-    paths = [
-        S0_TASK_PATH,
-        S0_PROMPT_PATH,
-        S1_PROMPT_PATH,
-        S2_PROMPT_PATH,
-        S1_PLAN_PATH,
-        S2_REVIEW_PATH,
-        S3_REVISED_PLAN_PATH,
-        S4_FINAL_PLAN_PATH,
-        S5_PATCH_PATH,
-    ]
-    paths.extend(sorted(AGENT_DATA_DIR.glob("s1_plan_*.md")))
-    paths.extend(sorted(AGENT_DATA_DIR.glob("s2_review_*.md")))
-
-    seen = set()
-    for path in paths:
-        if path in seen:
-            continue
-        seen.add(path)
-
-        if path.exists():
+    for path in sorted(AGENT_DATA_DIR.rglob("*")):
+        if path.is_file() or path.is_symlink():
             path.unlink()
             print(f"removed: {path}")
-        else:
-            print(f"missing: {path}")
 
     print("Trace cleared.")
 
@@ -356,11 +329,15 @@ def run_verify() -> None:
 
     print("VERIFY_OK", flush=True)
 
-def build_patch_prompt(task_text: str, final_plan_text: str, allowed_files: list[str], file_context: str, pos_context: str) -> str:
+def build_patch_prompt(task_text: str, final_plan_text: str, allowed_files: list[str], file_context: str) -> str:
     # Step 5: make patch
     template = read_text(S5_PATCH_PROMPT)
-    return template.format(task_text=task_text, final_plan_text=final_plan_text, allowed_files_text="\n".join(f"- {p}" for p in allowed_files), file_context=file_context, pos_context=pos_context)
-
+    return template.format(
+        task_text=task_text,
+        final_plan_text=final_plan_text,
+        allowed_files_text="\n".join(f"- {p}" for p in allowed_files),
+        file_context=file_context,
+    )
 
 def parse_patch_blocks(patch_text: str) -> tuple[list[tuple[str, str, str]], list[str]]:
     lines = patch_text.splitlines()
@@ -510,25 +487,14 @@ def draft_task(task_path: Path, target_arg: str | None = None) -> None:
         print(f"Target must be inside repo: {target_path}")
         return
 
-    template = read_text(S0_TASK_PROMPT)
-    pos_context = load_pos_context()
-    prompt_text = f"""
-<POS_CONTEXT>
-{pos_context}
-</POS_CONTEXT>
+    prompt_text = read_text(S0_TASK_PROMPT).format(
+        pos_context=load_pos_context(),
+        file_context=load_single_file_context(target_path),
+        target_path=target_rel,
+    )
 
-<FILE_CONTEXT>
-{load_single_file_context(target_path)}
-</FILE_CONTEXT>
-
-<TARGET_PATH>
-{target_rel}
-</TARGET_PATH>
-
-{template}
-"""
     ensure_agent_data_dir()
-    #S0_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
+    S0_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
 
     output = call_agent_llm(
         system_prompt="You are a strict minimal-scope repo task drafting agent.",
@@ -539,7 +505,6 @@ def draft_task(task_path: Path, target_arg: str | None = None) -> None:
     task_path.write_text(output, encoding="utf-8")
     print(output)
     print(f"\nSaved task: {task_path}")
-
 
 def run_task(task_path: Path, attempt: int | None = None) -> str:
     # Step 1: generate one planning attempt.
@@ -576,14 +541,15 @@ def run_task(task_path: Path, attempt: int | None = None) -> str:
         print(f"  - {file_path}")
     print()
 
-    prompt_text = build_plan_prompt(
-        task_text, 
-        pos_context, 
-        file_context, 
-        previous_plan_text=previous_plan_text, 
-        previous_review_text=previous_review_text)
+    prompt_text = read_text(S1_PLAN_PROMPT).format(
+        task_text=task_text,
+        pos_context=pos_context,
+        file_context=file_context,
+        previous_plan_text=previous_plan_text,
+        previous_review_text=previous_review_text,
+    )
     ensure_agent_data_dir()
-    #S1_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
+    S1_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
 
     output = call_agent_llm(
         system_prompt="You are a strict minimal-change repo iteration planning agent.",
@@ -686,7 +652,12 @@ def make_patch(task_path: Path) -> None:
 
     patch = call_agent_llm(
         system_prompt="You are a strict minimal-change SEARCH/REPLACE patch generator.",
-        user_text=build_patch_prompt(task_text=task_text, final_plan_text=final_plan_text, allowed_files=allowed_files, file_context=file_context, pos_context=load_pos_context()),
+        user_text=build_patch_prompt(
+            task_text=task_text,
+            final_plan_text=final_plan_text,
+            allowed_files=allowed_files,
+            file_context=file_context,
+        ),
         file_path=S4_FINAL_PLAN_PATH,
     )
 
