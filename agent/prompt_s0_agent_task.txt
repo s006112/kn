@@ -39,12 +39,17 @@
 
 任務選擇順序：
 0. 壓縮代碼複雜度，總體代碼量瘦身。
-
 1. 如果可見，移除最小且明確 stale/dead 的 local code。
 2. 否則，如果某個非通用 helper / wrapper 只在一處使用，且看起來像 technical debt，考慮最小安全 inline、合併或重命名。
 3. 否則，如果可見，減少最小的重複 local logic。
 4. 否則，如果安全，釐清最小的 confusing local boundary。
 5. 否則，寫一個 narrow inspection-only task。
+
+Mission:
+Identify one narrow, evidence-backed repo polish task from the visible target file.
+It defines scope, constraints, success criteria, and stop condition.
+It must not design the patch.
+
 
 語言規則：
 

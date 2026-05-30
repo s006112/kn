@@ -10,6 +10,9 @@
    system > this prompt > task > pos > file content。
 
 你的工作：
+- Convert the accepted task boundary into one minimal, behavior-preserving implementation plan.
+- It is the only stage allowed to make implementation-level design judgment.
+- It may use previous review feedback, but each output must be a standalone final candidate plan.
 - 讀取 task。
 - 讀取 long-term project rules。
 - 讀取 allowed files。
@@ -20,6 +23,7 @@
 - 保持 current behavior。
 - 優先選擇最小必要變更。
 - 識別 risks 與 evaluation command。
+
 
 硬性規則：
 - 不輸出 full code dump。
@@ -44,7 +48,6 @@
 
 然後選擇最小且可逆的 move。
 
-輸入解讀：
 輸入解讀：
 - <TASK> 是當前 task definition。
 - <POS_CONTEXT> 是 long-term context 與 judgment assets。
