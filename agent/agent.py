@@ -64,8 +64,7 @@ S0_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s0.txt"
 S1_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s1.txt"
 S2_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s2.txt"
 S4_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s4.txt"
-S1_PLAN_PATH = AGENT_DATA_DIR / "s1_plan.md"
-S2_REVIEW_PATH = AGENT_DATA_DIR / "s2_review.md"
+S2_FAULT_LEDGER_PATH = AGENT_DATA_DIR / "s2_fault_ledger.md"
 S3_FINAL_PLAN_PATH = AGENT_DATA_DIR / "s3_final_plan.md"
 S4_PATCH_PATH = AGENT_DATA_DIR / "s4_patch.txt"
 
@@ -194,12 +193,38 @@ def review_verdict(review_text: str) -> str | None:
     match = re.search(r"(?im)^\s*-?\s*\*{0,2}(APPROVE|REVISE)\*{0,2}\s*$", review_text)
     return match.group(1) if match else None
 
+
+def review_section(review_text: str, title: str) -> str:
+    match = re.search(rf"(?ims)^\s*\d+\.\s+\*\*{re.escape(title)}\*\*\s*$([\s\S]*?)(?=^\s*\d+\.\s+\*\*|\Z)", review_text)
+    return match.group(1).strip() if match else ""
+
+
+def append_fault_ledger(attempt: int, review_text: str) -> None:
+    if review_verdict(review_text) != "REVISE":
+        return
+
+    parts = []
+    for title in ("Issues", "Required revision"):
+        body = review_section(review_text, title)
+        if body and body != "None.":
+            parts.append(f"## {title}\n\n{body}")
+
+    if not parts:
+        return
+
+    ensure_agent_data_dir()
+    entry = f"# Review {attempt}\n\n" + "\n\n".join(parts)
+    current = read_optional(S2_FAULT_LEDGER_PATH).strip()
+    text = f"{current}\n\n---\n\n{entry}\n" if current else f"{entry}\n"
+    S2_FAULT_LEDGER_PATH.write_text(text, encoding="utf-8")
+
 def print_status(task_path: Path) -> None:
     attempt = latest_attempt()
     paths = (
         ("s0_task", task_path),
         ("latest_plan", plan_path(attempt) if attempt is not None else None),
         ("latest_review", review_path(attempt) if attempt is not None else None),
+        ("s2_fault_ledger", S2_FAULT_LEDGER_PATH),
         ("s3_final_plan", S3_FINAL_PLAN_PATH),
         ("s4_patch", S4_PATCH_PATH),
     )
@@ -212,7 +237,7 @@ def print_status(task_path: Path) -> None:
             continue
         status = "exists" if path.exists() else "missing"
         print(f"{name}: {status} - {path}")
-
+        
 def accept_last_plan() -> None:
     # Accept latest plan attempt as final snapshot.
     source = latest_plan_path()
@@ -523,12 +548,7 @@ def run_task(task_path: Path, attempt: int | None = None) -> str:
     allowed_files = parse_allowed_files(task_text)
     pos_context = load_pos_context()
     file_context = load_allowed_file_context(allowed_files)
-    previous_plan_text = ""
-    previous_review_text = ""
-
-    if attempt > 1:
-        previous_plan_text = read_text(plan_path(attempt - 1))
-        previous_review_text = read_text(review_path(attempt - 1))
+    fault_ledger_text = read_optional(S2_FAULT_LEDGER_PATH)
 
     print("=== Repo Planning Agent ===")
     print(f"task: {task_path}")
@@ -544,9 +564,9 @@ def run_task(task_path: Path, attempt: int | None = None) -> str:
         task_text=task_text,
         pos_context=pos_context,
         file_context=file_context,
-        previous_plan_text=previous_plan_text,
-        previous_review_text=previous_review_text,
+        fault_ledger_text=fault_ledger_text,
     )
+
     ensure_agent_data_dir()
     S1_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
 
@@ -561,7 +581,7 @@ def run_task(task_path: Path, attempt: int | None = None) -> str:
     print(output)
     print(f"\nSaved plan: {path}")
     return output
-
+    
 def latest_attempt() -> int | None:
     attempts = []
     for path in AGENT_DATA_DIR.glob("s1_plan_*.md"):
@@ -600,6 +620,7 @@ def review_last_plan(task_path: Path) -> str:
 
     output_path = review_path(attempt)
     output_path.write_text(review, encoding="utf-8")
+    append_fault_ledger(attempt, review)
     print(review)
     print(f"\nSaved review: {output_path}")
     return review
@@ -613,6 +634,7 @@ def run_iterate_task(task_path: Path) -> None:
         path.unlink()
     for path in AGENT_DATA_DIR.glob("prompt_*.txt"):
         path.unlink()
+    S2_FAULT_LEDGER_PATH.unlink(missing_ok=True)
 
     if target_arg:
         draft_task(task_path, target_arg=target_arg)
@@ -637,8 +659,6 @@ def run_iterate_task(task_path: Path) -> None:
             return
 
         run_task(task_path, attempt + 1)
-
-    make_patch(task_path)
 
 def make_patch(task_path: Path) -> None:
     # Step 4: make/check patch.

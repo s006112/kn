@@ -361,28 +361,27 @@ class WikilinkCleaner:
                     continue
                 left_removed = i > 0 and remove_flags[i - 1]
                 right_removed = i + 1 < len(lines) and remove_flags[i + 1]
-                left_active = i > 0 and not left_removed and self.line_has_active_wikilink(lines[i - 1], existing_files)
-                right_active = i + 1 < len(lines) and not right_removed and self.line_has_active_wikilink(lines[i + 1], existing_files)
-                if not left_removed and not right_removed and not left_active and not right_active:
-                    continue
-                if (i == 0 or left_removed or not left_active) and (i == len(lines) - 1 or right_removed or not right_active):
-                    remove_flags[i] = True
-                    empty_lines_removed += 1
-                    self.logger.debug(
-                        "WikilinkCleaner: Marked adjacent empty line %d for removal (%s)",
-                        i + 1,
-                        (
-                            f"after removed line {i}"
-                            if i == len(lines) - 1
-                            or not remove_flags[i + 1]
-                            else f"between removed lines {i} and {i + 2}"
-                        ),
-                    )
-                else:
-                    self.logger.debug(
-                        "WikilinkCleaner: Preserving empty line %d - needed spacing between active wikilinks",
-                        i + 1,
-                    )
+                left_active = i > 0 and self.line_has_active_wikilink(lines[i - 1], existing_files)
+                right_active = i + 1 < len(lines) and self.line_has_active_wikilink(lines[i + 1], existing_files)
+                if left_removed or right_removed or left_active or right_active:
+                    if (i == 0 or left_removed or not left_active) and (i == len(lines) - 1 or right_removed or not right_active):
+                        remove_flags[i] = True
+                        empty_lines_removed += 1
+                        self.logger.debug(
+                            "WikilinkCleaner: Marked adjacent empty line %d for removal (%s)",
+                            i + 1,
+                            (
+                                f"after removed line {i}"
+                                if i == len(lines) - 1
+                                or not remove_flags[i + 1]
+                                else f"between removed lines {i} and {i + 2}"
+                            ),
+                        )
+                    else:
+                        self.logger.debug(
+                            "WikilinkCleaner: Preserving empty line %d - needed spacing between active wikilinks",
+                            i + 1,
+                        )
 
             modified_lines = [line for line, remove in zip(lines, remove_flags) if not remove]
 
