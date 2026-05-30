@@ -2,8 +2,9 @@
 p_wiki.py
 
 Responsibility
-This module removes broken Obsidian-style wikilinks from selected Markdown notes
-in the target directory.
+This module moves ontology instance Markdown files into the ontology subdirectory
+and removes broken Obsidian-style wikilinks from selected Markdown notes in the
+target directory.
 
 Used by:
 * p.py
@@ -11,6 +12,7 @@ Used by:
 
 Pipelines:
 - wikilink worker -> clean dead links -> backup
+- target_dir -> detect_ontology -> move_ontology
 - target_dir -> select_files -> process_file -> stats
 - markdown -> find_wikilinks -> check_targets -> remove_links -> write
 - markdown -> remove_lines -> preserve_spacing -> write
@@ -28,7 +30,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
 from .helper_files import release_text_file_permissions
-from .helper_ontology import move_ontology_instance_files
 
 
 logger = logging.getLogger(__name__)
@@ -111,7 +112,7 @@ def clean_dead_links(
 
 
 class WikilinkCleaner:
-    """Internal worker for broken wikilink cleanup."""
+    """Internal worker for ontology moves and broken wikilink cleanup."""
 
     def __init__(
         self,
@@ -248,6 +249,53 @@ class WikilinkCleaner:
             self.stats["errors"] += 1
             return False
 
+    def move_ontology_instance_files(self) -> None:
+        """Move ontology instance Markdown files into the ontology folder."""
+        ontology_dir = self.target_dir / "Ontology"
+
+        for file_path in self.target_dir.glob("*.md"):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    original_content = f.read()
+
+                if not original_content.startswith("Class::"):
+                    continue
+
+                destination_path = ontology_dir / file_path.name
+
+                if self.dry_run:
+                    self.logger.info(
+                        "WikilinkCleaner: DRY RUN - Would move ontology file %s to %s",
+                        file_path.name,
+                        destination_path,
+                    )
+                    continue
+
+                ontology_dir.mkdir(parents=True, exist_ok=True)
+
+                if not self.create_backup(file_path):
+                    self.logger.error(
+                        "WikilinkCleaner: Skipping ontology move due to backup failure: %s",
+                        file_path,
+                    )
+                    continue
+
+                shutil.move(str(file_path), str(destination_path))
+                release_text_file_permissions(destination_path)
+                self.logger.info(
+                    "WikilinkCleaner: Moved ontology file %s to %s",
+                    file_path.name,
+                    destination_path,
+                )
+
+            except Exception as e:
+                self.logger.error(
+                    "WikilinkCleaner: Error moving ontology file %s: %s",
+                    file_path,
+                    e,
+                )
+                self.stats["errors"] += 1
+
     def process_file(self, file_path: Path) -> bool:
         """Remove broken wikilinks and adjacent empty lines from one Markdown file."""
         try:
@@ -296,13 +344,17 @@ class WikilinkCleaner:
                             "WikilinkCleaner: Marked line %d for removal (contained only broken wikilinks)",
                             i + 1,
                         )
+                    elif not self.dry_run:
+                        lines[i] = modified_line
+                        self.logger.debug(
+                            "WikilinkCleaner: Line %d has other content besides broken wikilinks, keeping it",
+                            i + 1,
+                        )
                     else:
                         self.logger.debug(
                             "WikilinkCleaner: Line %d has other content besides broken wikilinks, keeping it",
                             i + 1,
                         )
-                    if not self.dry_run:
-                        lines[i] = modified_line
 
             for i, line in enumerate(lines):
                 if line.strip() or remove_flags[i]:
@@ -311,24 +363,25 @@ class WikilinkCleaner:
                 right_removed = i + 1 < len(lines) and remove_flags[i + 1]
                 left_active = i > 0 and self.line_has_active_wikilink(lines[i - 1], existing_files)
                 right_active = i + 1 < len(lines) and self.line_has_active_wikilink(lines[i + 1], existing_files)
-                if not ((left_active and not left_removed) or (right_active and not right_removed)):
-                    remove_flags[i] = True
-                    empty_lines_removed += 1
-                    self.logger.debug(
-                        "WikilinkCleaner: Marked adjacent empty line %d for removal (%s)",
-                        i + 1,
-                        (
-                            f"after removed line {i}"
-                            if i == len(lines) - 1
-                            or not remove_flags[i + 1]
-                            else f"between removed lines {i} and {i + 2}"
-                        ),
-                    )
-                else:
-                    self.logger.debug(
-                        "WikilinkCleaner: Preserving empty line %d - needed spacing between active wikilinks",
-                        i + 1,
-                    )
+                if left_removed or right_removed or left_active or right_active:
+                    if (i == 0 or left_removed or not left_active) and (i == len(lines) - 1 or right_removed or not right_active):
+                        remove_flags[i] = True
+                        empty_lines_removed += 1
+                        self.logger.debug(
+                            "WikilinkCleaner: Marked adjacent empty line %d for removal (%s)",
+                            i + 1,
+                            (
+                                f"after removed line {i}"
+                                if i == len(lines) - 1
+                                or not remove_flags[i + 1]
+                                else f"between removed lines {i} and {i + 2}"
+                            ),
+                        )
+                    else:
+                        self.logger.debug(
+                            "WikilinkCleaner: Preserving empty line %d - needed spacing between active wikilinks",
+                            i + 1,
+                        )
 
             modified_lines = [line for line, remove in zip(lines, remove_flags) if not remove]
 
@@ -380,9 +433,7 @@ class WikilinkCleaner:
 
     def run_cleaning(self) -> None:
         """Run ontology moves before processing selected Markdown notes."""
-        self.stats["errors"] += move_ontology_instance_files(
-            self.target_dir, self.create_backup, self.dry_run, self.logger
-        )
+        self.move_ontology_instance_files()
         target_files = self.find_target_files()
 
         if not target_files:
