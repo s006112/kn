@@ -38,8 +38,8 @@ _cleaning_stats = {
     "broken_links_found": 0,
     "broken_links_removed": 0,
     "files_modified": 0,
-    "last_run": None,
     "errors": 0,
+    "last_run": None,
 }
 
 
@@ -79,14 +79,6 @@ def clean_dead_links(
 ) -> Dict[str, Any]:
     """Move ontology notes and clean broken wikilinks from selected Markdown files."""
     global _cleaning_stats
-
-    run_stats = {
-        "files_processed": 0,
-        "broken_links_found": 0,
-        "broken_links_removed": 0,
-        "files_modified": 0,
-        "errors": 0,
-    }
 
     try:
         cleaner = WikilinkCleaner(
@@ -392,7 +384,7 @@ class WikilinkCleaner:
                         i + 1,
                     )
 
-            modified_lines = [lines[i] for i in range(len(lines)) if not remove_flags[i]]
+            modified_lines = [line for line, remove in zip(lines, remove_flags) if not remove]
 
             if broken_links_in_file > 0:
                 if self.dry_run:
