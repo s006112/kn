@@ -344,29 +344,28 @@ class WikilinkCleaner:
                             "WikilinkCleaner: Marked line %d for removal (contained only broken wikilinks)",
                             i + 1,
                         )
+                    elif not self.dry_run:
+                        lines[i] = modified_line
+                        self.logger.debug(
+                            "WikilinkCleaner: Line %d has other content besides broken wikilinks, keeping it",
+                            i + 1,
+                        )
                     else:
                         self.logger.debug(
                             "WikilinkCleaner: Line %d has other content besides broken wikilinks, keeping it",
                             i + 1,
                         )
-                        if not self.dry_run:
-                            lines[i] = modified_line
 
             for i, line in enumerate(lines):
                 if line.strip() or remove_flags[i]:
                     continue
                 left_removed = i > 0 and remove_flags[i - 1]
                 right_removed = i + 1 < len(lines) and remove_flags[i + 1]
-                if not left_removed and not right_removed:
+                left_active = i > 0 and not left_removed and self.line_has_active_wikilink(lines[i - 1], existing_files)
+                right_active = i + 1 < len(lines) and not right_removed and self.line_has_active_wikilink(lines[i + 1], existing_files)
+                if not left_removed and not right_removed and not left_active and not right_active:
                     continue
-                if (
-                    (i == 0 or left_removed or not self.line_has_active_wikilink(lines[i - 1], existing_files))
-                    and (
-                        i == len(lines) - 1
-                        or right_removed
-                        or not self.line_has_active_wikilink(lines[i + 1], existing_files)
-                    )
-                ):
+                if (i == 0 or left_removed or not left_active) and (i == len(lines) - 1 or right_removed or not right_active):
                     remove_flags[i] = True
                     empty_lines_removed += 1
                     self.logger.debug(
