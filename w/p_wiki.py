@@ -79,6 +79,13 @@ def clean_dead_links(
 ) -> Dict[str, Any]:
     """Move ontology notes and clean broken wikilinks from selected Markdown files."""
     global _cleaning_stats
+    run_stats = {
+        "files_processed": 0,
+        "broken_links_found": 0,
+        "broken_links_removed": 0,
+        "files_modified": 0,
+        "errors": 0,
+    }
 
     try:
         cleaner = WikilinkCleaner(
@@ -91,13 +98,7 @@ def clean_dead_links(
         cleaner.run_cleaning()
 
         run_stats = cleaner.get_stats()
-        for key in (
-            "files_processed",
-            "broken_links_found",
-            "broken_links_removed",
-            "files_modified",
-            "errors",
-        ):
+        for key in run_stats:
             _cleaning_stats[key] += run_stats[key]
         _cleaning_stats["last_run"] = datetime.now()
 

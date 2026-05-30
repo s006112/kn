@@ -1,16 +1,16 @@
 '''
-python3 agent/agent.py --run-iterate-task w/p_wiki.py helper/helper_ytd.py # steps 0-3 with auto-iteration until APPROVE or unknown verdict
+python3 agent/agent.py --run-iterate-task w/p_wiki.py helper/helper_ytd.py # auto-iteration until APPROVE or unknown verdict
 python3 agent/agent.py --draft-task w/p_wiki.py      # step 0
 python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2
 python3 agent/agent.py --status
-python3 agent/agent.py --accept-last  # step 4
+python3 agent/agent.py --accept-last  # step 3
 python3 agent/agent.py --show-final
 python3 agent/agent.py --check-ready
 python3 agent/agent.py --show-commands
-python3 agent/agent.py --make-patch  # step 5, includes check_patch internally
+python3 agent/agent.py --make-patch  # step 4, includes check_patch internally
 python3 agent/agent.py --run-verify  
-python3 agent/agent.py --apply-patch  # step 6, includes run verify internally
+python3 agent/agent.py --apply-patch  # step 5, includes run verify internally
 python3 agent/agent.py --clear-trace
 
 Workflow: plan -> review -> revise -> accept -> make/check patch -> apply patch/run verify
@@ -56,20 +56,18 @@ POS_ARCHIVE_FILES = ( # not actively used by agent, but kept for record and futu
 S0_TASK_PROMPT = REPO_ROOT / "agent" / "prompt_s0_agent_task.txt"
 S1_PLAN_PROMPT = REPO_ROOT / "agent" / "prompt_s1_agent_plan.txt"
 S2_REVIEW_PROMPT = REPO_ROOT / "agent" / "prompt_s2_agent_review.txt"
-S3_REVISE_PROMPT = REPO_ROOT / "agent" / "prompt_s3_agent_revise.txt"
-S5_PATCH_PROMPT = REPO_ROOT / "agent" / "prompt_s5_agent_patch.txt"
+S4_PATCH_PROMPT = REPO_ROOT / "agent" / "prompt_s4_agent_patch.txt"
 
 AGENT_DATA_DIR = REPO_ROOT / "data" / "agent"
 S0_TASK_PATH = AGENT_DATA_DIR / "s0_task.md"
 S0_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s0.txt"
 S1_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s1.txt"
 S2_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s2.txt"
-S5_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s5.txt"
+S4_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s4.txt"
 S1_PLAN_PATH = AGENT_DATA_DIR / "s1_plan.md"
 S2_REVIEW_PATH = AGENT_DATA_DIR / "s2_review.md"
-S3_REVISED_PLAN_PATH = AGENT_DATA_DIR / "s3_revised_plan.md"
-S4_FINAL_PLAN_PATH = AGENT_DATA_DIR / "s4_final_plan.md"
-S5_PATCH_PATH = AGENT_DATA_DIR / "s5_patch.txt"
+S3_FINAL_PLAN_PATH = AGENT_DATA_DIR / "s3_final_plan.md"
+S4_PATCH_PATH = AGENT_DATA_DIR / "s4_patch.txt"
 
 
 def plan_path(attempt: int) -> Path:
@@ -202,8 +200,8 @@ def print_status(task_path: Path) -> None:
         ("s0_task", task_path),
         ("latest_plan", plan_path(attempt) if attempt is not None else None),
         ("latest_review", review_path(attempt) if attempt is not None else None),
-        ("s4_final_plan", S4_FINAL_PLAN_PATH),
-        ("s5_patch", S5_PATCH_PATH),
+        ("s3_final_plan", S3_FINAL_PLAN_PATH),
+        ("s4_patch", S4_PATCH_PATH),
     )
 
     print("=== Agent Trace Status ===")
@@ -224,8 +222,8 @@ def accept_last_plan() -> None:
 
     content = read_text(source)
     ensure_agent_data_dir()
-    S4_FINAL_PLAN_PATH.write_text(f"# Final Accepted Plan\n\nSource: `{repo_rel(source)}`\n\n---\n\n{content}", encoding="utf-8")
-    print(f"Accepted plan: {S4_FINAL_PLAN_PATH}")
+    S3_FINAL_PLAN_PATH.write_text(f"# Final Accepted Plan\n\nSource: `{repo_rel(source)}`\n\n---\n\n{content}", encoding="utf-8")
+    print(f"Accepted plan: {S3_FINAL_PLAN_PATH}")
 
 
 def clear_trace() -> None:
@@ -238,20 +236,20 @@ def clear_trace() -> None:
 
 
 def show_final_plan() -> None:
-    if not S4_FINAL_PLAN_PATH.exists():
+    if not S3_FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return
 
     print("=== Final Accepted Plan ===")
-    print(f"source: {S4_FINAL_PLAN_PATH}\n")
-    print(read_text(S4_FINAL_PLAN_PATH))
+    print(f"source: {S3_FINAL_PLAN_PATH}\n")
+    print(read_text(S3_FINAL_PLAN_PATH))
 
 
 def check_ready(task_path: Path) -> None:
     checks = []
 
     checks.append(("task exists", task_path.exists()))
-    checks.append(("s4_final_plan exists", S4_FINAL_PLAN_PATH.exists()))
+    checks.append(("s3_final_plan exists", S3_FINAL_PLAN_PATH.exists()))
 
     task_text = read_text(task_path) if task_path.exists() else ""
     allowed_files = parse_allowed_files(task_text) if task_text else []
@@ -261,7 +259,7 @@ def check_ready(task_path: Path) -> None:
     for rel in allowed_files:
         checks.append((f"allowed file exists: {rel}", (REPO_ROOT / rel).exists()))
 
-    final_text = read_text(S4_FINAL_PLAN_PATH) if S4_FINAL_PLAN_PATH.exists() else ""
+    final_text = read_text(S3_FINAL_PLAN_PATH) if S3_FINAL_PLAN_PATH.exists() else ""
     checks.append(("final plan has evaluation command", "Evaluation command" in final_text or "evaluation" in final_text.lower()))
     checks.append(("final plan has stop condition", "Stop condition" in final_text or "停止条件" in final_text))
 
@@ -277,7 +275,7 @@ def check_ready(task_path: Path) -> None:
 
 
 def get_final_plan_commands() -> list[str]:
-    text = read_text(S4_FINAL_PLAN_PATH)
+    text = read_text(S3_FINAL_PLAN_PATH)
     commands: list[str] = []
     in_bash = False
 
@@ -293,7 +291,7 @@ def get_final_plan_commands() -> list[str]:
 
 
 def show_commands() -> None:
-    if not S4_FINAL_PLAN_PATH.exists():
+    if not S3_FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return
 
@@ -310,7 +308,7 @@ def show_commands() -> None:
 
 def run_verify() -> None:
     # Run verify commands from the accepted plan.
-    if not S4_FINAL_PLAN_PATH.exists():
+    if not S3_FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return
 
@@ -331,8 +329,8 @@ def run_verify() -> None:
     print("VERIFY_OK", flush=True)
 
 def build_patch_prompt(task_text: str, final_plan_text: str, allowed_files: list[str], file_context: str) -> str:
-    # Step 5: make patch
-    template = read_text(S5_PATCH_PROMPT)
+    # Step 4: make patch
+    template = read_text(S4_PATCH_PROMPT)
     return template.format(
         task_text=task_text,
         final_plan_text=final_plan_text,
@@ -420,11 +418,11 @@ def validate_patch_blocks(task_path: Path, blocks: list[tuple[str, str, str]]) -
 
 def check_patch(task_path: Path) -> bool:
     # Check patch.
-    if not S5_PATCH_PATH.exists():
+    if not S4_PATCH_PATH.exists():
         print("No patch found.")
         return False
 
-    patch_text = read_text(S5_PATCH_PATH)
+    patch_text = read_text(S4_PATCH_PATH)
     if patch_text.strip().startswith("PATCH_NOT_SAFE"):
         print(patch_text.strip())
         return False
@@ -443,12 +441,12 @@ def check_patch(task_path: Path) -> bool:
 
 
 def apply_patch(task_path: Path) -> None:
-    # Step 6: apply patch and run verify.
-    if not S5_PATCH_PATH.exists():
+    # Step 5: apply patch and run verify.
+    if not S4_PATCH_PATH.exists():
         print("No patch found.")
         return
 
-    patch_text = read_text(S5_PATCH_PATH)
+    patch_text = read_text(S4_PATCH_PATH)
     if patch_text.strip().startswith("PATCH_NOT_SAFE"):
         print(patch_text.strip())
         return
@@ -643,15 +641,15 @@ def run_iterate_task(task_path: Path) -> None:
     make_patch(task_path)
 
 def make_patch(task_path: Path) -> None:
-    # Step 5: make/check patch.
-    if not S4_FINAL_PLAN_PATH.exists():
+    # Step 4: make/check patch.
+    if not S3_FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return
 
     task_text = read_text(task_path)
     allowed_files = parse_allowed_files(task_text)
     file_context = load_allowed_file_context(allowed_files)
-    final_plan_text = read_text(S4_FINAL_PLAN_PATH)
+    final_plan_text = read_text(S3_FINAL_PLAN_PATH)
     prompt_text = build_patch_prompt(
         task_text=task_text,
         final_plan_text=final_plan_text,
@@ -660,16 +658,16 @@ def make_patch(task_path: Path) -> None:
     )
 
     ensure_agent_data_dir()
-    S5_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
+    S4_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
 
     patch = call_agent_llm(
         system_prompt="You are a strict minimal-change SEARCH/REPLACE patch generator.",
         user_text=prompt_text,
-        file_path=S4_FINAL_PLAN_PATH,
+        file_path=S3_FINAL_PLAN_PATH,
     )
 
-    S5_PATCH_PATH.write_text(patch, encoding="utf-8")
-    print(f"Saved patch: {S5_PATCH_PATH}")
+    S4_PATCH_PATH.write_text(patch, encoding="utf-8")
+    print(f"Saved patch: {S4_PATCH_PATH}")
     if check_patch(task_path):
         print("Next: python agent/agent.py --apply-patch")
 
