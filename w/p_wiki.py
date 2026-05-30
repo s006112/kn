@@ -296,12 +296,13 @@ class WikilinkCleaner:
                             "WikilinkCleaner: Marked line %d for removal (contained only broken wikilinks)",
                             i + 1,
                         )
+                    else:
+                        self.logger.debug(
+                            "WikilinkCleaner: Line %d has other content besides broken wikilinks, keeping it",
+                            i + 1,
+                        )
                     if not self.dry_run:
                         lines[i] = modified_line
-                    self.logger.debug(
-                        "WikilinkCleaner: Line %d has other content besides broken wikilinks, keeping it",
-                        i + 1,
-                    )
 
             for i, line in enumerate(lines):
                 if line.strip() or remove_flags[i]:
@@ -310,7 +311,7 @@ class WikilinkCleaner:
                 right_removed = i + 1 < len(lines) and remove_flags[i + 1]
                 left_active = i > 0 and self.line_has_active_wikilink(lines[i - 1], existing_files)
                 right_active = i + 1 < len(lines) and self.line_has_active_wikilink(lines[i + 1], existing_files)
-                if not ((i > 0 and left_active and not left_removed) or (i + 1 < len(lines) and right_active and not right_removed)):
+                if not ((left_active and not left_removed) or (right_active and not right_removed)):
                     remove_flags[i] = True
                     empty_lines_removed += 1
                     self.logger.debug(

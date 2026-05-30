@@ -683,9 +683,9 @@ def make_patch(task_path: Path) -> None:
     final_plan_text = read_text(S3_FINAL_PLAN_PATH)
     prompt_text = build_patch_prompt(
         task_text=task_text,
-        final_plan_text=final_plan_text,
         allowed_files=allowed_files,
         file_context=file_context,
+        final_plan_text=final_plan_text,
     )
 
     ensure_agent_data_dir()
