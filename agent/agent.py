@@ -195,9 +195,20 @@ def review_verdict(review_text: str) -> str | None:
 
 
 def review_section(review_text: str, title: str) -> str:
-    match = re.search(rf"(?ims)^\s*\d+\.\s+\*\*{re.escape(title)}\*\*\s*$([\s\S]*?)(?=^\s*\d+\.\s+\*\*|\Z)", review_text)
-    return match.group(1).strip() if match else ""
+    heading_pattern = rf"(?im)^\s*(?:[-*]\s*)?\d+\.\s+\*{{0,2}}{re.escape(title)}\*{{0,2}}\s*$"
+    match = re.search(heading_pattern, review_text)
+    if not match:
+        return ""
 
+    next_heading_pattern = (
+        r"(?im)^\s*(?:[-*]\s*)?\d+\.\s+\*{0,2}"
+        r"(?:Verdict|Reason|Issues|Required revision)"
+        r"\*{0,2}\s*$"
+    )
+    next_match = re.search(next_heading_pattern, review_text[match.end():])
+    end = match.end() + next_match.start() if next_match else len(review_text)
+
+    return review_text[match.end():end].strip()
 
 def append_fault_ledger(attempt: int, review_text: str) -> None:
     if review_verdict(review_text) != "REVISE":
@@ -210,7 +221,7 @@ def append_fault_ledger(attempt: int, review_text: str) -> None:
             parts.append(f"## {title}\n\n{body}")
 
     if not parts:
-        return
+        parts.append("## Raw review\n\n" + review_text.strip())
 
     ensure_agent_data_dir()
     entry = f"# Review {attempt}\n\n" + "\n\n".join(parts)
