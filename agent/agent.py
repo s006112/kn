@@ -63,6 +63,8 @@ AGENT_DATA_DIR = REPO_ROOT / "data" / "agent"
 S0_TASK_PATH = AGENT_DATA_DIR / "s0_task.md"
 S0_PROMPT_PATH = AGENT_DATA_DIR / "s0_prompt.txt"
 S1_PROMPT_PATH = AGENT_DATA_DIR / "s1_prompt.txt"
+S2_PROMPT_PATH = AGENT_DATA_DIR / "s2_prompt.txt"
+S5_PROMPT_PATH = AGENT_DATA_DIR / "s5_prompt.txt"
 S1_PLAN_PATH = AGENT_DATA_DIR / "s1_plan.md"
 S2_REVIEW_PATH = AGENT_DATA_DIR / "s2_review.md"
 S3_REVISED_PLAN_PATH = AGENT_DATA_DIR / "s3_revised_plan.md"
@@ -190,16 +192,6 @@ def build_plan_prompt(task_text: str, pos_context: str, file_context: str, previ
     template = read_text(S1_PLAN_PROMPT)
     return template.format(task_text=task_text, pos_context=pos_context, file_context=file_context, previous_plan_text=previous_plan_text, previous_review_text=previous_review_text)
 
-def build_review_prompt(task_text: str, plan_text: str, pos_context: str) -> str:
-    # Step 2: review.
-    template = read_text(S2_REVIEW_PROMPT)
-    return template.format(task_text=task_text, plan_text=plan_text, pos_context=pos_context)
-
-def build_revise_prompt(task_text: str, plan_text: str, review_text: str, pos_context: str) -> str:
-    # Step 3: revise.
-    template = read_text(S3_REVISE_PROMPT)
-    return template.format(task_text=task_text, plan_text=plan_text, review_text=review_text, pos_context=pos_context)
-
 def latest_plan_path() -> Path | None:
     attempt = latest_attempt()
     return plan_path(attempt) if attempt is not None else None
@@ -246,6 +238,7 @@ def clear_trace() -> None:
         S0_TASK_PATH,
         S0_PROMPT_PATH,
         S1_PROMPT_PATH,
+        S2_PROMPT_PATH,
         S1_PLAN_PATH,
         S2_REVIEW_PATH,
         S3_REVISED_PLAN_PATH,
@@ -583,7 +576,12 @@ def run_task(task_path: Path, attempt: int | None = None) -> str:
         print(f"  - {file_path}")
     print()
 
-    prompt_text = build_plan_prompt(task_text, pos_context, file_context, previous_plan_text=previous_plan_text, previous_review_text=previous_review_text)
+    prompt_text = build_plan_prompt(
+        task_text, 
+        pos_context, 
+        file_context, 
+        previous_plan_text=previous_plan_text, 
+        previous_review_text=previous_review_text)
     ensure_agent_data_dir()
     #S1_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
 
@@ -617,15 +615,25 @@ def review_last_plan(task_path: Path) -> str:
     path = plan_path(attempt)
     task_text = read_text(task_path)
     plan_text = read_text(path)
+    allowed_files = parse_allowed_files(task_text)
+
+    prompt_text = read_text(S2_REVIEW_PROMPT).format(
+        task_text=task_text,
+        plan_text=plan_text,
+        pos_context=load_pos_context(),
+        file_context=load_allowed_file_context(allowed_files),
+    )
+
+    ensure_agent_data_dir()
+    S2_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
 
     review = call_agent_llm(
         system_prompt="You are a strict minimal-change repo plan reviewer.",
-        user_text=build_review_prompt(task_text, plan_text, pos_context=load_pos_context()),
+        user_text=prompt_text,
         file_path=path,
     )
 
     output_path = review_path(attempt)
-    ensure_agent_data_dir()
     output_path.write_text(review, encoding="utf-8")
     print(review)
     print(f"\nSaved review: {output_path}")

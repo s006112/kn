@@ -52,12 +52,7 @@ AI 必須優化 semantic compression，而不是 defensive verbosity。
 
 在新增 code、helpers、wrappers、classes、branches、validations 或 error handling 前，先識別真正需要保護的責任。
 
-拒絕以下變更：
-
-- 只有局部形式完整、但沒有系統價值的變更
-- 不保護 data、money、irreversible action 或 silent corruption 的 defensive branches
-- 只減少行數、卻增加導航成本的 helper functions
-- 隱藏具體 runtime ownership 的 abstraction names
-- 在重複使用證明需求前建立 framework-shaped structure
+- 拒絕只有局部形式完整、但沒有系統價值的變更
+- 拒絕只減少行數、卻增加導航成本的 helper functions
 
 預設採用最小的 behavior-preserving change，讓 runtime model 更容易被心智模擬。

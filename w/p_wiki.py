@@ -407,7 +407,16 @@ class WikilinkCleaner:
             modified_lines = [lines[i] for i in range(len(lines)) if not remove_flags[i]]
 
             if broken_links_in_file > 0:
-                if not self.dry_run:
+                if self.dry_run:
+                    self.logger.info(
+                        "WikilinkCleaner: DRY RUN - Would remove %d broken links%s from %s",
+                        broken_links_in_file,
+                        f" and {empty_lines_removed} adjacent empty lines"
+                        if empty_lines_removed > 0
+                        else "",
+                        file_path.name,
+                    )
+                else:
                     modified_content = "\n".join(modified_lines)
 
                     if not self.create_backup(file_path):
@@ -429,16 +438,6 @@ class WikilinkCleaner:
                         f", {empty_lines_removed} empty"
                         if empty_lines_removed > 0
                         else "",
-                    )
-
-                else:
-                    self.logger.info(
-                        "WikilinkCleaner: DRY RUN - Would remove %d broken links%s from %s",
-                        broken_links_in_file,
-                        f" and {empty_lines_removed} adjacent empty lines"
-                        if empty_lines_removed > 0
-                        else "",
-                        file_path.name,
                     )
 
             self.stats["files_processed"] += 1
