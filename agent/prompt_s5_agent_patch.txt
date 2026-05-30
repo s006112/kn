@@ -4,6 +4,7 @@ Primary objective:
 Generate a safe SEARCH/REPLACE patch that satisfies <FINAL_PLAN> while minimizing resulting code count.
 
 Priority order:
+
 1. Preserve existing behavior unless <FINAL_PLAN> explicitly changes it.
 2. Minimize resulting code count.
 3. Minimize edit scope.
@@ -11,27 +12,29 @@ Priority order:
 5. Keep code simple, direct, and readable.
 
 Patch policy:
-- Prefer deletion over addition.
-- Prefer reusing existing code over creating new helpers.
-- Do not add abstraction, wrappers, classes, config, comments, logging, or defensive branches unless required by <FINAL_PLAN>.
-- Do not preserve unused variables, imports, branches, helpers, or intermediate names.
-- If a planned change can be done by removing code, remove it.
-- If two implementations both satisfy <FINAL_PLAN>, choose the one with less final code.
-- If <FINAL_PLAN> is over-specific but its stop condition can be satisfied with simpler code, use the simpler code without changing behavior.
+
+* Prefer deletion over addition.
+* Prefer reusing existing code over creating new helpers.
+* Do not add abstraction, wrappers, classes, config, comments, logging, or defensive branches unless required by <FINAL_PLAN>.
+* Do not preserve unused variables, imports, branches, helpers, or intermediate names.
+* If a planned change can be done by removing code, remove it.
+* If two implementations both satisfy <FINAL_PLAN>, choose the one with less final code.
+* If <FINAL_PLAN> is over-specific but its stop condition can be satisfied with simpler code, use the simpler code without changing behavior.
 
 Allowed scope:
-- Modify only files listed in <ALLOWED_FILES>.
-- Do not create new files.
-- Do not touch files outside <ALLOWED_FILES>.
-- Only use source text visible in <ALLOWED_FILE_CONTEXT>.
+
+* Modify only files listed in <ALLOWED_FILES>.
+* Do not create new files.
+* Do not touch files outside <ALLOWED_FILES>.
+* Only use source text visible in <ALLOWED_FILE_CONTEXT>.
 
 Output format:
-- Output only patch blocks.
-- Do not output explanations.
-- Do not output markdown fences.
-- Do not output unified diff.
-- Do not use ellipsis.
-- Do not use placeholders.
+
+* Output only patch blocks, unless the patch is unsafe.
+* Do not output markdown fences.
+* Do not output unified diff.
+* Do not use ellipsis.
+* Do not use placeholders.
 
 Patch block format:
 
@@ -43,33 +46,40 @@ exact replacement text
 END
 
 Hard rules:
-- SEARCH must be copied exactly from <ALLOWED_FILE_CONTEXT>.
-- Each SEARCH block must match exactly one location in the target file.
-- REPLACE must be the smallest replacement that satisfies <FINAL_PLAN>.
-- Patch must satisfy <FINAL_PLAN> semantically, not just be syntactically valid.
-- Replacement code must not leave unused variables, imports, helpers, or branches created by the edit.
-- Do not introduce whitespace-only lines.
-- If a removed value is still returned only to keep tuple shape, bind it to `_` instead of keeping the old variable name.
-- If moving code between two allowed files, preserve behavior exactly and remove the old copy if it becomes duplicate.
 
-Return exactly PATCH_NOT_SAFE if:
-- Required source text is missing.
-- Any target file is outside <ALLOWED_FILES>.
-- Exact SEARCH text cannot be formed.
-- The change requires broad refactor beyond <FINAL_PLAN>.
-- A syntactically valid patch cannot satisfy <FINAL_PLAN>.
-- The safer patch would need context not provided here.
+* SEARCH must be copied exactly from <ALLOWED_FILE_CONTEXT>.
+* Each SEARCH block must match exactly one location in the target file.
+* REPLACE must be the smallest replacement that satisfies <FINAL_PLAN>.
+* Patch must satisfy <FINAL_PLAN> semantically, not just be syntactically valid.
+* Replacement code must not leave unused variables, imports, helpers, or branches created by the edit.
+* Do not introduce whitespace-only lines.
+* If a removed value is still returned only to keep tuple shape, bind it to `_` instead of keeping the old variable name.
+* If moving code between two allowed files, preserve behavior exactly and remove the old copy if it becomes duplicate.
+
+Return PATCH_NOT_SAFE with one short concrete reason if:
+
+* <ALLOWED_FILES> is empty.
+* <ALLOWED_FILE_CONTEXT> is empty.
+* Required source text is missing.
+* Any target file is outside <ALLOWED_FILES>.
+* Exact SEARCH text cannot be formed.
+* The change requires broad refactor beyond <FINAL_PLAN>.
+* A syntactically valid patch cannot satisfy <FINAL_PLAN>.
+* The safer patch would need context not provided here.
+
+Unsafe output format:
+
+PATCH_NOT_SAFE
+REASON: short concrete reason
 
 Before output, silently verify:
-- Does this patch reduce or minimize resulting code where possible?
-- Did I avoid adding unnecessary abstraction or defensive code?
-- Does every SEARCH match exactly one visible source location?
-- Does every REPLACE satisfy the stop condition?
-- Did I remove all local leftovers caused by the edit?
-- Is behavior preserved unless explicitly changed?
 
-If any answer is unsafe, output exactly:
-PATCH_NOT_SAFE
+* Does this patch reduce or minimize resulting code where possible?
+* Did I avoid adding unnecessary abstraction or defensive code?
+* Does every SEARCH match exactly one visible source location?
+* Does every REPLACE satisfy the stop condition?
+* Did I remove all local leftovers caused by the edit?
+* Is behavior preserved unless explicitly changed?
 
 <TASK>
 {task_text}

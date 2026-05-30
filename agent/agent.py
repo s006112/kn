@@ -61,10 +61,10 @@ S5_PATCH_PROMPT = REPO_ROOT / "agent" / "prompt_s5_agent_patch.txt"
 
 AGENT_DATA_DIR = REPO_ROOT / "data" / "agent"
 S0_TASK_PATH = AGENT_DATA_DIR / "s0_task.md"
-S0_PROMPT_PATH = AGENT_DATA_DIR / "s0_prompt.txt"
-S1_PROMPT_PATH = AGENT_DATA_DIR / "s1_prompt.txt"
-S2_PROMPT_PATH = AGENT_DATA_DIR / "s2_prompt.txt"
-S5_PROMPT_PATH = AGENT_DATA_DIR / "s5_prompt.txt"
+S0_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s0.txt"
+S1_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s1.txt"
+S2_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s2.txt"
+S5_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s5.txt"
 S1_PLAN_PATH = AGENT_DATA_DIR / "s1_plan.md"
 S2_REVIEW_PATH = AGENT_DATA_DIR / "s2_review.md"
 S3_REVISED_PLAN_PATH = AGENT_DATA_DIR / "s3_revised_plan.md"
@@ -154,8 +154,9 @@ def parse_allowed_files(task_text: str) -> list[str]:
     files: list[str] = []
     for line in match.group(1).splitlines():
         line = line.strip()
-        if line.startswith("- "):
-            files.append(line[2:].strip().strip("`"))
+        match_file = re.match(r"^[-*]\s+(.+)$", line)
+        if match_file:
+            files.append(match_file.group(1).strip().strip("`"))
     return files
 
 
@@ -424,8 +425,8 @@ def check_patch(task_path: Path) -> bool:
         return False
 
     patch_text = read_text(S5_PATCH_PATH)
-    if patch_text.strip() == "PATCH_NOT_SAFE":
-        print("PATCH_NOT_SAFE")
+    if patch_text.strip().startswith("PATCH_NOT_SAFE"):
+        print(patch_text.strip())
         return False
 
     blocks, errors = parse_patch_blocks(patch_text)
@@ -448,8 +449,8 @@ def apply_patch(task_path: Path) -> None:
         return
 
     patch_text = read_text(S5_PATCH_PATH)
-    if patch_text.strip() == "PATCH_NOT_SAFE":
-        print("PATCH_NOT_SAFE")
+    if patch_text.strip().startswith("PATCH_NOT_SAFE"):
+        print(patch_text.strip())
         return
 
     blocks, errors = parse_patch_blocks(patch_text)
@@ -612,6 +613,8 @@ def run_iterate_task(task_path: Path) -> None:
         path.unlink()
     for path in AGENT_DATA_DIR.glob("s2_review_*.md"):
         path.unlink()
+    for path in AGENT_DATA_DIR.glob("prompt_*.txt"):
+        path.unlink()
 
     if target_arg:
         draft_task(task_path, target_arg=target_arg)
@@ -636,7 +639,7 @@ def run_iterate_task(task_path: Path) -> None:
             return
 
         run_task(task_path, attempt + 1)
-    
+
     make_patch(task_path)
 
 def make_patch(task_path: Path) -> None:
@@ -649,19 +652,22 @@ def make_patch(task_path: Path) -> None:
     allowed_files = parse_allowed_files(task_text)
     file_context = load_allowed_file_context(allowed_files)
     final_plan_text = read_text(S4_FINAL_PLAN_PATH)
-
-    patch = call_agent_llm(
-        system_prompt="You are a strict minimal-change SEARCH/REPLACE patch generator.",
-        user_text=build_patch_prompt(
-            task_text=task_text,
-            final_plan_text=final_plan_text,
-            allowed_files=allowed_files,
-            file_context=file_context,
-        ),
-        file_path=S4_FINAL_PLAN_PATH,
+    prompt_text = build_patch_prompt(
+        task_text=task_text,
+        final_plan_text=final_plan_text,
+        allowed_files=allowed_files,
+        file_context=file_context,
     )
 
     ensure_agent_data_dir()
+    S5_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
+
+    patch = call_agent_llm(
+        system_prompt="You are a strict minimal-change SEARCH/REPLACE patch generator.",
+        user_text=prompt_text,
+        file_path=S4_FINAL_PLAN_PATH,
+    )
+
     S5_PATCH_PATH.write_text(patch, encoding="utf-8")
     print(f"Saved patch: {S5_PATCH_PATH}")
     if check_patch(task_path):
