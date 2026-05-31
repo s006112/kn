@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
 from .helper_files import release_text_file_permissions
+from .helper_ontology import move_ontology_instance_files
 
 
 logger = logging.getLogger(__name__)
@@ -251,50 +252,12 @@ class WikilinkCleaner:
 
     def move_ontology_instance_files(self) -> None:
         """Move ontology instance Markdown files into the ontology folder."""
-        ontology_dir = self.target_dir / "Ontology"
-
-        for file_path in self.target_dir.glob("*.md"):
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    original_content = f.read()
-
-                if not original_content.startswith("Class::"):
-                    continue
-
-                destination_path = ontology_dir / file_path.name
-
-                if self.dry_run:
-                    self.logger.info(
-                        "WikilinkCleaner: DRY RUN - Would move ontology file %s to %s",
-                        file_path.name,
-                        destination_path,
-                    )
-                    continue
-
-                ontology_dir.mkdir(parents=True, exist_ok=True)
-
-                if not self.create_backup(file_path):
-                    self.logger.error(
-                        "WikilinkCleaner: Skipping ontology move due to backup failure: %s",
-                        file_path,
-                    )
-                    continue
-
-                shutil.move(str(file_path), str(destination_path))
-                release_text_file_permissions(destination_path)
-                self.logger.info(
-                    "WikilinkCleaner: Moved ontology file %s to %s",
-                    file_path.name,
-                    destination_path,
-                )
-
-            except Exception as e:
-                self.logger.error(
-                    "WikilinkCleaner: Error moving ontology file %s: %s",
-                    file_path,
-                    e,
-                )
-                self.stats["errors"] += 1
+        self.stats["errors"] += move_ontology_instance_files(
+            self.target_dir,
+            self.create_backup,
+            self.dry_run,
+            self.logger,
+        )
 
     def process_file(self, file_path: Path) -> bool:
         """Remove broken wikilinks and adjacent empty lines from one Markdown file."""
