@@ -240,15 +240,15 @@ class WhisperService:
 
 
 @lru_cache(maxsize=1)
-def get_service() -> WhisperService:
+def get_service(model_name: str = "large-v3-turbo") -> WhisperService:
     """Purpose:
-    Provide a cached `WhisperService` instance for the default model.
+    Provide a cached `WhisperService` instance for the requested model.
 
     Inputs:
-    - None.
+    - model_name: Whisper model identifier passed to `WhisperService`.
 
     Outputs:
-    - A process-wide cached `WhisperService` configured for `large-v3-turbo`.
+    - A process-wide cached `WhisperService` configured for `model_name`.
 
     Side effects:
     - Constructs and caches a `WhisperService` instance on first call.
@@ -256,4 +256,4 @@ def get_service() -> WhisperService:
     Failure modes:
     - None (construction is lazy and does not load model weights).
     """
-    return WhisperService("large-v3-turbo")
+    return WhisperService(model_name)

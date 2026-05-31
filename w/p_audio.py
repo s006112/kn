@@ -3,7 +3,7 @@ p_audio.py
 
 Responsibility:
 Scan configured audio folders, enqueue audio files, transcribe them via the
-turbo service, and archive results along with temporary file cleanup.
+configured Whisper service, and archive results along with temporary file cleanup.
 
 Pipelines:
 - scan -> enqueue -> convert -> transcribe -> write -> archive
@@ -144,7 +144,7 @@ def process_audio_file(file_path: str, folder_path: str, config: dict, done_fold
 
     try:
         start = time.time()
-        service = get_service()
+        service = get_service(config.get("WHISPER_MODEL", "large-v3-turbo"))
         text = service.transcribe_file(wav_file)
     except Exception as exc:
         logging.error('Transcription failed: %s', exc)
