@@ -22,7 +22,7 @@ WATCH_FOLDER = Path("/desktop")
 WHISPER_FOLDER = Path("/desktop/Sync/Whisper")
 
 CONFIG = {
-    "WHISPER_MODEL": "large-v3",
+    "WHISPER_MODEL": "large-v3-turbo",  # "large-v3-turbo" "medium-v2" "small-v2" "tiny-v2"
     "PRETEXT_MODEL": "gpt-5.4-mini",
     "DISTILL_MODEL": {
         "CORE": "o3",  

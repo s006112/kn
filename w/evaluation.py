@@ -2234,7 +2234,7 @@ def test_audio_process_file_mocked_full_path(test_id: str) -> tuple[bool, list[P
             return str(wav)
 
         audio_module.convert_audio_to_wav = fake_convert
-        audio_module.get_service = lambda: MockService()
+        audio_module.get_service = lambda _model: MockService()
 
         success = audio_module.process_audio_file(
             str(source),
@@ -2863,7 +2863,7 @@ def test_audio_failure_paths_archive_or_cleanup(test_id: str) -> tuple[bool, lis
             return str(transcribe_wav)
 
         audio_module.convert_audio_to_wav = fake_convert
-        audio_module.get_service = lambda: FailingService()
+        audio_module.get_service = lambda _model: FailingService()
         transcribe_success = audio_module.process_audio_file(
             str(transcribe_source),
             str(folder),

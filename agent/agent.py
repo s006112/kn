@@ -1,5 +1,5 @@
 '''
-python3 agent/agent.py --run-iterate-task agent/agent.py # w/p_wiki.py helper/helper_ytd.py 
+python3 agent/agent.py --run-iterate-task w/p_wiki.py # agent/agent.py helper/helper_ytd.py 
 python3 agent/agent.py --draft-task w/p_wiki.py      # step 0
 python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2
@@ -58,7 +58,7 @@ S1_PLAN_PROMPT = REPO_ROOT / "agent" / "prompt_s1_agent_plan.txt"
 S2_REVIEW_PROMPT = REPO_ROOT / "agent" / "prompt_s2_agent_review.txt"
 S4_PATCH_PROMPT = REPO_ROOT / "agent" / "prompt_s4_agent_patch.txt"
 
-AGENT_DATA_DIR = REPO_ROOT / "data" / "agent"
+AGENT_DATA_DIR = REPO_ROOT / "agent" / "data"
 S0_TASK_PATH = AGENT_DATA_DIR / "s0_task.md"
 S0_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s0.txt"
 S1_PROMPT_PATH = AGENT_DATA_DIR / "prompt_s1.txt"
