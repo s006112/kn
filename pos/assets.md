@@ -2,34 +2,35 @@
 
 穩定可復用的判斷模式。
 
-## Core Operating Principles
+## Optimize For Cognitive Compression
 
-### Complexity Compression First
+**模式**
 
-Pattern:
-- AI 時代的主要成本不再是生成，而是理解、約束、收斂與驗證。
-- AI 生成物只是候選毛坯，不應直接進入長期系統。
-- 人的核心責任是保留語義主權：確認因果、守住不變式、降低認知負荷。
+- AI 時代的主要成本是理解、約束、收斂與驗證，而不是生成。
+- 更少 lines 不一定代表更少 complexity；formal completeness 也可能掩蓋 structural bloat。
 
-Rule:
-- 處理任何 AI 生成物時，先刪除、再合併、再要求剩餘部分證明必要性。
-- 無法說清「非它不可」的內容，默認不保留。
+**規則**
 
-Criteria:
-- 是否降低未來認知負荷？
-- 是否改善判斷質量？
-- 是否能被未來任務直接調用？
-- 是否有清楚邊界？
-- 是否避免概念膨脹？
+- 先刪除、再合併、再要求剩餘內容證明必要性。
+- 優化 fewer concepts、clearer ownership 與 easier mental simulation，而不是 raw line count。
 
-Boundary:
-- 不保留漂亮但不可操作的概念。
-- 不把一次性感悟升級成穩定規則。
-- 不因為 AI 輸出流暢就把它納入 POS。
+**條件**
 
-Success criteria:
-- 用更少概念承載更多有效行為。
-- 未來 review 更快、更準、更少重複思考。
+- 除非明確接受 behavior change，否則 behavior 保持等價。
+- 變更應移除真實 concepts、branches 或 indirection，而不只是 whitespace。
+- 保留的 rule 或 abstraction 應可被未來任務直接調用，並具有清楚邊界。
+
+**邊界**
+
+- 不要為了減少 files 或 lines 而 inline 有意義的 concepts。
+- 不要保留已不再承載有用意義的 abstractions。
+- 不把一次性感悟、漂亮但不可操作的概念或流暢的 AI output 納入 POS。
+
+**成功標準**
+
+- 用更少 concepts 承載更多有效行為。
+- Ownership、execution order 與 review path 更容易理解。
+- Future patch risk 與重複思考降低。
 
 ## Semantic Compression Over Defensive Completeness
 
@@ -98,36 +99,6 @@ Success criteria:
 - Helper 具有 low-context inputs。
 - Helper 不需要大量 parameters 才能重建 hidden context。
 
-## Optimize For Cognitive Compression, Not Raw Line Count
-
-**模式**
-
-- 減少行數可能造成 semantic loss。
-- 增加行數也可能用 formal completeness 掩蓋 structural bloat。
-
-**規則**
-
-- 優化 fewer concepts、clearer ownership 與 easier mental simulation。
-
-**條件**
-
-- Runtime ownership 變得更清楚。
-- Execution order 變得更容易跟隨。
-- 除非明確接受 behavior change，否則 behavior 保持等價。
-- 變更移除真實 concepts、branches 或 indirection，而不只是 whitespace。
-
-**邊界**
-
-- 不要為了減少 files 或 lines 而 inline 有意義的 concepts。
-- 不要保留已不再承載有用意義的 abstractions。
-- 除非 code growth 換來更清楚的 boundary 或更安全的 behavior，否則不要接受。
-
-**成功標準**
-
-- Code 變得更短，或 conceptually smaller。
-- Future patch risk 降低。
-- Reviewer 能用更少 moving parts 解釋 flow。
-
 ## No Custom OOP Unless External Interface Requires It
 
 **模式**
@@ -184,43 +155,19 @@ Success criteria:
 - Callers 保持一致。
 - Compatibility shims 是有意識且暫時的，而不是 accidental clutter。
 
-## Build Extension Foundation Before Extension Features
+## Keep Pipeline Extension Boundaries Explicit
 
 **模式**
 
-- 在 foundation 乾淨前新增有用 feature，常會創造另一個 special case。
+- 在 foundation 乾淨前新增 feature，常會創造另一個 special case。
+- Runtime services、file routes、workers、processors 與 model policies 常被混入同一層。
+- 即使 code 能運作，命名錯誤的 components 仍會造成反覆 design confusion。
 
 **規則**
 
 - 先修 extension surfaces，再新增 extension features。
-
-**條件**
-
-- New feature 需要 route、queue、processor、model group、folder 或 runtime thread。
-- 既有 ownership boundaries 不清楚。
-- Feature 會複製 special case，而不是遵循乾淨 template。
-
-**邊界**
-
-- 不要阻擋小 bug fixes。
-- 不要把 foundation cleanup 當作 unlimited refactor 的藉口。
-- 只有當 feature 暴露真實 structural debt 時，feature pause 才合理。
-
-**成功標準**
-
-- New routes 可以依照既有 pattern 新增。
-- Route、queue、worker、processor 與 model policy responsibilities 清楚可見。
-- 下一個 feature 不需要另一條 one-off path。
-
-## Separate Pipeline Concepts Before Optimizing Code Shape
-
-**模式**
-
-- Runtime services、file routes、workers、processors 與 model policies 常被混入同一層。
-
-**規則**
-
-- 在決定 split files、extract helpers 或 rewrite flow 前，先區分 concepts。
+- 在 reshape code 前，先區分 pipeline concepts。
+- 當現有名稱描述 mechanism，而不是 responsibility 時，重新命名 component。
 
 **條件**
 
@@ -229,47 +176,24 @@ Success criteria:
 - Worker：queue consumer。
 - Processor：single-job executor。
 - Model policy：model list、routing behavior、merge behavior 與 distillation behavior。
-
-**邊界**
-
-- 不要建立 heavy framework abstractions。
-- 不要只為 visual neatness split files。
-- Conceptual separation 可以先於 file separation 存在。
-
-**成功標準**
-
-- 每個 component 都能按 responsibility 命名。
-- Toggles 與 queues 符合 operator 的 mental model。
-- Future route expansion 有清楚 insertion point。
-
-## Name Components By Responsibility
-
-**模式**
-
-- 即使 code 能運作，命名錯誤的 components 仍會造成反覆 design confusion。
-
-**規則**
-
-- 當現有名稱描述 mechanism，而不是 responsibility 時，重新命名 component。
-
-**條件**
-
+- Feature 會複製 special case，而不是遵循乾淨 template。
 - 名稱迫使人反覆解釋。
-- Component 被誤認為另一個 architectural layer。
 - 名稱隱藏 ownership、boundary 或 lifecycle。
-- 更好的名稱能降低 future patch risk。
 
 **邊界**
 
+- 不要阻擋小 bug fixes。
+- 不要把 foundation cleanup 當作 unlimited refactor 的藉口。
+- 不要建立 heavy framework abstractions。
+- Conceptual separation 可以先於 file separation 存在。
 - 不要隨意重新命名 stable public APIs。
 - 不要只因 style preference 重新命名。
-- 只有在 semantic clarity 能改善 future maintenance 時才重新命名。
 
 **成功標準**
 
-- 名稱告訴 reader 這個 component 擁有什麼。
-- Scheduling mechanism 不偽裝成 business purpose。
-- Future patches 較不容易把 logic 掛到錯誤 layer。
+- Route、queue、worker、processor 與 model policy responsibilities 清楚可見。
+- Toggles、queues 與 names 符合 operator 的 mental model。
+- 下一個 feature 有清楚 insertion point，不需要另一條 one-off path。
 
 ## Repo Polish Agent Pattern
 
@@ -308,24 +232,18 @@ Success criteria:
 - Verification commands 已包含。
 - Accepted plan 足夠乾淨，可指導 human execution 或 future patch agent。
 
-## Complex Problem Methodology
+## Complex Problem Checklist
 
-**規則**
+面對複雜問題時，先定義：
 
-面對複雜問題時，不要直接跳到 solution。
-
-先定義：
-
-1. 這是什麼 system/object？
-2. 哪個 state 需要被改變？
-3. Success criterion 是什麼？
-4. 哪些 variables 會影響結果？
-5. 哪些 constraints 不能被違反？
-6. 可能出現哪些 real-world scenarios？
-7. 最高風險的 failure points 是什麼？
-8. 根據 risk、cost 與 expected return，應先做什麼？
-9. 如何驗證結果？
-10. 完成後能提取什麼 reusable rule、template 或 checklist？
+1. 這是什麼 system/object？由誰處理？
+2. 需要改變哪個 state？Input 與 output 是什麼？
+3. 什麼算好、什麼算壞？Success criterion 是什麼？
+4. 哪些 variables、constraints 與 domain rules 會影響結果？
+5. 最高風險的 real-world failure points 是什麼？
+6. 根據 risk、cost 與 expected return，最小的優先 action 是什麼？
+7. 如何 test、review、rollback 或 retry？
+8. 完成後能提取什麼 reusable rule、template、failure case 或 example？
 
 ## Archive By Reuse Evidence, Not Immediate Taste
 
@@ -356,32 +274,3 @@ Success criteria:
 
 - Archive 變得更容易 search、reuse、delete 與 improve。
 - Promotion 依據 evidence，而不是 mood。
-
-## Guidance / Verification Checklist
-
-### 1. Learning Engine
-
-- 這個任務由誰處理：LLM、script、human 還是 agent？
-- 它需要吸收什麼 input？
-- 它產出什麼 output？
-
-### 2. Guidance Layer
-
-- 什麼算好？
-- 什麼算壞？
-- 什麼錯誤必須避免？
-- 有哪些 domain-specific rules？
-
-### 3. Verification Layer
-
-- 如何驗證 output？
-- 有沒有 test、compiler、rubric 或 review checklist？
-- 失敗時如何 rollback 或 retry？
-
-### 4. Asset Loop
-
-- 這次經驗能沉澱成什麼？
-- Rule？
-- Template？
-- Failure case？
-- Reusable example？

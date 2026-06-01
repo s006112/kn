@@ -1,173 +1,86 @@
 # Proposals（候選規則）
 
-從真實工作中提取、但尚未穩定的候選規則。
+只保留尚未穩定、但值得下一輪驗證的候選規則。
 
-## 提升規則
+## Promotion Gate
 
 - 只有在重複驗證並獲得明確人工批准後，才提升 proposal。
-- 若 proposal 與 stable assets 變得重複，應 merge 或 delete。
+- 提升前先確認：是否已有 reuse evidence、是否有清楚 boundary、是否能 merge 到現有 asset。
+- 若 stable asset 已能約束相同 decision，delete proposal，不新增同義規則。
 
-## Proposal 001 - 優先使用 explicit dependency passing，而不是 hidden global state
+## Promotion Review Queue
 
-**模式**
+| Proposal | 建議 | 若提升，優先放置位置 |
+| --- | --- | --- |
+| 001 - Explicit runtime state | pending：需要更多 reuse evidence | Merge into `No Custom OOP Unless External Interface Requires It` |
+| 002 - Intake follows route enablement | ready for promotion review | Merge into `Keep Pipeline Extension Boundaries Explicit` |
+| 003 - Critical operational guarantees | pending：需要跨任務 evidence | New project-judgment asset only if repeatedly useful |
 
-- Hidden global state 會讓 runtime ownership 變得不清楚。
+## Proposal 001 - Keep Runtime State Explicit
 
-**建議規則**
+**候選規則**
 
 - 優先使用 explicit dependency passing，而不是 module-level mutable state。
+- 只有當 named fields 能比鬆散 raw values 更清楚表達 ownership 時，才使用 lightweight data bundle。
 
-**條件**
+**提升條件**
 
-- Function 可以直接接收所需 object。
-- Runtime state 已存在於可見 scope 中。
-- Global 只為方便而存在。
-
-**邊界**
-
-- 對真正的 singleton process interfaces 或 compatibility shims，可接受 temporary global state。
-- 如果移除 global state 會破壞 public interface，應有意識地保留 compatibility，或明確記錄 breaking change。
-
-**存放位置**
-
-- `assets.md` / Code Iteration Principles
-
-**狀態**
-
-- pending
-
-## Proposal 002 - 只有在能釐清 ownership 時才保留 lightweight semantic bundles
-
-**模式**
-
-- 不是每個 class-like 或 grouped structure 都是 over-engineering，但很多會變成模糊的 state containers。
-
-**建議規則**
-
-- 只有當 lightweight bundles 比傳遞鬆散 raw values 更能釐清 runtime ownership 時，才保留它們。
-
-**條件**
-
-- Bundle 聚合相關 runtime handles。
-- Field names 改善可讀性。
-- 它避免脆弱的 tuple ordering。
-- 它不隱藏 execution flow。
+- 多個真實 refactors 都因 hidden state 難以追蹤而受阻。
+- Bundle 能避免脆弱 tuple ordering 或過長的 loose-argument passing。
+- Execution flow 仍可由 function inputs 與 outputs 直接理解。
 
 **邊界**
 
-- 不要把 data bundle 轉成 behavior-heavy class。
-- 當 concrete names 更清楚時，不要使用 generic context objects 等模糊名稱。
-- 不要用 hidden bag of state 取代可讀的 function signature。
+- 真正的 process singleton interface 或 compatibility shim 可以暫時保留 global state。
+- 不要建立 generic `context` bag、behavior-heavy class 或 hidden state container。
+- 若 signature change 影響 public callers，遵守 public-contract asset。
 
-**存放位置**
+## Proposal 002 - Intake Follows Route Enablement
 
-- `assets.md` / Code Iteration Principles
+**候選規則**
 
-**狀態**
+- Intake 只為 enabled routes enqueue 工作。
+- Disabled route 不建立 backlog，除非明確啟用 dedicated backlog-building mode。
 
-- pending
+**提升條件**
 
-## Proposal 003 - Intake 應遵守 route enablement
-
-**模式**
-
-- 忽略 pipeline toggles 的 scanner 會製造隱藏工作與不清楚的 system state。
-
-**建議規則**
-
-- Intake 應遵守 route enablement。
-
-**條件**
-
-- Disabled worker 通常意味著其 intake route 應停止 enqueue 新工作。
-- 除非有明確意圖，scanner 不應為 disabled routes 建立 backlog。
 - Toggle behavior 應符合 operator 的 mental model。
+- Scanner、queue 與 worker 的 ownership 已區分。
+- Always-on runtime service 與 route intake 已明確分開。
 
 **邊界**
 
-- 可以有意識地引入 dedicated backlog-building mode。
-- 若某些 runtime services 的目的獨立於 route processing，它們可以保持 always-on。
-- 此規則適用於 intake routes，不一定適用於所有 background services。
+- 規則適用於 intake routes，不自動套用到所有 background services。
+- 有明確目的時，可以保留獨立的 backlog-building mode。
 
-**存放位置**
+**Evidence**
 
-- `assets.md` / Pipeline Concepts
+- 已有 scanner cleanup 的具體 evidence。
 
-**狀態**
+## Proposal 003 - Design For Critical Operational Guarantees
 
-- pending
+**候選規則**
 
-## Proposal 004 - 當能減少 branches 時，按 stage 集中 error behavior
+- 不只完成表面任務；先識別 failure cost、trust requirement、time pressure 與 system dependency。
+- 當 failure cost 高時，將 non-standard work 轉成可複製、可驗證、可交付的保障系統。
 
-**模式**
+**提升條件**
 
-- Per-model 與 per-stage error handling 可能蔓延成重複的 local branches。
-
-**建議規則**
-
-- 當 stage-level semantics 相同時，集中 error save/log behavior。
-
-**條件**
-
-- Error marker path format 共享。
-- Log format 共享。
-- Failure routing 共享。
-- Centralization 能移除重複 local code，且不隱藏不同行為。
+- 此判斷已在多個真實 project 或 customer decisions 中改善 priority selection。
+- 能指出具體 failure mode、驗證方法與 delivery boundary。
+- 能區分普通執行工作與值得系統化的 critical operation。
 
 **邊界**
 
-- 不要集中需要不同 recovery semantics 的 errors。
-- 不要把 destructive moves 或 retry decisions 隱藏在 generic helper 中。
-- 不要只為了 silent continue 而 catch exceptions。
+- 不要把每個 manual workflow 都描述成 mission-critical system。
+- 不要保留只有策略語氣、卻無法改變 decision 的 slogan。
 
-**存放位置**
+**Review**
 
-- `assets.md` / Code Iteration Principles
+- 目前是有方向性的 project-judgment proposal，不是 code-refactor rule。
+- 需要跨任務 evidence 後，再考慮建立獨立 asset。
 
-**狀態**
+## Removed After Distillation
 
-- pending
-
-## Proposal 005 - 優先使用具有 operational meaning 的 route names
-
-**模式**
-
-- `full`、`light` 這類模糊標籤，或 generic context names，會造成反覆澄清。
-
-**建議規則**
-
-- 使用能直接描述 operational meaning 的 route names 與 variable names。
-
-**條件**
-
-- 名稱說明接下來會發生什麼。
-- 名稱符合 operator 的 mental model。
-- 當真正差異是 route、policy 或 output type 時，名稱避免使用模糊的強度詞。
-
-**邊界**
-
-- 不要隨意重新命名 stable public APIs。
-- 不要只因個人品味重新命名。
-- 只有在能減少未來誤解時才重新命名。
-
-**存放位置**
-
-- `assets.md` / Naming Principles
-
-**狀態**
-
-- pending
-
-
-# Principle: 從任務執行升級到關鍵運轉保障
-
-不要只理解客戶要求的表面任務，要識別任務背後的失敗代價、信任要求、時間壓力與系統依賴。
-
-高價值機會常出現在：
-- 表面低端、瑣碎、不性感；
-- 但失敗代價極高；
-- 大公司嫌麻煩，小供應商做不好；
-- 需要非標準現場判斷；
-- 需要高可靠、高信任、高一致性交付。
-
-真正的長期壁壘不是「會做某件事」，而是能把非標準問題轉化為可複製、可驗證、可交付的保障系統。
+- Stage-level error centralization：由 defensive-boundary asset 與 real-reuse helper asset 共同約束。
+- Operational route naming：已由 pipeline-extension asset 的 responsibility naming 規則涵蓋。
