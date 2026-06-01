@@ -3,15 +3,11 @@ python3 agent/agent.py --run-iterate-task agent/agent.py  # agent/agent.py helpe
 python3 agent/agent.py --draft-task w/p_wiki.py      # step 0
 python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2
-python3 agent/agent.py --status
 python3 agent/agent.py --accept-last  # step 3
-python3 agent/agent.py --show-final
 python3 agent/agent.py --check-ready
-python3 agent/agent.py --show-commands
 python3 agent/agent.py --make-patch  # step 4, includes check_patch internally
 python3 agent/agent.py --run-verify  
 python3 agent/agent.py --apply-patch  # step 5, includes run verify internally
-python3 agent/agent.py --clear-trace
 
 Workflow: plan -> review -> revise -> accept -> make/check patch -> apply patch/run verify
 
@@ -223,19 +219,6 @@ def append_fault_ledger(attempt: int, review_text: str) -> None:
     text = f"{current}\n\n---\n\n{entry}\n" if current else f"{entry}\n"
     S2_FAULT_LEDGER_PATH.write_text(text, encoding="utf-8")
 
-def print_status(task_path: Path) -> None:
-    attempt = latest_attempt()
-    print("=== Agent Trace Status ===")
-    print(f"latest_attempt: {attempt if attempt is not None else '<none>'}")
-    for name, path in (
-        ("s0_task", task_path),
-        ("latest_plan", plan_path(attempt) if attempt is not None else None),
-        ("latest_review", review_path(attempt) if attempt is not None else None),
-        ("s2_fault_ledger", S2_FAULT_LEDGER_PATH),
-        ("s3_final_plan", S3_FINAL_PLAN_PATH),
-        ("s4_patch", S4_PATCH_PATH),
-    ):
-        print(f"{name}: {'missing' if path is None else ('exists' if path.exists() else 'missing')}{'' if path is None else f' - {path}'}")
 
 def accept_last_plan() -> None:
     source = latest_plan_path()
@@ -247,24 +230,6 @@ def accept_last_plan() -> None:
     S3_FINAL_PLAN_PATH.write_text(f"# Final Accepted Plan\n\nSource: `{repo_rel(source)}`\n\n---\n\n{read_text(source)}", encoding="utf-8")
     print(f"Accepted plan: {S3_FINAL_PLAN_PATH}")
     print("Next: python agent/agent.py --make-patch")
-
-
-def clear_trace() -> None:
-    for path in sorted(AGENT_DATA_DIR.rglob("*")):
-        if path.is_file() or path.is_symlink():
-            path.unlink()
-            print(f"removed: {path}")
-
-    print("Trace cleared.")
-
-
-def show_final_plan() -> None:
-    if not S3_FINAL_PLAN_PATH.exists():
-        print("No final plan found.")
-        return
-    print("=== Final Accepted Plan ===")
-    print(f"source: {S3_FINAL_PLAN_PATH}\n")
-    print(read_text(S3_FINAL_PLAN_PATH))
 
 
 def check_ready(task_path: Path) -> None:
@@ -305,22 +270,6 @@ def get_final_plan_commands() -> list[str]:
             commands.append(stripped)
 
     return commands
-
-
-def show_commands() -> None:
-    if not S3_FINAL_PLAN_PATH.exists():
-        print("No final plan found.")
-        return
-
-    commands = get_final_plan_commands()
-
-    print("=== Final Plan Commands ===")
-    if not commands:
-        print("No commands found.")
-        return
-
-    for command in commands:
-        print(command)
 
 
 def run_verify() -> None:
@@ -640,12 +589,8 @@ def main() -> None:
         ("--apply-patch", apply_patch, (S0_TASK_PATH,)),
         ("--revert-patch", revert_patch, (S0_TASK_PATH,)),
         ("--run-verify", run_verify, ()),
-        ("--status", print_status, (S0_TASK_PATH,)),
         ("--accept-last", accept_last_plan, ()),
-        ("--clear-trace", clear_trace, ()),
-        ("--show-final", show_final_plan, ()),
         ("--check-ready", check_ready, (S0_TASK_PATH,)),
-        ("--show-commands", show_commands, ()),
     )
     for flag, command, args in stage:
         if flag in sys.argv:
