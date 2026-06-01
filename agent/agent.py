@@ -1,5 +1,5 @@
 '''
-python3 agent/agent.py --run-iterate-task w/p_wiki.py # agent/agent.py helper/helper_ytd.py 
+python3 agent/agent.py --run-iterate-task agent/agent.py  # agent/agent.py helper/helper_ytd.py w/p_wiki.py
 python3 agent/agent.py --draft-task w/p_wiki.py      # step 0
 python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2
@@ -89,33 +89,31 @@ def ensure_agent_data_dir() -> None:
     AGENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 def call_codex_cli(system_prompt: str, user_text: str, context_path: Path, *, timeout: int = 900) -> str:
-# Safety boundary:
-# This backend is used as a text-generation backend for planning/review/patch artifacts.
-# If Codex CLI is run with write-capable flags, it may violate the intended invariant
-# that repo mutation only happens through apply_patch().
     ensure_agent_data_dir()
     prompt_text = "\n\n".join(part for part in (system_prompt.strip(), user_text.strip()) if part)
 
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", dir=AGENT_DATA_DIR, delete=False) as temp:
         output_path = Path(temp.name)
-
     try:
-        cmd = [
-            "codex", "exec",
-            "--cd", str(REPO_ROOT),
-            # "--yolo", Codex backend is trusted high-risk backend
-            "--color", "never",
-            "--model", CODEX_MODEL,
-            "-c", f'model_reasoning_effort="{CODEX_REASONING_EFFORT}"',
-            "--output-last-message", str(output_path),
-            "-",
-        ]
-
-        result = subprocess.run(cmd, input=prompt_text, text=True, cwd=REPO_ROOT, capture_output=True, timeout=timeout)
+        result = subprocess.run(
+            [
+                "codex", "exec",
+                "--cd", str(REPO_ROOT),
+                "--color", "never",
+                "--model", CODEX_MODEL,
+                "-c", f'model_reasoning_effort="{CODEX_REASONING_EFFORT}"',
+                "--output-last-message", str(output_path),
+                "-",
+            ],
+            input=prompt_text,
+            text=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            timeout=timeout,
+        )
         if result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip()
             raise RuntimeError(f"Codex CLI failed for {repo_rel(context_path)}:\n{detail}")
-
         output = read_text(output_path).strip()
         return output or result.stdout.strip()
     finally:
@@ -433,28 +431,19 @@ def validate_patch_blocks(task_path: Path, blocks: list[tuple[str, str, str]]) -
 
     for rel, search, _replace in blocks:
         path = REPO_ROOT / rel
-
         if rel not in allowed_files:
             errors.append(f"file not allowed: {rel}")
-            continue
-
-        if not path.exists():
+        elif not path.exists():
             errors.append(f"file not found: {rel}")
-            continue
-
-        if not search:
+        elif not search:
             errors.append(f"empty SEARCH block: {rel}")
-            continue
-
-        count = read_text(path).count(search)
-        if count != 1:
-            errors.append(f"SEARCH match count for {rel}: {count}")
+        elif read_text(path).count(search) != 1:
+            errors.append(f"SEARCH match count for {rel}: {read_text(path).count(search)}")
 
     return errors
 
 
 def check_patch(task_path: Path) -> bool:
-    # Check patch.
     if not S4_PATCH_PATH.exists():
         print("No patch found.")
         return False
@@ -478,7 +467,6 @@ def check_patch(task_path: Path) -> bool:
 
 
 def apply_patch(task_path: Path) -> None:
-    # Step 5: apply patch and run verify.
     if not S4_PATCH_PATH.exists():
         print("No patch found.")
         return
@@ -499,8 +487,7 @@ def apply_patch(task_path: Path) -> None:
 
     for rel, search, replace in blocks:
         path = REPO_ROOT / rel
-        text = read_text(path)
-        path.write_text(text.replace(search, replace, 1), encoding="utf-8")
+        path.write_text(read_text(path).replace(search, replace, 1), encoding="utf-8")
 
     print("PATCH_APPLIED")
     run_verify()
@@ -654,22 +641,17 @@ def run_iterate_task(task_path: Path) -> None:
     run_task(task_path, 1)
 
     for attempt in range(1, ITERATION_LIMIT + 1):
-        review = review_last_plan(task_path)
-        verdict = review_verdict(review)
-
+        verdict = review_verdict(review_last_plan(task_path))
         if verdict == "APPROVE":
             print("ITERATE_APPROVED")
             accept_last_plan()
             return
-
         if verdict != "REVISE":
             print("ITERATE_STOPPED: unknown review verdict")
             return
-
         if attempt == ITERATION_LIMIT:
             print("ITERATE_STOPPED: max iterations reached")
             return
-
         run_task(task_path, attempt + 1)
 
 def make_patch(task_path: Path) -> None:
@@ -708,20 +690,17 @@ def main() -> None:
     if "--draft-task" in sys.argv: draft_task(S0_TASK_PATH); return
     if "--run-iterate-task" in sys.argv: run_iterate_task(S0_TASK_PATH); return
     if "--run-task" in sys.argv: run_task(S0_TASK_PATH); return
-
-    # Continue LLM stages from the current task and saved artifacts.
     if "--review-last" in sys.argv: review_last_plan(S0_TASK_PATH); return
     if "--make-patch" in sys.argv: make_patch(S0_TASK_PATH); return
+    if "--apply-patch" in sys.argv: apply_patch(S0_TASK_PATH); return
+    if "--run-verify" in sys.argv: run_verify(); return
 
-    # Inspection / state-management modes: no LLM call.
     if "--status" in sys.argv: print_status(S0_TASK_PATH); return
     if "--accept-last" in sys.argv: accept_last_plan(); return
     if "--clear-trace" in sys.argv: clear_trace(); return
     if "--show-final" in sys.argv: show_final_plan(); return
     if "--check-ready" in sys.argv: check_ready(S0_TASK_PATH); return
     if "--show-commands" in sys.argv: show_commands(); return
-    if "--apply-patch" in sys.argv: apply_patch(S0_TASK_PATH); return
-    if "--run-verify" in sys.argv: run_verify(); return
 
 
 if __name__ == "__main__":
