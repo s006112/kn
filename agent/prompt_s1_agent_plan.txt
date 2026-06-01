@@ -25,6 +25,7 @@ refactor mode：
 * 先跑起來。
 * 允許 internal refactor。
 * 優先壓縮 code count。
+* 保持人類可讀性。
 * current behavior 是重要參考，但不要被 legacy shape 鎖死。
 * 只要不明顯破壞 public API / core behavior，就允許 bounded refactor。
 

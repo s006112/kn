@@ -17,11 +17,12 @@
 * 只輸出 task.md 的內容。
 * 不解釋、不產生 patch、不 apply edits、不虛構外部 call sites。
 
-V0 refactor mode：
+refactor mode：
 
 * 先跑起來，不追求完美 proof。
 * 允許 aggressive internal refactor。
 * 優先壓縮 code count。
+* 保持人類可讀性。
 * 不改 public API。
 * 不新增 files。
 * 不改 <TARGET_PATH> 以外的 files。

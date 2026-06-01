@@ -304,10 +304,14 @@ class WikilinkCleaner:
                         i + 1,
                     )
 
+            broken_link_remove_flags = remove_flags.copy()
+            # Only broken-link lines may remove adjacent blanks; do not cascade through newly removed blanks.
             for i, line in enumerate(lines):
                 if line.strip() or remove_flags[i]:
                     continue
-                if i > 0 and not remove_flags[i - 1] and (i + 1 == len(lines) or not remove_flags[i + 1]):
+                if (i == 0 or not broken_link_remove_flags[i - 1]) and (
+                    i + 1 == len(lines) or not broken_link_remove_flags[i + 1]
+                ):
                     continue
                 if (
                     i > 0

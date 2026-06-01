@@ -229,34 +229,26 @@ def append_fault_ledger(attempt: int, review_text: str) -> None:
 
 def print_status(task_path: Path) -> None:
     attempt = latest_attempt()
-    paths = (
+    print("=== Agent Trace Status ===")
+    print(f"latest_attempt: {attempt if attempt is not None else '<none>'}")
+    for name, path in (
         ("s0_task", task_path),
         ("latest_plan", plan_path(attempt) if attempt is not None else None),
         ("latest_review", review_path(attempt) if attempt is not None else None),
         ("s2_fault_ledger", S2_FAULT_LEDGER_PATH),
         ("s3_final_plan", S3_FINAL_PLAN_PATH),
         ("s4_patch", S4_PATCH_PATH),
-    )
+    ):
+        print(f"{name}: {'missing' if path is None else ('exists' if path.exists() else 'missing')}{'' if path is None else f' - {path}'}")
 
-    print("=== Agent Trace Status ===")
-    print(f"latest_attempt: {attempt if attempt is not None else '<none>'}")
-    for name, path in paths:
-        if path is None:
-            print(f"{name}: missing")
-            continue
-        status = "exists" if path.exists() else "missing"
-        print(f"{name}: {status} - {path}")
-        
 def accept_last_plan() -> None:
-    # Accept latest plan attempt as final snapshot.
     source = latest_plan_path()
-    if source is None:
+    if not source:
         print("No plan found to accept.")
         return
 
-    content = read_text(source)
     ensure_agent_data_dir()
-    S3_FINAL_PLAN_PATH.write_text(f"# Final Accepted Plan\n\nSource: `{repo_rel(source)}`\n\n---\n\n{content}", encoding="utf-8")
+    S3_FINAL_PLAN_PATH.write_text(f"# Final Accepted Plan\n\nSource: `{repo_rel(source)}`\n\n---\n\n{read_text(source)}", encoding="utf-8")
     print(f"Accepted plan: {S3_FINAL_PLAN_PATH}")
     print("Next: python agent/agent.py --make-patch")
 
@@ -274,37 +266,31 @@ def show_final_plan() -> None:
     if not S3_FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return
-
     print("=== Final Accepted Plan ===")
     print(f"source: {S3_FINAL_PLAN_PATH}\n")
     print(read_text(S3_FINAL_PLAN_PATH))
 
 
 def check_ready(task_path: Path) -> None:
-    checks = []
-
-    checks.append(("task exists", task_path.exists()))
-    checks.append(("s3_final_plan exists", S3_FINAL_PLAN_PATH.exists()))
-
     task_text = read_text(task_path) if task_path.exists() else ""
     allowed_files = parse_allowed_files(task_text) if task_text else []
-
-    checks.append(("allowed files declared", bool(allowed_files)))
-
-    for rel in allowed_files:
-        checks.append((f"allowed file exists: {rel}", (REPO_ROOT / rel).exists()))
-
+    checks = [
+        ("task exists", task_path.exists()),
+        ("s3_final_plan exists", S3_FINAL_PLAN_PATH.exists()),
+        ("allowed files declared", bool(allowed_files)),
+        *[(f"allowed file exists: {rel}", (REPO_ROOT / rel).exists()) for rel in allowed_files],
+    ]
     final_text = read_text(S3_FINAL_PLAN_PATH) if S3_FINAL_PLAN_PATH.exists() else ""
-    checks.append(("final plan has evaluation command", "Evaluation command" in final_text or "evaluation" in final_text.lower()))
-    checks.append(("final plan has stop condition", "Stop condition" in final_text or "停止条件" in final_text))
+    checks += [
+        ("final plan has evaluation command", "Evaluation command" in final_text or "evaluation" in final_text.lower()),
+        ("final plan has stop condition", "Stop condition" in final_text or "停止条件" in final_text),
+    ]
 
     print("=== Agent Ready Check ===")
     ok = True
     for name, passed in checks:
-        mark = "OK" if passed else "MISSING"
-        print(f"{mark}: {name}")
-        ok = ok and passed
-
+        print(f"{'OK' if passed else 'MISSING'}: {name}")
+        ok &= passed
     print()
     print("READY" if ok else "NOT READY")
 
@@ -516,26 +502,26 @@ def draft_task(task_path: Path, target_arg: str | None = None) -> None:
     print(output)
     print(f"\nSaved task: {task_path}")
 
+def _run_prompt_flow(prompt_path: Path, template_path: Path, system_prompt: str, file_path: Path, **values: str) -> str:
+    prompt_text = read_text(template_path).format(**values)
+    ensure_agent_data_dir()
+    prompt_path.write_text(prompt_text, encoding="utf-8")
+    return call_agent_llm(system_prompt=system_prompt, user_text=prompt_text, file_path=file_path)
+
 def run_task(task_path: Path, attempt: int | None = None) -> str:
-    # Step 1: generate one planning attempt.
     if attempt is None:
         latest = latest_attempt()
         if latest is None:
             attempt = 1
+        elif not review_path(latest).exists():
+            print(f"Latest plan has no review yet: {plan_path(latest)}")
+            print("Next: python3 agent/agent.py --review-last")
+            return ""
         else:
-            current_review_path = review_path(latest)
-            if not current_review_path.exists():
-                print(f"Latest plan has no review yet: {plan_path(latest)}")
-                print("Next: python3 agent/agent.py --review-last")
-                return ""
             attempt = latest + 1
 
     task_text = read_text(task_path)
     allowed_files = parse_allowed_files(task_text)
-    pos_context = load_pos_context()
-    file_context = load_allowed_file_context(allowed_files)
-    fault_ledger_text = read_optional(S2_FAULT_LEDGER_PATH)
-
     print("=== Repo Planning Agent ===")
     print(f"task: {task_path}")
     print(f"attempt: {attempt}")
@@ -546,28 +532,22 @@ def run_task(task_path: Path, attempt: int | None = None) -> str:
         print(f"  - {file_path}")
     print()
 
-    prompt_text = read_text(S1_PLAN_PROMPT).format(
+    output = _run_prompt_flow(
+        S1_PROMPT_PATH,
+        S1_PLAN_PROMPT,
+        "You are a strict minimal-change repo iteration planning agent.",
+        task_path,
         task_text=task_text,
-        pos_context=pos_context,
-        file_context=file_context,
-        fault_ledger_text=fault_ledger_text,
+        pos_context=load_pos_context(),
+        file_context=load_allowed_file_context(allowed_files),
+        fault_ledger_text=read_optional(S2_FAULT_LEDGER_PATH),
     )
-
-    ensure_agent_data_dir()
-    S1_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
-
-    output = call_agent_llm(
-        system_prompt="You are a strict minimal-change repo iteration planning agent.",
-        user_text=prompt_text,
-        file_path=task_path,
-    )
-
     path = plan_path(attempt)
     path.write_text(output, encoding="utf-8")
     print(output)
     print(f"\nSaved plan: {path}")
     return output
-    
+
 def latest_attempt() -> int | None:
     attempts = []
     for path in AGENT_DATA_DIR.glob("s1_plan_*.md"):
@@ -577,7 +557,6 @@ def latest_attempt() -> int | None:
     return max(attempts) if attempts else None
 
 def review_last_plan(task_path: Path) -> str:
-    # Step 2: review latest plan attempt.
     attempt = latest_attempt()
     if attempt is None:
         print("No plan found to review.")
@@ -585,25 +564,17 @@ def review_last_plan(task_path: Path) -> str:
 
     path = plan_path(attempt)
     task_text = read_text(task_path)
-    plan_text = read_text(path)
     allowed_files = parse_allowed_files(task_text)
-
-    prompt_text = read_text(S2_REVIEW_PROMPT).format(
+    review = _run_prompt_flow(
+        S2_PROMPT_PATH,
+        S2_REVIEW_PROMPT,
+        "You are a strict minimal-change repo plan reviewer.",
+        path,
         task_text=task_text,
-        plan_text=plan_text,
+        plan_text=read_text(path),
         pos_context=load_pos_context(),
         file_context=load_allowed_file_context(allowed_files),
     )
-
-    ensure_agent_data_dir()
-    S2_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
-
-    review = call_agent_llm(
-        system_prompt="You are a strict minimal-change repo plan reviewer.",
-        user_text=prompt_text,
-        file_path=path,
-    )
-
     output_path = review_path(attempt)
     output_path.write_text(review, encoding="utf-8")
     append_fault_ledger(attempt, review)
@@ -617,7 +588,6 @@ def run_iterate_task(task_path: Path) -> None:
         for path in AGENT_DATA_DIR.glob(pattern):
             path.unlink()
     S2_FAULT_LEDGER_PATH.unlink(missing_ok=True)
-
     if target_arg:
         draft_task(task_path, target_arg=target_arg)
 
@@ -635,31 +605,26 @@ def run_iterate_task(task_path: Path) -> None:
         return
 
 def make_patch(task_path: Path) -> None:
-    # Step 4: make/check patch.
     if not S3_FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return
 
     task_text = read_text(task_path)
     allowed_files = parse_allowed_files(task_text)
-    file_context = load_allowed_file_context(allowed_files)
-    final_plan_text = read_text(S3_FINAL_PLAN_PATH)
     prompt_text = build_patch_prompt(
         task_text=task_text,
+        final_plan_text=read_text(S3_FINAL_PLAN_PATH),
         allowed_files=allowed_files,
-        file_context=file_context,
-        final_plan_text=final_plan_text,
+        file_context=load_allowed_file_context(allowed_files),
     )
 
     ensure_agent_data_dir()
     S4_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
-
     patch = call_agent_llm(
         system_prompt="You are a strict minimal-change SEARCH/REPLACE patch generator.",
         user_text=prompt_text,
         file_path=S3_FINAL_PLAN_PATH,
     )
-
     S4_PATCH_PATH.write_text(patch, encoding="utf-8")
     print(f"Saved patch: {S4_PATCH_PATH}")
     if check_patch(task_path):

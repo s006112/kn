@@ -17,6 +17,7 @@ Generate a patch unless it is clearly unsafe or impossible.
 * 不要為了可讀性新增 helper、comment、wrapper、intermediate variable，除非同時讓總代碼行數不增加。
 * 若行數增加，只有在明顯降低 branch / duplication / nesting 時才允許。
 * 優先選擇更小、更短、更直接的 patch。
+* 保持人類可讀性。
 
 允許：
 
