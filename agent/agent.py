@@ -483,6 +483,12 @@ def _run_prompt_flow(prompt_path: Path, template_path: Path | None, system_promp
     prompt_path.write_text(prompt_text, encoding="utf-8")
     return call_agent_llm(system_prompt=system_prompt, user_text=prompt_text, file_path=file_path)
 
+def _task_context(task_path: Path) -> tuple[str, list[str], str]:
+    task_text = read_text(task_path)
+    allowed_files = parse_allowed_files(task_text)
+    return task_text, allowed_files, load_allowed_file_context(allowed_files)
+
+
 def run_task(task_path: Path, attempt: int | None = None) -> str:
     if attempt is None:
         latest = latest_attempt()
@@ -494,8 +500,7 @@ def run_task(task_path: Path, attempt: int | None = None) -> str:
             return ""
         else:
             attempt = latest + 1
-    task_text = read_text(task_path)
-    allowed_files = parse_allowed_files(task_text)
+    task_text, allowed_files, file_context = _task_context(task_path)
     print("=== Repo Planning Agent ===")
     print(f"task: {task_path}")
     print(f"attempt: {attempt}")
@@ -512,7 +517,7 @@ def run_task(task_path: Path, attempt: int | None = None) -> str:
         task_path,
         task_text=task_text,
         pos_context=load_pos_context(),
-        file_context=load_allowed_file_context(allowed_files),
+        file_context=file_context,
         fault_ledger_text=read_optional(S2_FAULT_LEDGER_PATH),
     )
     path = plan_path(attempt)
@@ -520,6 +525,7 @@ def run_task(task_path: Path, attempt: int | None = None) -> str:
     print(output)
     print(f"\nSaved plan: {path}")
     return output
+
 
 def latest_attempt() -> int | None:
     attempts = []
@@ -529,14 +535,14 @@ def latest_attempt() -> int | None:
             attempts.append(int(match.group(1)))
     return max(attempts) if attempts else None
 
+
 def review_last_plan(task_path: Path) -> str:
     attempt = latest_attempt()
     if attempt is None:
         print("No plan found to review.")
         return ""
     path = plan_path(attempt)
-    task_text = read_text(task_path)
-    allowed_files = parse_allowed_files(task_text)
+    task_text, allowed_files, file_context = _task_context(task_path)
     review = _run_prompt_flow(
         S2_PROMPT_PATH,
         S2_REVIEW_PROMPT,
@@ -545,7 +551,7 @@ def review_last_plan(task_path: Path) -> str:
         task_text=task_text,
         plan_text=read_text(path),
         pos_context=load_pos_context(),
-        file_context=load_allowed_file_context(allowed_files),
+        file_context=file_context,
     )
     output_path = review_path(attempt)
     output_path.write_text(review, encoding="utf-8")
@@ -553,6 +559,7 @@ def review_last_plan(task_path: Path) -> str:
     print(review)
     print(f"\nSaved review: {output_path}")
     return review
+
 
 def run_iterate_task(task_path: Path) -> None:
     target_arg = argv_value_after("--run-iterate-task")
@@ -577,12 +584,12 @@ def run_iterate_task(task_path: Path) -> None:
             return
         run_task(task_path, attempt + 1)
 
+
 def make_patch(task_path: Path) -> None:
     if not S3_FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return
-    task_text = read_text(task_path)
-    allowed_files = parse_allowed_files(task_text)
+    task_text, allowed_files, file_context = _task_context(task_path)
     patch = _run_prompt_flow(
         S4_PROMPT_PATH,
         None,
@@ -592,7 +599,7 @@ def make_patch(task_path: Path) -> None:
             task_text=task_text,
             final_plan_text=read_text(S3_FINAL_PLAN_PATH),
             allowed_files=allowed_files,
-            file_context=load_allowed_file_context(allowed_files),
+            file_context=file_context,
         ),
     )
     S4_PATCH_PATH.write_text(patch, encoding="utf-8")
