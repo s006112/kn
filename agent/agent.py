@@ -443,46 +443,33 @@ def validate_patch_blocks(task_path: Path, blocks: list[tuple[str, str, str]]) -
     return errors
 
 
-def check_patch(task_path: Path) -> bool:
+def _load_patch_blocks(task_path: Path) -> tuple[list[tuple[str, str, str]], list[str]] | None:
     if not S4_PATCH_PATH.exists():
         print("No patch found.")
-        return False
+        return None
 
-    patch_text = read_text(S4_PATCH_PATH)
-    if patch_text.strip().startswith("PATCH_NOT_SAFE"):
-        print(patch_text.strip())
-        return False
+    patch_text = read_text(S4_PATCH_PATH).strip()
+    if patch_text.startswith("PATCH_NOT_SAFE"):
+        print(patch_text)
+        return None
 
     blocks, errors = parse_patch_blocks(patch_text)
     errors.extend(validate_patch_blocks(task_path, blocks))
+    return None if errors else blocks
 
-    if errors:
-        print("PATCH_INVALID")
-        for error in errors:
-            print(error)
+
+def check_patch(task_path: Path) -> bool:
+    blocks = _load_patch_blocks(task_path)
+    if blocks is None:
         return False
-
     print("PATCH_OK")
     return True
 
 
 def apply_patch(task_path: Path) -> None:
-    if not S4_PATCH_PATH.exists():
-        print("No patch found.")
-        return
-
-    patch_text = read_text(S4_PATCH_PATH)
-    if patch_text.strip().startswith("PATCH_NOT_SAFE"):
-        print(patch_text.strip())
-        return
-
-    blocks, errors = parse_patch_blocks(patch_text)
-    errors.extend(validate_patch_blocks(task_path, blocks))
-
-    if errors:
+    blocks = _load_patch_blocks(task_path)
+    if blocks is None:
         print("PATCH_INVALID")
-        for error in errors:
-            print(error)
         return
 
     for rel, search, replace in blocks:
@@ -626,33 +613,26 @@ def review_last_plan(task_path: Path) -> str:
 
 def run_iterate_task(task_path: Path) -> None:
     target_arg = argv_value_after("--run-iterate-task")
-
-    for path in AGENT_DATA_DIR.glob("s1_plan_*.md"):
-        path.unlink()
-    for path in AGENT_DATA_DIR.glob("s2_review_*.md"):
-        path.unlink()
-    for path in AGENT_DATA_DIR.glob("*.txt"):
-        path.unlink()
+    for pattern in ("s1_plan_*.md", "s2_review_*.md", "*.txt"):
+        for path in AGENT_DATA_DIR.glob(pattern):
+            path.unlink()
     S2_FAULT_LEDGER_PATH.unlink(missing_ok=True)
 
     if target_arg:
         draft_task(task_path, target_arg=target_arg)
 
     run_task(task_path, 1)
-
     for attempt in range(1, ITERATION_LIMIT + 1):
         verdict = review_verdict(review_last_plan(task_path))
         if verdict == "APPROVE":
             print("ITERATE_APPROVED")
             accept_last_plan()
             return
-        if verdict != "REVISE":
-            print("ITERATE_STOPPED: unknown review verdict")
-            return
-        if attempt == ITERATION_LIMIT:
-            print("ITERATE_STOPPED: max iterations reached")
-            return
-        run_task(task_path, attempt + 1)
+        if verdict == "REVISE" and attempt < ITERATION_LIMIT:
+            run_task(task_path, attempt + 1)
+            continue
+        print("ITERATE_STOPPED: max iterations reached" if verdict == "REVISE" else "ITERATE_STOPPED: unknown review verdict")
+        return
 
 def make_patch(task_path: Path) -> None:
     # Step 4: make/check patch.
