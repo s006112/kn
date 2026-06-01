@@ -260,6 +260,7 @@ def accept_last_plan() -> None:
     ensure_agent_data_dir()
     S3_FINAL_PLAN_PATH.write_text(f"# Final Accepted Plan\n\nSource: `{repo_rel(source)}`\n\n---\n\n{content}", encoding="utf-8")
     print(f"Accepted plan: {S3_FINAL_PLAN_PATH}")
+    print("Next: python agent/agent.py --make-patch")
 
 
 def clear_trace() -> None:
