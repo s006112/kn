@@ -345,14 +345,6 @@ def run_verify() -> None:
 
     print("VERIFY_OK", flush=True)
 
-def build_patch_prompt(task_text: str, final_plan_text: str, allowed_files: list[str], file_context: str) -> str:
-    return read_text(S4_PATCH_PROMPT).format(
-        task_text=task_text,
-        final_plan_text=final_plan_text,
-        allowed_files_text="\n".join(f"- {p}" for p in allowed_files),
-        file_context=file_context,
-    )
-
 def parse_patch_blocks(patch_text: str) -> tuple[list[tuple[str, str, str]], list[str]]:
     lines = patch_text.splitlines()
     blocks: list[tuple[str, str, str]] = []
@@ -393,27 +385,38 @@ def parse_patch_blocks(patch_text: str) -> tuple[list[tuple[str, str, str]], lis
     return blocks, errors
 
 
-def validate_patch_blocks(task_path: Path, blocks: list[tuple[str, str, str]]) -> list[str]:
+def validate_patch_blocks(
+    task_path: Path,
+    blocks: list[tuple[str, str, str]],
+    *,
+    reverse: bool = False,
+) -> list[str]:
     allowed_files = set(parse_allowed_files(read_text(task_path) if task_path.exists() else ""))
     errors: list[str] = []
+    target_label = "REPLACE" if reverse else "SEARCH"
 
-    for rel, search, _replace in blocks:
+    for rel, search, replace in blocks:
         path = REPO_ROOT / rel
+        target = replace if reverse else search
         if rel not in allowed_files:
             errors.append(f"file not allowed: {rel}")
         elif not path.exists():
             errors.append(f"file not found: {rel}")
-        elif not search:
-            errors.append(f"empty SEARCH block: {rel}")
+        elif not target:
+            errors.append(f"empty {target_label} block: {rel}")
         else:
-            count = read_text(path).count(search)
+            count = read_text(path).count(target)
             if count != 1:
-                errors.append(f"SEARCH match count for {rel}: {count}")
+                errors.append(f"{target_label} match count for {rel}: {count}")
 
     return errors
 
 
-def _load_patch_blocks(task_path: Path) -> tuple[list[tuple[str, str, str]], list[str]] | None:
+def _load_patch_blocks(
+    task_path: Path,
+    *,
+    reverse: bool = False,
+) -> list[tuple[str, str, str]] | None:
     if not S4_PATCH_PATH.exists():
         print("No patch found.")
         return None
@@ -424,8 +427,12 @@ def _load_patch_blocks(task_path: Path) -> tuple[list[tuple[str, str, str]], lis
         return None
 
     blocks, errors = parse_patch_blocks(patch_text)
-    errors.extend(validate_patch_blocks(task_path, blocks))
-    return None if errors else blocks
+    errors.extend(validate_patch_blocks(task_path, blocks, reverse=reverse))
+    if errors:
+        for error in errors:
+            print(f"PATCH_INVALID: {error}")
+        return None
+    return blocks
 
 
 def check_patch(task_path: Path) -> bool:
@@ -447,6 +454,20 @@ def apply_patch(task_path: Path) -> None:
         path.write_text(read_text(path).replace(search, replace, 1), encoding="utf-8")
 
     print("PATCH_APPLIED")
+    run_verify()
+
+
+def revert_patch(task_path: Path) -> None:
+    blocks = _load_patch_blocks(task_path, reverse=True)
+    if blocks is None:
+        print("PATCH_REVERT_INVALID")
+        return
+
+    for rel, search, replace in blocks:
+        path = REPO_ROOT / rel
+        path.write_text(read_text(path).replace(replace, search, 1), encoding="utf-8")
+
+    print("PATCH_REVERTED")
     run_verify()
 
 
@@ -590,17 +611,18 @@ def make_patch(task_path: Path) -> None:
         print("No final plan found.")
         return
     task_text, allowed_files, file_context = _task_context(task_path)
+    prompt_text = read_text(S4_PATCH_PROMPT).format(
+        task_text=task_text,
+        final_plan_text=read_text(S3_FINAL_PLAN_PATH),
+        allowed_files_text="\n".join(f"- {p}" for p in allowed_files),
+        file_context=file_context,
+    )
     patch = _run_prompt_flow(
         S4_PROMPT_PATH,
         None,
         "You are a strict minimal-change SEARCH/REPLACE patch generator.",
         S3_FINAL_PLAN_PATH,
-        prompt_text=build_patch_prompt(
-            task_text=task_text,
-            final_plan_text=read_text(S3_FINAL_PLAN_PATH),
-            allowed_files=allowed_files,
-            file_context=file_context,
-        ),
+        prompt_text=prompt_text,
     )
     S4_PATCH_PATH.write_text(patch, encoding="utf-8")
     print(f"Saved patch: {S4_PATCH_PATH}")
@@ -609,13 +631,14 @@ def make_patch(task_path: Path) -> None:
 
 
 def main() -> None:
-    dispatch = (
+    stage = (
         ("--draft-task", draft_task, (S0_TASK_PATH,)),
         ("--run-iterate-task", run_iterate_task, (S0_TASK_PATH,)),
         ("--run-task", run_task, (S0_TASK_PATH,)),
         ("--review-last", review_last_plan, (S0_TASK_PATH,)),
         ("--make-patch", make_patch, (S0_TASK_PATH,)),
         ("--apply-patch", apply_patch, (S0_TASK_PATH,)),
+        ("--revert-patch", revert_patch, (S0_TASK_PATH,)),
         ("--run-verify", run_verify, ()),
         ("--status", print_status, (S0_TASK_PATH,)),
         ("--accept-last", accept_last_plan, ()),
@@ -624,7 +647,7 @@ def main() -> None:
         ("--check-ready", check_ready, (S0_TASK_PATH,)),
         ("--show-commands", show_commands, ()),
     )
-    for flag, command, args in dispatch:
+    for flag, command, args in stage:
         if flag in sys.argv:
             command(*args)
             return
