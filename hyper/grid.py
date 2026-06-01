@@ -21,7 +21,7 @@ from grid_config import (
 
 
 def bootstrap():
-    info = Info(constants.MAINNET_API_URL)      # read SDK 内置的主网 API 地址常量
+    info = Info(constants.MAINNET_API_URL, skip_ws=True)     # read SDK 内置的主网 API 地址常量
     trader = Exchange(                          # execution client for placing/canceling orders
         Account.from_key(API_WALLET_KEY),
         constants.MAINNET_API_URL,

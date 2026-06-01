@@ -1,5 +1,5 @@
 '''
-python3 agent/agent.py --run-iterate-task w/p_wiki.py helper/helper_ytd.py # auto-iteration until APPROVE or unknown verdict
+python3 agent/agent.py --run-iterate-task agent/agent.py # w/p_wiki.py helper/helper_ytd.py 
 python3 agent/agent.py --draft-task w/p_wiki.py      # step 0
 python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2
@@ -643,7 +643,7 @@ def run_iterate_task(task_path: Path) -> None:
         path.unlink()
     for path in AGENT_DATA_DIR.glob("s2_review_*.md"):
         path.unlink()
-    for path in AGENT_DATA_DIR.glob("prompt_*.txt"):
+    for path in AGENT_DATA_DIR.glob("*.txt"):
         path.unlink()
     S2_FAULT_LEDGER_PATH.unlink(missing_ok=True)
 
