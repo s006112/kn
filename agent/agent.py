@@ -91,7 +91,6 @@ def ensure_agent_data_dir() -> None:
 def call_codex_cli(system_prompt: str, user_text: str, context_path: Path, *, timeout: int = 900) -> str:
     ensure_agent_data_dir()
     prompt_text = "\n\n".join(part for part in (system_prompt.strip(), user_text.strip()) if part)
-
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", dir=AGENT_DATA_DIR, delete=False) as temp:
         output_path = Path(temp.name)
     try:
@@ -114,15 +113,12 @@ def call_codex_cli(system_prompt: str, user_text: str, context_path: Path, *, ti
         if result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip()
             raise RuntimeError(f"Codex CLI failed for {repo_rel(context_path)}:\n{detail}")
-        output = read_text(output_path).strip()
-        return output or result.stdout.strip()
+        return read_text(output_path).strip() or result.stdout.strip()
     finally:
         output_path.unlink(missing_ok=True)
 
 def call_agent_llm(system_prompt: str, user_text: str, file_path: Path) -> str:
-    if DEFAULT_MODEL == "codex":
-        return call_codex_cli(system_prompt, user_text, context_path=file_path)
-    return call_llm(DEFAULT_MODEL, system_prompt=system_prompt, user_text=user_text, file_path=str(file_path), max_retries=2, timeout=120)
+    return call_codex_cli(system_prompt, user_text, context_path=file_path) if DEFAULT_MODEL == "codex" else call_llm(DEFAULT_MODEL, system_prompt=system_prompt, user_text=user_text, file_path=str(file_path), max_retries=2, timeout=120)
 
 def repo_rel(path: Path) -> str:
     try:
@@ -350,9 +346,7 @@ def run_verify() -> None:
     print("VERIFY_OK", flush=True)
 
 def build_patch_prompt(task_text: str, final_plan_text: str, allowed_files: list[str], file_context: str) -> str:
-    # Step 4: make patch
-    template = read_text(S4_PATCH_PROMPT)
-    return template.format(
+    return read_text(S4_PATCH_PROMPT).format(
         task_text=task_text,
         final_plan_text=final_plan_text,
         allowed_files_text="\n".join(f"- {p}" for p in allowed_files),
@@ -364,55 +358,43 @@ def parse_patch_blocks(patch_text: str) -> tuple[list[tuple[str, str, str]], lis
     blocks: list[tuple[str, str, str]] = []
     errors: list[str] = []
     index = 0
-
     while index < len(lines):
         if not lines[index].strip():
             index += 1
             continue
-
         if not lines[index].startswith("FILE: "):
             errors.append(f"expected FILE at line {index + 1}")
             break
-
         rel = lines[index][len("FILE: "):].strip()
         index += 1
-
         if index >= len(lines) or lines[index] != "SEARCH:":
             errors.append(f"expected SEARCH after FILE: {rel}")
             break
         index += 1
-
         search_lines: list[str] = []
         while index < len(lines) and lines[index] != "REPLACE:":
             search_lines.append(lines[index])
             index += 1
-
         if index >= len(lines):
             errors.append(f"missing REPLACE for FILE: {rel}")
             break
         index += 1
-
         replace_lines: list[str] = []
         while index < len(lines) and lines[index] != "END":
             replace_lines.append(lines[index])
             index += 1
-
         if index >= len(lines):
             errors.append(f"missing END for FILE: {rel}")
             break
         index += 1
-
         blocks.append((rel, "\n".join(search_lines), "\n".join(replace_lines)))
-
     if not blocks:
         errors.append("no patch blocks found")
-
     return blocks, errors
 
 
 def validate_patch_blocks(task_path: Path, blocks: list[tuple[str, str, str]]) -> list[str]:
-    task_text = read_text(task_path) if task_path.exists() else ""
-    allowed_files = set(parse_allowed_files(task_text))
+    allowed_files = set(parse_allowed_files(read_text(task_path) if task_path.exists() else ""))
     errors: list[str] = []
 
     for rel, search, _replace in blocks:
@@ -423,8 +405,10 @@ def validate_patch_blocks(task_path: Path, blocks: list[tuple[str, str, str]]) -
             errors.append(f"file not found: {rel}")
         elif not search:
             errors.append(f"empty SEARCH block: {rel}")
-        elif read_text(path).count(search) != 1:
-            errors.append(f"SEARCH match count for {rel}: {read_text(path).count(search)}")
+        else:
+            count = read_text(path).count(search)
+            if count != 1:
+                errors.append(f"SEARCH match count for {rel}: {count}")
 
     return errors
 
@@ -467,43 +451,34 @@ def apply_patch(task_path: Path) -> None:
 
 
 def draft_task(task_path: Path, target_arg: str | None = None) -> None:
-    # Step 0: draft s0_task.md from one target source file.
     target_arg = target_arg or argv_value_after("--draft-task")
     if not target_arg:
         print("Usage: python agent/agent.py --draft-task path/to/file.py")
         return
-
     target_path = Path(target_arg)
     if not target_path.is_absolute():
         target_path = REPO_ROOT / target_path
-
     try:
         target_rel = target_path.resolve().relative_to(REPO_ROOT).as_posix()
     except ValueError:
         print(f"Target must be inside repo: {target_path}")
         return
-
-    prompt_text = read_text(S0_TASK_PROMPT).format(
+    output = _run_prompt_flow(
+        S0_PROMPT_PATH,
+        S0_TASK_PROMPT,
+        "You are a strict minimal-scope repo task drafting agent.",
+        target_path,
         pos_context=load_pos_context(),
         file_context=load_single_file_context(target_path),
         target_path=target_rel,
     )
-
-    ensure_agent_data_dir()
-    S0_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
-
-    output = call_agent_llm(
-        system_prompt="You are a strict minimal-scope repo task drafting agent.",
-        user_text=prompt_text,
-        file_path=target_path,
-    )
-
     task_path.write_text(output, encoding="utf-8")
     print(output)
     print(f"\nSaved task: {task_path}")
 
-def _run_prompt_flow(prompt_path: Path, template_path: Path, system_prompt: str, file_path: Path, **values: str) -> str:
-    prompt_text = read_text(template_path).format(**values)
+def _run_prompt_flow(prompt_path: Path, template_path: Path | None, system_prompt: str, file_path: Path, prompt_text: str | None = None, **values: str) -> str:
+    if prompt_text is None:
+        prompt_text = read_text(template_path).format(**values)
     ensure_agent_data_dir()
     prompt_path.write_text(prompt_text, encoding="utf-8")
     return call_agent_llm(system_prompt=system_prompt, user_text=prompt_text, file_path=file_path)
@@ -519,7 +494,6 @@ def run_task(task_path: Path, attempt: int | None = None) -> str:
             return ""
         else:
             attempt = latest + 1
-
     task_text = read_text(task_path)
     allowed_files = parse_allowed_files(task_text)
     print("=== Repo Planning Agent ===")
@@ -531,7 +505,6 @@ def run_task(task_path: Path, attempt: int | None = None) -> str:
     for file_path in allowed_files or ["<none>"]:
         print(f"  - {file_path}")
     print()
-
     output = _run_prompt_flow(
         S1_PROMPT_PATH,
         S1_PLAN_PROMPT,
@@ -561,7 +534,6 @@ def review_last_plan(task_path: Path) -> str:
     if attempt is None:
         print("No plan found to review.")
         return ""
-
     path = plan_path(attempt)
     task_text = read_text(task_path)
     allowed_files = parse_allowed_files(task_text)
@@ -590,7 +562,6 @@ def run_iterate_task(task_path: Path) -> None:
     S2_FAULT_LEDGER_PATH.unlink(missing_ok=True)
     if target_arg:
         draft_task(task_path, target_arg=target_arg)
-
     run_task(task_path, 1)
     for attempt in range(1, ITERATION_LIMIT + 1):
         verdict = review_verdict(review_last_plan(task_path))
@@ -598,32 +569,31 @@ def run_iterate_task(task_path: Path) -> None:
             print("ITERATE_APPROVED")
             accept_last_plan()
             return
-        if verdict == "REVISE" and attempt < ITERATION_LIMIT:
-            run_task(task_path, attempt + 1)
-            continue
-        print("ITERATE_STOPPED: max iterations reached" if verdict == "REVISE" else "ITERATE_STOPPED: unknown review verdict")
-        return
+        if verdict != "REVISE":
+            print("ITERATE_STOPPED: unknown review verdict")
+            return
+        if attempt == ITERATION_LIMIT:
+            print("ITERATE_STOPPED: max iterations reached")
+            return
+        run_task(task_path, attempt + 1)
 
 def make_patch(task_path: Path) -> None:
     if not S3_FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return
-
     task_text = read_text(task_path)
     allowed_files = parse_allowed_files(task_text)
-    prompt_text = build_patch_prompt(
-        task_text=task_text,
-        final_plan_text=read_text(S3_FINAL_PLAN_PATH),
-        allowed_files=allowed_files,
-        file_context=load_allowed_file_context(allowed_files),
-    )
-
-    ensure_agent_data_dir()
-    S4_PROMPT_PATH.write_text(prompt_text, encoding="utf-8")
-    patch = call_agent_llm(
-        system_prompt="You are a strict minimal-change SEARCH/REPLACE patch generator.",
-        user_text=prompt_text,
-        file_path=S3_FINAL_PLAN_PATH,
+    patch = _run_prompt_flow(
+        S4_PROMPT_PATH,
+        None,
+        "You are a strict minimal-change SEARCH/REPLACE patch generator.",
+        S3_FINAL_PLAN_PATH,
+        prompt_text=build_patch_prompt(
+            task_text=task_text,
+            final_plan_text=read_text(S3_FINAL_PLAN_PATH),
+            allowed_files=allowed_files,
+            file_context=load_allowed_file_context(allowed_files),
+        ),
     )
     S4_PATCH_PATH.write_text(patch, encoding="utf-8")
     print(f"Saved patch: {S4_PATCH_PATH}")
@@ -632,20 +602,25 @@ def make_patch(task_path: Path) -> None:
 
 
 def main() -> None:
-    if "--draft-task" in sys.argv: draft_task(S0_TASK_PATH); return
-    if "--run-iterate-task" in sys.argv: run_iterate_task(S0_TASK_PATH); return
-    if "--run-task" in sys.argv: run_task(S0_TASK_PATH); return
-    if "--review-last" in sys.argv: review_last_plan(S0_TASK_PATH); return
-    if "--make-patch" in sys.argv: make_patch(S0_TASK_PATH); return
-    if "--apply-patch" in sys.argv: apply_patch(S0_TASK_PATH); return
-    if "--run-verify" in sys.argv: run_verify(); return
-
-    if "--status" in sys.argv: print_status(S0_TASK_PATH); return
-    if "--accept-last" in sys.argv: accept_last_plan(); return
-    if "--clear-trace" in sys.argv: clear_trace(); return
-    if "--show-final" in sys.argv: show_final_plan(); return
-    if "--check-ready" in sys.argv: check_ready(S0_TASK_PATH); return
-    if "--show-commands" in sys.argv: show_commands(); return
+    dispatch = (
+        ("--draft-task", draft_task, (S0_TASK_PATH,)),
+        ("--run-iterate-task", run_iterate_task, (S0_TASK_PATH,)),
+        ("--run-task", run_task, (S0_TASK_PATH,)),
+        ("--review-last", review_last_plan, (S0_TASK_PATH,)),
+        ("--make-patch", make_patch, (S0_TASK_PATH,)),
+        ("--apply-patch", apply_patch, (S0_TASK_PATH,)),
+        ("--run-verify", run_verify, ()),
+        ("--status", print_status, (S0_TASK_PATH,)),
+        ("--accept-last", accept_last_plan, ()),
+        ("--clear-trace", clear_trace, ()),
+        ("--show-final", show_final_plan, ()),
+        ("--check-ready", check_ready, (S0_TASK_PATH,)),
+        ("--show-commands", show_commands, ()),
+    )
+    for flag, command, args in dispatch:
+        if flag in sys.argv:
+            command(*args)
+            return
 
 
 if __name__ == "__main__":

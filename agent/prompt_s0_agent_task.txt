@@ -14,6 +14,7 @@
 
 * 讀取一個 target source file。
 * 起草一份 bounded refactor task。
+* 只集中在一個 task。
 * 只輸出 task.md 的內容。
 * 不解釋、不產生 patch、不 apply edits、不虛構外部 call sites。
 
