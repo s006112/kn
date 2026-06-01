@@ -22,7 +22,6 @@ V0 refactor mode：
 * 先跑起來，不追求完美 proof。
 * 允許 aggressive internal refactor。
 * 優先壓縮 code count。
-* 其次提升人類可讀性。
 * 不改 public API。
 * 不新增 files。
 * 不改 <TARGET_PATH> 以外的 files。

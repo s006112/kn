@@ -263,15 +263,14 @@ class WikilinkCleaner:
         """Remove broken wikilinks and adjacent empty lines from one Markdown file."""
         try:
             self.logger.debug("WikilinkCleaner: Processing file: %s", file_path)
-
             with open(file_path, "r", encoding="utf-8") as f:
                 original_content = f.read()
 
-            existing_files = self.get_existing_files(file_path.parent)
             if not self.wikilink_pattern.search(original_content):
                 self.logger.debug("WikilinkCleaner: No wikilinks found in %s", file_path)
                 return True
 
+            existing_files = self.get_existing_files(file_path.parent)
             lines = original_content.split("\n")
             remove_flags = [False] * len(lines)
             broken_links_in_file = empty_lines_removed = 0
@@ -280,17 +279,18 @@ class WikilinkCleaner:
             for i, line in enumerate(lines):
                 modified_line = line
                 for full_match, filename in self.extract_wikilinks(line):
-                    if self.is_link_broken(filename, existing_files):
-                        self.logger.debug(
-                            "WikilinkCleaner: Found broken wikilink: %s -> %s",
-                            full_match,
-                            filename,
-                        )
-                        self.stats["broken_links_found"] += 1
-                        broken_links_in_file += 1
-                        modified_line = modified_line.replace(full_match, "")
-                        if not dry_run:
-                            self.stats["broken_links_removed"] += 1
+                    if not self.is_link_broken(filename, existing_files):
+                        continue
+                    self.logger.debug(
+                        "WikilinkCleaner: Found broken wikilink: %s -> %s",
+                        full_match,
+                        filename,
+                    )
+                    self.stats["broken_links_found"] += 1
+                    broken_links_in_file += 1
+                    modified_line = modified_line.replace(full_match, "")
+                    if not dry_run:
+                        self.stats["broken_links_removed"] += 1
                 if modified_line == line:
                     continue
                 if modified_line.strip():
@@ -336,33 +336,33 @@ class WikilinkCleaner:
                 )
 
             modified_lines = [line for line, remove in zip(lines, remove_flags) if not remove]
-            if broken_links_in_file:
-                if dry_run:
-                    self.logger.info(
-                        "WikilinkCleaner: DRY RUN - Would remove %d broken links%s from %s",
-                        broken_links_in_file,
-                        f" and {empty_lines_removed} adjacent empty lines"
-                        if empty_lines_removed
-                        else "",
-                        file_path.name,
+            if not broken_links_in_file:
+                self.stats["files_processed"] += 1
+                return True
+            if dry_run:
+                self.logger.info(
+                    "WikilinkCleaner: DRY RUN - Would remove %d broken links%s from %s",
+                    broken_links_in_file,
+                    f" and {empty_lines_removed} adjacent empty lines" if empty_lines_removed else "",
+                    file_path.name,
+                )
+            else:
+                if not self.create_backup(file_path):
+                    self.logger.error(
+                        "WikilinkCleaner: Skipping file due to backup failure: %s",
+                        file_path,
                     )
-                else:
-                    if not self.create_backup(file_path):
-                        self.logger.error(
-                            "WikilinkCleaner: Skipping file due to backup failure: %s",
-                            file_path,
-                        )
-                        return False
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        f.write("\n".join(modified_lines))
-                    release_text_file_permissions(file_path)
-                    self.stats["files_modified"] += 1
-                    self.logger.info(
-                        "WikilinkCleaner: %s (%d broken%s)",
-                        file_path.name,
-                        broken_links_in_file,
-                        f", {empty_lines_removed} empty" if empty_lines_removed else "",
-                    )
+                    return False
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write("\n".join(modified_lines))
+                release_text_file_permissions(file_path)
+                self.stats["files_modified"] += 1
+                self.logger.info(
+                    "WikilinkCleaner: %s (%d broken%s)",
+                    file_path.name,
+                    broken_links_in_file,
+                    f", {empty_lines_removed} empty" if empty_lines_removed else "",
+                )
 
             self.stats["files_processed"] += 1
             return True

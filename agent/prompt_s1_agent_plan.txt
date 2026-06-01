@@ -20,12 +20,11 @@
 * 不追求完整行為證明。
 * 目標是讓 S4 能產生 patch。
 
-V0 refactor mode：
+refactor mode：
 
 * 先跑起來。
 * 允許 internal refactor。
 * 優先壓縮 code count。
-* 其次提升人類可讀性。
 * current behavior 是重要參考，但不要被 legacy shape 鎖死。
 * 只要不明顯破壞 public API / core behavior，就允許 bounded refactor。
 
@@ -52,7 +51,7 @@ V0 refactor mode：
 FAULT_LEDGER 規則：
 
 * 視為風險參考，不要盲目遵守到無法 refactor。
-* 如果 fault ledger 與 V0 refactor 目標衝突，選擇可跑、可驗證、bounded 的方案。
+* 如果 fault ledger 與 refactor 目標衝突，選擇可跑、可驗證、bounded 的方案。
 * 不要寫「根據 reviewer」、「上一版」、「需要修訂」等 meta wording。
 
 輸出格式：

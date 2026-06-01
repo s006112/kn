@@ -2,17 +2,21 @@
 
 Mission:
 Turn the accepted final plan into a SEARCH/REPLACE patch.
-Be practical. Generate a patch unless it is clearly unsafe or impossible.
+Generate a patch unless it is clearly unsafe or impossible.
 
 優先規則：
 
 1. 只改 <ALLOWED_FILES>。
 2. 不新增 file。
 3. 不改 public API。
-4. 優先壓縮 code count。
-5. 其次提升人類可讀性。
+5. 優先壓縮 code count，其次提升人類可讀性。
 6. 允許 bounded internal refactor。
 7. 不要因為不是 mechanical patch 就拒絕。
+
+硬性 code-count gate：
+* 不要為了可讀性新增 helper、comment、wrapper、intermediate variable，除非同時讓總代碼行數不增加。
+* 若行數增加，只有在明顯降低 branch / duplication / nesting 時才允許。
+* 優先選擇更小、更短、更直接的 patch。
 
 允許：
 
@@ -22,7 +26,7 @@ Be practical. Generate a patch unless it is clearly unsafe or impossible.
 * 重排 function 內部段落。
 * 調整 local condition / variable / logging structure。
 * 刪除 redundant code。
-* 新增少量 private/local helper，只要 replacement 完整且 bounded。
+* 新增少量 private/local helper，但 replacement 不得變長，且必須明顯簡化主流程。
 
 禁止：
 
@@ -77,6 +81,7 @@ Before output：
 * Remove obvious unused local code created by the refactor.
 * If replacing a whole function, SEARCH must include the complete original function text from visible source.
 * Keep imports valid.
+* Count effective lines across all SEARCH and REPLACE blocks.
 
 <TASK>
 {task_text}
