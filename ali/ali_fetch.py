@@ -2,23 +2,13 @@
 """
 ali_fetch.py
 
-IMAP fetch orchestration layer.
+为 ALI pipeline 抓取及过滤 IMAP 邮件。
 
-Responsibilities:
-- Define *what* messages to fetch (business rules).
-- Convert raw IMAP records into internal EmailMessage objects.
-- Delegate all IMAP protocol details, retries, SSL/TLS handling,
-  and mailbox operations to helper utilities.
-
-Non-responsibilities (intentionally delegated):
-- IMAP connect / reconnect / retry logic
-- UID FETCH parsing
-- SSL / legacy TLS handling
-- Marking messages as SEEN (done by pipeline after successful processing)
-
-System assumptions (EXPLICIT):
-- "[ALI:v" is a RESERVED subject namespace used exclusively for ALI review threads.
-  It MUST NOT appear in any non-review subject lines.
+规则：
+- 仅允许来自 @ampco.com.hk 的内部审核人员进入 pipeline。
+- 永远拒绝 ali@ampco.com.hk，避免自我回复循环。
+- "[ALI:v" 保留给 ALI review thread 使用。
+- Helper 负责 IMAP 协议细节；pipeline 负责 mark-seen 时机。
 """
 
 from __future__ import annotations
@@ -52,36 +42,30 @@ from ali.ali_mail_parse import (
 )  # review-thread detection
 
 _ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"
+_REJECTED_SENDERS = {"ali@ampco.com.hk"}
 _DOTENV_PATH = ROOT / ".env"
 
 
-# Load environment once so the module has access to dotenv-backed settings.
+# 载入环境变量，让本模组可读取 dotenv 设定。
 load_env()
 
 
 # ---------------------------------------------------------------------
-# Internal helpers
+# 内部 helper
 # ---------------------------------------------------------------------
 
 def _is_allowed_sender(from_addr: str) -> bool:
-    """
-    Safety-critical guard: ONLY internal reviewers from @ampco.com.hk may enter
-    the pipeline. All other senders MUST be rejected and moved to IMAP Trash.
-    Do not remove.
-    """
-    return (from_addr or "").lower().endswith(_ALLOWED_DOMAIN_SUFFIX)
+    """允许内部审核人员，但排除 ALI 自身地址。"""
+    sender = (from_addr or "").lower()
+    return sender not in _REJECTED_SENDERS and sender.endswith(_ALLOWED_DOMAIN_SUFFIX)
 
 
 def _should_bypass_admin(from_addr: str) -> bool:
     """
-    Return True when admin-originated mail should be skipped.
-
-    In this module, ALI_DEBUG_MODE means:
-    - True: process mail from ADMIN_USERNAME normally.
-    - False: bypass mail whose sender matches ADMIN_USERNAME.
-
-    This check reads .env live so a running ali_email.py poller sees
-    ALI_DEBUG_MODE/ADMIN_USERNAME changes without a process restart.
+    判断是否跳过 ADMIN_USERNAME 邮件。
+    - ALI_DEBUG_MODE=True：正常处理 ADMIN_USERNAME 邮件。
+    - ALI_DEBUG_MODE=False：跳过来自 ADMIN_USERNAME 的邮件。
+    即时读取 .env，让 poller 无需重启即可取得最新设定。
     """
     env_values = dotenv_values(_DOTENV_PATH)
 
@@ -96,15 +80,7 @@ def _should_bypass_admin(from_addr: str) -> bool:
 
 
 def _build_client(logger, *, require_credentials: bool) -> tuple[ImapClient, str]:
-    """
-    Build and connect an ImapClient using environment configuration.
-
-    Returns:
-        (client, folder_name)
-
-    Raises:
-        RuntimeError if required IMAP credentials are missing.
-    """
+    """根据环境设定建立并连接 IMAP client。"""
     cfg = load_imap_config(
         "IMAP_FOLDER",
         "INBOX",
@@ -128,17 +104,9 @@ def _build_client(logger, *, require_credentials: bool) -> tuple[ImapClient, str
 
 def _raw_to_email_message(rec: RawFetchedRecord) -> EmailMessage:
     """
-    Convert a RawFetchedRecord into internal EmailMessage.
-
-    This is the ONLY place where MIME parsing happens.
-
-    Assumption:
-    - All inbound emails are FORWARDED by a human reviewer.
-    - Therefore, `from_addr` is expected to be the reviewer,
-      NOT the original customer.
-
-    Emails that violate this assumption are intentionally
-    handled downstream (e.g. rejected by ali_send).
+    将 raw record 解析为 EmailMessage。
+    预期收件由审核人员转寄，因此 from_addr 应为审核人员地址。
+    无效的寄送目标由 downstream guard 拒绝。
     """
     msg = message_from_bytes(rec.raw_bytes, policy=email_default_policy)
 
@@ -167,13 +135,7 @@ def _fetch_records(
     criteria: Iterable[str],
     limit: int | None = None,
 ) -> List[RawFetchedRecord]:
-    """
-    Search and fetch all matching records for given IMAP criteria.
-
-    Note:
-    - This function does NOT mark messages as SEEN.
-    - Consumption semantics are handled by the pipeline layer.
-    """
+    """抓取符合条件的 record，但不标记为 SEEN。"""
     uids = client.search_uids(folder, list(criteria))
     if not uids:
         return []
@@ -183,23 +145,13 @@ def _fetch_records(
 
 
 # ---------------------------------------------------------------------
-# Public API
+# 对外 API
 # ---------------------------------------------------------------------
 
 def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
     """
-    Fetch brand-new inbound messages (Phase 1).
-
-    Rules:
-    - Only UNSEEN messages are fetched from IMAP.
-    - Review-thread messages are EXCLUDED at the application layer
-      using REVIEW_SUBJECT_PATTERN.
-    - Messages are marked as SEEN by the pipeline AFTER successful processing.
-
-    Design note:
-    - Review-thread exclusion is intentionally enforced at the application layer
-      (not via IMAP SUBJECT filters) to keep IMAP criteria minimal and robust
-      across servers.
+    抓取 Phase 1 的 UNSEEN 邮件。
+    在应用层排除 review thread，并由 pipeline 负责 mark-seen。
     """
     logger = configure_logging("ali_fetch")
     client, folder = _build_client(logger, require_credentials=True)
@@ -211,8 +163,7 @@ def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
         for rec in records:
             email = _raw_to_email_message(rec)
 
-            # If ALI_DEBUG_MODE is explicitly disabled, bypass messages from the
-            # configured IMAP user (commonly the internal IT account).
+            # ALI_DEBUG_MODE 明确关闭时，跳过设定的 IMAP user。
             if _should_bypass_admin(email.from_addr):
                 logger.info(
                     "Bypassing message from %s uid=%s due to ALI_DEBUG_MODE=FALSE",
@@ -230,7 +181,7 @@ def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
                 client.move_message(folder, rec.uid, "Trash")
                 continue
 
-            # Skip review threads in Phase 1 (single source of truth)
+            # Phase 1 跳过 review thread。
             if REVIEW_SUBJECT_PATTERN.search(email.subject or ""):
                 logger.debug(
                     "Skipping review-thread message uid=%s subject=%s",
@@ -252,16 +203,8 @@ def fetch_new_messages(max_messages: int = 10) -> List[EmailMessage]:
 
 def fetch_sender_replies() -> List[EmailMessage]:
     """
-    Fetch sender replies to existing review threads (Phase 2).
-
-    Rules:
-    - Only UNSEEN messages are fetched.
-    - Subject MUST match the reserved review-thread marker.
-    - Messages are marked as SEEN by the pipeline AFTER successful processing.
-
-    Assumption:
-    - REVIEW_SUBJECT_IMAP_QUERY ("[ALI:v") is a reserved namespace and uniquely
-      identifies ALI review threads.
+    抓取 Phase 2 的 UNSEEN 回复，其 subject 必须符合保留的 "[ALI:v"
+    review-thread namespace。由 pipeline 负责 mark-seen。
     """
     logger = configure_logging("ali_fetch")
     client, folder = _build_client(logger, require_credentials=True)
@@ -280,7 +223,7 @@ def fetch_sender_replies() -> List[EmailMessage]:
 
         for rec in records:
             email = _raw_to_email_message(rec)
-            # Skip internal IT/IMAP user when ALI_DEBUG_MODE is disabled
+            # ALI_DEBUG_MODE 关闭时，跳过内部 IT/IMAP user。
             if _should_bypass_admin(email.from_addr):
                 logger.info(
                     "Bypassing reply from %s uid=%s due to ALI_DEBUG_MODE=FALSE",

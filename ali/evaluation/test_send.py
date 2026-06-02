@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Isolated evaluator for ali.ali_send."""
+"""Isolated evaluator for ali.ali_send and its inbound sender guard."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from ali.ali_send import (  # noqa: E402
     _require_reply_to_forward_sender,
     send_reply,
 )
+from ali.ali_fetch import _is_allowed_sender  # noqa: E402
 from helper.utils_imap_config import SmtpConfig  # noqa: E402
 from helper.utils_imap_types import EmailMessage  # noqa: E402
 
@@ -74,47 +75,58 @@ def _smtp_config(**overrides: object) -> SmtpConfig:
 
 
 class SubjectTests(unittest.TestCase):
-    def test_adds_reply_prefix(self) -> None:
+    def test_subject_adds_re_prefix(self) -> None:
         self.assertEqual(_build_subject("Customer question"), "Re: Customer question")
 
-    def test_preserves_existing_reply_prefix(self) -> None:
+    def test_subject_keeps_existing_re_prefix(self) -> None:
         self.assertEqual(_build_subject("  RE: Customer question"), "  RE: Customer question")
 
-    def test_empty_subject_becomes_reply_prefix(self) -> None:
+    def test_empty_subject_becomes_re_prefix(self) -> None:
         self.assertEqual(_build_subject(""), "Re:")
 
 
 class RecipientGuardTests(unittest.TestCase):
-    def test_build_to_address_strips_display_name(self) -> None:
+    def test_recipient_removes_display_name(self) -> None:
         self.assertEqual(
             _build_to_address("Reviewer Name <reviewer@example.com>"),
             "reviewer@example.com",
         )
 
-    def test_accepts_same_address_case_insensitively(self) -> None:
+    def test_recipient_allows_same_email_ignoring_case(self) -> None:
         _require_reply_to_forward_sender(
             "Reviewer Name <Reviewer@Example.com>",
             "reviewer@example.com",
         )
 
-    def test_rejects_different_recipient(self) -> None:
+    def test_recipient_rejects_different_email(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "Outbound recipient mismatch"):
             _require_reply_to_forward_sender(
                 "reviewer@example.com",
                 "customer@example.com",
             )
 
-    def test_rejects_missing_address(self) -> None:
+    def test_recipient_rejects_missing_email(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "Missing sender or recipient"):
             _require_reply_to_forward_sender("", "reviewer@example.com")
 
-    def test_rejects_unparseable_address(self) -> None:
+    def test_recipient_rejects_invalid_email(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "Unable to parse email address"):
             _require_reply_to_forward_sender("Reviewer <>", "reviewer@example.com")
 
 
+class AllowedSenderTests(unittest.TestCase):
+    def test_sender_allows_company_email(self) -> None:
+        self.assertTrue(_is_allowed_sender("reviewer@ampco.com.hk"))
+
+    def test_sender_rejects_external_email(self) -> None:
+        self.assertFalse(_is_allowed_sender("customer@example.com"))
+
+    def test_sender_rejects_ali_email_ignoring_case(self) -> None:
+        self.assertFalse(_is_allowed_sender("ALI@AMPCO.COM.HK"))
+
+
 class MessageConstructionTests(unittest.TestCase):
-    def test_builds_internal_reply_with_quoted_history(self) -> None:
+    def test_message_includes_reply_and_original_email(self) -> None:
         msg = _build_message(_email(), "Internal review\n", "ali@example.com")
 
         self.assertEqual(msg["From"], "ali@example.com")
@@ -136,7 +148,7 @@ class MessageConstructionTests(unittest.TestCase):
             "> Second line\n",
         )
 
-    def test_omits_thread_headers_without_message_id(self) -> None:
+    def test_message_skips_thread_headers_without_message_id(self) -> None:
         msg = _build_message(
             _email(message_id="", body_text=""),
             "Internal review",
@@ -162,7 +174,7 @@ class SendReplyTests(unittest.TestCase):
             patch("ali.ali_send.append_to_imap_sent"),
         )
 
-    def test_missing_smtp_config_returns_failure(self) -> None:
+    def test_send_fails_without_smtp_config(self) -> None:
         load_env, configure_logging, load_config, append_sent = self._common_patches(None)
         with load_env, configure_logging, load_config, append_sent as append_sent_mock:
             result = send_reply(_email(), "Internal review")
@@ -171,7 +183,7 @@ class SendReplyTests(unittest.TestCase):
         self.assertEqual(result.error_message, "Missing SMTP_HOST/USER/PASSWORD")
         append_sent_mock.assert_not_called()
 
-    def test_sends_with_starttls_and_appends_to_sent_folder(self) -> None:
+    def test_send_uses_starttls_and_saves_sent_email(self) -> None:
         config = _smtp_config()
         load_env, configure_logging, load_config, append_sent = self._common_patches(config)
         with (
@@ -193,7 +205,7 @@ class SendReplyTests(unittest.TestCase):
         self.assertEqual(sent_msg["Reply-To"], "ali@example.com")
         append_sent_mock.assert_called_once_with(sent_msg, self.logger)
 
-    def test_sends_with_ssl_without_starttls(self) -> None:
+    def test_send_uses_ssl_without_starttls(self) -> None:
         config = _smtp_config(port=465, use_ssl=True, use_starttls=True)
         load_env, configure_logging, load_config, append_sent = self._common_patches(config)
         with (
@@ -209,7 +221,7 @@ class SendReplyTests(unittest.TestCase):
         smtp_ssl.assert_called_once_with("smtp.example.com", 465, timeout=60)
         self.server.starttls.assert_not_called()
 
-    def test_smtp_error_returns_failure(self) -> None:
+    def test_send_returns_failure_on_smtp_error(self) -> None:
         config = _smtp_config()
         self.server.login.side_effect = RuntimeError("authentication failed")
         load_env, configure_logging, load_config, append_sent = self._common_patches(config)
