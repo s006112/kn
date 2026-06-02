@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Isolated evaluator for ali_fetch.py and ali_send.py."""
+"""
+ALI isolated evaluator.
+
+职责：
+- 验证 ali_fetch.py 和 ali_send.py 的局部行为。
+
+Used by:
+- None（standalone test entry point）
+"""
 
 from __future__ import annotations
 

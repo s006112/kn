@@ -2,9 +2,13 @@
 """
 ali_llm.py
 
-- Internal review generation pipeline
-- Step1 routing + Step2 retrieval
-- Step3 draft generation (v1 rewrite or v2+ reviewer-reply edit-only)Used by:
+职责：
+- 执行 Step2 RAG gating、Step3 draft generation、Step4 review hook 和 Step5 rendering。
+- 保持 v1 generation 与 v2+ edit-only path 的边界。
+
+完整 generation contract：
+- 见 ali/README.md
+
 Used by:
 - ali_email.py
 """
@@ -47,6 +51,10 @@ RAG_ENGINE_BY_CATEGORY = {
 _RAG_ENGINE_CACHE = {}
 
 
+# -----------------------------------------------------------------------------
+# Step2: Retrieval / Tools
+# -----------------------------------------------------------------------------
+
 def rag_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalResult:
     engine_name = RAG_ENGINE_BY_CATEGORY.get(route.category)
     if engine_name is None:
@@ -87,7 +95,7 @@ def rag_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalRes
 
 
 # -----------------------------------------------------------------------------
-# Internal Review Package (v1 rewrite, v2+ edit-only)
+# Step3: Draft Generation (v1 rewrite, v2+ edit-only)
 # -----------------------------------------------------------------------------
 
 def generate_review_package(
@@ -99,12 +107,10 @@ def generate_review_package(
     edit_version: int = 1,
 ) -> dict[str, str | list[str]]:
     """
-    INTERNAL review generator.
+    Generate an INTERNAL review package.
 
-    Rules:
-    - v1  : rewrite using generate_reply()
-    - v2+ : edit previous_draft only when reviewer provides a valid reply
-    - Empty reviewer reply means REJECT
+    `previous_draft=None` selects the v1 path. A previous draft selects the
+    v2+ edit-only path.
     """
     subject_norm, body_norm = normalize_email_input(email)
 
@@ -167,8 +173,8 @@ def generate_review_package(
             file_path=None,
         ).strip()
 
-    # Step4 — reflection (currently disabled, NO-OP)
-    draft = step4_reflect(draft, enabled=False)
+    # Step4 — review (currently disabled, NO-OP)
+    draft = step4_review(draft, enabled=False)
 
     review_id = (email.message_id or "").strip() or str(email.uid)
 
@@ -180,34 +186,30 @@ def generate_review_package(
     }
 
 # -----------------------------------------------------------------------------
-# Step4: Reflection (EMPTY SHELL)
+# Step4: Review (EMPTY SHELL)
 # -----------------------------------------------------------------------------
 
-def step4_reflect(
+def step4_review(
     draft: str,
     *,
     enabled: bool = False,
 ) -> str:
     """
-    # IMPORTANT:
-    # Step4 must remain a pure post-processing hook.
-    # Do NOT move routing, retrieval, or generation logic here.
+    NO-OP placeholder for a pure post-generation hook.
 
-    Currently a NO-OP placeholder.
-    When disabled (default), returns draft unchanged.
-
-    This function MUST:
-    - NOT modify routing or retrieval
-    - NOT call LLM
-    - NOT introduce new content
+    Step4 must not reroute, retrieve, call LLM, or introduce new content.
     """
     if not enabled:
         return draft
 
-    # Future reflection logic will be inserted here.
+    # Future review logic will be inserted here.
     return draft
 
 
+
+# -----------------------------------------------------------------------------
+# Step5: Packaging
+# -----------------------------------------------------------------------------
 
 def render_review(
     review_obj: dict[str, str | list[str] | int],

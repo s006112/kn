@@ -1,42 +1,12 @@
 """
-Routing invariants (NON-NEGOTIABLE):
+ali_router.py
 
-- Routing selects the execution routine and its constraints ONLY.
-- Routing NEVER decides content, wording, or final answers.
-- Routing MUST be deterministic and side-effect free.
-- Routing output is read-only for all downstream steps.
+职责：
+- 执行 Step1 deterministic routing。
+- 只输出 route signals，不生成 content，不执行 retrieval，不改变 runtime control flow。
 
-Any logic that generates text, calls LLMs, performs retrieval, sends email,
-marks messages SEEN, or applies delivery policy MUST NOT be added here.
-
-Execution routines (semantic contract):
-
-- safety_regulation
-  - may allow standard RAG via ali_llm gate
-  - requires stricter factual grounding
-
-- technical
-  - may allow standard RAG via ali_llm gate
-  - used for product, specification, testing, wiring, voltage, current,
-    power, and dimension related questions
-
-- rita
-  - may allow rita RAG via ali_llm gate
-  - used for historical Rita-related context lookup
-
-- commercial
-  - no RAG by default
-  - concise, factual generation
-
-- casual
-  - no RAG by default
-  - direct generation
-
-- unknown
-  - conservative default behavior
-
-This module only classifies the email into a route.
-The actual RAG decision is owned by ali_llm.py.
+完整 routing contract 和 category 定义：
+- 见 ali/README.md
 
 Used by:
 - ali_llm.py
@@ -62,6 +32,10 @@ class RouteResult:
     rationale: str
     confidence: float
 
+
+# -----------------------------------------------------------------------------
+# Step1: Routing
+# -----------------------------------------------------------------------------
 
 def route_email(subject: str, body: str) -> RouteResult:
     text = f"{subject}\n{body}".lower()

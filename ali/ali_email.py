@@ -1,70 +1,17 @@
 #!/usr/bin/env python3
 """
-ali_email.py — Orchestration Layer (STABLE)
+ali_email.py — Orchestration Layer（STABLE）
 
-SYSTEM INVARIANTS (NON-NEGOTIABLE)
-1. No Autonomous Action
-   All generated content is INTERNAL-ONLY and sent exclusively to the reviewer.
-   ali_email.py MUST NEVER send messages to customers or third parties.
+职责：
+- 执行 Phase 1 / Phase 2 sequencing。
+- 管理 message lifecycle、failure handling 和 Step5 subject versioning。
+- 不承载 routing、retrieval、prompt construction 或 delivery policy。
 
-2. Silence Means Termination
-   An empty reviewer reply is treated as REJECT.
-   Processing MUST stop immediately after marking the message as SEEN.
-
-3. Valid Reviewer Reply Means Revision
-   A reviewer reply with new text is treated as valid reviewer input
-   and MUST trigger a regenerated INTERNAL review.
-
-4. Forward-Only Input Model
-   Only emails explicitly forwarded by a human reviewer are accepted.
-   All outbound messages are reviewer-only.
-
-CALL FLOW (AUTHORITATIVE EXECUTION PATH)
-
-pipeline_run()
-  ├─ Phase 1: New Incoming Messages
-  │    ├─ fetch_new_messages(max_messages=2)
-  │    ├─ scan UNSEEN mail, bypass ADMIN_USERNAME when ALI_DEBUG_MODE=False
-  │    ├─ skip non-allowlisted senders and review-thread subjects
-  │    ├─ keep up to 2 valid messages after fetch-layer filtering
-  │    ├─ generate_review_package() → render_review()
-  │    ├─ _send_internal_review() → send_reply()
-  │    └─ mark_imap_message_seen()
-  │
-  └─ Phase 2: Reviewer Replies
-       ├─ fetch_sender_replies()
-       ├─ bypass ADMIN_USERNAME when ALI_DEBUG_MODE=False
-       ├─ keep only allowlisted review-thread replies
-       ├─ empty reply → REJECT, mark seen
-       ├─ extract_last_review_state()
-       ├─ generate_review_package(previous_draft, edit_version) → render_review()
-       ├─ _send_internal_review(review_version=next_version) → send_reply()
-       └─ mark_imap_message_seen()
-
-DESIGN SCOPE (INTENTIONALLY LIMITED)
-
-- This module is orchestration ONLY.
-- It defines sequencing, safety boundaries, and lifecycle control.
-- It MUST NOT contain:
-  - routing or classification logic
-  - parsing of quoted history
-  - RAG or retrieval logic
-  - LLM prompt construction
-  - content-level decision making
-
-RESPONSIBILITY BOUNDARIES
-
-- ali_fetch       : message retrieval
-- ali_mail_parse : review state parsing
-- ali_llm        : generation logic (Steps 0–3)
-- ali_send       : outbound delivery
-
-This file is considered STABLE.
-Changes should be limited to bug fixes or invariant enforcement.
-Feature development MUST occur in downstream modules.
+完整 architecture contract、Phase / Version 定义和 invariants：
+- 见 ali/README.md
 
 Used by:
-- None
+- None（application entry point）
 """
 
 from __future__ import annotations
@@ -195,6 +142,7 @@ def _run_guarded(
 # Helpers
 # -----------------------------------------------------------------------------
 
+# Step5: Packaging — review-thread subject/version sequencing.
 def _build_review_subject(subject: str, version: int) -> str:
     marker = REVIEW_SUBJECT_MARKER.replace("X", str(version))
     cleaned = REVIEW_SUBJECT_PATTERN.sub("", subject or "")

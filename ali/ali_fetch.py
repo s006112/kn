@@ -2,13 +2,13 @@
 """
 ali_fetch.py
 
-为 ALI pipeline 抓取及过滤 IMAP 邮件。
+职责：
+- 为 ALI pipeline 抓取及过滤 IMAP message。
+- 执行 sender allowlist、ADMIN bypass 和 review-thread detection。
+- 不负责 mark SEEN、review protocol parsing 或 content generation。
 
-规则：
-- 仅允许来自 @ampco.com.hk 的内部审核人员进入 pipeline。
-- 永远拒绝 ali@ampco.com.hk，避免自我回复循环。
-- "[ALI:v" 保留给 ALI review thread 使用。
-- Helper 负责 IMAP 协议细节；pipeline 负责 mark-seen 时机。
+完整 fetch contract：
+- 见 ali/README.md
 
 Used by:
 - ali_email.py

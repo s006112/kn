@@ -5,24 +5,17 @@ ALI 是一個 reviewer-only email draft generator。
 它不會直接回覆 customer，也不會自動對外發信。  
 所有 generated draft 只會回給 forwarding reviewer，由人決定是否採用。
 
-## Basic Flow
-
-1. Reviewer 把 customer email forward 給 ALI inbox。
-2. ALI 生成 internal review draft。
-3. ALI 只把 draft 回給同一個 reviewer。
-4. Reviewer 空回覆 = REJECT。
-5. Reviewer 有效回覆 = reviewer reply text，ALI 生成下一版。
-6. 最終 customer reply 必須由人手動發送。
-
 ## Run
 
 ```bash
 python ali/ali_email.py
 ```
 
-# ARCHITECTURE.md
+## Document Ownership
 
-本文是 ALI email review system 的 **architecture contract**，不是施工图。只记录 active runtime、hard invariants、Step boundary、module ownership 和 evolution rules。目标是防止 complexity drift、logic upward migration 和 safety boundary 松动。
+本文是 ALI email review system 的唯一 **architecture source of truth**。完整的 active runtime、hard invariants、Phase / Version 定义、Step boundary、module ownership 和 evolution rules 只在这里维护。
+
+Python module docstring 只保留职责摘要、本文链接和 `Used by:`。与实现直接相关的局部约束可以留在函数附近，但不得复制整段 architecture contract。
 
 ALI 不是 autonomous customer-reply agent；它只是 **reviewer-only draft generator**：内部 reviewer 转发邮件给 ALI，ALI 只把 internal review draft 回给同一个 reviewer，最终是否对客户发信由人决定。
 
@@ -57,13 +50,26 @@ ALI 不是 autonomous customer-reply agent；它只是 **reviewer-only draft gen
 
 入口：`ali/ali_email.py::pipeline_run()`。
 
+### Terminology
+
+`Phase` 表示当前处理哪一种 inbox message；`vN` 表示 draft revision number。它们不是同一套编号。
+
+| Name    | Definition |
+| ------- | ---------- |
+| Phase 1 | 处理 reviewer 新转发给 ALI 的 email。 |
+| Phase 2 | 处理 reviewer 对既有 ALI review thread 的 feedback email。 |
+| v1      | Initial draft，由 Phase 1 生成。 |
+| v2+     | Revised draft，由 Phase 2 根据有效 reviewer feedback 生成。 |
+
+同一个 review thread 可以多次进入 Phase 2，依次生成 v2、v3、v4 等 revised drafts。
+
 ### Phase 1 — New Forwarded Emails
 
-`fetch_new_messages(max_messages=2)` 抓 UNSEEN mail；fetch layer 过滤 sender allowlist、`ADMIN_USERNAME` bypass、reserved review subject；生成 v1 internal review；只回给 forwarding reviewer；成功后才 mark original message as SEEN。
+`fetch_new_messages(max_messages=2)` 抓 UNSEEN mail；fetch layer 过滤 sender allowlist、`ADMIN_USERNAME` bypass、reserved review subject；生成 initial draft（v1）；只回给 forwarding reviewer；成功后才 mark original message as SEEN。
 
-### Phase 2 — Reviewer Replies
+### Phase 2 — Reviewer Feedback Emails
 
-`fetch_sender_replies()` 只抓 subject 命中 `[ALI:v` 的 UNSEEN reply；继续执行 allowlist 和 admin bypass；empty body = REJECT 并 mark SEEN；non-empty reviewer reply text = parse last review state + extract reviewer reply text + generate next version；成功发送后 mark reply as SEEN。
+`fetch_sender_replies()` 只抓 subject 命中 `[ALI:v` 的 UNSEEN reply；继续执行 allowlist 和 admin bypass；empty body = REJECT 并 mark SEEN；non-empty reviewer reply text = parse last review state + extract reviewer reply text + generate next revised draft（v2+）；成功发送后 mark reply as SEEN。
 
 polling cadence 只是 scheduling，不属于 semantic architecture。
 
@@ -128,9 +134,9 @@ v2+ 不得 rerun routing、rerun retrieval、fallback to rewrite semantics。
 
 Step3 不得决定 recipient、mark IMAP state、处理 mailbox protocol、改变 delivery policy。
 
-### Step4 — Reflection
+### Step4 — Review
 
-Owner: `ali/ali_llm.py::step4_reflect()`
+Owner: `ali/ali_llm.py::step4_review()`
 
 当前 disabled by default，NO-OP，直接返回 draft。
 

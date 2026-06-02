@@ -4,14 +4,8 @@ This document summarizes the role of every Python file under `rag/` as it exists
 
 ## ALI review pipeline
 
-| File | Purpose |
-| --- | --- |
-| `ali/ali_email.py` | Top-level orchestrator for the ALI internal email-review workflow. It polls mail, separates new forwarded emails from reviewer replies, generates internal review drafts, sends them back to the reviewer, and enforces the project safety invariants. |
-| `ali_fetch.py` | IMAP fetch layer for the ALI workflow. It connects to the configured mailbox, selects which messages are eligible for processing, converts fetched records into internal `EmailMessage` objects, and exposes separate fetch paths for new messages and reviewer replies. |
-| `ali_llm.py` | Draft-generation layer for ALI. It performs routing, optional RAG retrieval for safety/regulation questions, first-pass draft generation, override-based edit-only regeneration, optional reflection, and final review-package rendering. |
-| `ali_mail_parse.py` | Email normalization and review-thread parser. It normalizes subject/body input, extracts override instructions from reviewer replies, and parses the last ALI review version/draft from prior review emails. |
-| `ali_router.py` | Deterministic router for classifying emails into coarse execution routines such as `safety_regulation`, `technical`, `commercial`, `casual`, or `unknown`. It only emits routing signals and does not generate content. |
-| `ali_send.py` | Safe outbound mail sender for the ALI workflow. It builds the internal review email, enforces the forward-only policy so replies go only to the forwarding reviewer, sends through SMTP, and best-effort appends to IMAP Sent. |
+ALI pipeline 的 architecture contract、module ownership 和 safety invariants 统一维护在
+`ali/README.md`。本文件只说明 `rag/` 目录内的 retrieval 相关模块。
 
 ## Retrieval and FAISS helpers
 
@@ -59,5 +53,5 @@ This document summarizes the role of every Python file under `rag/` as it exists
 
 ## Notes
 
-- `ARCHITECTURE.md` is not Python code, but it defines the intended boundaries for the ALI email-review system.
+- `ali/README.md` defines the intended boundaries for the ALI email-review system.
 - The `test_*.py` files are mostly evaluation/debug tooling rather than production pipeline modules.

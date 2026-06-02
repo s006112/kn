@@ -3,20 +3,13 @@
 ali_send.py
 
 职责：
-- 將 LLM 產生的「內部審查用 reply body」包裝成一封 email
-- 僅允許回覆給「forward 這封郵件的工程師本人」
-- 嚴格禁止在任何情況下直接回覆原始客戶或第三方
-- 經由 SMTP 寄出，並（best-effort）：
-  - 將已寄信寫入 IMAP Sent
+- 将 INTERNAL review body 包装成 email 并通过 SMTP 发送。
+- hard-block 非 forwarding reviewer recipient。
+- best-effort append 到 IMAP Sent。
+- 不负责 mark SEEN 或 content decision。
 
-注意：
-- 「將原始郵件標記為已讀」不在本模組負責範圍內；
-  消費語義（mark seen）由 pipeline 在成功處理後統一執行。
-
-⚠️ 安全原則（不可破壞）：
-- ALI 永遠不是對外發信者
-- ALI 只是一個「工程判斷草稿生成器」
-- 任何對客戶的回信，必須由工程師本人手動發送
+完整 delivery contract：
+- 见 ali/README.md
 
 Used by:
 - ali_email.py

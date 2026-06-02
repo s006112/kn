@@ -1,9 +1,17 @@
 """
-Used by:
+ali_mail_parse.py
 
-- ali.ali_llm: input normalization and extraction.
-- ali.ali_fetch: review-subject matching and IMAP query constants.
-- ali.ali_email: review-subject formatting and review-state parsing.
+职责：
+- 执行 Step0 input normalization、reviewer reply extraction 和 review-state parsing。
+- 维护跨模块共用的 review protocol constants。
+
+完整 parsing contract：
+- 见 ali/README.md
+
+Used by:
+- ali_llm.py
+- ali_fetch.py
+- ali_email.py
 """
 
 from __future__ import annotations
@@ -138,7 +146,7 @@ def extract_reviewer_reply_text(body: str) -> str:
 
 
 # =============================================================================
-# Review protocol parsing (stable)
+# Step0: Review-state parsing (stable)
 # =============================================================================
 
 @dataclass(frozen=True)
