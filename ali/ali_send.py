@@ -19,7 +19,7 @@ ali_send.py
 - 任何對客戶的回信，必須由工程師本人手動發送
 
 Evaluation:
-- Run: python ali/evaluation/test_send.py
+- Run: python ali/evaluation.py
 """
 
 from __future__ import annotations

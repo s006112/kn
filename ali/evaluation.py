@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -165,32 +165,33 @@ class SendReplyTests(unittest.TestCase):
         self.logger = MagicMock()
         self.server = MagicMock()
         self.server.__enter__.return_value = self.server
+        append_sent_patcher = patch("ali.ali_send.append_to_imap_sent")
+        self.append_sent = append_sent_patcher.start()
+        self.addCleanup(append_sent_patcher.stop)
 
     def _common_patches(self, config: SmtpConfig | None):
         return (
             patch("ali.ali_send.load_env"),
             patch("ali.ali_send.configure_logging", return_value=self.logger),
             patch("ali.ali_send.load_smtp_config", return_value=config),
-            patch("ali.ali_send.append_to_imap_sent"),
         )
 
     def test_send_fails_without_smtp_config(self) -> None:
-        load_env, configure_logging, load_config, append_sent = self._common_patches(None)
-        with load_env, configure_logging, load_config, append_sent as append_sent_mock:
+        load_env, configure_logging, load_config = self._common_patches(None)
+        with load_env, configure_logging, load_config:
             result = send_reply(_email(), "Internal review")
 
         self.assertFalse(result.ok)
         self.assertEqual(result.error_message, "Missing SMTP_HOST/USER/PASSWORD")
-        append_sent_mock.assert_not_called()
+        self.append_sent.assert_not_called()
 
     def test_send_uses_starttls_and_saves_sent_email(self) -> None:
         config = _smtp_config()
-        load_env, configure_logging, load_config, append_sent = self._common_patches(config)
+        load_env, configure_logging, load_config = self._common_patches(config)
         with (
             load_env,
             configure_logging,
             load_config,
-            append_sent as append_sent_mock,
             patch("ali.ali_send.smtplib.SMTP", return_value=self.server) as smtp,
         ):
             result = send_reply(_email(), "Internal review")
@@ -203,16 +204,15 @@ class SendReplyTests(unittest.TestCase):
         sent_msg = self.server.send_message.call_args.args[0]
         self.assertEqual(sent_msg["To"], "reviewer@example.com")
         self.assertEqual(sent_msg["Reply-To"], "ali@example.com")
-        append_sent_mock.assert_called_once_with(sent_msg, self.logger)
+        self.append_sent.assert_called_once_with(sent_msg, self.logger)
 
     def test_send_uses_ssl_without_starttls(self) -> None:
         config = _smtp_config(port=465, use_ssl=True, use_starttls=True)
-        load_env, configure_logging, load_config, append_sent = self._common_patches(config)
+        load_env, configure_logging, load_config = self._common_patches(config)
         with (
             load_env,
             configure_logging,
             load_config,
-            append_sent,
             patch("ali.ali_send.smtplib.SMTP_SSL", return_value=self.server) as smtp_ssl,
         ):
             result = send_reply(_email(), "Internal review")
@@ -224,12 +224,11 @@ class SendReplyTests(unittest.TestCase):
     def test_send_returns_failure_on_smtp_error(self) -> None:
         config = _smtp_config()
         self.server.login.side_effect = RuntimeError("authentication failed")
-        load_env, configure_logging, load_config, append_sent = self._common_patches(config)
+        load_env, configure_logging, load_config = self._common_patches(config)
         with (
             load_env,
             configure_logging,
             load_config,
-            append_sent as append_sent_mock,
             patch("ali.ali_send.smtplib.SMTP", return_value=self.server),
         ):
             result = send_reply(_email(), "Internal review")
@@ -237,7 +236,7 @@ class SendReplyTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(result.error_message, "send_reply failed (see logs)")
         self.logger.exception.assert_called_once()
-        append_sent_mock.assert_not_called()
+        self.append_sent.assert_not_called()
 
 
 if __name__ == "__main__":
