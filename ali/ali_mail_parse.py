@@ -1,7 +1,7 @@
 """
 Used by:
 
-- ali.ali_llm: input normalization and override extraction.
+- ali.ali_llm: input normalization and extraction.
 - ali.ali_fetch: review-subject matching and IMAP query constants.
 - ali.ali_email: review-subject formatting and review-state parsing.
 """
@@ -80,7 +80,7 @@ def _review_body_for_parsing(review_email: EmailMessage) -> str:
 
 
 # =============================================================================
-# Step 0 — Input normalization + override extraction (SINGLE SOURCE OF TRUTH)
+# Step 0 — Input normalization + reviewer reply extraction (SINGLE SOURCE OF TRUTH)
 # =============================================================================
 
 _STEP0_WROTE_RE = re.compile(r"^On .* wrote:\s*$")
@@ -109,7 +109,7 @@ def normalize_email_input(
     return subject, body
 
 
-def extract_override_instructions(body: str) -> str:
+def extract_reviewer_reply_text(body: str) -> str:
     if not body:
         return ""
 

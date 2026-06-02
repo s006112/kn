@@ -11,7 +11,7 @@ ALI 是一個 reviewer-only email draft generator。
 2. ALI 生成 internal review draft。
 3. ALI 只把 draft 回給同一個 reviewer。
 4. Reviewer 空回覆 = REJECT。
-5. Reviewer 非空回覆 = override，ALI 生成下一版。
+5. Reviewer 有效回覆 = reviewer reply text，ALI 生成下一版。
 6. 最終 customer reply 必須由人手動發送。
 
 ## Run
@@ -39,8 +39,8 @@ ALI 不是 autonomous customer-reply agent；它只是 **reviewer-only draft gen
 3. **Silence Means Termination**
    reviewer 空回复 = REJECT；mark SEEN 后停止。
 
-4. **Any Non-Empty Reply Is Override**
-   reviewer 非空回复 = override/edit instructions；下一版基于 `previous_draft + override_instructions` 生成。
+4. **Valid Reviewer Reply Means Revision**
+   reviewer 在回覆中寫了新內容 = valid reviewer reply；下一版基於 `previous_draft + reviewer_reply_text` 生成。
 
 5. **Reserved Review Namespace**
    `[ALI:vN]` 只属于 ALI review thread；Phase 1 处理 new forwarded email，Phase 2 处理 reviewer reply。
@@ -63,7 +63,7 @@ ALI 不是 autonomous customer-reply agent；它只是 **reviewer-only draft gen
 
 ### Phase 2 — Reviewer Replies
 
-`fetch_sender_replies()` 只抓 subject 命中 `[ALI:v` 的 UNSEEN reply；继续执行 allowlist 和 admin bypass；empty body = REJECT 并 mark SEEN；non-empty body = parse last review state + extract override instructions + generate next version；成功发送后 mark reply as SEEN。
+`fetch_sender_replies()` 只抓 subject 命中 `[ALI:v` 的 UNSEEN reply；继续执行 allowlist 和 admin bypass；empty body = REJECT 并 mark SEEN；non-empty reviewer reply text = parse last review state + extract reviewer reply text + generate next version；成功发送后 mark reply as SEEN。
 
 polling cadence 只是 scheduling，不属于 semantic architecture。
 
@@ -77,7 +77,7 @@ polling cadence 只是 scheduling，不属于 semantic architecture。
 
 Owner: `ali/ali_mail_parse.py`
 
-做：normalize subject/body、限制 body size、extract override instructions、解析 last review version/draft、维护 review protocol constants。
+做：normalize subject/body、限制 body size、extract reviewer reply text、解析 last review version/draft、维护 review protocol constants。
 
 不做：routing、retrieval、LLM call、send mail、mark SEEN。
 
@@ -122,7 +122,7 @@ Owner: `ali/ali_llm.py`
 
 v1 rewrite path：normalize input → route → optional RAG → RAG 有 answer 则用 answer 作 draft，否则走 system-prompt LLM path。
 
-v2+ edit-only path：必须有 `previous_draft`；加载 `prompt_edit_only_override.txt`；提取 override instructions；只编辑 previous draft。
+v2+ edit-only path：必须有 `previous_draft`；加载 `prompt_edit_reviewer_reply.txt`；提取 reviewer reply text；只编辑 previous draft。
 
 v2+ 不得 rerun routing、rerun retrieval、fallback to rewrite semantics。
 
@@ -152,7 +152,7 @@ Owner: `ali/ali_llm.py::render_review()` + `ali/ali_email.py` subject/version se
 | ---------------------------- | ------------------------------------------------------------------------------------- |
 | `ali/ali_email.py`           | orchestration、Phase sequencing、guarded execution、subject versioning、message lifecycle |
 | `ali/ali_fetch.py`           | IMAP fetch、sender allowlist、ADMIN bypass、raw record → `EmailMessage`                  |
-| `ali/ali_mail_parse.py`      | input normalization、override extraction、review-state parsing、protocol constants       |
+| `ali/ali_mail_parse.py`      | input normalization、reviewer reply extraction、review-state parsing、protocol constants       |
 | `ali/ali_router.py`          | deterministic route selection only                                                    |
 | `ali/ali_llm.py`             | RAG gating、v1 generation、v2+ edit-only generation、Step4 hook、review rendering         |
 | `rag/helper_rag_pipeline.py` | RAG engine execution and answer/context assembly                                      |
@@ -190,7 +190,7 @@ fetch layer 可移动 disallowed mail away from active path；不得 mark normal
 
 规则：`To:` 必须等于 original forwarding reviewer addr-spec；customer address 永远不是合法 recipient；append to IMAP Sent 是 best-effort，不参与 semantic decision。
 
-禁止：决定 draft content、判断 reject/override、mark source message SEEN。
+禁止：决定 draft content、判断 REJECT / valid reviewer reply、mark source message SEEN。
 
 ---
 
@@ -200,7 +200,7 @@ fetch layer 可移动 disallowed mail away from active path；不得 mark normal
 
 可演进：`ali_router.py` 的 route rule；`ali_llm.py` 的 generation / retrieval gating / edit-only behavior；`rag/helper_rag_pipeline.py` 的 retrieval quality；future Step4 module。
 
-谨慎演进：`ali_mail_parse.py` 只为 normalization、override extraction、review protocol parsing correctness 改；`ali_email.py` 只做 bug fix、invariant enforcement、orchestration cleanup。
+谨慎演进：`ali_mail_parse.py` 只为 normalization、reviewer reply extraction、review protocol parsing correctness 改；`ali_email.py` 只做 bug fix、invariant enforcement、orchestration cleanup。
 
 legacy / experiment code 必须 isolated、not referenced by `ali_email.py`、标注 non-authoritative。
 

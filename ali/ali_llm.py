@@ -4,8 +4,7 @@ ali_llm.py
 
 - Internal review generation pipeline
 - Step1 routing + Step2 retrieval
-- Step3 draft generation (v1 rewrite or v2+ edit-only)
-
+- Step3 draft generation (v1 rewrite or v2+ reviewer-reply edit-only)Used by:
 Used by:
 - ali_email.py
 """
@@ -28,7 +27,7 @@ from ali.ali_router import RouteResult, route_email
 from ali.ali_mail_parse import (
     REVIEW_FOOTER_LINE,
     REVIEW_HEADER_LINE_TEMPLATE,
-    extract_override_instructions,
+    extract_reviewer_reply_text,
     normalize_email_input,
 )
 
@@ -104,8 +103,8 @@ def generate_review_package(
 
     Rules:
     - v1  : rewrite using generate_reply()
-    - v2+ : EDIT ONLY previous_draft using edit-only prompt
-    - Any reply implies OVERRIDE; silence implies REJECT
+    - v2+ : edit previous_draft only when reviewer provides a valid reply
+    - Empty reviewer reply means REJECT
     """
     subject_norm, body_norm = normalize_email_input(email)
 
@@ -142,23 +141,23 @@ def generate_review_package(
         # Routing and retrieval are intentionally bypassed for v2+ edit-only path.
         # This is a hard invariant.
         edit_prompt_path = (
-            system_prompt_path.parent / "prompt_edit_only_override.txt"
+            system_prompt_path.parent / "prompt_edit_reviewer_reply.txt"
         )
         edit_system_prompt = load_prompt_text(
             edit_prompt_path.parent, edit_prompt_path.name
         )
         if edit_system_prompt is None:
             raise FileNotFoundError(
-                f"Edit-only prompt not found: {edit_prompt_path}"
+                f"Reviewer-reply edit prompt not found: {edit_prompt_path}"
             )
 
-        override_text = extract_override_instructions(body_norm)
+        reviewer_reply_text = extract_reviewer_reply_text(body_norm)
         user_text = (
             "previous_draft:\n"
             f"{previous_draft}\n\n"
             "---\n"
-            "override_instructions:\n"
-            f"{override_text}"
+            "reviewer_reply_text:\n"
+            f"{reviewer_reply_text}"
         )
 
         draft = call_llm(
@@ -176,7 +175,7 @@ def generate_review_package(
     return {
         "review_id": review_id,
         "draft": draft,
-        "allowed_actions": ["OVERRIDE", "REJECT"],
+        "allowed_actions": ["REPLY", "REJECT"],
         "version": edit_version,
     }
 

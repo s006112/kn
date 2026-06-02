@@ -11,8 +11,8 @@ SYSTEM INVARIANTS (NON-NEGOTIABLE)
    An empty reviewer reply is treated as REJECT.
    Processing MUST stop immediately after marking the message as SEEN.
 
-3. Any Reply Is an Override
-   Any non-empty reviewer reply is interpreted as override instructions
+3. Valid Reviewer Reply Means Revision
+   A reviewer reply with new text is treated as valid reviewer input
    and MUST trigger a regenerated INTERNAL review.
 
 4. Forward-Only Input Model
@@ -94,6 +94,7 @@ from ali.ali_mail_parse import (
     REVIEW_SUBJECT_MARKER,
     REVIEW_SUBJECT_PATTERN,
     extract_last_review_state,
+    extract_reviewer_reply_text,
 )
 
 # -----------------------------------------------------------------------------
@@ -207,15 +208,15 @@ def _send_internal_review(
     review_body: str,
     *,
     logger,
-    subject_override: str | None = None,
+    base_subject: str | None = None,
     review_version: int = 1,
 ) -> None:
     reviewer = original.from_addr
     if not reviewer:
         raise RuntimeError("Missing reviewer (msg.from_addr is empty)")
 
-    base_subject = subject_override if subject_override is not None else (original.subject or "")
-    subject = _build_review_subject(base_subject, review_version)
+    subject_source = base_subject if base_subject is not None else (original.subject or "")
+    subject = _build_review_subject(subject_source, review_version)
 
     review_msg = EmailMessage(
         uid=original.uid,
@@ -292,27 +293,28 @@ def _phase2_sender_replies(*, logger) -> None:
             )
 
             raw_body = (reply_msg.body_text or "").strip()
-            if not raw_body:
-                logger.info("Empty reply detected; treated as REJECT. Marking as SEEN.")
+            reviewer_reply_text = extract_reviewer_reply_text(raw_body).strip()
+            if not reviewer_reply_text:
+                logger.info("Empty reviewer reply detected; treated as REJECT. Marking as SEEN.")
                 mark_imap_message_seen(reply_msg.uid, logger=logger)
                 return
-            
+
             state = extract_last_review_state(reply_msg)
             next_version = state.version + 1
 
-            override_input = EmailMessage(
+            reviewer_reply_input = EmailMessage(
                 uid=reply_msg.uid,
                 message_id=reply_msg.message_id,
                 from_addr=reply_msg.from_addr,
                 to_addrs=reply_msg.to_addrs,
                 cc_addrs=reply_msg.cc_addrs,
                 subject=reply_msg.subject,
-                body_text=raw_body,
+                body_text=reviewer_reply_text,
                 raw_bytes=reply_msg.raw_bytes,
             )
 
             review_obj = generate_review_package(
-                override_input,
+                reviewer_reply_input,
                 system_prompt_path=SYSTEM_PROMPT_PATH,
                 model=LLM_MODEL,
                 previous_draft=state.draft,
@@ -324,7 +326,7 @@ def _phase2_sender_replies(*, logger) -> None:
                 reply_msg,
                 review_body,
                 logger=logger,
-                subject_override=reply_msg.subject,
+                base_subject=reply_msg.subject,
                 review_version=next_version,
             )
 
