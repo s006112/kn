@@ -6,58 +6,59 @@ Generate a patch unless it is clearly unsafe or impossible.
 
 優先規則：
 
-1. 只改 <ALLOWED_FILES>。
-2. 不新增 file。
-3. 不改 public API。
-5. 優先壓縮 code count，其次提升人類可讀性。
-6. 允許 bounded internal refactor。
-7. 不要因為不是 mechanical patch 就拒絕。
+- 只改 <ALLOWED_FILES>。
+- 不新增 file。
+- 不改 public API。
+- 優先壓縮 code count，其次提升人類可讀性。
+- 允許 bounded internal refactor。
+- 不要因為不是 mechanical patch 就拒絕。
 
 硬性 code-count gate：
-* 不要為了可讀性新增 helper、comment、wrapper、intermediate variable，除非同時讓總代碼行數不增加。
-* 若行數增加，只有在明顯降低 branch / duplication / nesting 時才允許。
-* 優先選擇更小、更短、更直接的 patch。
-* 保持人類可讀性。
+- 必需為SEARCH/REPLACE patch結構
+- 不要為了可讀性新增 helper、comment、wrapper、intermediate variable，除非同時讓總代碼行數不增加。
+- 若行數增加，只有在明顯降低 branch / duplication / nesting 時才允許。
+- 優先選擇更小、更短、更直接的 patch。
+- 保持人類可讀性。
 
 允許：
 
-* block-level replacement。
-* function-level replacement。
-* 合併 branch。
-* 重排 function 內部段落。
-* 調整 local condition / variable / logging structure。
-* 刪除 redundant code。
-* 新增少量 private/local helper，但 replacement 不得變長，且必須明顯簡化主流程。
+- block-level replacement。
+- function-level replacement。
+- 合併 branch。
+- 重排 function 內部段落。
+- 調整 local condition / variable / logging structure。
+- 刪除 redundant code。
+- 新增少量 private/local helper，但 replacement 不得變長，且必須明顯簡化主流程。
 
 禁止：
 
-* 改 allowed files 之外的 file。
-* 新增 file。
-* 改 public function / class / method signature。
-* 明顯刪掉 core function。
-* 產生語法不完整 patch。
-* 使用看不到的 source text。
-* 輸出 explanation 或 markdown fence。
+- 改 allowed files 之外的 file。
+- 新增 file。
+- 改 public function / class / method signature。
+- 明顯刪掉 core function。
+- 產生語法不完整 patch。
+- 使用看不到的 source text。
+- 輸出 explanation 或 markdown fence。
 
 PATCH_NOT_SAFE only if：
 
-* <ALLOWED_FILES> empty。
-* <ALLOWED_FILE_CONTEXT> empty。
-* target file 不在 allowed files。
-* 找不到可唯一匹配的 SEARCH text。
-* patch 需要 invisible source。
-* patch 明顯超出 final plan。
-* patch 明顯破壞 public API。
-* 無法輸出語法完整的 replacement。
+- <ALLOWED_FILES> empty。
+- <ALLOWED_FILE_CONTEXT> empty。
+- target file 不在 allowed files。
+- 找不到可唯一匹配的 SEARCH text。
+- patch 需要 invisible source。
+- patch 明顯超出 final plan。
+- patch 明顯破壞 public API。
+- 無法輸出語法完整的 replacement。
 
 輸出格式：
 
-* 安全時只輸出 patch block。
-* 不要 markdown fence。
-* 不要 explanation。
-* 不要 unified diff。
-* 不要 ellipsis。
-* 不要 placeholder。
+- 安全時只輸出 patch block。
+- 不要 markdown fence。
+- 不要 explanation。
+- 不要 unified diff。
+- 不要 ellipsis。
+- 不要 placeholder。
 
 Patch block format:
 
@@ -75,14 +76,14 @@ REASON: short concrete reason
 
 Before output：
 
-* SEARCH must match visible source exactly.
-* Prefer one larger block over many tiny fragile blocks.
-* Replacement must be complete Python code for that block/function.
-* Keep indentation valid.
-* Remove obvious unused local code created by the refactor.
-* If replacing a whole function, SEARCH must include the complete original function text from visible source.
-* Keep imports valid.
-* Count effective lines across all SEARCH and REPLACE blocks.
+- SEARCH must match visible source exactly.
+- Prefer one larger block over many tiny fragile blocks.
+- Replacement must be complete Python code for that block/function.
+- Keep indentation valid.
+- Remove obvious unused local code created by the refactor.
+- If replacing a whole function, SEARCH must include the complete original function text from visible source.
+- Keep imports valid.
+- Count effective lines across all SEARCH and REPLACE blocks.
 
 <TASK>
 {task_text}

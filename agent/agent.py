@@ -272,27 +272,28 @@ def get_final_plan_commands() -> list[str]:
     return commands
 
 
-def run_verify() -> None:
+def run_verify() -> bool:
     # Run verify commands from the accepted plan.
     if not S3_FINAL_PLAN_PATH.exists():
         print("No final plan found.")
-        return
+        return False
 
     commands = get_final_plan_commands()
 
     print("=== Verify Patch Commands ===", flush=True)
     if not commands:
         print("No commands found.", flush=True)
-        return
+        return True
 
     for command in commands:
         print(f"$ {command}", flush=True)
         result = subprocess.run(command, cwd=REPO_ROOT, shell=True)
         if result.returncode != 0:
             print(f"VERIFY_FAILED: {command}", flush=True)
-            sys.exit(result.returncode)
+            return False
 
     print("VERIFY_OK", flush=True)
+    return True
 
 def parse_patch_blocks(patch_text: str) -> tuple[list[tuple[str, str, str]], list[str]]:
     lines = patch_text.splitlines()
@@ -392,32 +393,32 @@ def check_patch(task_path: Path) -> bool:
     return True
 
 
-def apply_patch(task_path: Path) -> None:
+def apply_patch(task_path: Path) -> bool:
     blocks = _load_patch_blocks(task_path)
     if blocks is None:
         print("PATCH_INVALID")
-        return
+        return False
 
     for rel, search, replace in blocks:
         path = REPO_ROOT / rel
         path.write_text(read_text(path).replace(search, replace, 1), encoding="utf-8")
 
     print("PATCH_APPLIED")
-    run_verify()
+    return run_verify()
 
 
-def revert_patch(task_path: Path) -> None:
+def revert_patch(task_path: Path) -> bool:
     blocks = _load_patch_blocks(task_path, reverse=True)
     if blocks is None:
         print("PATCH_REVERT_INVALID")
-        return
+        return False
 
     for rel, search, replace in blocks:
         path = REPO_ROOT / rel
         path.write_text(read_text(path).replace(replace, search, 1), encoding="utf-8")
 
     print("PATCH_REVERTED")
-    run_verify()
+    return run_verify()
 
 
 def draft_task(task_path: Path, target_arg: str | None = None) -> None:
@@ -533,7 +534,7 @@ def review_last_plan(task_path: Path) -> str:
 
 def run_iterate_task(task_path: Path) -> None:
     target_arg = argv_value_after("--run-iterate-task")
-    for pattern in ("s1_plan_*.md", "s2_review_*.md", "*.txt"):
+    for pattern in ("*.md", "*.txt"):
         for path in AGENT_DATA_DIR.glob(pattern):
             path.unlink()
     S2_FAULT_LEDGER_PATH.unlink(missing_ok=True)
@@ -545,6 +546,8 @@ def run_iterate_task(task_path: Path) -> None:
         if verdict == "APPROVE":
             print("ITERATE_APPROVED")
             accept_last_plan()
+            make_patch(task_path)
+            apply_patch(task_path)
             return
         if verdict != "REVISE":
             print("ITERATE_STOPPED: unknown review verdict")
@@ -594,7 +597,8 @@ def main() -> None:
     )
     for flag, command, args in stage:
         if flag in sys.argv:
-            command(*args)
+            if command(*args) is False:
+                sys.exit(1)
             return
 
 

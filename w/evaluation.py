@@ -650,6 +650,39 @@ def test_wikilink_cleaner_removes_broken_link(test_id: str) -> tuple[bool, list[
     return passed, cleanup
 
 
+def test_wikilink_cleaner_removes_only_adjacent_empty_lines(test_id: str) -> tuple[bool, list[Path]]:
+    source = PATHS.obsidian / f"W {test_id} adjacent empty lines.md"
+    cleanup = [source]
+
+    PATHS.obsidian.mkdir(parents=True, exist_ok=True)
+
+    source.write_text(
+        f"\nstart {test_id}\n\n\n[[{test_id}_missing]]\n\n\nend {test_id}\n",
+        encoding="utf-8",
+    )
+    release_text_file_permissions(source)
+
+    cleaner = WikilinkCleaner(str(PATHS.obsidian), create_backup=False)
+    processed = cleaner.process_file(source)
+    updated = source.read_text(encoding="utf-8")
+
+    passed = (
+        processed
+        and updated == f"\nstart {test_id}\n\nend {test_id}\n"
+    )
+
+    print_result(
+        "wikilink cleaner removes only adjacent empty lines",
+        passed,
+        {
+            "source": source,
+            "updated": repr(updated),
+        },
+    )
+
+    return passed, cleanup
+
+
 def test_markdown_merge_updates_index(test_id: str) -> tuple[bool, list[Path]]:
     note = PATHS.download_target / f"{test_id}_note.md"
     whisper_index = PATHS.download_target / f"{test_id}_Whisper_000000.md"
@@ -3485,6 +3518,7 @@ def main() -> int:
             test_ytd_uses_shared_write_text_file_static,
             test_ytd_remove_uses_shared_write_text_file_contract,
             test_wikilink_cleaner_removes_broken_link,
+            test_wikilink_cleaner_removes_only_adjacent_empty_lines,
             test_markdown_merge_updates_index,
             test_helper_md_uses_shared_write_text_file_static,
             test_audio_move_to_done_removes_wav,
