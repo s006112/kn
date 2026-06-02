@@ -33,6 +33,7 @@ from ali.ali_send import (  # noqa: E402
     send_reply,
 )
 from ali import ali_fetch  # noqa: E402
+from ali import ali_llm  # noqa: E402
 from ali.ali_fetch import (  # noqa: E402
     _build_client,
     _fetch_records,
@@ -42,6 +43,14 @@ from ali.ali_fetch import (  # noqa: E402
     fetch_new_messages,
     fetch_sender_replies,
 )
+from ali.ali_llm import (  # noqa: E402
+    RetrievalResult,
+    generate_review_package,
+    rag_retrieval,
+    render_review,
+    step4_review,
+)
+from ali.ali_router import RouteResult  # noqa: E402
 from helper.utils_imap_client import RawFetchedRecord  # noqa: E402
 from helper.utils_imap_config import ImapConfig, SmtpConfig  # noqa: E402
 from helper.utils_imap_types import EmailMessage  # noqa: E402
@@ -168,6 +177,16 @@ def _raw_email(uid: int = 7, **headers: str) -> RawFetchedRecord:
         flags=[],
         internaldate=None,
         raw_bytes=f"{header_text}\n\nBody text".encode(),
+    )
+
+
+def _route(category: str) -> RouteResult:
+    return RouteResult(
+        category=category,
+        intent="ask_information",
+        risk_level="low",
+        rationale="evaluation",
+        confidence=1.0,
     )
 
 
@@ -441,6 +460,265 @@ class FetchRawEmailParsingTests(unittest.TestCase):
         )
 
         self.assertEqual(_raw_to_email_message(record).body_text, "")
+
+
+class LlmRagRetrievalTests(unittest.TestCase):
+    target_file = "ali_llm.py"
+
+    def setUp(self) -> None:
+        ali_llm._RAG_ENGINE_CACHE.clear()
+
+    def test_unmapped_category_skips_retrieval(self) -> None:
+        with patch("ali.ali_llm.get_rag_engine") as get_engine:
+            result = rag_retrieval(_route("commercial"), "Question", "Body")
+
+        self.assertEqual(result, RetrievalResult(used=False, context=None, source=None))
+        get_engine.assert_not_called()
+
+    def test_mapped_categories_share_cached_engine(self) -> None:
+        engine = MagicMock()
+        engine.answer_question.side_effect = [("First answer", ""), ("Second answer", "")]
+        with patch("ali.ali_llm.get_rag_engine", return_value=engine) as get_engine:
+            first = rag_retrieval(_route("safety_regulation"), "Question", "Body")
+            second = rag_retrieval(_route("technical"), "", "Body only")
+
+        self.assertEqual(first, RetrievalResult(used=True, context="First answer", source="rag"))
+        self.assertEqual(second, RetrievalResult(used=True, context="Second answer", source="rag"))
+        get_engine.assert_called_once_with("standard")
+        self.assertEqual(
+            engine.answer_question.call_args_list,
+            [unittest.mock.call("Subject: Question\n\nBody"), unittest.mock.call("Body only")],
+        )
+
+    def test_rita_retrieval_uses_rita_engine_and_search_intent(self) -> None:
+        engine = MagicMock()
+        engine.answer_question.return_value = ("Historical answer", "")
+        with patch("ali.ali_llm.get_rag_engine", return_value=engine) as get_engine:
+            result = rag_retrieval(_route("rita"), "Rita request", "Find the attachment")
+
+        query = engine.answer_question.call_args.args[0]
+        self.assertEqual(result, RetrievalResult(used=True, context="Historical answer", source="rag"))
+        get_engine.assert_called_once_with("rita")
+        self.assertTrue(query.startswith("Subject: Rita request\n\nFind the attachment\n\n"))
+        self.assertIn("Search intent: find relevant historical records", query)
+
+    def test_similarity_table_is_printed(self) -> None:
+        engine = MagicMock()
+        engine.answer_question.return_value = ("Answer", "score table")
+        with (
+            patch("ali.ali_llm.get_rag_engine", return_value=engine),
+            patch("builtins.print") as print_mock,
+        ):
+            rag_retrieval(_route("technical"), "Question", "")
+
+        print_mock.assert_called_once_with("\n[RAG] FAISS similarity table:\n\nscore table\n")
+
+    def test_empty_answer_degrades_to_unused_context(self) -> None:
+        engine = MagicMock()
+        engine.answer_question.return_value = ("", "")
+        with patch("ali.ali_llm.get_rag_engine", return_value=engine):
+            result = rag_retrieval(_route("technical"), "", "")
+
+        self.assertEqual(result, RetrievalResult(used=False, context=None, source=None))
+        engine.answer_question.assert_called_once_with("")
+
+    def test_retrieval_failure_degrades_to_unused_context(self) -> None:
+        with (
+            patch("ali.ali_llm.get_rag_engine", side_effect=RuntimeError("offline")),
+            patch("builtins.print") as print_mock,
+        ):
+            result = rag_retrieval(_route("technical"), "Question", "Body")
+
+        self.assertEqual(result, RetrievalResult(used=False, context=None, source=None))
+        print_mock.assert_called_once_with("RAG Retrieval or Generation failed: offline")
+
+
+class LlmGenerateReviewPackageTests(unittest.TestCase):
+    target_file = "ali_llm.py"
+
+    def setUp(self) -> None:
+        self.prompt_path = Path("/tmp/prompts/prompt_generate.txt")
+
+    def test_v1_uses_rag_answer_without_calling_llm(self) -> None:
+        route = _route("technical")
+        with (
+            patch("ali.ali_llm.route_email", return_value=route) as route_email,
+            patch(
+                "ali.ali_llm.rag_retrieval",
+                return_value=RetrievalResult(used=True, context="  RAG draft  ", source="rag"),
+            ) as retrieve,
+            patch("ali.ali_llm.load_prompt_text") as load_prompt,
+            patch("ali.ali_llm.call_llm") as call_llm,
+        ):
+            result = generate_review_package(
+                _email(subject="  Question  ", body_text="  Body  "),
+                system_prompt_path=self.prompt_path,
+                model="test-model",
+            )
+
+        self.assertEqual(result["draft"], "RAG draft")
+        route_email.assert_called_once_with("Question", "Body")
+        retrieve.assert_called_once_with(route, "Question", "Body")
+        load_prompt.assert_not_called()
+        call_llm.assert_not_called()
+
+    def test_v1_falls_back_to_prompt_llm_and_builds_package(self) -> None:
+        with (
+            patch("ali.ali_llm.route_email", return_value=_route("commercial")),
+            patch(
+                "ali.ali_llm.rag_retrieval",
+                return_value=RetrievalResult(used=False, context=None, source=None),
+            ),
+            patch("ali.ali_llm.load_prompt_text", return_value="System prompt") as load_prompt,
+            patch("ali.ali_llm.call_llm", return_value="  LLM draft  ") as call_llm,
+            patch("ali.ali_llm.step4_review", side_effect=lambda draft, **_: draft) as review,
+        ):
+            result = generate_review_package(
+                _email(message_id="  <review-id>  ", subject=" Question ", body_text=" Body "),
+                system_prompt_path=self.prompt_path,
+                model="test-model",
+                edit_version=3,
+            )
+
+        self.assertEqual(
+            result,
+            {
+                "review_id": "<review-id>",
+                "draft": "LLM draft",
+                "allowed_actions": ["REPLY", "REJECT"],
+                "version": 3,
+            },
+        )
+        load_prompt.assert_called_once_with(self.prompt_path.parent, self.prompt_path.name)
+        call_llm.assert_called_once_with(
+            model="test-model",
+            system_prompt="System prompt",
+            user_text="Subject: Question\n\nBody",
+            file_path=None,
+        )
+        review.assert_called_once_with("LLM draft", enabled=False)
+
+    def test_v1_missing_prompt_raises(self) -> None:
+        with (
+            patch("ali.ali_llm.route_email", return_value=_route("unknown")),
+            patch(
+                "ali.ali_llm.rag_retrieval",
+                return_value=RetrievalResult(used=False, context=None, source=None),
+            ),
+            patch("ali.ali_llm.load_prompt_text", return_value=None),
+            self.assertRaisesRegex(FileNotFoundError, "Prompt file not found"),
+        ):
+            generate_review_package(
+                _email(),
+                system_prompt_path=self.prompt_path,
+                model="test-model",
+            )
+
+    def test_review_id_falls_back_to_uid(self) -> None:
+        with (
+            patch("ali.ali_llm.route_email", return_value=_route("unknown")),
+            patch(
+                "ali.ali_llm.rag_retrieval",
+                return_value=RetrievalResult(used=False, context=None, source=None),
+            ),
+            patch("ali.ali_llm.load_prompt_text", return_value="System prompt"),
+            patch("ali.ali_llm.call_llm", return_value="Draft"),
+        ):
+            result = generate_review_package(
+                _email(uid=42, message_id=" "),
+                system_prompt_path=self.prompt_path,
+                model="test-model",
+            )
+
+        self.assertEqual(result["review_id"], "42")
+
+    def test_v2_edits_previous_draft_and_bypasses_route_and_retrieval(self) -> None:
+        with (
+            patch("ali.ali_llm.route_email") as route_email,
+            patch("ali.ali_llm.rag_retrieval") as retrieve,
+            patch("ali.ali_llm.load_prompt_text", return_value="Edit prompt") as load_prompt,
+            patch("ali.ali_llm.call_llm", return_value="  Edited draft  ") as call_llm,
+        ):
+            result = generate_review_package(
+                _email(body_text="Please update this.\n\n> quoted history"),
+                system_prompt_path=self.prompt_path,
+                model="test-model",
+                previous_draft="Previous draft",
+                edit_version=2,
+            )
+
+        self.assertEqual(result["draft"], "Edited draft")
+        self.assertEqual(result["version"], 2)
+        route_email.assert_not_called()
+        retrieve.assert_not_called()
+        edit_prompt_path = self.prompt_path.parent / "prompt_edit_reviewer_reply.txt"
+        load_prompt.assert_called_once_with(edit_prompt_path.parent, edit_prompt_path.name)
+        call_llm.assert_called_once_with(
+            model="test-model",
+            system_prompt="Edit prompt",
+            user_text=(
+                "previous_draft:\n"
+                "Previous draft\n\n"
+                "---\n"
+                "reviewer_reply_text:\n"
+                "Please update this.\n"
+            ),
+            file_path=None,
+        )
+
+    def test_empty_previous_draft_still_selects_v2_path(self) -> None:
+        with (
+            patch("ali.ali_llm.route_email") as route_email,
+            patch("ali.ali_llm.load_prompt_text", return_value="Edit prompt"),
+            patch("ali.ali_llm.call_llm", return_value="Edited"),
+        ):
+            generate_review_package(
+                _email(body_text="Reviewer note"),
+                system_prompt_path=self.prompt_path,
+                model="test-model",
+                previous_draft="",
+                edit_version=2,
+            )
+
+        route_email.assert_not_called()
+
+    def test_v2_missing_edit_prompt_raises(self) -> None:
+        with (
+            patch("ali.ali_llm.load_prompt_text", return_value=None),
+            patch("ali.ali_llm.route_email") as route_email,
+            patch("ali.ali_llm.rag_retrieval") as retrieve,
+            self.assertRaisesRegex(FileNotFoundError, "Reviewer-reply edit prompt not found"),
+        ):
+            generate_review_package(
+                _email(),
+                system_prompt_path=self.prompt_path,
+                model="test-model",
+                previous_draft="Previous draft",
+                edit_version=2,
+            )
+
+        route_email.assert_not_called()
+        retrieve.assert_not_called()
+
+
+class LlmReviewAndRenderingTests(unittest.TestCase):
+    target_file = "ali_llm.py"
+
+    def test_step4_disabled_is_noop(self) -> None:
+        self.assertEqual(step4_review("Draft", enabled=False), "Draft")
+
+    def test_step4_enabled_is_currently_noop(self) -> None:
+        self.assertEqual(step4_review("Draft", enabled=True), "Draft")
+
+    def test_render_review_wraps_draft_with_protocol(self) -> None:
+        rendered = render_review({"draft": "Draft body", "version": 4})
+
+        self.assertEqual(
+            rendered,
+            "=================   ALI'S RESPONSE - VERSION 4   ==================\n"
+            "Draft body\n"
+            "====================   ALI'S RESPONSE ENDED   =====================",
+        )
 
 
 class SubjectTests(unittest.TestCase):

@@ -1,5 +1,5 @@
 '''
-python3 agent/agent.py --run-iterate-task agent/agent.py  # agent/agent.py helper/helper_ytd.py w/p_wiki.py
+python3 agent/agent.py --run-iterate-task ali/ali_llm.py ali/ali_router.py agent/agent.py  # agent/agent.py helper/helper_ytd.py w/p_wiki.py
 python3 agent/agent.py --draft-task w/p_wiki.py      # step 0
 python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2
@@ -8,6 +8,7 @@ python3 agent/agent.py --check-ready
 python3 agent/agent.py --make-patch  # step 4, includes check_patch internally
 python3 agent/agent.py --run-verify  
 python3 agent/agent.py --apply-patch  # step 5, includes run verify internally
+python3 agent/agent.py --revert-patch  # if step 5 fails, revert and verify again
 
 Workflow: plan -> review -> revise -> accept -> make/check patch -> apply patch/run verify
 
