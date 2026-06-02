@@ -17,6 +17,9 @@ ali_send.py
 - ALI 永遠不是對外發信者
 - ALI 只是一個「工程判斷草稿生成器」
 - 任何對客戶的回信，必須由工程師本人手動發送
+
+Evaluation:
+- Run: python ali/evaluation/test_send.py
 """
 
 from __future__ import annotations
@@ -108,45 +111,31 @@ def _build_message(
 ) -> StdEmailMessage:
     msg = StdEmailMessage()
     msg["From"] = from_addr
-
-    # IMPORTANT: This resolves to the forward sender (reviewer), NOT the customer.
-    to_addr = _build_to_address(original.from_addr)
-    msg["To"] = to_addr
-
-    subject = _build_subject(original.subject)
-    msg["Subject"] = subject
-
+    msg["To"] = _build_to_address(original.from_addr)
+    msg["Subject"] = _build_subject(original.subject)
     if original.message_id:
         msg["In-Reply-To"] = original.message_id
         msg["References"] = original.message_id
 
-    base_body = (reply_body or "").rstrip()
+    body = (reply_body or "").rstrip()
     original_body = (original.body_text or "").strip()
-
     if original_body:
-        header_lines = []
-        if original.from_addr:
-            header_lines.append(f"From: {original.from_addr}")
-        if original.to_addrs:
-            header_lines.append(f"To: {', '.join(original.to_addrs)}")
-        if original.subject:
-            header_lines.append(f"Subject: {original.subject}")
+        header_lines = [
+            f"{label}: {value}"
+            for label, value in (
+                ("From", original.from_addr),
+                ("To", ", ".join(original.to_addrs) if original.to_addrs else ""),
+                ("Subject", original.subject),
+            )
+            if value
+        ]
+        history = "\n".join(
+            ["-----Original Message-----", *header_lines, ""]
+            + [f"> {line}" if line.strip() else ">" for line in original_body.splitlines()]
+        )
+        body = f"{body}\n\n{history}" if body else history
 
-        header_block = ""
-        if header_lines:
-            header_block = "-----Original Message-----\n" + "\n".join(header_lines)
-
-        quoted_lines = []
-        for line in original_body.splitlines():
-            quoted_lines.append(f"> {line}" if line.strip() else ">")
-        quoted_block = "\n".join(quoted_lines)
-
-        history_block = f"{header_block}\n\n{quoted_block}" if header_block else quoted_block
-        full_body = f"{base_body}\n\n{history_block}" if base_body else history_block
-    else:
-        full_body = base_body
-
-    msg.set_content(full_body, subtype="plain", charset="utf-8")
+    msg.set_content(body, subtype="plain", charset="utf-8")
     return msg
 
 
@@ -174,32 +163,24 @@ def send_reply(
     if smtp_cfg is None:
         return SendResult(ok=False, error_message="Missing SMTP_HOST/USER/PASSWORD")
 
-    sender = from_addr or smtp_cfg.default_from
-    msg = _build_message(original, reply_body, sender)
+    msg = _build_message(original, reply_body, from_addr or smtp_cfg.default_from)
     msg["Reply-To"] = smtp_cfg.user
-
-    # ---- HARD SAFETY CHECK (non-negotiable) ----
     _require_reply_to_forward_sender(original.from_addr, msg["To"])
 
     try:
-        if smtp_cfg.use_ssl:
-            server: smtplib.SMTP = smtplib.SMTP_SSL(smtp_cfg.host, smtp_cfg.port, timeout=60)
-        else:
-            server = smtplib.SMTP(smtp_cfg.host, smtp_cfg.port, timeout=60)
-
-        with server:
+        with (
+            smtplib.SMTP_SSL(smtp_cfg.host, smtp_cfg.port, timeout=60)
+            if smtp_cfg.use_ssl
+            else smtplib.SMTP(smtp_cfg.host, smtp_cfg.port, timeout=60)
+        ) as server:
             server.ehlo()
-            if not smtp_cfg.use_ssl and smtp_cfg.use_starttls:
+            if smtp_cfg.use_starttls and not smtp_cfg.use_ssl:
                 server.starttls()
                 server.ehlo()
             server.login(smtp_cfg.user, smtp_cfg.password)
             server.send_message(msg)
-
         logger.info("Sent INTERNAL review to %s (uid=%s)", msg["To"], original.uid)
-
-        # Write to IMAP Sent (best-effort)
         append_to_imap_sent(msg, logger)
-
         return SendResult(ok=True)
     except Exception:
         logger.exception("Failed to send internal review for uid=%s", original.uid)
