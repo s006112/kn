@@ -6,33 +6,41 @@ Routing invariants (NON-NEGOTIABLE):
 - Routing MUST be deterministic and side-effect free.
 - Routing output is read-only for all downstream steps.
 
-Any logic that generates text, calls LLMs, or applies policy
-MUST NOT be added to this module.
-"""
-# -----------------------------------------------------------------------------
-# Execution routines (semantic contract)
-#
-# Routine A: safety_regulation
-#   - allow RAG
-#   - strict factual grounding
-#   - reflection enabled
-#
-# Routine B: technical / commercial
-#   - no RAG by default
-#   - concise, factual generation
-#
-# Routine C: casual
-#   - direct generation
-#   - no reflection
-#
-# Routine D: unknown
-#   - conservative default behavior
-#
-# NOTE:
-# This table defines ALLOWED capabilities per routine.
-# It does NOT define how those capabilities are implemented.
-# -----------------------------------------------------------------------------
+Any logic that generates text, calls LLMs, performs retrieval, sends email,
+marks messages SEEN, or applies delivery policy MUST NOT be added here.
 
+Execution routines (semantic contract):
+
+- safety_regulation
+  - may allow standard RAG via ali_llm gate
+  - requires stricter factual grounding
+
+- technical
+  - may allow standard RAG via ali_llm gate
+  - used for product, specification, testing, wiring, voltage, current,
+    power, and dimension related questions
+
+- rita
+  - may allow rita RAG via ali_llm gate
+  - used for historical Rita-related context lookup
+
+- commercial
+  - no RAG by default
+  - concise, factual generation
+
+- casual
+  - no RAG by default
+  - direct generation
+
+- unknown
+  - conservative default behavior
+
+This module only classifies the email into a route.
+The actual RAG decision is owned by ali_llm.py.
+
+Used by:
+- ali_llm.py
+"""
 
 from __future__ import annotations
 

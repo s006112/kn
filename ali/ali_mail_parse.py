@@ -1,3 +1,11 @@
+"""
+Used by:
+
+- ali.ali_llm: input normalization and override extraction.
+- ali.ali_fetch: review-subject matching and IMAP query constants.
+- ali.ali_email: review-subject formatting and review-state parsing.
+"""
+
 from __future__ import annotations
 
 import sys

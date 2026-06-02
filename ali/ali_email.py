@@ -62,6 +62,9 @@ RESPONSIBILITY BOUNDARIES
 This file is considered STABLE.
 Changes should be limited to bug fixes or invariant enforcement.
 Feature development MUST occur in downstream modules.
+
+Used by:
+- None
 """
 
 from __future__ import annotations

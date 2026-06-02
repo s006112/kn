@@ -5,6 +5,9 @@ ali_llm.py
 - Internal review generation pipeline
 - Step1 routing + Step2 retrieval
 - Step3 draft generation (v1 rewrite or v2+ edit-only)
+
+Used by:
+- ali_email.py
 """
 
 from __future__ import annotations

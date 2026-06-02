@@ -9,6 +9,9 @@ ali_fetch.py
 - 永远拒绝 ali@ampco.com.hk，避免自我回复循环。
 - "[ALI:v" 保留给 ALI review thread 使用。
 - Helper 负责 IMAP 协议细节；pipeline 负责 mark-seen 时机。
+
+Used by:
+- ali_email.py
 """
 
 from __future__ import annotations

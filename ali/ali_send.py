@@ -18,8 +18,8 @@ ali_send.py
 - ALI 只是一個「工程判斷草稿生成器」
 - 任何對客戶的回信，必須由工程師本人手動發送
 
-Evaluation:
-- Run: python ali/evaluation.py
+Used by:
+- ali_email.py
 """
 
 from __future__ import annotations
