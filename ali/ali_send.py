@@ -30,6 +30,7 @@ import smtplib
 from email.message import EmailMessage as StdEmailMessage
 from email.utils import parseaddr
 from typing import Optional
+from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -39,6 +40,8 @@ from helper.helper_config import load_env, configure_logging  # type: ignore
 from helper.utils_imap_config import load_smtp_config  # type: ignore
 from helper.utils_imap_types import EmailMessage, SendResult  # type: ignore
 from helper.utils_imap_ops import append_to_imap_sent  # type: ignore
+
+_DOTENV_PATH = ROOT / ".env"
 
 
 # ------------------------------------------------------------
@@ -104,6 +107,14 @@ def _build_to_address(from_addr: str) -> str:
     return addr or from_addr or ""
 
 
+def _add_admin_bcc(msg: StdEmailMessage, original_from_addr: str) -> None:
+    env_values = dotenv_values(_DOTENV_PATH)
+    admin_addr = str(env_values.get("ADMIN_USERNAME", "")).strip().lower()
+    _, original_email = parseaddr(original_from_addr)
+    if admin_addr and original_email.strip().lower() != admin_addr:
+        msg["Bcc"] = admin_addr
+
+
 def _build_message(
     original: EmailMessage,
     reply_body: str,
@@ -165,6 +176,7 @@ def send_reply(
 
     msg = _build_message(original, reply_body, from_addr or smtp_cfg.default_from)
     msg["Reply-To"] = smtp_cfg.user
+    _add_admin_bcc(msg, original.from_addr)
     _require_reply_to_forward_sender(original.from_addr, msg["To"])
 
     try:

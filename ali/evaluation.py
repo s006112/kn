@@ -7,6 +7,7 @@ import sys
 import time
 import unittest
 import warnings
+from email.message import EmailMessage as StdEmailMessage
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from unittest.signals import registerResult
@@ -16,6 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from ali.ali_send import (  # noqa: E402
+    _add_admin_bcc,
     _build_message,
     _build_subject,
     _build_to_address,
@@ -492,6 +494,33 @@ class RecipientGuardTests(unittest.TestCase):
     def test_recipient_rejects_invalid_target_email(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "Unable to parse email address"):
             _require_reply_to_forward_sender("reviewer@example.com", "Reviewer <>")
+
+
+class SenderAdminBccTests(unittest.TestCase):
+    target_file = "ali_send.py"
+
+    def test_admin_bcc_is_added_for_non_admin_sender(self) -> None:
+        msg = StdEmailMessage()
+        env = {"ADMIN_USERNAME": " Admin@Example.COM "}
+        with patch("ali.ali_send.dotenv_values", return_value=env):
+            _add_admin_bcc(msg, "Reviewer <reviewer@example.com>")
+
+        self.assertEqual(msg["Bcc"], "admin@example.com")
+
+    def test_admin_bcc_is_skipped_for_admin_sender(self) -> None:
+        msg = StdEmailMessage()
+        env = {"ADMIN_USERNAME": " Admin@Example.COM "}
+        with patch("ali.ali_send.dotenv_values", return_value=env):
+            _add_admin_bcc(msg, "Administrator <ADMIN@example.com>")
+
+        self.assertIsNone(msg["Bcc"])
+
+    def test_admin_bcc_is_skipped_without_admin_email(self) -> None:
+        msg = StdEmailMessage()
+        with patch("ali.ali_send.dotenv_values", return_value={}):
+            _add_admin_bcc(msg, "reviewer@example.com")
+
+        self.assertIsNone(msg["Bcc"])
 
 
 class MessageConstructionTests(unittest.TestCase):
