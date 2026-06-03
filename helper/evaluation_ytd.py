@@ -26,14 +26,17 @@ from helper import helper_ytd as ytd  # noqa: E402
 
 # Toggle this to True when you want real network metadata checks by default.
 # You can also run with YTD_REAL_CHECK=1 without editing this file.
-RUN_REAL_LINK_CHECKS = False
+RUN_REAL_LINK_CHECKS = True
 
 REAL_LINK_FIXTURES = (
     ("https://www.youtube.com/watch?v=4dnri2eITX8", ytd.PLATFORM_YOUTUBE, "youtube"),
     ("https://www.youtube.com/shorts/cqD_rVj-Nyo", ytd.PLATFORM_YOUTUBE, "youtube"),
     ("https://www.youtube.com/watch?v=KpUqhdzsjnE", ytd.PLATFORM_YOUTUBE, "youtube"),
     ("https://x.com/i/status/2051216612636668186", ytd.PLATFORM_X, "twitter"),
-    ("https://www.facebook.com/watch/?v=972353075160922", ytd.PLATFORM_YTDLP, "facebook"),
+    ("https://www.facebook.com/watch/?v=972353075160922", ytd.PLATFORM_META, "facebook"),
+    ("https://www.instagram.com/reel/DVx-1ZRkg3p/", ytd.PLATFORM_META, "instagram"),
+    ("https://www.instagram.com/p/DWdEZcqkzYr/", ytd.PLATFORM_META, "instagram"),
+    ("https://www.threads.com/@mr.wei5888/post/DZD-ZHRE8Z7?xmt=AQG01CRhRvQw4T7Bn2o474gZkG41_idxLIer1fb023ctTw", ytd.PLATFORM_THREADS, "generic"),
 )
 
 
@@ -115,7 +118,9 @@ class UrlUtilityTests(unittest.TestCase):
     def test_classify_url_detects_supported_platforms(self) -> None:
         self.assertEqual(ytd.classify_url("x.com/user/status/1"), ytd.PLATFORM_X)
         self.assertEqual(ytd.classify_url("youtu.be/abc"), ytd.PLATFORM_YOUTUBE)
-        self.assertEqual(ytd.classify_url("instagram.com/p/abc"), ytd.PLATFORM_YTDLP)
+        self.assertEqual(ytd.classify_url("instagram.com/p/abc"), ytd.PLATFORM_META)
+        self.assertEqual(ytd.classify_url("threads.net/@user/post/abc"), ytd.PLATFORM_THREADS)
+        self.assertEqual(ytd.classify_url("www.threads.com/@user/post/abc"), ytd.PLATFORM_THREADS)
         self.assertEqual(ytd.classify_url("example.com/video"), "")
 
     def test_classify_url_normalizes_scheme_port_and_case(self) -> None:
@@ -227,6 +232,40 @@ class XAuthAndResolveTests(unittest.TestCase):
         self.assertIn("ct0\tct0", text)
 
 
+class ThreadsResolveTests(unittest.TestCase):
+    def test_iter_threads_media_urls_finds_meta_video(self) -> None:
+        html = '<meta property="og:video" content="https://cdn.example.com/video.mp4?token=1&amp;v=2">'
+
+        self.assertEqual(list(ytd._iter_threads_media_urls(html)), ["https://cdn.example.com/video.mp4?token=1&v=2"])
+
+    def test_iter_threads_media_urls_finds_json_video_url(self) -> None:
+        html = '{"video_url":"https:\\/\\/cdn.example.com\\/video.mp4?token=1\\u0026v=2"}'
+
+        self.assertEqual(list(ytd._iter_threads_media_urls(html)), ["https://cdn.example.com/video.mp4?token=1&v=2"])
+
+    def test_resolve_threads_video_url_reads_first_media_url(self) -> None:
+        response = Mock()
+        response.read.return_value = b'<meta property="og:video" content="https://cdn.example.com/video.mp4">'
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=None)
+
+        with patch("helper.helper_ytd.urlopen", return_value=response):
+            self.assertEqual(
+                ytd._resolve_threads_video_url("https://threads.com/@user/post/abc", 2),
+                "https://cdn.example.com/video.mp4",
+            )
+
+    def test_resolve_threads_video_url_rejects_missing_media(self) -> None:
+        response = Mock()
+        response.read.return_value = b"<html></html>"
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=None)
+
+        with patch("helper.helper_ytd.urlopen", return_value=response):
+            with self.assertRaisesRegex(RuntimeError, "没有找到可下载的视频地址"):
+                ytd._resolve_threads_video_url("https://threads.com/@user/post/abc", 2)
+
+
 class CommandBuilderTests(unittest.TestCase):
     def test_x_command_builds_download_command_with_temp_cookies(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -245,7 +284,7 @@ class CommandBuilderTests(unittest.TestCase):
 
     def test_generic_command_builds_requested_mode(self) -> None:
         with patch("helper.helper_ytd.build_common_args", return_value=["--common"]):
-            resolved_url, cmd = ytd._generic_command("https://youtube.com/watch?v=abc", "mp3")
+            resolved_url, cmd = ytd._generic_ytdlp_command("https://youtube.com/watch?v=abc", "mp3")
 
         self.assertEqual(resolved_url, "https://youtube.com/watch?v=abc")
         self.assertIn("-x", cmd)
@@ -254,7 +293,23 @@ class CommandBuilderTests(unittest.TestCase):
 
     def test_generic_command_rejects_bad_mode(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "无效下载模式"):
-            ytd._generic_command("https://youtube.com/watch?v=abc", "4k")
+            ytd._generic_ytdlp_command("https://youtube.com/watch?v=abc", "4k")
+
+    def test_threads_command_resolves_media_url_without_common_args(self) -> None:
+        with patch("helper.helper_ytd._resolve_threads_video_url", return_value="https://cdn.example.com/video.mp4") as resolver:
+            resolved_url, cmd = ytd._threads_command("https://threads.com/@user/post/abc", "720p", 20)
+
+        self.assertEqual(resolved_url, "https://cdn.example.com/video.mp4")
+        self.assertEqual(cmd[0], "yt-dlp")
+        self.assertIn("--no-playlist", cmd)
+        self.assertIn("--merge-output-format", cmd)
+        self.assertEqual(cmd[-1], "https://cdn.example.com/video.mp4")
+        resolver.assert_called_once_with("https://threads.com/@user/post/abc", 20)
+
+    def test_threads_command_rejects_bad_mode(self) -> None:
+        with patch("helper.helper_ytd._resolve_threads_video_url", return_value="https://cdn.example.com/video.mp4"):
+            with self.assertRaisesRegex(RuntimeError, "无效下载模式"):
+                ytd._threads_command("https://threads.com/@user/post/abc", "4k", 20)
 
     def test_build_download_command_dispatches_x_platform(self) -> None:
         with patch("helper.helper_ytd._x_command", return_value=("resolved", ["x-cmd"])) as x_command:
@@ -263,10 +318,19 @@ class CommandBuilderTests(unittest.TestCase):
         x_command.assert_called_once_with("https://x.com/user/status/1", "/tmp", 20)
 
     def test_build_download_command_dispatches_generic_platforms(self) -> None:
-        with patch("helper.helper_ytd._generic_command", return_value=("resolved", ["generic-cmd"])) as generic_command:
+        with patch("helper.helper_ytd._generic_ytdlp_command", return_value=("resolved", ["generic-cmd"])) as generic_command:
             self.assertEqual(ytd.build_download_command("https://youtube.com/watch?v=abc", "mp3", "/tmp", 20), ("resolved", ["generic-cmd"]))
 
         generic_command.assert_called_once_with("https://youtube.com/watch?v=abc", "mp3")
+
+    def test_build_download_command_dispatches_threads_platform(self) -> None:
+        with patch("helper.helper_ytd._threads_command", return_value=("resolved", ["threads-cmd"])) as threads_command:
+            self.assertEqual(
+                ytd.build_download_command("https://threads.com/@user/post/abc", "720p", "/tmp", 20),
+                ("resolved", ["threads-cmd"]),
+            )
+
+        threads_command.assert_called_once_with("https://threads.com/@user/post/abc", "720p", 20)
 
     def test_build_download_command_rejects_unsupported_platform(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "Unsupported URL"):
@@ -443,9 +507,33 @@ class TtmlFallbackTests(unittest.TestCase):
     "set RUN_REAL_LINK_CHECKS=True or YTD_REAL_CHECK=1 to run network metadata checks",
 )
 class ZRealLinkMetadataTests(unittest.TestCase):
+    @staticmethod
+    def _allow_remote_skip() -> bool:
+        return not RUN_REAL_LINK_CHECKS and os.getenv("YTD_REAL_CHECK") == "1"
+
+    @staticmethod
+    def _is_rate_limited(text: object) -> bool:
+        text = str(text)
+        return (
+            "429" in text
+            or "Too Many Requests" in text
+            or "rate-limit" in text
+            or "login required" in text
+        )
+
     def test_real_link_fixtures_are_extractable_without_download(self) -> None:
-        for url, _platform, extractor in REAL_LINK_FIXTURES:
+        for url, platform, extractor in REAL_LINK_FIXTURES:
             with self.subTest(url=url):
+                check_url = url
+                if platform == ytd.PLATFORM_THREADS:
+                    try:
+                        check_url = ytd._resolve_threads_video_url(ytd.clean_url(url), 20)
+                    except RuntimeError as exc:
+                        if self._allow_remote_skip() and (
+                            self._is_rate_limited(exc) or self._is_rate_limited(exc.__cause__)
+                        ):
+                            self.skipTest(f"remote site rate-limited metadata check for {url}")
+                        raise
                 proc = ytd.subprocess.run(
                     [
                         "yt-dlp",
@@ -454,13 +542,16 @@ class ZRealLinkMetadataTests(unittest.TestCase):
                         "--no-playlist",
                         "--print",
                         "%(extractor_key)s | %(id)s",
-                        url,
+                        *([] if platform == ytd.PLATFORM_THREADS else ytd.build_common_args()),
+                        check_url,
                     ],
                     stdout=ytd.subprocess.PIPE,
                     stderr=ytd.subprocess.STDOUT,
                     text=True,
                     timeout=60,
                 )
+                if proc.returncode and self._allow_remote_skip() and self._is_rate_limited(proc.stdout):
+                    self.skipTest(f"remote site rate-limited metadata check for {url}")
                 self.assertEqual(proc.returncode, 0, proc.stdout)
                 self.assertIn(extractor, proc.stdout.lower())
 

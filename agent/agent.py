@@ -1,5 +1,5 @@
 '''
-python3 agent/agent.py --run-iterate-task ali/ali_llm.py helper/helper_ytd.py ali/ali_router.py agent/agent.py  # agent/agent.py helper/helper_ytd.py w/p_wiki.py
+python3 agent/agent.py --run-iterate-task helper/helper_ytd.py ali/ali_llm.py ali/ali_router.py agent/agent.py  # agent/agent.py helper/helper_ytd.py w/p_wiki.py
 python3 agent/agent.py --draft-task w/p_wiki.py      # step 0
 python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2
