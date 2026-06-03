@@ -3,11 +3,11 @@
 
 Used by:
 - None (standalone test entry point)
+
 """
 
 from __future__ import annotations
 
-import io
 import os
 import sys
 import tempfile
@@ -23,6 +23,18 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from helper import helper_ytd as ytd  # noqa: E402
+
+# Toggle this to True when you want real network metadata checks by default.
+# You can also run with YTD_REAL_CHECK=1 without editing this file.
+RUN_REAL_LINK_CHECKS = False
+
+REAL_LINK_FIXTURES = (
+    ("https://www.youtube.com/watch?v=4dnri2eITX8", ytd.PLATFORM_YOUTUBE, "youtube"),
+    ("https://www.youtube.com/shorts/cqD_rVj-Nyo", ytd.PLATFORM_YOUTUBE, "youtube"),
+    ("https://www.youtube.com/watch?v=KpUqhdzsjnE", ytd.PLATFORM_YOUTUBE, "youtube"),
+    ("https://x.com/i/status/2051216612636668186", ytd.PLATFORM_X, "twitter"),
+    ("https://www.facebook.com/watch/?v=972353075160922", ytd.PLATFORM_YTDLP, "facebook"),
+)
 
 
 class EmojiTextTestResult(unittest.TextTestResult):
@@ -133,6 +145,13 @@ class UrlUtilityTests(unittest.TestCase):
 
     def test_clean_url_returns_empty_for_missing_youtube_video_id(self) -> None:
         self.assertEqual(ytd.clean_url("https://youtube.com/watch?feature=share"), "")
+
+    def test_real_link_fixtures_classify_and_clean(self) -> None:
+        for url, platform, _extractor in REAL_LINK_FIXTURES:
+            with self.subTest(url=url):
+                cleaned = ytd.clean_url(url)
+                self.assertTrue(cleaned)
+                self.assertEqual(ytd.classify_url(cleaned), platform)
 
 
 class RuntimeAndArgumentTests(unittest.TestCase):
@@ -402,6 +421,33 @@ class TtmlFallbackTests(unittest.TestCase):
 
         self.assertEqual(result, (Path("/tmp/video.mp4"), "/tmp/ytd"))
         download.assert_called_once_with("https://youtube.com/watch?v=abc", "worst", output_dir=None, resolve_timeout=20)
+
+
+@unittest.skipUnless(
+    RUN_REAL_LINK_CHECKS or os.getenv("YTD_REAL_CHECK") == "1",
+    "set RUN_REAL_LINK_CHECKS=True or YTD_REAL_CHECK=1 to run network metadata checks",
+)
+class RealLinkMetadataTests(unittest.TestCase):
+    def test_real_link_fixtures_are_extractable_without_download(self) -> None:
+        for url, _platform, extractor in REAL_LINK_FIXTURES:
+            with self.subTest(url=url):
+                proc = ytd.subprocess.run(
+                    [
+                        "yt-dlp",
+                        "--simulate",
+                        "--skip-download",
+                        "--no-playlist",
+                        "--print",
+                        "%(extractor_key)s | %(id)s",
+                        url,
+                    ],
+                    stdout=ytd.subprocess.PIPE,
+                    stderr=ytd.subprocess.STDOUT,
+                    text=True,
+                    timeout=60,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stdout)
+                self.assertIn(extractor, proc.stdout.lower())
 
 
 if __name__ == "__main__":
