@@ -56,27 +56,18 @@ FORMATS = {
 X_FORMAT_ARGS = ["-f", "http-2176/bestvideo+bestaudio/best", "--merge-output-format", "mp4"]
 
 
-def _with_scheme(url):
-    url = str(url or "").strip()
-    return "https://" + url.lstrip("/") if url and "://" not in url else url
-
-
-def _host(url):
-    return urlsplit(_with_scheme(url)).netloc.lower().split(":", 1)[0]
-
-
-def _host_in(host, domains):
-    return any(host == domain or host.endswith(f".{domain}") for domain in domains)
-
-
 def classify_url(url):
-    host = _host(url)
-    if _host_in(host, X_DOMAINS):
-        return PLATFORM_X
-    if _host_in(host, YOUTUBE_DOMAINS):
-        return PLATFORM_YOUTUBE
-    if _host_in(host, YTDLP_DOMAINS):
-        return PLATFORM_YTDLP
+    url = str(url or "").strip()
+    if url and "://" not in url:
+        url = "https://" + url.lstrip("/")
+    host = urlsplit(url).netloc.lower().split(":", 1)[0]
+    for platform, domains in (
+        (PLATFORM_X, X_DOMAINS),
+        (PLATFORM_YOUTUBE, YOUTUBE_DOMAINS),
+        (PLATFORM_YTDLP, YTDLP_DOMAINS),
+    ):
+        if any(host == domain or host.endswith(f".{domain}") for domain in domains):
+            return platform
     return ""
 
 
@@ -106,7 +97,10 @@ def build_common_args(include_cookie_sources=True):
 
 
 def clean_url(url):
-    if not (url := _with_scheme(url)):
+    url = str(url or "").strip()
+    if url and "://" not in url:
+        url = "https://" + url.lstrip("/")
+    if not url:
         return ""
     parts = urlsplit(url)
     host = parts.netloc.lower()
@@ -260,7 +254,7 @@ def move_download_to_output_dir(path, temp_dir, output_dir):
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def _download(url, mode="720p", output_dir=None, resolve_timeout=20):
+def download(url, mode, output_dir=None, resolve_timeout=20):
     original_url = url
     if not (url := clean_url(url)):
         raise RuntimeError(f"Invalid URL: {original_url}")
@@ -269,11 +263,7 @@ def _download(url, mode="720p", output_dir=None, resolve_timeout=20):
     url, cmd = _command(url, mode, temp_dir, resolve_timeout)
     print(f"Download request: {url} ({PLATFORM_X if classify_url(url) == PLATFORM_X else mode})")
     path, temp_dir = run_yt_dlp(cmd, temp_dir)
-    return url, *move_download_to_output_dir(path, temp_dir, output_dir)
-
-def download(url, mode, output_dir=None, resolve_timeout=20):
-    _, path, temp_dir = _download(url, mode, output_dir=output_dir, resolve_timeout=resolve_timeout)
-    return path, temp_dir
+    return move_download_to_output_dir(path, temp_dir, output_dir)
 
 def _try_download_ttml(url, output_dir=None):
     langs = [x.strip() for x in os.getenv("YTD_SUB_LANGS", "zh-Hans,zh-Hant,zh-HK,yue,zh,en,ja").split(",") if x.strip()]

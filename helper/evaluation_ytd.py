@@ -26,7 +26,7 @@ from helper import helper_ytd as ytd  # noqa: E402
 
 # Toggle this to True when you want real network metadata checks by default.
 # You can also run with YTD_REAL_CHECK=1 without editing this file.
-RUN_REAL_LINK_CHECKS = False
+RUN_REAL_LINK_CHECKS = True
 
 REAL_LINK_FIXTURES = (
     ("https://www.youtube.com/watch?v=4dnri2eITX8", ytd.PLATFORM_YOUTUBE, "youtube"),
@@ -112,25 +112,16 @@ class FakePopen:
 
 
 class UrlUtilityTests(unittest.TestCase):
-    def test_with_scheme_adds_https_to_bare_url(self) -> None:
-        self.assertEqual(ytd._with_scheme("example.com/video"), "https://example.com/video")
-
-    def test_with_scheme_keeps_existing_scheme(self) -> None:
-        self.assertEqual(ytd._with_scheme("http://example.com/video"), "http://example.com/video")
-
-    def test_host_normalizes_port_and_case(self) -> None:
-        self.assertEqual(ytd._host("HTTPS://YouTube.com:443/watch?v=1"), "youtube.com")
-
-    def test_host_in_matches_exact_and_subdomain(self) -> None:
-        self.assertTrue(ytd._host_in("m.youtube.com", ytd.YOUTUBE_DOMAINS))
-        self.assertTrue(ytd._host_in("youtube.com", ytd.YOUTUBE_DOMAINS))
-        self.assertFalse(ytd._host_in("notyoutube.com", ytd.YOUTUBE_DOMAINS))
-
     def test_classify_url_detects_supported_platforms(self) -> None:
         self.assertEqual(ytd.classify_url("x.com/user/status/1"), ytd.PLATFORM_X)
         self.assertEqual(ytd.classify_url("youtu.be/abc"), ytd.PLATFORM_YOUTUBE)
         self.assertEqual(ytd.classify_url("instagram.com/p/abc"), ytd.PLATFORM_YTDLP)
         self.assertEqual(ytd.classify_url("example.com/video"), "")
+
+    def test_classify_url_normalizes_scheme_port_and_case(self) -> None:
+        self.assertEqual(ytd.classify_url("HTTPS://YouTube.com:443/watch?v=1"), ytd.PLATFORM_YOUTUBE)
+        self.assertEqual(ytd.classify_url("m.youtube.com/watch?v=1"), ytd.PLATFORM_YOUTUBE)
+        self.assertEqual(ytd.classify_url("notyoutube.com/watch?v=1"), "")
 
     def test_clean_url_removes_youtube_tracking_but_keeps_video_id(self) -> None:
         dirty = "https://www.youtube.com/watch?v=abc123&utm_source=x&t=10"
@@ -339,12 +330,7 @@ class FileMoveTests(unittest.TestCase):
 
 
 class DownloadWrapperTests(unittest.TestCase):
-    def test_download_returns_path_and_temp_dir_from_private_download(self) -> None:
-        fake_path = Path("/tmp/video.mp4")
-        with patch("helper.helper_ytd._download", return_value=("https://youtube.com/watch?v=abc", fake_path, "/tmp/ytd")):
-            self.assertEqual(ytd.download("url", "720p"), (fake_path, "/tmp/ytd"))
-
-    def test_private_download_cleans_url_builds_command_and_moves_result(self) -> None:
+    def test_download_cleans_url_builds_command_and_moves_result(self) -> None:
         source = Path("/tmp/video.mp4")
         with (
             patch("helper.helper_ytd.tempfile.mkdtemp", return_value="/tmp/ytdlp_eval"),
@@ -352,13 +338,13 @@ class DownloadWrapperTests(unittest.TestCase):
             patch("helper.helper_ytd.run_yt_dlp", return_value=(source, "/tmp/ytdlp_eval")),
             patch("helper.helper_ytd.move_download_to_output_dir", return_value=(source, None)),
         ):
-            result = ytd._download("https://youtube.com/watch?v=abc&utm_source=x", "720p", output_dir="/out")
+            result = ytd.download("https://youtube.com/watch?v=abc&utm_source=x", "720p", output_dir="/out")
 
-        self.assertEqual(result, ("https://youtube.com/watch?v=abc", source, None))
+        self.assertEqual(result, (source, None))
 
-    def test_private_download_rejects_invalid_clean_url(self) -> None:
+    def test_download_rejects_invalid_clean_url(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "Invalid URL"):
-            ytd._download("", "720p")
+            ytd.download("", "720p")
 
 
 class TtmlFallbackTests(unittest.TestCase):
