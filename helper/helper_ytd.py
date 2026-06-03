@@ -7,12 +7,14 @@ Evaluation by:
 - evaluation_ytd.py
 """
 
+import json
 import os
 import re
 import shlex
 import shutil
 import subprocess
 import tempfile
+from html import unescape
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
@@ -25,9 +27,10 @@ except ImportError:  # pragma: no cover - optional dependency
 if load_dotenv is not None:
     load_dotenv()
 
-TRACKING_KEYS = {"fbclid", "feature", "pp", "si", "t"}
+TRACKING_KEYS = {"fbclid", "feature", "pp", "si", "t", "xmt"}
 PLATFORM_X = "x/twitter"
-PLATFORM_YTDLP = "yt-dlp"
+PLATFORM_META = "meta"
+PLATFORM_THREADS = "threads"
 PLATFORM_YOUTUBE = "youtube"
 X_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 X_DOMAINS = ("x.com", "twitter.com")
@@ -36,9 +39,13 @@ YOUTUBE_DOMAINS = (
     "youtube-nocookie.com",
     "youtu.be",
 )
-YTDLP_DOMAINS = (
+META_DOMAINS = (
     "facebook.com",
     "instagram.com",
+)
+THREADS_DOMAINS = (
+    "threads.com",
+    "threads.net",
 )
 FORMATS = {
     "worst": ["-f", "(worstvideo[ext=mp4]+worstaudio[ext=m4a])/(worstvideo+worstaudio)/worst"],
@@ -64,7 +71,8 @@ def classify_url(url):
     for platform, domains in (
         (PLATFORM_X, X_DOMAINS),
         (PLATFORM_YOUTUBE, YOUTUBE_DOMAINS),
-        (PLATFORM_YTDLP, YTDLP_DOMAINS),
+        (PLATFORM_META, META_DOMAINS),
+        (PLATFORM_THREADS, THREADS_DOMAINS),
     ):
         if any(host == domain or host.endswith(f".{domain}") for domain in domains):
             return platform
@@ -105,8 +113,10 @@ def clean_url(url):
     parts = urlsplit(url)
     scheme = parts.scheme or "https"
     host = parts.netloc.lower()
+
     def build_url(path, query=""):
         return urlunsplit((scheme, parts.netloc, path, query, ""))
+
     if "youtube.com" in host or "youtube-nocookie.com" in host:
         if parts.path == "/watch":
             video_id = parse_qs(parts.query).get("v", [""])[0].strip()
@@ -117,6 +127,7 @@ def clean_url(url):
     filtered = [(k, v) for k, vs in parse_qs(parts.query, keep_blank_values=True).items()
                 for v in vs if not k.lower().startswith("utm_") and k.lower() not in TRACKING_KEYS]
     return build_url(parts.path, urlencode(filtered, doseq=True))
+
 
 def _x_auth():
     auth_token = os.getenv("X_AUTH_TOKEN", "").strip()
@@ -155,6 +166,48 @@ def _write_x_cookies(temp_dir, auth_token, ct0):
         raise RuntimeError("创建 X/Twitter 临时 cookie 文件失败。") from exc
     return os.fspath(cookie_path)
 
+
+def _decode_embedded_url(value):
+    value = unescape(value).replace("\\/", "/")
+    try:
+        value = json.loads(f'"{value}"')
+    except json.JSONDecodeError:
+        pass
+    return value.replace("\\u0026", "&").replace("\\u003d", "=").replace("&amp;", "&")
+
+
+def _iter_threads_media_urls(html_text):
+    text = unescape(html_text).replace("\\/", "/").replace("\\u0026", "&").replace("\\u003d", "=")
+    patterns = (
+        r'<meta[^>]+property=["\']og:video(?::secure_url)?["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:video(?::secure_url)?["\']',
+        r'"(?:video_url|playable_url|src|url)"\s*:\s*"([^"]+?(?:\.mp4|\.m3u8)[^"]*)"',
+        r'(https?://[^"\'<>\s]+?(?:\.mp4|\.m3u8)[^"\'<>\s]*)',
+    )
+    seen = set()
+    for pattern in patterns:
+        for match in re.finditer(pattern, text):
+            media_url = _decode_embedded_url(match.group(1))
+            if media_url.startswith("http") and media_url not in seen:
+                seen.add(media_url)
+                yield media_url
+
+
+def _resolve_threads_video_url(url, timeout):
+    print(f"Resolving Threads URL: {url}")
+    request = Request(url, headers={"User-Agent": X_USER_AGENT, "Accept": "text/html,application/xhtml+xml"})
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            html_text = response.read().decode("utf-8", "replace")
+    except OSError as exc:
+        raise RuntimeError("解析 Threads 链接失败，请确认链接可访问。") from exc
+
+    for media_url in _iter_threads_media_urls(html_text):
+        print(f"Resolved Threads media URL: {media_url}")
+        return media_url
+    raise RuntimeError("Threads 链接已识别，但页面中没有找到可下载的视频地址。")
+
+
 def _x_command(url, temp_dir, resolve_timeout):
     auth_token, ct0 = _x_auth()
     url = _resolve_x_url(url, auth_token, ct0, resolve_timeout)
@@ -171,7 +224,22 @@ def _x_command(url, temp_dir, resolve_timeout):
     ]
 
 
-def _generic_command(url, mode): # youtube or facebook/instagram
+def _threads_command(url, mode, resolve_timeout):
+    media_url = _resolve_threads_video_url(url, resolve_timeout)
+    if mode not in FORMATS:
+        raise RuntimeError("无效下载模式。")
+    return media_url, [
+        "yt-dlp",
+        "--newline",
+        "--no-playlist",
+        *FORMATS[mode],
+        "-o",
+        "%(title).50s.%(ext)s",
+        media_url,
+    ]
+
+
+def _generic_ytdlp_command(url, mode):
     if mode not in FORMATS:
         raise RuntimeError("无效下载模式。")
     return url, [
@@ -190,8 +258,10 @@ def build_download_command(url, mode, temp_dir, resolve_timeout):
     platform = classify_url(url)
     if platform == PLATFORM_X:
         return _x_command(url, temp_dir, resolve_timeout)
-    if platform in (PLATFORM_YOUTUBE, PLATFORM_YTDLP):
-        return _generic_command(url, mode)
+    if platform == PLATFORM_THREADS:
+        return _threads_command(url, mode, resolve_timeout)
+    if platform in (PLATFORM_YOUTUBE, PLATFORM_META):
+        return _generic_ytdlp_command(url, mode)
     raise RuntimeError(f"Unsupported URL: {url}")
 
 
@@ -259,10 +329,15 @@ def download(url, mode, output_dir=None, resolve_timeout=20):
         raise RuntimeError(f"Invalid URL: {original_url}")
 
     temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
-    url, cmd = build_download_command(url, mode, temp_dir, resolve_timeout)
-    print(f"Download request: {url} ({classify_url(url) or mode})")
-    path, temp_dir = run_yt_dlp(cmd, temp_dir)
-    return move_download_to_output_dir(path, temp_dir, output_dir)
+    try:
+        url, cmd = build_download_command(url, mode, temp_dir, resolve_timeout)
+        print(f"Download request: {url} ({classify_url(url) or mode})")
+        path, temp_dir = run_yt_dlp(cmd, temp_dir)
+        return move_download_to_output_dir(path, temp_dir, output_dir)
+    except Exception:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
+
 
 def _try_download_ttml_for_lang(lang, url, output_dir):
     temp_dir = tempfile.mkdtemp(prefix="ytdlp_ttml_")
@@ -299,6 +374,7 @@ def _try_download_ttml_for_lang(lang, url, output_dir):
         if not keep_temp_dir:
             shutil.rmtree(temp_dir, ignore_errors=True)
     return None
+
 
 def _try_download_ttml(url, output_dir=None):
     langs = [x.strip() for x in os.getenv("YTD_SUB_LANGS", "zh-Hans,zh-Hant,zh-HK,yue,zh,en,ja").split(",") if x.strip()]
