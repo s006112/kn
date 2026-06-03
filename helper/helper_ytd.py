@@ -167,7 +167,7 @@ def _write_x_cookies(temp_dir, auth_token, ct0):
     return os.fspath(cookie_path)
 
 
-def _decode_embedded_url(value):
+def _decode_embedded_threads_url(value):
     value = unescape(value).replace("\\/", "/")
     try:
         value = json.loads(f'"{value}"')
@@ -187,7 +187,7 @@ def _iter_threads_media_urls(html_text):
     seen = set()
     for pattern in patterns:
         for match in re.finditer(pattern, text):
-            media_url = _decode_embedded_url(match.group(1))
+            media_url = _decode_embedded_threads_url(match.group(1))
             if media_url.startswith("http") and media_url not in seen:
                 seen.add(media_url)
                 yield media_url
