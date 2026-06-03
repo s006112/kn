@@ -181,7 +181,7 @@ def latest_plan_path() -> Path | None:
 
 
 def review_verdict(review_text: str) -> str | None:
-    match = re.search(r"(?im)^\s*(?:[-•]\s*)?(?:\*\s+)?\*{0,2}(APPROVE|REVISE)\*{0,2}\s*$", review_text)
+    match = re.search(r"(?im)^\s*-?\s*(?:\*\s+)?\*{0,2}(APPROVE|REVISE)\*{0,2}\s*$", review_text)
     return match.group(1) if match else None
 
 

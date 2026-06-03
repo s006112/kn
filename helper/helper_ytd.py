@@ -98,32 +98,23 @@ def build_common_args(include_cookie_sources=True):
 
 def clean_url(url):
     url = str(url or "").strip()
-    if url and "://" not in url:
-        url = "https://" + url.lstrip("/")
     if not url:
         return ""
+    if "://" not in url:
+        url = "https://" + url.lstrip("/")
     parts = urlsplit(url)
-    host = parts.netloc.lower()
     scheme = parts.scheme or "https"
+    host = parts.netloc.lower()
     if "youtube.com" in host or "youtube-nocookie.com" in host:
-        path = parts.path.rstrip("/")
         if parts.path == "/watch":
             video_id = parse_qs(parts.query).get("v", [""])[0].strip()
-            if not video_id:
-                return ""
-            return urlunsplit((scheme, parts.netloc, "/watch", urlencode({"v": video_id}), ""))
-        return urlunsplit((scheme, parts.netloc, path, "", ""))
+            return urlunsplit((scheme, parts.netloc, "/watch", urlencode({"v": video_id}) if video_id else "", ""))
+        return urlunsplit((scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
     if "youtu.be" in host:
         return urlunsplit((scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
-    query = urlencode(
-        [
-            (key, value)
-            for key, values in parse_qs(parts.query, keep_blank_values=True).items()
-            if not key.lower().startswith("utm_") and key.lower() not in TRACKING_KEYS
-            for value in values
-        ],
-        doseq=True,
-    )
+    query = urlencode([(k, v) for k, vs in parse_qs(parts.query, keep_blank_values=True).items() 
+                      for v in vs if not k.lower().startswith("utm_") and k.lower() not in TRACKING_KEYS],
+                     doseq=True)
     return urlunsplit((scheme, parts.netloc, parts.path, query, ""))
 
 def _x_auth():
@@ -184,7 +175,8 @@ def _command(url, mode, temp_dir, resolve_timeout):
         ]
     if mode not in FORMATS:
         raise RuntimeError("无效下载模式。")
-    return url, ["yt-dlp", "--newline", "--no-playlist", *FORMATS[mode], "-o", "%(title).50s.%(ext)s", *build_common_args(), url]
+    return url, ["yt-dlp", "--newline", "--no-playlist", *FORMATS[mode], "-o", "%(title).50s.%(ext)s",
+                 *build_common_args(), url]
 
 
 def run_yt_dlp(cmd, temp_dir):
@@ -194,33 +186,29 @@ def run_yt_dlp(cmd, temp_dir):
     except FileNotFoundError as exc:
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise RuntimeError("系统里找不到 yt-dlp。") from exc
-
     lines, shown = [], -1
-    try:
-        assert proc.stdout is not None
-        for raw in proc.stdout:
-            line = raw.strip()
-            if line:
-                lines.append(line)
-            match = re.search(r"(\d+(?:\.\d+)?)%", line)
-            if "[download]" in line and match:
-                pct = max(0, min(100, int(float(match.group(1)))))
+    assert proc.stdout is not None
+    for raw in proc.stdout:
+        line = raw.strip()
+        if line:
+            lines.append(line)
+        if "[download]" in line:
+            m = re.search(r"(\d+(?:\.\d+)?)%", line)
+            if m:
+                pct = int(float(m.group(1)))
                 if pct != shown:
                     shown = pct
                     done = 40 * pct // 100
-                    print(f"\r[{'█' * done}{'-' * (40 - done)}] {pct:3d}%", end="", flush=True)
-    finally:
-        if proc.stdout is not None:
-            proc.stdout.close()
-
+                    print(f"\r[{'█'*done}{'-'*(40-done)}] {pct:3d}%", end="", flush=True)
+    proc.stdout.close()
     if proc.wait():
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise RuntimeError("yt-dlp failed:\n" + ("\n".join(lines[-10:]) or "Unknown yt-dlp error."))
     if shown >= 0:
         print()
-    files = [path for path in Path(temp_dir).iterdir() if path.is_file()]
+    files = [p for p in Path(temp_dir).iterdir() if p.is_file()]
     if files:
-        return max(files, key=lambda path: path.stat().st_mtime), temp_dir
+        return max(files, key=lambda p: p.stat().st_mtime), temp_dir
     shutil.rmtree(temp_dir, ignore_errors=True)
     raise RuntimeError("下载完成，但没有生成文件。")
 
@@ -228,29 +216,25 @@ def run_yt_dlp(cmd, temp_dir):
 def move_download_to_output_dir(path, temp_dir, output_dir):
     if output_dir is None:
         return path, temp_dir
-
-    target_dir = Path(output_dir)
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target = target_dir / path.name
-    for i in range(1, 1000000):
-        if not target.exists():
-            break
-        target = target_dir / f"{path.stem}_{i}{path.suffix}"
-
+    t = Path(output_dir)
+    t.mkdir(parents=True, exist_ok=True)
+    target = t / path.name
+    i = 1
+    while target.exists() and i < 1000000:
+        target = t / f"{path.stem}_{i}{path.suffix}"
+        i += 1
+    shutil.move(os.fspath(path), os.fspath(target))
     try:
-        shutil.move(os.fspath(path), os.fspath(target))
-        try:
-            stat = target_dir.stat()
-            os.chown(target, stat.st_uid, stat.st_gid)
-        except (PermissionError, AttributeError):
-            pass
-        try:
-            os.chmod(target, 0o664)
-        except PermissionError:
-            pass
-        return target, None
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        s = t.stat()
+        os.chown(target, s.st_uid, s.st_gid)
+    except Exception:
+        pass
+    try:
+        os.chmod(target, 0o664)
+    except Exception:
+        pass
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    return target, None
 
 
 def download(url, mode, output_dir=None, resolve_timeout=20):
@@ -311,9 +295,9 @@ def _try_download_ttml(url, output_dir=None):
 
 
 def download_ttml_or_video(url, mode="worst", output_dir=None, resolve_timeout=20):
-    cleaned_url = clean_url(url)
-    if cleaned_url and classify_url(cleaned_url) == PLATFORM_YOUTUBE:
-        result = _try_download_ttml(cleaned_url, output_dir=output_dir)
-        if result is not None:
-            return result
-    return download(cleaned_url or url, mode, output_dir=output_dir, resolve_timeout=resolve_timeout)
+    url_clean = clean_url(url)
+    if url_clean and classify_url(url_clean) == PLATFORM_YOUTUBE:
+        res = _try_download_ttml(url_clean, output_dir=output_dir)
+        if res:
+            return res
+    return download(url_clean or url, mode, output_dir, resolve_timeout)

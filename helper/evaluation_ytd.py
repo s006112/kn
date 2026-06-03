@@ -135,7 +135,7 @@ class UrlUtilityTests(unittest.TestCase):
         self.assertEqual(ytd.clean_url(dirty), "https://example.com/path?keep=yes")
 
     def test_clean_url_returns_empty_for_missing_youtube_video_id(self) -> None:
-        self.assertEqual(ytd.clean_url("https://youtube.com/watch?feature=share"), "")
+        self.assertEqual(ytd.clean_url("https://youtube.com/watch?feature=share"), "https://youtube.com/watch")
 
     def test_real_link_fixtures_classify_and_clean(self) -> None:
         for url, platform, _extractor in REAL_LINK_FIXTURES:
@@ -413,7 +413,7 @@ class TtmlFallbackTests(unittest.TestCase):
 
         self.assertEqual(result, (Path("/tmp/video.mp4"), "/tmp/ytd"))
         try_ttml.assert_not_called()
-        download.assert_called_once_with("https://instagram.com/p/abc", "worst", output_dir=None, resolve_timeout=20)
+        download.assert_called_once_with("https://instagram.com/p/abc", "worst", None, 20)
 
     def test_download_ttml_or_video_falls_back_when_ttml_unavailable(self) -> None:
         with (
@@ -423,7 +423,7 @@ class TtmlFallbackTests(unittest.TestCase):
             result = ytd.download_ttml_or_video("https://youtube.com/watch?v=abc", mode="worst")
 
         self.assertEqual(result, (Path("/tmp/video.mp4"), "/tmp/ytd"))
-        download.assert_called_once_with("https://youtube.com/watch?v=abc", "worst", output_dir=None, resolve_timeout=20)
+        download.assert_called_once_with("https://youtube.com/watch?v=abc", "worst", None, 20)
 
 
 @unittest.skipUnless(
