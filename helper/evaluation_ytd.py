@@ -427,7 +427,7 @@ class TtmlFallbackTests(unittest.TestCase):
     RUN_REAL_LINK_CHECKS or os.getenv("YTD_REAL_CHECK") == "1",
     "set RUN_REAL_LINK_CHECKS=True or YTD_REAL_CHECK=1 to run network metadata checks",
 )
-class RealLinkMetadataTests(unittest.TestCase):
+class ZRealLinkMetadataTests(unittest.TestCase):
     def test_real_link_fixtures_are_extractable_without_download(self) -> None:
         for url, _platform, extractor in REAL_LINK_FIXTURES:
             with self.subTest(url=url):

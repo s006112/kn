@@ -532,33 +532,6 @@ def review_last_plan(task_path: Path) -> str:
     print(f"\nSaved review: {output_path}")
     return review
 
-
-def run_iterate_task(task_path: Path) -> None:
-    target_arg = argv_value_after("--run-iterate-task")
-    for pattern in ("*.md", "*.txt"):
-        for path in AGENT_DATA_DIR.glob(pattern):
-            path.unlink()
-    S2_FAULT_LEDGER_PATH.unlink(missing_ok=True)
-    if target_arg:
-        draft_task(task_path, target_arg=target_arg)
-    run_task(task_path, 1)
-    for attempt in range(1, ITERATION_LIMIT + 1):
-        verdict = review_verdict(review_last_plan(task_path))
-        if verdict == "APPROVE":
-            print("ITERATE_APPROVED")
-            accept_last_plan()
-            make_patch(task_path)
-            apply_patch(task_path)
-            return
-        if verdict != "REVISE":
-            print("ITERATE_STOPPED: unknown review verdict")
-            return
-        if attempt == ITERATION_LIMIT:
-            print("ITERATE_STOPPED: max iterations reached")
-            return
-        run_task(task_path, attempt + 1)
-
-
 def make_patch(task_path: Path) -> None:
     if not S3_FINAL_PLAN_PATH.exists():
         print("No final plan found.")
@@ -581,7 +554,32 @@ def make_patch(task_path: Path) -> None:
     print(f"Saved patch: {S4_PATCH_PATH}")
     if check_patch(task_path):
         print("Next: python agent/agent.py --apply-patch")
+        apply_patch(task_path)
 
+
+def run_iterate_task(task_path: Path) -> None:
+    target_arg = argv_value_after("--run-iterate-task")
+    for pattern in ("*.md", "*.txt"):
+        for path in AGENT_DATA_DIR.glob(pattern):
+            path.unlink()
+    S2_FAULT_LEDGER_PATH.unlink(missing_ok=True)
+    if target_arg:
+        draft_task(task_path, target_arg=target_arg)
+    run_task(task_path, 1)
+    for attempt in range(1, ITERATION_LIMIT + 1):
+        verdict = review_verdict(review_last_plan(task_path))
+        if verdict == "APPROVE":
+            print("ITERATE_APPROVED")
+            accept_last_plan()
+            make_patch(task_path)
+            return
+        if verdict != "REVISE":
+            print("ITERATE_STOPPED: unknown review verdict")
+            return
+        if attempt == ITERATION_LIMIT:
+            print("ITERATE_STOPPED: max iterations reached")
+            return
+        run_task(task_path, attempt + 1)
 
 def main() -> None:
     stage = (
