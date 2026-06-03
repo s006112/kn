@@ -60,27 +60,28 @@ def rag_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalRes
     if engine_name is None:
         return RetrievalResult(used=False, context=None, source=None)
 
+    query = "\n\n".join(part for part in (f"Subject: {subject}" if subject else "", body) if part).strip()
+    if route.category == "rita":
+        query += (
+            "\n\nSearch intent: find relevant historical records from the selected source collection. "
+            "Prioritize matching context, participants, dates, content, attachments, "
+            "document formats, and previous handling instructions. "
+            "Digest the retrieved context and answer from the RAG data."
+        )
+
     try:
-        if engine_name not in _RAG_ENGINE_CACHE:
-            _RAG_ENGINE_CACHE[engine_name] = get_rag_engine(engine_name)
-        query = "\n\n".join(
-            part for part in (f"Subject: {subject}" if subject else "", body) if part
-        ).strip()
-        if route.category == "rita":
-            query = (
-                f"{query}\n\n"
-                "Search intent: find relevant historical records from the selected source collection. "
-                "Prioritize matching context, participants, dates, content, attachments, "
-                "document formats, and previous handling instructions. "
-                "Digest the retrieved context and answer from the RAG data."
-            )
-        answer, table_str = _RAG_ENGINE_CACHE[engine_name].answer_question(query)
+        engine = _RAG_ENGINE_CACHE.get(engine_name)
+        if engine is None:
+            engine = _RAG_ENGINE_CACHE[engine_name] = get_rag_engine(engine_name)
+        answer, table_str = engine.answer_question(query)
         if table_str:
             print(f"\n[RAG] FAISS similarity table:\n\n{table_str}\n")
+        if answer:
+            return RetrievalResult(used=True, context=answer, source="rag")
+        return RetrievalResult(used=False, context=None, source=None)
     except Exception as e:
         print(f"RAG Retrieval or Generation failed: {e}")
         return RetrievalResult(used=False, context=None, source=None)
-    return RetrievalResult(used=True, context=answer, source="rag") if answer else RetrievalResult(used=False, context=None, source=None)
 
 
 # -----------------------------------------------------------------------------
@@ -111,15 +112,13 @@ def generate_review_package(
             system_prompt = load_prompt_text(system_prompt_path.parent, system_prompt_path.name)
             if system_prompt is None:
                 raise FileNotFoundError(f"Prompt file not found: {system_prompt_path}")
-            user_text = "\n\n".join(
-                part for part in (f"Subject: {subject_norm}" if subject_norm else "", body_norm) if part
-            )
-            draft = call_llm(model=model, system_prompt=system_prompt, user_text=user_text, file_path=None).strip()
+            draft = call_llm(
+                model=model,
+                system_prompt=system_prompt,
+                user_text="\n\n".join(part for part in (f"Subject: {subject_norm}" if subject_norm else "", body_norm) if part),
+                file_path=None,
+            ).strip()
     else:
-        # v2+ — edit-only (NO rewrite fallback)
-        # NOTE:
-        # Routing and retrieval are intentionally bypassed for v2+ edit-only path.
-        # This is a hard invariant.
         edit_prompt_path = system_prompt_path.parent / "prompt_edit_reviewer_reply.txt"
         edit_system_prompt = load_prompt_text(edit_prompt_path.parent, edit_prompt_path.name)
         if edit_system_prompt is None:
