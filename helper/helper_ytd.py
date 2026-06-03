@@ -105,17 +105,18 @@ def clean_url(url):
     parts = urlsplit(url)
     scheme = parts.scheme or "https"
     host = parts.netloc.lower()
+    def build_url(path, query=""):
+        return urlunsplit((scheme, parts.netloc, path, query, ""))
     if "youtube.com" in host or "youtube-nocookie.com" in host:
         if parts.path == "/watch":
             video_id = parse_qs(parts.query).get("v", [""])[0].strip()
-            return urlunsplit((scheme, parts.netloc, "/watch", urlencode({"v": video_id}) if video_id else "", ""))
-        return urlunsplit((scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
+            return build_url("/watch", urlencode({"v": video_id}) if video_id else "")
+        return build_url(parts.path.rstrip("/"))
     if "youtu.be" in host:
-        return urlunsplit((scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
-    query = urlencode([(k, v) for k, vs in parse_qs(parts.query, keep_blank_values=True).items() 
-                      for v in vs if not k.lower().startswith("utm_") and k.lower() not in TRACKING_KEYS],
-                     doseq=True)
-    return urlunsplit((scheme, parts.netloc, parts.path, query, ""))
+        return build_url(parts.path.rstrip("/"))
+    filtered = [(k, v) for k, vs in parse_qs(parts.query, keep_blank_values=True).items()
+                for v in vs if not k.lower().startswith("utm_") and k.lower() not in TRACKING_KEYS]
+    return build_url(parts.path, urlencode(filtered, doseq=True))
 
 def _x_auth():
     auth_token = os.getenv("X_AUTH_TOKEN", "").strip()
@@ -154,29 +155,44 @@ def _write_x_cookies(temp_dir, auth_token, ct0):
         raise RuntimeError("创建 X/Twitter 临时 cookie 文件失败。") from exc
     return os.fspath(cookie_path)
 
+def _x_command(url, temp_dir, resolve_timeout):
+    auth_token, ct0 = _x_auth()
+    url = _resolve_x_url(url, auth_token, ct0, resolve_timeout)
+    return url, [
+        "yt-dlp",
+        "--newline",
+        *X_FORMAT_ARGS,
+        "-o",
+        "%(uploader)s_%(id)s.%(ext)s",
+        *build_common_args(include_cookie_sources=False),
+        "--cookies",
+        _write_x_cookies(temp_dir, auth_token, ct0),
+        url,
+    ]
 
-def _command(url, mode, temp_dir, resolve_timeout):
-    platform = classify_url(url)
-    if platform not in (PLATFORM_X, PLATFORM_YOUTUBE, PLATFORM_YTDLP):
-        raise RuntimeError(f"Unsupported URL: {url}")
-    if platform == PLATFORM_X:
-        auth_token, ct0 = _x_auth()
-        url = _resolve_x_url(url, auth_token, ct0, resolve_timeout)
-        return url, [
-            "yt-dlp",
-            "--newline",
-            *X_FORMAT_ARGS,
-            "-o",
-            "%(uploader)s_%(id)s.%(ext)s",
-            *build_common_args(include_cookie_sources=False),
-            "--cookies",
-            _write_x_cookies(temp_dir, auth_token, ct0),
-            url,
-        ]
+
+def _generic_command(url, mode): # youtube or facebook/instagram
     if mode not in FORMATS:
         raise RuntimeError("无效下载模式。")
-    return url, ["yt-dlp", "--newline", "--no-playlist", *FORMATS[mode], "-o", "%(title).50s.%(ext)s",
-                 *build_common_args(), url]
+    return url, [
+        "yt-dlp",
+        "--newline",
+        "--no-playlist",
+        *FORMATS[mode],
+        "-o",
+        "%(title).50s.%(ext)s",
+        *build_common_args(),
+        url,
+    ]
+
+
+def build_download_command(url, mode, temp_dir, resolve_timeout):
+    platform = classify_url(url)
+    if platform == PLATFORM_X:
+        return _x_command(url, temp_dir, resolve_timeout)
+    if platform in (PLATFORM_YOUTUBE, PLATFORM_YTDLP):
+        return _generic_command(url, mode)
+    raise RuntimeError(f"Unsupported URL: {url}")
 
 
 def run_yt_dlp(cmd, temp_dir):
@@ -243,7 +259,7 @@ def download(url, mode, output_dir=None, resolve_timeout=20):
         raise RuntimeError(f"Invalid URL: {original_url}")
 
     temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
-    url, cmd = _command(url, mode, temp_dir, resolve_timeout)
+    url, cmd = build_download_command(url, mode, temp_dir, resolve_timeout)
     print(f"Download request: {url} ({classify_url(url) or mode})")
     path, temp_dir = run_yt_dlp(cmd, temp_dir)
     return move_download_to_output_dir(path, temp_dir, output_dir)

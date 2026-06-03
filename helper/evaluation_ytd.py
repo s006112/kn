@@ -228,14 +228,14 @@ class XAuthAndResolveTests(unittest.TestCase):
 
 
 class CommandBuilderTests(unittest.TestCase):
-    def test_command_builds_x_download_command_with_temp_cookies(self) -> None:
+    def test_x_command_builds_download_command_with_temp_cookies(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             with (
                 patch("helper.helper_ytd._x_auth", return_value=("auth", "ct0")),
                 patch("helper.helper_ytd._resolve_x_url", return_value="https://x.com/user/status/1"),
                 patch("helper.helper_ytd.build_common_args", return_value=["--common"]),
             ):
-                resolved_url, cmd = ytd._command("https://x.com/user/status/1", "720p", temp_dir, 20)
+                resolved_url, cmd = ytd._x_command("https://x.com/user/status/1", temp_dir, 20)
 
         self.assertEqual(resolved_url, "https://x.com/user/status/1")
         self.assertEqual(cmd[0], "yt-dlp")
@@ -243,22 +243,34 @@ class CommandBuilderTests(unittest.TestCase):
         self.assertIn("--common", cmd)
         self.assertIn("https://x.com/user/status/1", cmd)
 
-    def test_command_builds_youtube_command_for_requested_mode(self) -> None:
+    def test_generic_command_builds_requested_mode(self) -> None:
         with patch("helper.helper_ytd.build_common_args", return_value=["--common"]):
-            resolved_url, cmd = ytd._command("https://youtube.com/watch?v=abc", "mp3", "/tmp", 20)
+            resolved_url, cmd = ytd._generic_command("https://youtube.com/watch?v=abc", "mp3")
 
         self.assertEqual(resolved_url, "https://youtube.com/watch?v=abc")
         self.assertIn("-x", cmd)
         self.assertIn("--audio-format", cmd)
         self.assertIn("--common", cmd)
 
-    def test_command_rejects_bad_mode_for_supported_platform(self) -> None:
+    def test_generic_command_rejects_bad_mode(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "无效下载模式"):
-            ytd._command("https://youtube.com/watch?v=abc", "4k", "/tmp", 20)
+            ytd._generic_command("https://youtube.com/watch?v=abc", "4k")
 
-    def test_command_rejects_unsupported_platform(self) -> None:
+    def test_build_download_command_dispatches_x_platform(self) -> None:
+        with patch("helper.helper_ytd._x_command", return_value=("resolved", ["x-cmd"])) as x_command:
+            self.assertEqual(ytd.build_download_command("https://x.com/user/status/1", "720p", "/tmp", 20), ("resolved", ["x-cmd"]))
+
+        x_command.assert_called_once_with("https://x.com/user/status/1", "/tmp", 20)
+
+    def test_build_download_command_dispatches_generic_platforms(self) -> None:
+        with patch("helper.helper_ytd._generic_command", return_value=("resolved", ["generic-cmd"])) as generic_command:
+            self.assertEqual(ytd.build_download_command("https://youtube.com/watch?v=abc", "mp3", "/tmp", 20), ("resolved", ["generic-cmd"]))
+
+        generic_command.assert_called_once_with("https://youtube.com/watch?v=abc", "mp3")
+
+    def test_build_download_command_rejects_unsupported_platform(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "Unsupported URL"):
-            ytd._command("https://example.com/video", "720p", "/tmp", 20)
+            ytd.build_download_command("https://example.com/video", "720p", "/tmp", 20)
 
 
 class DownloadProcessTests(unittest.TestCase):
@@ -334,7 +346,7 @@ class DownloadWrapperTests(unittest.TestCase):
         source = Path("/tmp/video.mp4")
         with (
             patch("helper.helper_ytd.tempfile.mkdtemp", return_value="/tmp/ytdlp_eval"),
-            patch("helper.helper_ytd._command", return_value=("https://youtube.com/watch?v=abc", ["yt-dlp"])),
+            patch("helper.helper_ytd.build_download_command", return_value=("https://youtube.com/watch?v=abc", ["yt-dlp"])),
             patch("helper.helper_ytd.run_yt_dlp", return_value=(source, "/tmp/ytdlp_eval")),
             patch("helper.helper_ytd.move_download_to_output_dir", return_value=(source, None)),
         ):
