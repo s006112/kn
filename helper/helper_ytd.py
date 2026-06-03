@@ -275,22 +275,29 @@ def run_yt_dlp(cmd, temp_dir):
     lines = []
     progress = -1
     assert proc.stdout is not None
+
+    def _update_progress(line, progress):
+        m = re.search(r"(\d+(?:\.\d+)?)%", line)
+        if m:
+            p = int(float(m.group(1)))
+            if p != progress:
+                done = 40 * p // 100
+                print(f"\r[{'█'*done}{'-'*(40-done)}] {p:3d}%", end="", flush=True)
+                return p
+        return progress
+
     for raw in proc.stdout:
         line = raw.strip()
         if line:
             lines.append(line)
             if "[download]" in line:
-                m = re.search(r"(\d+(?:\.\d+)?)%", line)
-                if m and (p := int(float(m.group(1)))) != progress:
-                    progress = p
-                    done = 40 * p // 100
-                    print(f"\r[{'█'*done}{'-'*(40-done)}] {p:3d}%", end="", flush=True)
+                progress = _update_progress(line, progress)
     proc.stdout.close()
+    if progress >= 0:
+        print()
     if proc.wait():
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise RuntimeError("yt-dlp failed:\n" + ("\n".join(lines[-10:]) or "Unknown yt-dlp error."))
-    if progress >= 0:
-        print()
     files = [p for p in Path(temp_dir).iterdir() if p.is_file()]
     if files:
         return max(files, key=lambda p: p.stat().st_mtime), temp_dir
@@ -312,9 +319,6 @@ def move_download_to_output_dir(path, temp_dir, output_dir):
     try:
         s = t.stat()
         os.chown(target, s.st_uid, s.st_gid)
-    except Exception:
-        pass
-    try:
         os.chmod(target, 0o664)
     except Exception:
         pass
@@ -326,13 +330,11 @@ def download(url, mode, output_dir=None, resolve_timeout=20):
     original_url = url
     if not (url := clean_url(url)):
         raise RuntimeError(f"Invalid URL: {original_url}")
-
     temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
     try:
         url, cmd = build_download_command(url, mode, temp_dir, resolve_timeout)
         print(f"Download request: {url} ({classify_url(url) or mode})")
-        path, temp_dir = run_yt_dlp(cmd, temp_dir)
-        return move_download_to_output_dir(path, temp_dir, output_dir)
+        return move_download_to_output_dir(*run_yt_dlp(cmd, temp_dir), output_dir)
     except Exception:
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise
@@ -360,18 +362,17 @@ def _try_download_ttml_for_lang(lang, url, output_dir):
     try:
         proc = subprocess.run(cmd, cwd=temp_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         ttml_files = sorted(Path(temp_dir).glob("*.ttml"), key=lambda p: p.stat().st_mtime, reverse=True)
-        if not ttml_files:
-            tail = "\n".join((proc.stdout or "").splitlines()[-5:])
-            print(f"No TTML for {lang}: {tail or 'yt-dlp failed'}" if proc.returncode else f"No TTML for {lang}")
-            return None
-        print(f"Using TTML subtitle language: {lang}")
-        return move_download_to_output_dir(ttml_files[0], temp_dir, output_dir)
+        if ttml_files:
+            print(f"Using TTML subtitle language: {lang}")
+            return move_download_to_output_dir(ttml_files[0], temp_dir, output_dir)
+        tail = "\n".join((proc.stdout or "").splitlines()[-5:])
+        print(f"No TTML for {lang}: {tail or 'yt-dlp failed'}" if proc.returncode else f"No TTML for {lang}")
     except Exception as exc:
         print(f"No TTML for {lang}: {exc}")
-        return None
     finally:
         if output_dir is not None or not any(Path(temp_dir).glob("*.ttml")):
             shutil.rmtree(temp_dir, ignore_errors=True)
+    return None
 
 
 def _try_download_ttml(url, output_dir=None):
