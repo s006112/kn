@@ -105,27 +105,27 @@ def clean_url(url):
     parts = urlsplit(url)
     host = parts.netloc.lower()
     scheme = parts.scheme or "https"
-    if "youtu.be" in host:
-        path, query = parts.path.rstrip("/"), ""
-    elif "youtube.com" in host or "youtube-nocookie.com" in host:
-        path, query = parts.path.rstrip("/"), ""
+    if "youtube.com" in host or "youtube-nocookie.com" in host:
+        path = parts.path.rstrip("/")
         if parts.path == "/watch":
             video_id = parse_qs(parts.query).get("v", [""])[0].strip()
             if not video_id:
                 return ""
-            path, query = "/watch", urlencode({"v": video_id})
-    else:
-        path = parts.path
-        query = urlencode(
-            [
-                (key, value)
-                for key, values in parse_qs(parts.query, keep_blank_values=True).items()
-                if not key.lower().startswith("utm_") and key.lower() not in TRACKING_KEYS
-                for value in values
-            ],
-            doseq=True,
-        )
-    return urlunsplit((scheme, parts.netloc, path, query, ""))
+            return urlunsplit((scheme, parts.netloc, "/watch", urlencode({"v": video_id}), ""))
+        return urlunsplit((scheme, parts.netloc, path, "", ""))
+    if "youtu.be" in host:
+        return urlunsplit((scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
+    query = urlencode(
+        [
+            (key, value)
+            for key, values in parse_qs(parts.query, keep_blank_values=True).items()
+            if not key.lower().startswith("utm_") and key.lower() not in TRACKING_KEYS
+            for value in values
+        ],
+        doseq=True,
+    )
+    return urlunsplit((scheme, parts.netloc, parts.path, query, ""))
+
 def _x_auth():
     auth_token = os.getenv("X_AUTH_TOKEN", "").strip()
     ct0 = os.getenv("X_CT0", "").strip()
@@ -171,12 +171,20 @@ def _command(url, mode, temp_dir, resolve_timeout):
     if platform == PLATFORM_X:
         auth_token, ct0 = _x_auth()
         url = _resolve_x_url(url, auth_token, ct0, resolve_timeout)
-        args = [*X_FORMAT_ARGS, "-o", "%(uploader)s_%(id)s.%(ext)s", *build_common_args(include_cookie_sources=False), "--cookies", _write_x_cookies(temp_dir, auth_token, ct0)]
-    else:
-        if mode not in FORMATS:
-            raise RuntimeError("无效下载模式。")
-        args = ["--no-playlist", *FORMATS[mode], "-o", "%(title).50s.%(ext)s", *build_common_args()]
-    return url, ["yt-dlp", "--newline", *args, url]
+        return url, [
+            "yt-dlp",
+            "--newline",
+            *X_FORMAT_ARGS,
+            "-o",
+            "%(uploader)s_%(id)s.%(ext)s",
+            *build_common_args(include_cookie_sources=False),
+            "--cookies",
+            _write_x_cookies(temp_dir, auth_token, ct0),
+            url,
+        ]
+    if mode not in FORMATS:
+        raise RuntimeError("无效下载模式。")
+    return url, ["yt-dlp", "--newline", "--no-playlist", *FORMATS[mode], "-o", "%(title).50s.%(ext)s", *build_common_args(), url]
 
 
 def run_yt_dlp(cmd, temp_dir):
@@ -190,40 +198,31 @@ def run_yt_dlp(cmd, temp_dir):
     lines, shown = [], -1
     try:
         assert proc.stdout is not None
-        def _update_progress(line, current):
-            match = re.search(r"(\d+(?:\.\d+)?)%", line)
-            if not match:
-                return current
-            pct = max(0, min(100, int(float(match.group(1)))))
-            if pct != current:
-                width = 40
-                done = width * pct // 100
-                print(f"\r[{'█' * done}{'-' * (width - done)}] {pct:3d}%", end="", flush=True)
-                return pct
-            return current
         for raw in proc.stdout:
             line = raw.strip()
             if line:
                 lines.append(line)
-            if "[download]" in line:
-                shown = _update_progress(line, shown)
+            match = re.search(r"(\d+(?:\.\d+)?)%", line)
+            if "[download]" in line and match:
+                pct = max(0, min(100, int(float(match.group(1)))))
+                if pct != shown:
+                    shown = pct
+                    done = 40 * pct // 100
+                    print(f"\r[{'█' * done}{'-' * (40 - done)}] {pct:3d}%", end="", flush=True)
     finally:
         if proc.stdout is not None:
             proc.stdout.close()
 
-    error = None
     if proc.wait():
-        error = "yt-dlp failed:\n" + ("\n".join(lines[-10:]) or "Unknown yt-dlp error.")
-    else:
-        if shown >= 0:
-            print()
-        files = [path for path in Path(temp_dir).iterdir() if path.is_file()]
-        if files:
-            return max(files, key=lambda path: path.stat().st_mtime), temp_dir
-        error = "下载完成，但没有生成文件。"
-
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise RuntimeError("yt-dlp failed:\n" + ("\n".join(lines[-10:]) or "Unknown yt-dlp error."))
+    if shown >= 0:
+        print()
+    files = [path for path in Path(temp_dir).iterdir() if path.is_file()]
+    if files:
+        return max(files, key=lambda path: path.stat().st_mtime), temp_dir
     shutil.rmtree(temp_dir, ignore_errors=True)
-    raise RuntimeError(error)
+    raise RuntimeError("下载完成，但没有生成文件。")
 
 
 def move_download_to_output_dir(path, temp_dir, output_dir):
@@ -261,53 +260,49 @@ def download(url, mode, output_dir=None, resolve_timeout=20):
 
     temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
     url, cmd = _command(url, mode, temp_dir, resolve_timeout)
-    print(f"Download request: {url} ({PLATFORM_X if classify_url(url) == PLATFORM_X else mode})")
+    print(f"Download request: {url} ({classify_url(url) or mode})")
     path, temp_dir = run_yt_dlp(cmd, temp_dir)
     return move_download_to_output_dir(path, temp_dir, output_dir)
 
+def _try_download_ttml_for_lang(lang, url, output_dir):
+    temp_dir = tempfile.mkdtemp(prefix="ytdlp_ttml_")
+    cmd = [
+        "yt-dlp",
+        "--newline",
+        "--skip-download",
+        "--no-playlist",
+        "--write-subs",
+        "--write-auto-subs",
+        "--sub-langs",
+        lang,
+        "--sub-format",
+        "ttml",
+        "-o",
+        "%(title).50s.%(ext)s",
+        *build_common_args(),
+        url,
+    ]
+    print(f"Trying TTML subtitle language: {lang}")
+    try:
+        proc = subprocess.run(cmd, cwd=temp_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        ttml_files = sorted(Path(temp_dir).glob("*.ttml"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if ttml_files:
+            print(f"Using TTML subtitle language: {lang}")
+            return move_download_to_output_dir(ttml_files[0], temp_dir, output_dir)
+        tail = "\n".join((proc.stdout or "").splitlines()[-5:])
+        print(f"No TTML for {lang}: {tail or 'yt-dlp failed'}" if proc.returncode else f"No TTML for {lang}")
+    except Exception as exc:
+        print(f"No TTML for {lang}: {exc}")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    return None
+
 def _try_download_ttml(url, output_dir=None):
     langs = [x.strip() for x in os.getenv("YTD_SUB_LANGS", "zh-Hans,zh-Hant,zh-HK,yue,zh,en,ja").split(",") if x.strip()]
-
     for lang in langs:
-        temp_dir = tempfile.mkdtemp(prefix="ytdlp_ttml_")
-        cmd = [
-            "yt-dlp",
-            "--newline",
-            "--skip-download",
-            "--no-playlist",
-            "--write-subs",
-            "--write-auto-subs",
-            "--sub-langs",
-            lang,
-            "--sub-format",
-            "ttml",
-            "-o",
-            "%(title).50s.%(ext)s",
-            *build_common_args(),
-            url,
-        ]
-
-        try:
-            print(f"Trying TTML subtitle language: {lang}")
-            print("Running:", " ".join(cmd))
-            proc = subprocess.run(
-                cmd,
-                cwd=temp_dir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
-
-            ttml_files = sorted(Path(temp_dir).glob("*.ttml"), key=lambda p: p.stat().st_mtime, reverse=True)
-            if ttml_files:
-                print(f"Using TTML subtitle language: {lang}")
-                return move_download_to_output_dir(ttml_files[0], temp_dir, output_dir)
-            tail = "\n".join((proc.stdout or "").splitlines()[-5:])
-            print(f"No TTML for {lang}: {tail or 'yt-dlp failed'}" if proc.returncode else f"No TTML for {lang}")
-        except Exception as exc:
-            print(f"No TTML for {lang}: {exc}")
-        shutil.rmtree(temp_dir, ignore_errors=True)
-
+        result = _try_download_ttml_for_lang(lang, url, output_dir)
+        if result is not None:
+            return result
     print("TTML unavailable for all preferred languages, fallback to video.")
     return None
 

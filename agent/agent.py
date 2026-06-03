@@ -33,7 +33,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from helper.helper_llm import call_llm  # noqa: E402
 
-DEFAULT_MODEL = "gpt-5.4-mini" # codex, gpt-5.4-mini
+DEFAULT_MODEL = "o3-mini" # codex, gpt-5.4-mini
 
 CODEX_MODEL = "gpt-5.5"
 CODEX_REASONING_EFFORT = "low" # "mid", "high", "xhigh"
@@ -181,7 +181,7 @@ def latest_plan_path() -> Path | None:
 
 
 def review_verdict(review_text: str) -> str | None:
-    match = re.search(r"(?im)^\s*-?\s*(?:\*\s+)?\*{0,2}(APPROVE|REVISE)\*{0,2}\s*$", review_text)
+    match = re.search(r"(?im)^\s*(?:[-•]\s*)?(?:\*\s+)?\*{0,2}(APPROVE|REVISE)\*{0,2}\s*$", review_text)
     return match.group(1) if match else None
 
 
