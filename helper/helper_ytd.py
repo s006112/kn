@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Reusable yt-dlp download helpers."""
+"""Reusable yt-dlp download helpers.
+
+Used by: ytd.py, w/p_ytd.py
+"""
 
 import os
 import re
