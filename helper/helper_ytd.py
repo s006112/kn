@@ -272,25 +272,24 @@ def run_yt_dlp(cmd, temp_dir):
     except FileNotFoundError as exc:
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise RuntimeError("系统里找不到 yt-dlp。") from exc
-    lines, shown = [], -1
+    lines = []
+    progress = -1
     assert proc.stdout is not None
     for raw in proc.stdout:
         line = raw.strip()
         if line:
             lines.append(line)
-        if "[download]" in line:
-            m = re.search(r"(\d+(?:\.\d+)?)%", line)
-            if m:
-                pct = int(float(m.group(1)))
-                if pct != shown:
-                    shown = pct
-                    done = 40 * pct // 100
-                    print(f"\r[{'█'*done}{'-'*(40-done)}] {pct:3d}%", end="", flush=True)
+            if "[download]" in line:
+                m = re.search(r"(\d+(?:\.\d+)?)%", line)
+                if m and (p := int(float(m.group(1)))) != progress:
+                    progress = p
+                    done = 40 * p // 100
+                    print(f"\r[{'█'*done}{'-'*(40-done)}] {p:3d}%", end="", flush=True)
     proc.stdout.close()
     if proc.wait():
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise RuntimeError("yt-dlp failed:\n" + ("\n".join(lines[-10:]) or "Unknown yt-dlp error."))
-    if shown >= 0:
+    if progress >= 0:
         print()
     files = [p for p in Path(temp_dir).iterdir() if p.is_file()]
     if files:
@@ -358,38 +357,34 @@ def _try_download_ttml_for_lang(lang, url, output_dir):
         url,
     ]
     print(f"Trying TTML subtitle language: {lang}")
-    keep_temp_dir = False
     try:
         proc = subprocess.run(cmd, cwd=temp_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         ttml_files = sorted(Path(temp_dir).glob("*.ttml"), key=lambda p: p.stat().st_mtime, reverse=True)
-        if ttml_files:
-            print(f"Using TTML subtitle language: {lang}")
-            keep_temp_dir = output_dir is None
-            return move_download_to_output_dir(ttml_files[0], temp_dir, output_dir)
-        tail = "\n".join((proc.stdout or "").splitlines()[-5:])
-        print(f"No TTML for {lang}: {tail or 'yt-dlp failed'}" if proc.returncode else f"No TTML for {lang}")
+        if not ttml_files:
+            tail = "\n".join((proc.stdout or "").splitlines()[-5:])
+            print(f"No TTML for {lang}: {tail or 'yt-dlp failed'}" if proc.returncode else f"No TTML for {lang}")
+            return None
+        print(f"Using TTML subtitle language: {lang}")
+        return move_download_to_output_dir(ttml_files[0], temp_dir, output_dir)
     except Exception as exc:
         print(f"No TTML for {lang}: {exc}")
+        return None
     finally:
-        if not keep_temp_dir:
+        if output_dir is not None or not any(Path(temp_dir).glob("*.ttml")):
             shutil.rmtree(temp_dir, ignore_errors=True)
-    return None
 
 
 def _try_download_ttml(url, output_dir=None):
     langs = [x.strip() for x in os.getenv("YTD_SUB_LANGS", "zh-Hans,zh-Hant,zh-HK,yue,zh,en,ja").split(",") if x.strip()]
     for lang in langs:
-        result = _try_download_ttml_for_lang(lang, url, output_dir)
-        if result is not None:
+        if result := _try_download_ttml_for_lang(lang, url, output_dir):
             return result
     print("TTML unavailable for all preferred languages, fallback to video.")
     return None
 
 
 def download_ttml_or_video(url, mode="worst", output_dir=None, resolve_timeout=20):
-    url_clean = clean_url(url)
-    if url_clean and classify_url(url_clean) == PLATFORM_YOUTUBE:
-        res = _try_download_ttml(url_clean, output_dir=output_dir)
-        if res:
-            return res
-    return download(url_clean or url, mode, output_dir, resolve_timeout)
+    url = clean_url(url)
+    if classify_url(url) == PLATFORM_YOUTUBE and (res := _try_download_ttml(url, output_dir=output_dir)):
+        return res
+    return download(url or url, mode, output_dir, resolve_timeout)
