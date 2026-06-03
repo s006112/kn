@@ -283,18 +283,21 @@ def _try_download_ttml_for_lang(lang, url, output_dir):
         url,
     ]
     print(f"Trying TTML subtitle language: {lang}")
+    keep_temp_dir = False
     try:
         proc = subprocess.run(cmd, cwd=temp_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         ttml_files = sorted(Path(temp_dir).glob("*.ttml"), key=lambda p: p.stat().st_mtime, reverse=True)
         if ttml_files:
             print(f"Using TTML subtitle language: {lang}")
+            keep_temp_dir = output_dir is None
             return move_download_to_output_dir(ttml_files[0], temp_dir, output_dir)
         tail = "\n".join((proc.stdout or "").splitlines()[-5:])
         print(f"No TTML for {lang}: {tail or 'yt-dlp failed'}" if proc.returncode else f"No TTML for {lang}")
     except Exception as exc:
         print(f"No TTML for {lang}: {exc}")
     finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        if not keep_temp_dir:
+            shutil.rmtree(temp_dir, ignore_errors=True)
     return None
 
 def _try_download_ttml(url, output_dir=None):

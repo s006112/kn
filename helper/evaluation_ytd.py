@@ -365,6 +365,23 @@ class TtmlFallbackTests(unittest.TestCase):
             self.assertIsNone(returned_temp_dir)
             self.assertTrue(target.exists())
 
+    def test_try_download_ttml_keeps_temp_file_without_output_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ttml = Path(temp_dir) / "caption.ttml"
+            ttml.write_text("<tt></tt>", encoding="utf-8")
+            completed = Mock(returncode=0, stdout="")
+
+            with (
+                patch.dict(os.environ, {"YTD_SUB_LANGS": "en"}, clear=False),
+                patch("helper.helper_ytd.tempfile.mkdtemp", return_value=temp_dir),
+                patch("helper.helper_ytd.subprocess.run", return_value=completed),
+            ):
+                target, returned_temp_dir = ytd._try_download_ttml("https://youtube.com/watch?v=abc")
+
+            self.assertEqual(target, ttml)
+            self.assertEqual(returned_temp_dir, temp_dir)
+            self.assertTrue(target.exists())
+
     def test_try_download_ttml_returns_none_after_all_languages_fail(self) -> None:
         temp_dirs = [tempfile.mkdtemp(), tempfile.mkdtemp()]
         completed = Mock(returncode=1, stdout="no subtitles")
