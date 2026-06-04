@@ -12,6 +12,7 @@ Used by:
 from __future__ import annotations
 
 import sys
+import runpy
 import time
 import unittest
 import warnings
@@ -63,13 +64,11 @@ from ali import ali_email  # noqa: E402
 from ali.ali_email import (  # noqa: E402
     _build_review_subject,
     _default_poll_interval_minutes,
-    _is_deterministic_failure,
     _move_imap_message_to_failed,
     _phase1_new_messages,
     _phase2_sender_replies,
     _run_guarded,
     _send_internal_review,
-    pipeline_run,
 )
 from helper.utils_imap_client import RawFetchedRecord  # noqa: E402
 from helper.utils_imap_config import ImapConfig, SmtpConfig  # noqa: E402
@@ -889,11 +888,6 @@ class EmailTimingTests(unittest.TestCase):
 class EmailGuardedExecutionTests(unittest.TestCase):
     target_file = "ali_email.py"
 
-    def test_deterministic_failure_classification(self) -> None:
-        self.assertTrue(_is_deterministic_failure(ValueError("bad input")))
-        self.assertTrue(_is_deterministic_failure(FileNotFoundError("missing prompt")))
-        self.assertFalse(_is_deterministic_failure(RuntimeError("offline")))
-
     def test_run_guarded_quarantines_deterministic_uid_failure(self) -> None:
         logger = MagicMock()
 
@@ -1103,19 +1097,31 @@ class EmailPhaseTwoTests(unittest.TestCase):
 class EmailPipelineTests(unittest.TestCase):
     target_file = "ali_email.py"
 
-    def test_pipeline_run_configures_logger_and_runs_both_phases(self) -> None:
+    def test_main_loop_configures_logger_and_runs_both_phases(self) -> None:
+        class StopLoop(Exception):
+            pass
+
         logger = MagicMock()
         with (
-            patch("ali.ali_email.configure_logging", return_value=logger) as configure,
-            patch("ali.ali_email._phase1_new_messages") as phase1,
-            patch("ali.ali_email._phase2_sender_replies") as phase2,
+            patch("helper.helper_config.configure_logging", return_value=logger) as configure,
+            patch("ali.ali_fetch.fetch_new_messages", return_value=[]) as fetch_new,
+            patch("ali.ali_fetch.fetch_sender_replies", return_value=[]) as fetch_replies,
+            patch("helper.helper_config.get_env_int", return_value=1) as get_interval,
+            patch("time.sleep", side_effect=StopLoop) as sleep,
         ):
-            pipeline_run()
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message="'ali\\.ali_email' found in sys\\.modules.*", category=RuntimeWarning)
+                with self.assertRaises(StopLoop):
+                    runpy.run_module("ali.ali_email", run_name="__main__")
 
         configure.assert_called_once_with("ali_pipeline")
-        phase1.assert_called_once_with(logger=logger)
-        phase2.assert_called_once_with(logger=logger)
-        logger.info.assert_called_once_with("Pipeline run finished.")
+        fetch_new.assert_called_once_with(max_messages=2)
+        fetch_replies.assert_called_once_with()
+        get_interval.assert_called_once()
+        self.assertEqual(get_interval.call_args.args[0], "ALI_POLL_INTERVAL_MINUTES")
+        self.assertIn(get_interval.call_args.args[1], (1, 2))
+        sleep.assert_called_once_with(60)
+        logger.info.assert_any_call("Pipeline run finished.")
 
 
 class SubjectTests(unittest.TestCase):

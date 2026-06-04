@@ -1,5 +1,5 @@
 '''
-python3 agent/agent.py --run-iterate-task helper/helper_ytd.py ali/ali_llm.py ali/ali_router.py agent/agent.py  # agent/agent.py helper/helper_ytd.py w/p_wiki.py
+python3 agent/agent.py --run-iterate-task ali/ali_email.py helper/helper_ytd.py ali/ali_llm.py ali/ali_router.py agent/agent.py  # agent/agent.py helper/helper_ytd.py w/p_wiki.py
 python3 agent/agent.py --draft-task w/p_wiki.py      # step 0
 python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2
@@ -33,7 +33,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from helper.helper_llm import call_llm  # noqa: E402
 
-DEFAULT_MODEL = "o3-mini" # codex, gpt-5.4-mini
+DEFAULT_MODEL = "gpt-5.4-mini" # codex, gpt-5.4-mini
 
 CODEX_MODEL = "gpt-5.5"
 CODEX_REASONING_EFFORT = "low" # "mid", "high", "xhigh"

@@ -61,9 +61,6 @@ def _default_poll_interval_minutes(now: datetime | None = None) -> float:
     local_time = current.timetz().replace(tzinfo=None)
     return 1 if _DAY_START <= local_time < _DAY_END else 2
 
-def _is_deterministic_failure(exc: Exception) -> bool:
-    return isinstance(exc, (ValueError, FileNotFoundError))
-
 def _move_imap_message_to_failed(uid: int, *, logger) -> None:
     cfg = load_imap_config(
         "IMAP_FOLDER",
@@ -109,18 +106,15 @@ def _run_guarded(
     try:
         fn()
     except Exception as exc:
-        logger.exception(
-            "%s failed (uid=%s subject=%s)",
-            ctx,
-            uid,
-            subject,
-        )
-
-        if uid is None or not _is_deterministic_failure(exc):
+        logger.exception("%s failed (uid=%s subject=%s)", ctx, uid, subject)
+        deterministic_failure = isinstance(exc, (ValueError, FileNotFoundError))
+        if uid is None or not deterministic_failure:
             return
-
         try:
             _move_imap_message_to_failed(uid, logger=logger)
+        except Exception:
+            logger.exception("%s failed to move message to %s (uid=%s subject=%s)", ctx, _FAILED_FOLDER, uid, subject)
+        else:
             logger.error(
                 "%s quarantined to %s (uid=%s subject=%s reason=%s)",
                 ctx,
@@ -128,14 +122,6 @@ def _run_guarded(
                 uid,
                 subject,
                 type(exc).__name__,
-            )
-        except Exception:
-            logger.exception(
-                "%s failed to move message to %s (uid=%s subject=%s)",
-                ctx,
-                _FAILED_FOLDER,
-                uid,
-                subject,
             )
 
 # -----------------------------------------------------------------------------
@@ -163,26 +149,40 @@ def _send_internal_review(
     if not reviewer:
         raise RuntimeError("Missing reviewer (msg.from_addr is empty)")
 
-    subject_source = base_subject if base_subject is not None else (original.subject or "")
-    subject = _build_review_subject(subject_source, review_version)
-
-    review_msg = EmailMessage(
-        uid=original.uid,
-        message_id=original.message_id,
-        from_addr=reviewer,
-        to_addrs=[reviewer],
-        cc_addrs=[],
-        subject=subject,
-        body_text=original.body_text,
-        raw_bytes=original.raw_bytes,
+    result: SendResult = send_reply(
+        EmailMessage(
+            uid=original.uid,
+            message_id=original.message_id,
+            from_addr=reviewer,
+            to_addrs=[reviewer],
+            cc_addrs=[],
+            subject=_build_review_subject(base_subject or (original.subject or ""), review_version),
+            body_text=original.body_text,
+            raw_bytes=original.raw_bytes,
+        ),
+        review_body,
     )
-
-    result: SendResult = send_reply(review_msg, review_body)
-
-    if result.ok:
-        logger.info("Internal review sent to %s (uid=%s)", reviewer, original.uid)
-    else:
+    if not result.ok:
         raise RuntimeError(result.error_message or "Send failed")
+    logger.info("Internal review sent to %s (uid=%s)", reviewer, original.uid)
+
+
+def _process_new_message(msg: EmailMessage, *, logger) -> None:
+    logger.info("Processing new email uid=%s subject=%s", msg.uid, msg.subject)
+
+    if REVIEW_SUBJECT_PATTERN.search(msg.subject or ""):
+        logger.info("Skipping review-thread message uid=%s", msg.uid)
+        return
+
+    review_body = render_review(
+        generate_review_package(
+            msg,
+            system_prompt_path=SYSTEM_PROMPT_PATH,
+            model=LLM_MODEL,
+        )
+    )
+    _send_internal_review(msg, review_body, logger=logger)
+    mark_imap_message_seen(msg.uid, logger=logger)
 
 
 # -----------------------------------------------------------------------------
@@ -196,29 +196,12 @@ def _phase1_new_messages(*, logger) -> None:
         return
 
     for msg in messages:
-        def _work() -> None:
-            logger.info("Processing new email uid=%s subject=%s", msg.uid, msg.subject)
-
-            if REVIEW_SUBJECT_PATTERN.search(msg.subject or ""):
-                logger.info("Skipping review-thread message uid=%s", msg.uid)
-                return
-
-            review_obj = generate_review_package(
-                msg,
-                system_prompt_path=SYSTEM_PROMPT_PATH,
-                model=LLM_MODEL,
-            )
-            review_body = render_review(review_obj)
-
-            _send_internal_review(msg, review_body, logger=logger)
-            mark_imap_message_seen(msg.uid, logger=logger)
-
         _run_guarded(
             logger=logger,
             ctx="Phase1 process message",
             uid=msg.uid,
             subject=msg.subject,
-            fn=_work,
+            fn=lambda msg=msg: _process_new_message(msg, logger=logger),
         )
 
 
@@ -233,71 +216,52 @@ def _phase2_sender_replies(*, logger) -> None:
         return
 
     for reply_msg in sender_replies:
-        def _work() -> None:
-            logger.info(
-                "Processing sender reply uid=%s subject=%s",
-                reply_msg.uid,
-                reply_msg.subject,
-            )
+        logger.info("Processing sender reply uid=%s subject=%s", reply_msg.uid, reply_msg.subject)
 
-            raw_body = (reply_msg.body_text or "").strip()
-            reviewer_reply_text = extract_reviewer_reply_text(raw_body).strip()
-            if not reviewer_reply_text:
-                logger.info("Empty reviewer reply detected; treated as REJECT. Marking as SEEN.")
-                mark_imap_message_seen(reply_msg.uid, logger=logger)
-                return
+        reviewer_reply_text = extract_reviewer_reply_text((reply_msg.body_text or "").strip()).strip()
+        if not reviewer_reply_text:
+            logger.info("Empty reviewer reply detected; treated as REJECT. Marking as SEEN.")
+            mark_imap_message_seen(reply_msg.uid, logger=logger)
+            continue
 
-            state = extract_last_review_state(reply_msg)
-            next_version = state.version + 1
-
-            reviewer_reply_input = EmailMessage(
-                uid=reply_msg.uid,
-                message_id=reply_msg.message_id,
-                from_addr=reply_msg.from_addr,
-                to_addrs=reply_msg.to_addrs,
-                cc_addrs=reply_msg.cc_addrs,
-                subject=reply_msg.subject,
-                body_text=reviewer_reply_text,
-                raw_bytes=reply_msg.raw_bytes,
-            )
-
-            review_obj = generate_review_package(
-                reviewer_reply_input,
+        state = extract_last_review_state(reply_msg)
+        next_version = state.version + 1
+        review_msg = EmailMessage(
+            uid=reply_msg.uid,
+            message_id=reply_msg.message_id,
+            from_addr=reply_msg.from_addr,
+            to_addrs=reply_msg.to_addrs,
+            cc_addrs=reply_msg.cc_addrs,
+            subject=reply_msg.subject,
+            body_text=reviewer_reply_text,
+            raw_bytes=reply_msg.raw_bytes,
+        )
+        review_body = render_review(
+            generate_review_package(
+                review_msg,
                 system_prompt_path=SYSTEM_PROMPT_PATH,
                 model=LLM_MODEL,
                 previous_draft=state.draft,
                 edit_version=next_version,
             )
-            review_body = render_review(review_obj)
-
-            _send_internal_review(
-                reply_msg,
-                review_body,
-                logger=logger,
-                base_subject=reply_msg.subject,
-                review_version=next_version,
-            )
-
-            mark_imap_message_seen(reply_msg.uid, logger=logger)
+        )
 
         _run_guarded(
             logger=logger,
             ctx="Phase2 process sender reply",
             uid=reply_msg.uid,
             subject=reply_msg.subject,
-            fn=_work,
+            fn=lambda: (
+                _send_internal_review(
+                    reply_msg,
+                    review_body,
+                    logger=logger,
+                    base_subject=reply_msg.subject,
+                    review_version=next_version,
+                ),
+                mark_imap_message_seen(reply_msg.uid, logger=logger),
+            ),
         )
-
-
-# -----------------------------------------------------------------------------
-# Pipeline
-# -----------------------------------------------------------------------------
-
-def pipeline_run() -> None:
-    logger = configure_logging("ali_pipeline")
-    _phase1_new_messages(logger=logger)
-    _phase2_sender_replies(logger=logger)
-    logger.info("Pipeline run finished.")
 
 
 # -----------------------------------------------------------------------------
@@ -305,8 +269,11 @@ def pipeline_run() -> None:
 # -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    logger = configure_logging("ali_pipeline")
     while True:
-        pipeline_run()
+        _phase1_new_messages(logger=logger)
+        _phase2_sender_replies(logger=logger)
+        logger.info("Pipeline run finished.")
         interval_minutes = get_env_int(
             "ALI_POLL_INTERVAL_MINUTES",
             _default_poll_interval_minutes(),
