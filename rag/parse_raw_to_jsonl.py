@@ -7,7 +7,6 @@ stream suitable for downstream JSONL serialization.
 
 Used by:
 - rag/parse_mbox_to_chunk.py
-- rag/parse_standard_to_block.py
 
 Pipelines:
 - email_bytes -> raw_blocks -> canonical_blocks

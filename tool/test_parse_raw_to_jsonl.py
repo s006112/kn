@@ -22,10 +22,10 @@ Out of scope:
   blocks.
 """
 
-from test_parse_email_to_raw_based import (
+from tool.test_parse_email_to_raw_based import (
     parse_email_to_raw_blocks as parse_email_to_raw_blocks_based,
 )
-from test_parse_email_to_raw_enhanced import (
+from tool.test_parse_email_to_raw_enhanced import (
     parse_email_to_raw_blocks as parse_email_to_raw_blocks_enhanced,
 )
 

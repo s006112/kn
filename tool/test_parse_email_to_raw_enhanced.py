@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-parse_email_to_raw_based.py
+helper_parse_email_to_raw_based.py
 Responsibility:
 Convert Email -> RawBlock list using quote-depth based splitting.
 This is robust, format-agnostic, and does not depend on guessing headers.
@@ -8,7 +8,7 @@ This is robust, format-agnostic, and does not depend on guessing headers.
 
 import re
 from helper_sanitize import sanitize_text
-from test_save_email_raw_text import save_raw_email_text
+from tool.test_save_email_raw_text import save_raw_email_text
 
 
 # ------------------------------------------------------------
@@ -83,13 +83,15 @@ def insert_quote_markers(text: str) -> str:
             depth = 0
             content = line
 
-        new_depth = depth + extra_depth
-        out.append((">" * new_depth + " " + content) if new_depth > 0 else content)
-
+        # ⭐ pre-increment
         if _FWD_LINE_RE.match(content.strip()):
             extra_depth += 1
 
+        new_depth = depth + extra_depth
+        out.append((">" * new_depth + " " + content) if new_depth > 0 else content)
+
     return "\n".join(out)
+
 
 
 def insert_header_block_markers(text: str) -> str:
@@ -114,20 +116,123 @@ def insert_header_block_markers(text: str) -> str:
             depth = 0
             content = line
 
-        new_depth = depth + extra_depth
-        out.append((">" * new_depth + " " + content) if new_depth > 0 else content)
-
         is_header = _is_header_block_boundary(lines, i)
 
-        # trigger only on the first line of a detected header block
-        # NOTE: do NOT require depth==0, otherwise quoted header blocks never trigger
+        # ⭐ pre-increment（关键修复）
         if is_header and not prev_is_header:
             extra_depth += 1
+
+        new_depth = depth + extra_depth
+        out.append((">" * new_depth + " " + content) if new_depth > 0 else content)
 
         prev_is_header = is_header
         i += 1
 
     return "\n".join(out)
+
+
+def _needs_html_blockquote_normalization(text: str) -> bool:
+    if not text:
+        return False
+
+    lower = text.lower()
+
+    # already RFC quoted → skip
+    if re.search(r'^\s*>+', text, re.M):
+        return False
+
+    if "<blockquote" not in lower:
+        return False
+
+    tag_cnt = lower.count("<div") + lower.count("<p") + lower.count("<br")
+    if tag_cnt < 8:
+        return False
+
+    return True
+
+
+
+import re
+import html
+
+
+_BR_RE = re.compile(r"<br\s*/?>", re.I)
+_BLOCK_OPEN_RE  = re.compile(r"<blockquote\b[^>]*>", re.I)
+_BLOCK_CLOSE_RE = re.compile(r"</blockquote>", re.I)
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def insert_html_blockquote_markers(text: str) -> str:
+    """
+    HTML → RFC quote adapter
+
+    Convert:
+        <blockquote> nesting
+    into:
+        > depth markers
+
+    Deterministic, no line-loss, no content-loss.
+    """
+
+    if not text:
+        return text
+
+    # --------------------------------
+    # 1. normalize common html breaks
+    # --------------------------------
+    text = _BR_RE.sub("\n", text)
+    text = re.sub(r"</?(div|p)\b[^>]*>", "\n", text, flags=re.I)
+
+    # decode &nbsp; etc
+    text = html.unescape(text)
+
+    # --------------------------------
+    # 2. walk token by token (NOT line by line)
+    # --------------------------------
+    tokens = re.split(r"(<[^>]+>)", text)
+
+    depth = 0
+    buf = []
+    out_lines = []
+
+    def flush():
+        nonlocal buf
+        if not buf:
+            return
+        line = "".join(buf).strip()
+        if line:
+            if depth > 0:
+                out_lines.append(">" * depth + " " + line)
+            else:
+                out_lines.append(line)
+        buf = []
+
+    for tok in tokens:
+
+        if not tok:
+            continue
+
+        # open blockquote, close blockquote
+        if _BLOCK_OPEN_RE.fullmatch(tok) or _BLOCK_CLOSE_RE.fullmatch(tok):
+            flush()
+            continue
+
+        if tok.startswith("<"):
+            continue
+
+        # plain text
+        parts = tok.splitlines(True)
+        for p in parts:
+            if p.endswith("\n"):
+                buf.append(p.rstrip("\n"))
+                flush()
+            else:
+                buf.append(p)
+
+    flush()
+
+    return "\n".join(out_lines)
+
 
 # ------------------------------------------------------------
 # Quote-depth splitter (phase 0)
@@ -178,7 +283,6 @@ def _split_by_quote_depth(text: str) -> list[tuple[int, str]]:
 
     return segments
 
-
 # ------------------------------------------------------------
 # Main API (drop-in)
 # ------------------------------------------------------------
@@ -192,17 +296,13 @@ def parse_email_to_raw_blocks(email, email_id):
     if not content:
         return []
 
-    # Phase -1 normalize
+    if _needs_html_blockquote_normalization(content):
+        content = insert_html_blockquote_markers(content)    
     content = insert_quote_markers(content)
-
-    # save based normalization
-    save_raw_email_text(
-        email_id=f"{email_id}_based",
-        content=content,
-    )
-
     content = insert_header_block_markers(content)
-    save_raw_email_text(email_id=f"{email_id}_q1", content=content,)
+
+
+    save_raw_email_text(email_id=f"{email_id}_q2", content=content,)
 
     if not content:
         return []

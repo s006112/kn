@@ -7,8 +7,8 @@ from pathlib import Path
 from email import policy
 from email.parser import BytesParser
 
-from test_parse_email_to_raw_based import parse_email_to_raw_blocks as parse_base_email_to_raw_blocks
-from test_parse_email_to_raw_enhanced import parse_email_to_raw_blocks as parse_enhanced_email_to_raw_blocks
+from tool.test_parse_email_to_raw_based import parse_email_to_raw_blocks as parse_base_email_to_raw_blocks
+from tool.test_parse_email_to_raw_enhanced import parse_email_to_raw_blocks as parse_enhanced_email_to_raw_blocks
 
 logging.basicConfig(
     level=logging.INFO,
