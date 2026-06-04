@@ -15,6 +15,7 @@ import sys
 import time
 import unittest
 import warnings
+from datetime import datetime
 from email.message import EmailMessage as StdEmailMessage
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -58,9 +59,21 @@ from ali.ali_llm import (  # noqa: E402
     route_email,
     step4_review,
 )
+from ali import ali_email  # noqa: E402
+from ali.ali_email import (  # noqa: E402
+    _build_review_subject,
+    _default_poll_interval_minutes,
+    _is_deterministic_failure,
+    _move_imap_message_to_failed,
+    _phase1_new_messages,
+    _phase2_sender_replies,
+    _run_guarded,
+    _send_internal_review,
+    pipeline_run,
+)
 from helper.utils_imap_client import RawFetchedRecord  # noqa: E402
 from helper.utils_imap_config import ImapConfig, SmtpConfig  # noqa: E402
-from helper.utils_imap_types import EmailMessage  # noqa: E402
+from helper.utils_imap_types import EmailMessage, SendResult  # noqa: E402
 
 
 class EmojiTextTestResult(unittest.TextTestResult):
@@ -84,7 +97,7 @@ class EmojiTextTestResult(unittest.TextTestResult):
 
     def addError(self, test, err) -> None:
         unittest.TestResult.addError(self, test, err)
-        self._write_marker("❌ ERROR")
+        self._write_marker("❌ FAIL")
 
 
 class EmojiTextTestRunner(unittest.TextTestRunner):
@@ -861,6 +874,250 @@ class LlmReviewAndRenderingTests(unittest.TestCase):
         )
 
 
+class EmailTimingTests(unittest.TestCase):
+    target_file = "ali_email.py"
+
+    def test_default_poll_interval_is_shorter_during_hong_kong_business_hours(self) -> None:
+        self.assertEqual(_default_poll_interval_minutes(datetime(2026, 1, 1, 9, 0)), 1)
+        self.assertEqual(_default_poll_interval_minutes(datetime(2026, 1, 1, 17, 59)), 1)
+
+    def test_default_poll_interval_is_longer_outside_business_hours(self) -> None:
+        self.assertEqual(_default_poll_interval_minutes(datetime(2026, 1, 1, 8, 59)), 2)
+        self.assertEqual(_default_poll_interval_minutes(datetime(2026, 1, 1, 18, 0)), 2)
+
+
+class EmailGuardedExecutionTests(unittest.TestCase):
+    target_file = "ali_email.py"
+
+    def test_deterministic_failure_classification(self) -> None:
+        self.assertTrue(_is_deterministic_failure(ValueError("bad input")))
+        self.assertTrue(_is_deterministic_failure(FileNotFoundError("missing prompt")))
+        self.assertFalse(_is_deterministic_failure(RuntimeError("offline")))
+
+    def test_run_guarded_quarantines_deterministic_uid_failure(self) -> None:
+        logger = MagicMock()
+
+        def fail() -> None:
+            raise FileNotFoundError("missing prompt")
+
+        with patch("ali.ali_email._move_imap_message_to_failed") as move_failed:
+            _run_guarded(logger=logger, ctx="ctx", uid=7, subject="Question", fn=fail)
+
+        move_failed.assert_called_once_with(7, logger=logger)
+        logger.exception.assert_called_once()
+        logger.error.assert_called_once()
+
+    def test_run_guarded_leaves_transient_failure_unseen_for_retry(self) -> None:
+        logger = MagicMock()
+
+        def fail() -> None:
+            raise RuntimeError("offline")
+
+        with patch("ali.ali_email._move_imap_message_to_failed") as move_failed:
+            _run_guarded(logger=logger, ctx="ctx", uid=7, subject="Question", fn=fail)
+
+        move_failed.assert_not_called()
+        logger.exception.assert_called_once()
+
+    def test_move_imap_message_to_failed_disconnects_client(self) -> None:
+        cfg = _imap_config(folder="Inbox")
+        client = MagicMock()
+        with (
+            patch("ali.ali_email.load_imap_config", return_value=cfg),
+            patch("ali.ali_email.ImapClient", return_value=client) as client_cls,
+        ):
+            _move_imap_message_to_failed(7, logger=MagicMock())
+
+        client_cls.assert_called_once_with(
+            server=cfg.host,
+            port=cfg.port,
+            user=cfg.user,
+            password=cfg.password,
+            verify_ssl=cfg.verify_ssl,
+            timeout=cfg.timeout,
+            logger=unittest.mock.ANY,
+        )
+        client.connect.assert_called_once_with()
+        client.move_message.assert_called_once_with("Inbox", 7, "Ali_failed")
+        client.disconnect.assert_called_once_with()
+
+    def test_move_imap_message_to_failed_disconnects_after_move_error(self) -> None:
+        client = MagicMock()
+        client.move_message.side_effect = RuntimeError("move failed")
+        with (
+            patch("ali.ali_email.load_imap_config", return_value=_imap_config()),
+            patch("ali.ali_email.ImapClient", return_value=client),
+            self.assertRaisesRegex(RuntimeError, "move failed"),
+        ):
+            _move_imap_message_to_failed(7, logger=MagicMock())
+
+        client.disconnect.assert_called_once_with()
+
+
+class EmailReviewPackagingTests(unittest.TestCase):
+    target_file = "ali_email.py"
+
+    def test_review_subject_strips_reply_prefix_and_replaces_old_marker(self) -> None:
+        self.assertEqual(
+            _build_review_subject(" Re:  Customer question [ALI:v1] ", 3),
+            "Customer question [ALI:v3]",
+        )
+
+    def test_empty_review_subject_becomes_marker_only(self) -> None:
+        self.assertEqual(_build_review_subject("", 2), "[ALI:v2]")
+
+    def test_send_internal_review_self_addresses_reviewer(self) -> None:
+        original = _email(from_addr="reviewer@example.com", subject="Customer question")
+        logger = MagicMock()
+        with patch("ali.ali_email.send_reply", return_value=SendResult(ok=True)) as send:
+            _send_internal_review(original, "Review body", logger=logger, review_version=2)
+
+        sent_msg, sent_body = send.call_args.args
+        self.assertEqual(sent_body, "Review body")
+        self.assertEqual(sent_msg.from_addr, "reviewer@example.com")
+        self.assertEqual(sent_msg.to_addrs, ["reviewer@example.com"])
+        self.assertEqual(sent_msg.subject, "Customer question [ALI:v2]")
+        logger.info.assert_called_once()
+
+    def test_send_internal_review_rejects_missing_reviewer_before_send(self) -> None:
+        with (
+            patch("ali.ali_email.send_reply") as send,
+            self.assertRaisesRegex(RuntimeError, "Missing reviewer"),
+        ):
+            _send_internal_review(_email(from_addr=""), "Review body", logger=MagicMock())
+
+        send.assert_not_called()
+
+    def test_send_internal_review_raises_on_send_failure(self) -> None:
+        with (
+            patch(
+                "ali.ali_email.send_reply",
+                return_value=SendResult(ok=False, error_message="smtp down"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "smtp down"),
+        ):
+            _send_internal_review(_email(), "Review body", logger=MagicMock())
+
+
+class EmailPhaseOneTests(unittest.TestCase):
+    target_file = "ali_email.py"
+
+    def test_phase1_logs_when_no_new_messages(self) -> None:
+        logger = MagicMock()
+        with patch("ali.ali_email.fetch_new_messages", return_value=[]):
+            _phase1_new_messages(logger=logger)
+
+        logger.info.assert_called_once_with("No new messages to process.")
+
+    def test_phase1_generates_sends_and_marks_new_message_seen(self) -> None:
+        msg = _email(uid=11, subject="Customer question")
+        logger = MagicMock()
+        with (
+            patch("ali.ali_email.fetch_new_messages", return_value=[msg]) as fetch,
+            patch("ali.ali_email.generate_review_package", return_value={"draft": "Draft"}) as generate,
+            patch("ali.ali_email.render_review", return_value="Rendered review") as render,
+            patch("ali.ali_email._send_internal_review") as send_review,
+            patch("ali.ali_email.mark_imap_message_seen") as mark_seen,
+        ):
+            _phase1_new_messages(logger=logger)
+
+        fetch.assert_called_once_with(max_messages=2)
+        generate.assert_called_once_with(
+            msg,
+            system_prompt_path=ali_email.SYSTEM_PROMPT_PATH,
+            model=ali_email.LLM_MODEL,
+        )
+        render.assert_called_once_with({"draft": "Draft"})
+        send_review.assert_called_once_with(msg, "Rendered review", logger=logger)
+        mark_seen.assert_called_once_with(11, logger=logger)
+
+    def test_phase1_skips_review_thread_without_generation_or_seen_mark(self) -> None:
+        msg = _email(uid=11, subject="Customer question [ALI:v1]")
+        with (
+            patch("ali.ali_email.fetch_new_messages", return_value=[msg]),
+            patch("ali.ali_email.generate_review_package") as generate,
+            patch("ali.ali_email._send_internal_review") as send_review,
+            patch("ali.ali_email.mark_imap_message_seen") as mark_seen,
+        ):
+            _phase1_new_messages(logger=MagicMock())
+
+        generate.assert_not_called()
+        send_review.assert_not_called()
+        mark_seen.assert_not_called()
+
+
+class EmailPhaseTwoTests(unittest.TestCase):
+    target_file = "ali_email.py"
+
+    def test_phase2_empty_reviewer_reply_marks_seen_without_generation(self) -> None:
+        msg = _email(uid=12, body_text="   ")
+        with (
+            patch("ali.ali_email.fetch_sender_replies", return_value=[msg]),
+            patch("ali.ali_email.generate_review_package") as generate,
+            patch("ali.ali_email._send_internal_review") as send_review,
+            patch("ali.ali_email.mark_imap_message_seen") as mark_seen,
+        ):
+            _phase2_sender_replies(logger=MagicMock())
+
+        generate.assert_not_called()
+        send_review.assert_not_called()
+        mark_seen.assert_called_once_with(12, logger=unittest.mock.ANY)
+
+    def test_phase2_edits_previous_draft_and_increments_version(self) -> None:
+        msg = _email(uid=12, subject="Customer question [ALI:v2]", body_text="Please revise")
+        logger = MagicMock()
+        with (
+            patch("ali.ali_email.fetch_sender_replies", return_value=[msg]),
+            patch("ali.ali_email.extract_reviewer_reply_text", return_value="Please revise"),
+            patch(
+                "ali.ali_email.extract_last_review_state",
+                return_value=ReviewState(version=2, draft="Previous draft"),
+            ),
+            patch("ali.ali_email.generate_review_package", return_value={"draft": "Edited"}) as generate,
+            patch("ali.ali_email.render_review", return_value="Rendered edit") as render,
+            patch("ali.ali_email._send_internal_review") as send_review,
+            patch("ali.ali_email.mark_imap_message_seen") as mark_seen,
+        ):
+            _phase2_sender_replies(logger=logger)
+
+        reviewer_input = generate.call_args.args[0]
+        self.assertEqual(reviewer_input.body_text, "Please revise")
+        generate.assert_called_once_with(
+            reviewer_input,
+            system_prompt_path=ali_email.SYSTEM_PROMPT_PATH,
+            model=ali_email.LLM_MODEL,
+            previous_draft="Previous draft",
+            edit_version=3,
+        )
+        render.assert_called_once_with({"draft": "Edited"})
+        send_review.assert_called_once_with(
+            msg,
+            "Rendered edit",
+            logger=logger,
+            base_subject=msg.subject,
+            review_version=3,
+        )
+        mark_seen.assert_called_once_with(12, logger=logger)
+
+
+class EmailPipelineTests(unittest.TestCase):
+    target_file = "ali_email.py"
+
+    def test_pipeline_run_configures_logger_and_runs_both_phases(self) -> None:
+        logger = MagicMock()
+        with (
+            patch("ali.ali_email.configure_logging", return_value=logger) as configure,
+            patch("ali.ali_email._phase1_new_messages") as phase1,
+            patch("ali.ali_email._phase2_sender_replies") as phase2,
+        ):
+            pipeline_run()
+
+        configure.assert_called_once_with("ali_pipeline")
+        phase1.assert_called_once_with(logger=logger)
+        phase2.assert_called_once_with(logger=logger)
+        logger.info.assert_called_once_with("Pipeline run finished.")
+
+
 class SubjectTests(unittest.TestCase):
     target_file = "ali_send.py"
 
@@ -1190,7 +1447,8 @@ def load_tests(
         "ali_parse.py": 0,
         "ali_fetch.py": 1,
         "ali_llm.py": 2,
-        "ali_send.py": 3,
+        "ali_email.py": 3,
+        "ali_send.py": 4,
     }
     test_classes = [
         obj
