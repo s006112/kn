@@ -46,43 +46,13 @@ class WhisperService:
     """Thin wrapper around Whisper model loading and transcription."""
 
     def __init__(self, model_name: str):
-        """Purpose:
-        Store the Whisper model name and initialize lazy-loaded state.
-
-        Inputs:
-        - model_name: Whisper model identifier passed to `whisper.load_model`.
-
-        Outputs:
-        - None.
-
-        Side effects:
-        - Initializes internal cache fields (`_model`, `_device`).
-
-        Failure modes:
-        - None (constructor does not load the model).
-        """
+        """Store model name; actual Whisper model is lazy-loaded."""
         self.model_name = model_name
         self._model: Optional[whisper.Whisper] = None
         self._device: Optional[str] = None
 
     def _load_model(self, device: str) -> whisper.Whisper:
-        """Purpose:
-        Load and cache a Whisper model instance for the requested device.
-
-        Inputs:
-        - device: Device string passed to `whisper.load_model` (for example, `cpu`
-          or `cuda`).
-
-        Outputs:
-        - A `whisper.Whisper` model instance loaded on `device`.
-
-        Side effects:
-        - May load model weights and allocate CPU/GPU memory.
-        - Updates `_model` and `_device` cache fields.
-
-        Failure modes:
-        - Propagates exceptions raised by `whisper.load_model`.
-        """
+        """Load and cache the model for `device`; CUDA uses FP16 to save VRAM."""
         if self._model is None or self._device != device:
             if device == "cuda":
                 # Load on CPU first to avoid transient GPU peak from FP32 weights,
@@ -103,23 +73,7 @@ class WhisperService:
         return self._model
 
     def load_model(self) -> whisper.Whisper:
-        """Purpose:
-        Select an execution device and ensure the Whisper model is loaded.
-
-        Inputs:
-        - None.
-
-        Outputs:
-        - A `whisper.Whisper` model instance loaded on the chosen device.
-
-        Side effects:
-        - Logs device selection and model loading.
-        - May allocate CPU/GPU memory to load the model.
-
-        Failure modes:
-        - Propagates exceptions raised by CUDA queries or model loading; GPU
-          device-name probing errors are logged and treated as CPU fallback.
-        """
+        """Pick CUDA if available, otherwise CPU, then load the model."""
         device = "cpu"
         if torch.cuda.is_available():
             try:
@@ -139,28 +93,7 @@ class WhisperService:
         language: Optional[str] = None,
         task: str = "transcribe",
     ) -> str:
-        """Purpose:
-        Transcribe an audio file path into text using Whisper.
-
-        Inputs:
-        - wav_path: Path to an audio file accepted by `whisper.Whisper.transcribe`.
-        - language: Optional language hint passed through to Whisper.
-        - task: Whisper task name passed through to Whisper (for example,
-          `transcribe` or `translate`).
-
-        Outputs:
-        - The recognized text from Whisper's `text` field (empty string if absent).
-
-        Side effects:
-        - Loads the Whisper model on first use.
-        - Logs device decisions and GPU OOM fallback.
-        - On CUDA out-of-memory, triggers GC and clears the CUDA cache before
-          reloading the model on CPU.
-
-        Failure modes:
-        - Re-raises `RuntimeError` for non-OOM failures or when not on CUDA.
-        - Propagates exceptions from file handling and Whisper transcription.
-        """
+        """Transcribe a file path; CUDA OOM clears cache and retries once."""
         model = self.load_model()
         device = self._device or "cpu"
 
@@ -196,24 +129,7 @@ class WhisperService:
         language: Optional[str] = None,
         task: str = "transcribe",
     ) -> str:
-        """Purpose:
-        Transcribe an in-memory audio array into text using Whisper.
-
-        Inputs:
-        - audio: Audio array accepted by `whisper.Whisper.transcribe`.
-        - sample_rate: Provided by callers but not used by this function.
-        - language: Optional language hint passed through to Whisper.
-        - task: Whisper task name passed through to Whisper.
-
-        Outputs:
-        - The recognized text from Whisper's `text` field (empty string if absent).
-
-        Side effects:
-        - Loads the Whisper model on first use.
-
-        Failure modes:
-        - Propagates exceptions from Whisper transcription.
-        """
+        """Transcribe an audio array; `sample_rate` is kept for caller compatibility."""
         model = self.load_model()
         device = self._device or "cpu"
         try:
@@ -241,19 +157,5 @@ class WhisperService:
 
 @lru_cache(maxsize=1)
 def get_service(model_name: str = "large-v3-turbo") -> WhisperService:
-    """Purpose:
-    Provide a cached `WhisperService` instance for the requested model.
-
-    Inputs:
-    - model_name: Whisper model identifier passed to `WhisperService`.
-
-    Outputs:
-    - A process-wide cached `WhisperService` configured for `model_name`.
-
-    Side effects:
-    - Constructs and caches a `WhisperService` instance on first call.
-
-    Failure modes:
-    - None (construction is lazy and does not load model weights).
-    """
+    """Return the process-wide cached Whisper service."""
     return WhisperService(model_name)

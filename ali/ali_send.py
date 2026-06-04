@@ -147,11 +147,12 @@ def send_reply(
     _require_reply_to_forward_sender(original.from_addr, msg["To"])
 
     try:
-        with (
-            smtplib.SMTP_SSL(smtp_cfg.host, smtp_cfg.port, timeout=60)
-            if smtp_cfg.use_ssl
-            else smtplib.SMTP(smtp_cfg.host, smtp_cfg.port, timeout=60)
-        ) as server:
+        if smtp_cfg.use_ssl:
+            smtp_server = smtplib.SMTP_SSL(smtp_cfg.host, smtp_cfg.port, timeout=60)
+        else:
+            smtp_server = smtplib.SMTP(smtp_cfg.host, smtp_cfg.port, timeout=60)
+
+        with smtp_server as server:
             server.ehlo()
             if smtp_cfg.use_starttls and not smtp_cfg.use_ssl:
                 server.starttls()

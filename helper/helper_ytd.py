@@ -328,16 +328,16 @@ def move_download_to_output_dir(path, temp_dir, output_dir):
 
 def download(url, mode, output_dir=None, resolve_timeout=20):
     original_url = url
-    if not (url := clean_url(url)):
+    url = clean_url(url)
+    if not url:
         raise RuntimeError(f"Invalid URL: {original_url}")
     temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
+    url, cmd = build_download_command(url, mode, temp_dir, resolve_timeout)
+    print(f"Download request: {url} ({classify_url(url) or mode})")
     try:
-        url, cmd = build_download_command(url, mode, temp_dir, resolve_timeout)
-        print(f"Download request: {url} ({classify_url(url) or mode})")
         return move_download_to_output_dir(*run_yt_dlp(cmd, temp_dir), output_dir)
-    except Exception:
+    finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
-        raise
 
 
 def _try_download_ttml_for_lang(lang, url, output_dir):
@@ -362,17 +362,18 @@ def _try_download_ttml_for_lang(lang, url, output_dir):
     try:
         proc = subprocess.run(cmd, cwd=temp_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         ttml_files = sorted(Path(temp_dir).glob("*.ttml"), key=lambda p: p.stat().st_mtime, reverse=True)
-        if ttml_files:
-            print(f"Using TTML subtitle language: {lang}")
-            return move_download_to_output_dir(ttml_files[0], temp_dir, output_dir)
-        tail = "\n".join((proc.stdout or "").splitlines()[-5:])
-        print(f"No TTML for {lang}: {tail or 'yt-dlp failed'}" if proc.returncode else f"No TTML for {lang}")
+        if not ttml_files:
+            tail = "\n".join((proc.stdout or "").splitlines()[-5:])
+            print(f"No TTML for {lang}: {tail or 'yt-dlp failed'}" if proc.returncode else f"No TTML for {lang}")
+            return None
+        print(f"Using TTML subtitle language: {lang}")
+        return move_download_to_output_dir(ttml_files[0], temp_dir, output_dir)
     except Exception as exc:
         print(f"No TTML for {lang}: {exc}")
+        return None
     finally:
         if output_dir is not None or not any(Path(temp_dir).glob("*.ttml")):
             shutil.rmtree(temp_dir, ignore_errors=True)
-    return None
 
 
 def _try_download_ttml(url, output_dir=None):
@@ -388,4 +389,4 @@ def download_ttml_or_video(url, mode="worst", output_dir=None, resolve_timeout=2
     url = clean_url(url)
     if classify_url(url) == PLATFORM_YOUTUBE and (res := _try_download_ttml(url, output_dir=output_dir)):
         return res
-    return download(url or url, mode, output_dir, resolve_timeout)
+    return download(url, mode, output_dir, resolve_timeout)

@@ -42,23 +42,7 @@ _DOTENV_LOADED = False
 
 
 def load_env(dotenv_path: str | Path | None = None) -> None:
-    """
-    Purpose:
-    Load environment variables from a `.env` file at most once.
-
-    Inputs:
-    - dotenv_path: Optional path to a dotenv file; when omitted, uses default discovery.
-
-    Outputs:
-    - None.
-
-    Side effects:
-    - Calls `dotenv.load_dotenv` and updates `os.environ`.
-    - Sets the module-level `_DOTENV_LOADED` flag.
-
-    Failure modes:
-    - Propagates exceptions raised by `load_dotenv` for invalid paths or read errors.
-    """
+    """Load `.env` once per process. 不重复加载。"""
 
     global _DOTENV_LOADED
     if _DOTENV_LOADED:
@@ -71,45 +55,14 @@ def load_env(dotenv_path: str | Path | None = None) -> None:
 
 
 def get_log_level(default: str = "INFO") -> int:
-    """
-    Purpose:
-    Resolve the effective logging level from `LOG_LEVEL` or a default value.
-
-    Inputs:
-    - default: Fallback level name used when `LOG_LEVEL` is not set.
-
-    Outputs:
-    - An integer logging level (e.g. `logging.INFO`).
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - Unknown level names fall back to `logging.INFO`.
-    """
+    """Resolve `LOG_LEVEL`; invalid names fall back to `logging.INFO`."""
 
     level_name = os.getenv("LOG_LEVEL", default).upper()
     return getattr(logging, level_name, logging.INFO)
 
 
 def configure_logging(logger_name: str = "app", default_level: str = "INFO") -> logging.Logger:
-    """
-    Purpose:
-    Configure basic logging formatting/level once and return a named logger.
-
-    Inputs:
-    - logger_name: Name passed to `logging.getLogger`.
-    - default_level: Default log level name when `LOG_LEVEL` is missing.
-
-    Outputs:
-    - A `logging.Logger` instance for `logger_name`.
-
-    Side effects:
-    - Calls `logging.basicConfig` when the root logger has no handlers.
-
-    Failure modes:
-    - None.
-    """
+    """Set basic logging if needed, then return the named logger."""
 
     level = get_log_level(default_level)
     root = logging.getLogger()
@@ -119,23 +72,7 @@ def configure_logging(logger_name: str = "app", default_level: str = "INFO") -> 
 
 
 def get_env_flag(name: str, default: bool = False) -> bool:
-    """
-    Purpose:
-    Interpret an environment variable as a boolean.
-
-    Inputs:
-    - name: Environment variable name.
-    - default: Value returned when the variable is missing.
-
-    Outputs:
-    - `True` only when the value equals `"true"` (case-insensitive); otherwise `False` or `default`.
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - None.
-    """
+    """Read a boolean env var; only `"true"` counts as true."""
 
     value = os.getenv(name)
     if value is None:
@@ -144,23 +81,7 @@ def get_env_flag(name: str, default: bool = False) -> bool:
 
 
 def get_env_int(name: str, default: int) -> int:
-    """
-    Purpose:
-    Read an integer from an environment variable with a safe default.
-
-    Inputs:
-    - name: Environment variable name.
-    - default: Value returned when the variable is missing or cannot be parsed.
-
-    Outputs:
-    - Parsed integer value or `default`.
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - Returns `default` when parsing fails (no exception is raised).
-    """
+    """Read an int env var; 缺失或解析失败时返回默认值。"""
 
     value = os.getenv(name)
     if value is None or value == "":
@@ -172,23 +93,7 @@ def get_env_int(name: str, default: int) -> int:
 
 
 def get_env_str(name: str, default: str) -> str:
-    """
-    Purpose:
-    Read a string from an environment variable with a safe default.
-
-    Inputs:
-    - name: Environment variable name.
-    - default: Value returned when the variable is missing or empty.
-
-    Outputs:
-    - Environment variable value or `default`.
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - None.
-    """
+    """Read a string env var; missing or empty values use `default`."""
 
     value = os.getenv(name)
     if not value:
@@ -197,23 +102,7 @@ def get_env_str(name: str, default: str) -> str:
 
 
 def load_prompt_text(base_dir: Path, filename: str) -> str | None:
-    """
-    Purpose:
-    Read a UTF-8 prompt text file from a base directory.
-
-    Inputs:
-    - base_dir: Directory containing the prompt file.
-    - filename: Prompt filename relative to `base_dir`.
-
-    Outputs:
-    - File contents as a string, or `None` when reading fails.
-
-    Side effects:
-    - Reads from the filesystem.
-
-    Failure modes:
-    - Returns `None` on any exception.
-    """
+    """Read a UTF-8 prompt file; return `None` if it cannot be read."""
 
     try:
         return (base_dir / filename).read_text("utf-8")

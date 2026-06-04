@@ -26,7 +26,7 @@ from helper import helper_ytd as ytd  # noqa: E402
 
 # Toggle this to True when you want real network metadata checks by default.
 # You can also run with YTD_REAL_CHECK=1 without editing this file.
-RUN_REAL_LINK_CHECKS = False
+RUN_REAL_LINK_CHECKS = True
 
 REAL_LINK_FIXTURES = (
     ("https://www.youtube.com/watch?v=4dnri2eITX8", ytd.PLATFORM_YOUTUBE, "youtube"),
