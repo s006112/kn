@@ -195,18 +195,9 @@ def discover_evaluation_commands(file_paths: list[str]) -> list[str]:
         if not parent.is_dir():
             continue
 
-        stem = target.stem
-        patterns = (
-            "evaluation.py",
-            "evaluation_*.py",
-            "*_evaluation.py",
-            f"evaluation_{stem}.py",
-            f"evaluation_*{stem}*.py",
-        )
-        for pattern in patterns:
-            for evaluation_path in sorted(parent.glob(pattern)):
-                if evaluation_path.is_file():
-                    add(f"python {repo_rel(evaluation_path)}")
+        for evaluation_path in sorted(parent.glob("*evaluation*.py")):
+            if evaluation_path.is_file():
+                add(f"python {repo_rel(evaluation_path)}")
 
     for target in targets:
         if target.is_file():
@@ -217,6 +208,7 @@ def discover_evaluation_commands(file_paths: list[str]) -> list[str]:
 
 def format_evaluation_commands(file_paths: list[str]) -> str:
     return "\n".join(f"- `{command}`" for command in discover_evaluation_commands(file_paths))
+
 
 def latest_plan_path() -> Path | None:
     attempt = latest_attempt()
@@ -300,7 +292,17 @@ def check_ready(task_path: Path) -> None:
     print("READY" if ok else "NOT READY")
 
 
-def get_final_plan_commands() -> list[str]:
+def _dedupe_commands(commands: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for command in commands:
+        if command not in seen:
+            seen.add(command)
+            deduped.append(command)
+    return deduped
+
+
+def get_final_plan_commands(task_path: Path | None = None) -> list[str]:
     text = read_text(S3_FINAL_PLAN_PATH)
     commands: list[str] = []
     in_bash = False
@@ -313,16 +315,21 @@ def get_final_plan_commands() -> list[str]:
         if in_bash and stripped:
             commands.append(stripped)
 
-    return commands
+    if task_path is None:
+        return _dedupe_commands(commands)
+
+    task_text = read_text(task_path) if task_path.exists() else ""
+    discovered_commands = discover_evaluation_commands(parse_allowed_files(task_text))
+    return _dedupe_commands(discovered_commands + commands)
 
 
-def run_verify() -> bool:
-    # Run verify commands from the accepted plan.
+def run_verify(task_path: Path = S0_TASK_PATH) -> bool:
+    # Run discovered local evaluation commands before accepted-plan fallbacks.
     if not S3_FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return False
 
-    commands = get_final_plan_commands()
+    commands = get_final_plan_commands(task_path)
 
     print("=== Verify Patch Commands ===", flush=True)
     if not commands:
@@ -448,7 +455,7 @@ def apply_patch(task_path: Path) -> bool:
         path.write_text(read_text(path).replace(search, replace, 1), encoding="utf-8")
 
     print("PATCH_APPLIED")
-    return run_verify()
+    return run_verify(task_path)
 
 
 def revert_patch(task_path: Path) -> bool:
@@ -462,7 +469,7 @@ def revert_patch(task_path: Path) -> bool:
         path.write_text(read_text(path).replace(replace, search, 1), encoding="utf-8")
 
     print("PATCH_REVERTED")
-    return run_verify()
+    return run_verify(task_path)
 
 
 def draft_task(task_path: Path, target_arg: str | None = None) -> None:
