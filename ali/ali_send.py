@@ -99,17 +99,27 @@ def _build_message(
     body = (reply_body or "").rstrip()
     original_body = (original.body_text or "").strip()
     if original_body:
-        lines = ["-----Original Message-----"]
-        for label, value in (
-            ("From", original.from_addr),
-            ("To", ", ".join(original.to_addrs) if original.to_addrs else ""),
-            ("Subject", original.subject),
-        ):
-            if value:
-                lines.append(f"{label}: {value}")
-        lines.append("")
-        lines.extend(f"> {line}" if line.strip() else ">" for line in original_body.splitlines())
-        body += ("\n\n" if body else "") + "\n".join(lines)
+        body = (
+            f"{body}\n\n" if body else ""
+        ) + "\n".join(
+            [
+                "-----Original Message-----",
+                *[
+                    f"{label}: {value}"
+                    for label, value in (
+                        ("From", original.from_addr),
+                        ("To", ", ".join(original.to_addrs) if original.to_addrs else ""),
+                        ("Subject", original.subject),
+                    )
+                    if value
+                ],
+                "",
+                "\n".join(
+                    f"> {line}" if line.strip() else ">"
+                    for line in original_body.splitlines()
+                ),
+            ]
+        )
 
     msg.set_content(body, subtype="plain", charset="utf-8")
     return msg

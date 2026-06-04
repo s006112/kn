@@ -175,39 +175,7 @@ def load_allowed_file_context(file_paths: list[str]) -> str:
         parts.append(f"# {rel}\n\n```text\n{read_text(path)}\n```")
     return "\n\n---\n\n".join(parts)
 
-def discover_evaluation_commands(file_paths: list[str]) -> list[str]:
-    commands: list[str] = []
-    seen: set[str] = set()
-    targets: list[Path] = []
 
-    def add(command: str) -> None:
-        if command not in seen:
-            seen.add(command)
-            commands.append(command)
-
-    for file_path in file_paths:
-        target = Path(file_path)
-        if not target.is_absolute():
-            target = REPO_ROOT / target
-        targets.append(target)
-
-        parent = target.parent
-        if not parent.is_dir():
-            continue
-
-        for evaluation_path in sorted(parent.glob("*evaluation*.py")):
-            if evaluation_path.is_file():
-                add(f"python {repo_rel(evaluation_path)}")
-
-    for target in targets:
-        if target.is_file():
-            add(f"python -m py_compile {repo_rel(target)}")
-
-    return commands
-
-
-def format_evaluation_commands(file_paths: list[str]) -> str:
-    return "\n".join(f"- `{command}`" for command in discover_evaluation_commands(file_paths))
 
 
 def latest_plan_path() -> Path | None:
@@ -290,37 +258,6 @@ def check_ready(task_path: Path) -> None:
         ok &= passed
     print()
     print("READY" if ok else "NOT READY")
-
-
-def _dedupe_commands(commands: list[str]) -> list[str]:
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for command in commands:
-        if command not in seen:
-            seen.add(command)
-            deduped.append(command)
-    return deduped
-
-
-def get_final_plan_commands(task_path: Path | None = None) -> list[str]:
-    text = read_text(S3_FINAL_PLAN_PATH)
-    commands: list[str] = []
-    in_bash = False
-
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_bash = stripped in ("```bash", "```sh", "```shell")
-            continue
-        if in_bash and stripped:
-            commands.append(stripped)
-
-    if task_path is None:
-        return _dedupe_commands(commands)
-
-    task_text = read_text(task_path) if task_path.exists() else ""
-    discovered_commands = discover_evaluation_commands(parse_allowed_files(task_text))
-    return _dedupe_commands(discovered_commands + commands)
 
 
 def run_verify(task_path: Path = S0_TASK_PATH) -> bool:
@@ -611,6 +548,48 @@ def make_patch(task_path: Path) -> None:
     if check_patch(task_path):
         print("Next: python agent/agent.py --apply-patch")
         apply_patch(task_path)
+
+
+
+def discover_evaluation_commands(file_paths: list[str]) -> list[str]:
+    targets: list[Path] = []
+    for file_path in file_paths:
+        path = Path(file_path)
+        targets.append(path if path.is_absolute() else REPO_ROOT / path)
+
+    evaluation_commands = [
+        f"python {repo_rel(evaluation_path)}"
+        for target in targets
+        if target.parent.is_dir()
+        for evaluation_path in sorted(target.parent.glob("*evaluation*.py"))
+        if evaluation_path.is_file()
+    ]
+    py_compile_commands = [
+        f"python -m py_compile {repo_rel(target)}"
+        for target in targets
+        if target.is_file()
+    ]
+    return list(dict.fromkeys(evaluation_commands + py_compile_commands))
+
+
+def format_evaluation_commands(file_paths: list[str]) -> str:
+    return "\n".join(f"- `{command}`" for command in discover_evaluation_commands(file_paths))
+
+
+def get_final_plan_commands(task_path: Path | None = None) -> list[str]:
+    plan_commands = [
+        line.strip()
+        for block in re.findall(r"```(?:bash|sh|shell)\n([\s\S]*?)```", read_text(S3_FINAL_PLAN_PATH))
+        for line in block.splitlines()
+        if line.strip()
+    ]
+
+    if task_path is None:
+        return list(dict.fromkeys(plan_commands))
+
+    task_text = read_text(task_path) if task_path.exists() else ""
+    discovered_commands = discover_evaluation_commands(parse_allowed_files(task_text))
+    return list(dict.fromkeys(discovered_commands + plan_commands))
 
 
 def run_iterate_task(task_path: Path) -> None:
