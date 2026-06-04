@@ -625,7 +625,7 @@ class LlmRagRetrievalTests(unittest.TestCase):
             [unittest.mock.call("Subject: Question\n\nBody"), unittest.mock.call("Body only")],
         )
 
-    def test_rita_retrieval_uses_rita_engine_and_search_intent(self) -> None:
+    def test_rita_retrieval_uses_rita_engine_and_plain_query(self) -> None:
         engine = MagicMock()
         engine.answer_question.return_value = ("Historical answer", "")
         with patch("ali.ali_llm.get_rag_engine", return_value=engine) as get_engine:
@@ -634,8 +634,7 @@ class LlmRagRetrievalTests(unittest.TestCase):
         query = engine.answer_question.call_args.args[0]
         self.assertEqual(result, "Historical answer")
         get_engine.assert_called_once_with("rita")
-        self.assertTrue(query.startswith("Subject: Rita request\n\nFind the attachment\n\n"))
-        self.assertIn("Search intent: find relevant historical records", query)
+        self.assertEqual(query, "Subject: Rita request\n\nFind the attachment")
 
     def test_similarity_table_is_printed(self) -> None:
         engine = MagicMock()

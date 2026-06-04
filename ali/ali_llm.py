@@ -45,36 +45,22 @@ RAG_ENGINE_BY_CATEGORY = {
 # Step2: 检索 / 工具
 # -----------------------------------------------------------------------------
 
-RAG_ROUTE_CONFIG = {
-    "safety_regulation": {
-        "engine": "standard",
-        "query_suffix": "",
-    },
-    "technical": {
-        "engine": "standard",
-        "query_suffix": "",
-    },
-    "rita": {
-        "engine": "rita",
-        "query_suffix": (
-            "\n\nSearch intent: find relevant historical records from the selected source collection. "
-            "Prioritize matching context, participants, dates, content, attachments, "
-            "document formats, and previous handling instructions. "
-            "Digest the retrieved context and answer from the RAG data."
-        ),
-    },
+RAG_ENGINE_BY_CATEGORY = {
+    "safety_regulation": "standard",
+    "technical": "standard",
+    "rita": "rita",
 }
 
+
 def rag_retrieval(route: RouteResult, subject: str, body: str) -> str | None:
-    config = RAG_ROUTE_CONFIG.get(route.category)
-    if config is None:
+    engine_name = RAG_ENGINE_BY_CATEGORY.get(route.category)
+    if engine_name is None:
         return None
 
     query = "\n\n".join(part for part in (f"Subject: {subject}" if subject else "", body) if part).strip()
-    query += config["query_suffix"]
 
     try:
-        answer, table_str = get_rag_engine(config["engine"]).answer_question(query)
+        answer, table_str = get_rag_engine(engine_name).answer_question(query)
         if table_str:
             print(f"\n[RAG] FAISS similarity table:\n\n{table_str}\n")
         return answer.strip() if answer else None

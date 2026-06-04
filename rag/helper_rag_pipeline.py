@@ -86,16 +86,9 @@ def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
     return sqlite_paths[0], index_paths[0]
 
 
-def get_rag_engine(mode: str = "standard"):
+def get_rag_engine(mode: str):
     """
-    Purpose:
-    Create a configured `RagEngine`.
-
-    Inputs:
-    - mode: Retrieval mode name.
-
-    Outputs:
-    - A new `RagEngine` instance.
+    Create a configured `RagEngine` for the explicitly selected retrieval mode.
     """
     return RagEngine(mode=mode)
 
@@ -401,7 +394,7 @@ class RagEngine:
     - A class exposing `answer_question`.
     """
 
-    def __init__(self, *, mode: str = "mbox"):
+    def __init__(self, *, mode: str):
         """
         Purpose:
         Load retrieval artifacts and runtime state.
