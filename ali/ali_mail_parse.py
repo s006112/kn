@@ -59,10 +59,12 @@ _QUOTE_PREFIX_RE = re.compile(r"^\s*>+\s?(.*)$")
 
 
 def _normalize_body(text: str) -> str:
+    """Normalize all newline variants to LF for stable parsing."""
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _strip_empty_ends(lines: list[str]) -> list[str]:
+    """Remove leading and trailing blank lines while preserving interior spacing."""
     start = 0
     end = len(lines)
     while start < end and not lines[start].strip():
@@ -73,6 +75,7 @@ def _strip_empty_ends(lines: list[str]) -> list[str]:
 
 
 def _review_body_for_parsing(review_email: EmailMessage) -> str:
+    """Prepare a review email body by normalizing newlines and unquoting replies."""
     body = _normalize_body(review_email.body_text or "")
     out: list[str] = []
 
@@ -105,6 +108,7 @@ def normalize_email_input(
     *,
     max_body_len: int | None = 12000,
 ) -> tuple[str, str]:
+    """Return a trimmed subject/body pair with optional body length limiting."""
     subject = (email.subject or "").strip()
     body = _normalize_body((email.body_text or "").strip())
 
@@ -118,6 +122,7 @@ def normalize_email_input(
 
 
 def extract_reviewer_reply_text(body: str) -> str:
+    """Extract the reviewer-authored reply before quoted or forwarded content."""
     if not body:
         return ""
 
@@ -156,6 +161,7 @@ class ReviewState:
 
 
 def extract_last_review_state(review_email: EmailMessage) -> ReviewState:
+    """Find the highest-version review block and return its draft content."""
     body = _review_body_for_parsing(review_email)
 
     headers = list(_HEADER_RE.finditer(body))
