@@ -600,9 +600,6 @@ class FetchRawEmailParsingTests(unittest.TestCase):
 class LlmRagRetrievalTests(unittest.TestCase):
     target_file = "ali_llm.py"
 
-    def setUp(self) -> None:
-        ali_llm._RAG_ENGINE_CACHE.clear()
-
     def test_unmapped_category_skips_retrieval(self) -> None:
         with patch("ali.ali_llm.get_rag_engine") as get_engine:
             result = rag_retrieval(_route("commercial"), "Question", "Body")
@@ -610,7 +607,7 @@ class LlmRagRetrievalTests(unittest.TestCase):
         self.assertIsNone(result)
         get_engine.assert_not_called()
 
-    def test_mapped_categories_share_cached_engine(self) -> None:
+    def test_mapped_categories_use_configured_engine(self) -> None:
         engine = MagicMock()
         engine.answer_question.side_effect = [("First answer", ""), ("Second answer", "")]
         with patch("ali.ali_llm.get_rag_engine", return_value=engine) as get_engine:
@@ -619,7 +616,10 @@ class LlmRagRetrievalTests(unittest.TestCase):
 
         self.assertEqual(first, "First answer")
         self.assertEqual(second, "Second answer")
-        get_engine.assert_called_once_with("standard")
+        self.assertEqual(
+            get_engine.call_args_list,
+            [unittest.mock.call("standard"), unittest.mock.call("standard")],
+        )
         self.assertEqual(
             engine.answer_question.call_args_list,
             [unittest.mock.call("Subject: Question\n\nBody"), unittest.mock.call("Body only")],
