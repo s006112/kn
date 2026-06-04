@@ -65,7 +65,7 @@ FAULT_LEDGER 規則：
 
 2. Refactor plan
 
-   * 列出 2-5 個具體改動。
+   * 列出 1-3 個具體改動。
    * 每個改動必須說明 target function / block 與目的。
    * 可以包含 function-level 或 block-level replacement。
    * 不要輸出 code。
