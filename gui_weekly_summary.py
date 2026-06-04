@@ -38,7 +38,7 @@ from helper.helper_llm import call_llm
 #LLM_MODEL = "sonar"
 # LLM_MODEL = "gemini-2.0-flash"
 # LLM_MODEL = "gemini-3-pro-preview"
-LLM_MODEL = "gpt-5-mini"
+LLM_MODEL = "gpt-5.4-mini"
 # LLM_MODEL = "sonar, gemini-2.5-flash, gemini-3-pro-preview"
 
 load_env()

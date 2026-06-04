@@ -19,7 +19,7 @@ from clipboard_polyfill import CLIPBOARD_POLYFILL
 #LLM_MODEL = "sonar"
 #LLM_MODEL = "gemini-2.0-flash"
 #LLM_MODEL = "gemini-3-pro"
-LLM_MODEL = "gpt-4.1-mini"
+LLM_MODEL = "gpt-5.4-mini"
 #LLM_MODEL = "sonar, gemini-2.5-flash, gemini-3-pro"
 
 DEBUG_TEXTBOXES = os.getenv("DEBUG_TEXTBOXES", "false").strip().lower() == "true"
