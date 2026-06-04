@@ -48,7 +48,7 @@ from ali.ali_parse import (
 # Config
 # -----------------------------------------------------------------------------
 
-LLM_MODEL = "sonar-pro"
+LLM_MODEL = "sonar"
 SYSTEM_PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompt" / "prompt_ali_system.txt"
 
 _HKT_ZONE = ZoneInfo("Asia/Hong_Kong")

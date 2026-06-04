@@ -1,30 +1,23 @@
 #!/usr/bin/env python3
 """
 helper_rag_pipeline.py
-Responsibility
-This module loads RAG artifacts for a selected mode, executes similarity retrieval over stored embeddings, builds retrieval context, and returns LLM answers with a similarity report table.
 
-Used by:
-* ali/ali_llm.py
-* gui_web_rag.py
+按指定 mode 載入 RAG 索引與 chunks，執行相似度檢索，組裝上下文，
+並回傳 LLM 回答與相似度報表。
+
+使用者：
+- ali/ali_llm.py
+- gui_web_rag.py
 
 Pipelines:
 - resolve_paths -> load_chunks -> load_vectors -> normalize_vectors
 - embed_query -> knn_search_switch -> score_threshold -> topk
 - context_build -> prompt_assembly -> llm_call
 
-Invariants:
-- The metadata row count must equal the reconstructed embedding row count.
-- The in-memory embedding matrix (used by brute backend) is L2-normalized before retrieval.
-- Empty or whitespace-only questions return `("", "")`.
-- Retrieval output order is descending by similarity score before top-k truncation.
-
-Out of scope:
-- Building FAISS indexes or writing chunk metadata databases.
-- Defining embedding model internals.
-- Implementing reranking or retrieval semantics beyond score-threshold filtering and top-k selection.
-- Implementing tokenizer-specific policy outside the provided token budget gate.
-
+注意：
+- metadata 筆數必須等於 embedding 筆數。
+- 空問題回傳 `("", "")`。
+- 檢索結果依相似度由高到低排序。
 """
 from __future__ import annotations
 
@@ -42,28 +35,21 @@ from rag.helper_query_rewriting import rewrite_query_variants, merge_candidates_
 
 
 
-LLM_MODEL = "sonar-pro"   # sonar, sonar-pro, gpt-5.1, gpt-5-mini,
+LLM_MODEL = "sonar"   # sonar, sonar-pro, gpt-5.1, gpt-5-mini,
 SEARCH_BACKEND = "faiss"   # "faiss" | "brute"
-TOP_K = 10
-CANDIDATE_K = 200
+TOP_K = 50
+CANDIDATE_K = 10
 SCORE_THRESHOLD = 0.4
 ROOT = Path(__file__).resolve().parents[1]
-SYSTEM_PROMPT_PATH = ROOT / "prompt/prompt_rag_system.txt"
+STANDARD_SYSTEM_PROMPT_PATH = ROOT / "prompt/prompt_rag_standard.txt"
+GENERAL_SYSTEM_PROMPT_PATH = ROOT / "prompt/prompt_rag_general.txt"
 faiss_dir = ROOT / "data/faiss"
 ENABLE_QUERY_REWRITE = False   # True = current behavior, False = single-query
 REWRITE_MAX_VARIANTS = 3
 
 def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
     """
-    Purpose:
-    Return FAISS artifact paths for a RAG mode.
-
-    Inputs:
-    - mode: Retrieval mode name.
-
-    Outputs:
-    - A tuple `(sqlite_path, index_path)` under `data/faiss`, where each
-      filename starts with `mode` and has the correct extension.
+    依 mode 找出對應的 SQLite metadata 與 FAISS index 檔案。
     """
     #if mode not in {"standard", "mbox"}:
     #    raise ValueError(f"Unknown RAG mode: {mode!r} (expected 'standard' or 'mbox')")
@@ -88,21 +74,14 @@ def get_faiss_artifact_paths(mode: str) -> tuple[Path, Path]:
 
 def get_rag_engine(mode: str):
     """
-    Create a configured `RagEngine` for the explicitly selected retrieval mode.
+    建立指定 mode 的 RAG engine。
     """
     return RagEngine(mode=mode)
 
 
 def _load_all_chunks(db_path: Path) -> Tuple[List[str], List[Dict[str, Any]]]: 
     """
-    Purpose:
-    Load chunk text and metadata rows from SQLite.
-
-    Inputs:
-    - db_path: Path to a SQLite file containing a `chunks` table.
-
-    Outputs:
-    - A tuple `(texts, metas)` aligned by `vector_id` order.
+    從 SQLite 讀取 chunk 文字與 metadata，依 vector_id 對齊。
     """
 
     conn = sqlite3.connect(db_path)
@@ -122,17 +101,7 @@ def _load_all_chunks(db_path: Path) -> Tuple[List[str], List[Dict[str, Any]]]:
 
 def _load_embedding_matrix(index_path: Path) -> np.ndarray: 
     """
-    Purpose:
-    Load a FAISS index and reconstruct its vectors.
-
-    Inputs:
-    - index_path: Path to a FAISS index file.
-
-    Outputs:
-    - A `float32` array with shape `(ntotal, dim)`.
-
-    Failure modes:
-    - Returns an empty (0, dim) matrix when the index contains no vectors.
+    載入 FAISS index，並重建 embedding matrix。
     """
 
     if not index_path.exists():
@@ -149,16 +118,7 @@ def _load_embedding_matrix(index_path: Path) -> np.ndarray:
 
 def brute_force_knn(E: np.ndarray, q: np.ndarray, k: int): 
     """
-    Purpose:
-    Compute dot-product similarity rankings.
-
-    Inputs:
-    - E: Embedding matrix with shape `(n, d)`.
-    - q: Query vector with shape `(d,)`.
-    - k: Number of rows to return.
-
-    Outputs:
-    - A tuple `(idx, scores)` for descending similarity rows.
+    以 dot product 計算相似度，回傳前 k 筆結果。
     """
 
     scores = E @ q
@@ -173,12 +133,7 @@ def dedup_by_score_and_word(
     limit,
 ):
     """
-    Heuristic deduplication based on (score, word_count).
-
-    Notes:
-    - Query-dependent
-    - Not stable across floating-point perturbations
-    - Does NOT express content identity
+    用 (score, word_count) 做簡單去重；不是內容層級的去重。
     """
     seen, out_i, out_s = set(), [], []
     for i, s in zip(idx, scores):
@@ -204,27 +159,7 @@ def knn_search_switch(
     k: int,
 ):
     """
-    Purpose:
-    Run similarity retrieval using the selected backend and apply a
-    heuristic deduplication step to produce up to `k` candidates.
-
-    Notes:
-    - Deduplication is heuristic and query-dependent.
-    - The current deduplication strategy is based on `(score, word_count)`
-      and does NOT represent content or thread identity.
-    - FAISS backend may over-fetch and iteratively expand the search
-      to satisfy `k` results after deduplication.
-
-    Inputs:
-    - backend: Search backend name ("faiss" or "brute").
-    - E: Normalized embedding matrix (brute backend only).
-    - index: FAISS index (faiss backend only).
-    - metas: Metadata aligned to vector rows.
-    - q: Query embedding vector.
-    - k: Requested number of results.
-
-    Outputs:
-    - `(idx, scores)` with at most `k` rows, ordered by descending score.
+    依 backend 執行相似度檢索，並套用簡單去重。
     """
     def brute():
         scores = E @ q
@@ -264,17 +199,7 @@ def _build_similarity_table(
     page_key: str,
 ):
     """
-    Purpose:
-    Build a Markdown table for retrieval scores and selected metadata fields.
-
-    Inputs:
-    - top_idx: Iterable of selected metadata indices.
-    - top_scores: Iterable of similarity scores aligned to `top_idx`.
-    - metas: Metadata list aligned to vector rows.
-    - page_key: Metadata key used for the page-like column.
-
-    Outputs:
-    - A Markdown table string including a total word-count footer.
+    建立檢索結果的 Markdown 相似度表。
     """
     table = [
         "| score | doc | date | file_type | page | word |",
@@ -298,16 +223,7 @@ def _build_similarity_table(
 
 def apply_score_threshold(idx, scores, threshold):
     """
-    Purpose:
-    - Guarantees at least one result when input is non-empty, even if all scores are below threshold.
-
-    Inputs:
-    - idx: Candidate indices.
-    - scores: Candidate similarity scores.
-    - threshold: Minimum score to keep.
-
-    Outputs:
-    - A tuple `(idx, scores)` after threshold filtering.
+    依相似度門檻過濾；若全部低於門檻，至少保留最高分一筆。
     """
     idx_arr = np.asarray(idx, dtype=int)
     scores_arr = np.asarray(scores, dtype=float)
@@ -321,16 +237,7 @@ def apply_score_threshold(idx, scores, threshold):
 
 def apply_top_k(idx, scores, k):
     """
-    Purpose:
-    Truncate ranked rows to top-k.
-
-    Inputs:
-    - idx: Ranked indices in descending score order.
-    - scores: Ranked scores aligned to `idx`.
-    - k: Maximum number of rows to keep.
-
-    Outputs:
-    - A tuple `(idx, scores)` limited to `k` rows.
+    保留排序後的前 k 筆結果。
     """
     # This slice preserves the current ranking contract for downstream formatting.
     idx_arr = np.asarray(idx, dtype=int)
@@ -341,17 +248,7 @@ def apply_top_k(idx, scores, k):
 
 def build_context(chunks, metas, tokenizer, max_tokens):
     """
-    Purpose:
-    Build a context string from retrieved chunks with optional token-budget truncation.
-
-    Inputs:
-    - chunks: Ordered chunk strings selected for context.
-    - metas: Metadata aligned to `chunks`.
-    - tokenizer: Tokenizer object with `encode`, or `None`.
-    - max_tokens: Token budget, or `None`.
-
-    Outputs:
-    - A single context string joined by blank lines.
+    將檢索到的 chunks 組成上下文，可選擇套用 token 上限。
     """
     assert len(chunks) == len(metas)
 
@@ -384,26 +281,12 @@ def build_context(chunks, metas, tokenizer, max_tokens):
 
 class RagEngine:
     """
-    Purpose:
-    Provide a loaded retrieval engine and query-answer interface.
-
-    Inputs:
-    - None.
-
-    Outputs:
-    - A class exposing `answer_question`.
+    已載入索引的 RAG 查詢引擎。
     """
 
     def __init__(self, *, mode: str):
         """
-        Purpose:
-        Load retrieval artifacts and runtime state.
-
-        Inputs:
-        - mode: Retrieval mode name.
-
-        Outputs:
-        - None.
+        載入指定 mode 的檢索資料與執行狀態。
         """
         db_path, index_path = get_faiss_artifact_paths(mode)
 
@@ -425,20 +308,15 @@ class RagEngine:
         norms[norms == 0] = 1.0
         self.E = self.E / norms
 
-        self.SYSTEM_PROMPT = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
+        # standard 使用專用 prompt；其他 mode 使用通用 prompt。
+        system_prompt_path = STANDARD_SYSTEM_PROMPT_PATH if mode == "standard" else GENERAL_SYSTEM_PROMPT_PATH
+        print(f"Using system prompt: {system_prompt_path}")
+        self.SYSTEM_PROMPT = system_prompt_path.read_text(encoding="utf-8").strip()
 
 
     def answer_question(self, question: str) -> tuple[str, str]:
         """
-        Purpose:
-        Retrieve supporting chunks and generate an LLM answer.
-
-        Inputs:
-        - question: User question text.
-
-        Outputs:
-        - A tuple `(answer_text, table_str)`, where `table_str` includes both selected Top-K
-        and non-selected CANDIDATE_K rows for inspection.
+        檢索相關 chunks，產生 LLM 回答與相似度報表。
         """
         q = question.strip()
         if not q:
