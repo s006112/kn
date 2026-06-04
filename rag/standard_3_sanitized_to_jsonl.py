@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
+standard_3_sanitized_to_jsonl.py
+
 Responsibility:
 Convert split text files into page-scoped JSONL blocks with an injected UL
 standard/page prefix and basic size counters.
 
 JSON metadata schema (per line):
-- block_id: str, "{file_id}_p{page_id}"
-- file_id: str, source stem (e.g., "s935_10.page_splited" -> "s935_10")
+- block_id: str, "{doc_id}_p{page_id}"
+- doc_id: str, source stem (e.g., "s935_10.page_splited" -> "s935_10")
 - page: int | str, numeric page number or non-numeric page label such as "T2"
 - char: int, length of the text field
 - word: int, whitespace-split token count of the text field
@@ -16,7 +18,7 @@ Pipelines:
 - read_files -> split_pages -> inject_prefix -> write_jsonl
 
 Invariants:
-- Each output line is a JSON object with keys: block_id, file_id, page, char,
+- Each output line is a JSON object with keys: block_id, doc_id, page, char,
   word, text.
 - The text field always includes a "UL {standard_number}, page {page}" prefix.
 - Numeric page labels remain integers and preserve zero-padded block IDs.
@@ -24,7 +26,7 @@ Invariants:
 
 Out of scope:
 - Vectorization or embedding metadata.
-- Downstream schemas with doc_type, doc_id, or vector fields.
+- Downstream schemas with doc_type or vector fields.
 """
 
 from __future__ import annotations
@@ -37,9 +39,9 @@ import sys
 # === 配置 ===
 
 TXT_SPLITTED_DIR = Path("data/standard/txt_splitted")
-OUTPUT = Path("data/standard/json")
+OUTPUT = Path("data/standard/jsonl")
 IN_SUFFIX = ".page_splited"
-STD_BLOCK_SUFFIX = ".chunks.jsonl"
+STD_BLOCK_SUFFIX = "_chunks.jsonl"
 PAGE_RE = re.compile(r"^<<<PAGE_BREAK_((?:\d+|T\d+))>>>$", flags=re.IGNORECASE)
 
 
@@ -64,8 +66,8 @@ def main() -> None:
     OUTPUT.mkdir(parents=True, exist_ok=True)
 
     for src in sorted(TXT_SPLITTED_DIR.rglob(f"*{IN_SUFFIX}")):
-        dst = OUTPUT / src.with_suffix(STD_BLOCK_SUFFIX).name
-        file_id = src.stem
+        dst = OUTPUT / f"{src.stem}{STD_BLOCK_SUFFIX}"
+        doc_id = src.stem
         print(f"[INFO] {src} -> {dst}")
 
         current_page: int | str = 0
@@ -78,8 +80,8 @@ def main() -> None:
                 if not buf:
                     return
 
-                m_std = re.match(r"^s(\d+[A-Za-z]?)_\d+$", file_id)
-                standard_number = m_std.group(1) if m_std else file_id
+                m_std = re.match(r"^s(\d+[A-Za-z]?)_\d+$", doc_id)
+                standard_number = m_std.group(1) if m_std else doc_id
                 text_body = " ".join(buf).strip()
 
                 if not text_body:
@@ -88,8 +90,8 @@ def main() -> None:
 
                 text = f"UL {standard_number}, page {current_page} {text_body}"
                 block = {
-                    "block_id": f"{file_id}_p{format_page_id(current_page)}",
-                    "file_id": file_id,
+                    "block_id": f"{doc_id}_{format_page_id(current_page)}",
+                    "doc_id": doc_id,
                     "page": current_page,
                     "char": len(text),
                     "word": len(text.split()),

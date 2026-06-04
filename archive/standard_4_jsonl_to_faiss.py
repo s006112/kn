@@ -60,7 +60,7 @@ TARGET_CHUNK_FOLDER = "standard"  #  mbox or standard
 # Paths
 # ============================================================
 # Input directory containing `*.page_blocks.jsonl` files.
-JSON_DIR = Path(f"data/{TARGET_CHUNK_FOLDER}/json")
+JSON_DIR = Path(f"data/{TARGET_CHUNK_FOLDER}/jsonl")
 FAISS_DIR = Path("data/faiss")
 BLOCK_SUFFIX = "chunks.jsonl"
 

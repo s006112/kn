@@ -120,36 +120,71 @@ def build_embedding_text(text: str, meta: dict) -> str:
 
 
 def build_index(chunks_path, out_dir, name):
-    """Purpose:
-    Build a FAISS index file and matching SQLite metadata database from a chunk JSONL file.
-    Inputs:
-    - chunks_path: Filesystem path to the chunk JSONL file.
-    - out_dir: Directory where output index and SQLite files are written.
-    - name: Basename prefix for generated output files.
-    Outputs:
-    - None
-    """
+    """Append JSONL chunks to an existing FAISS index and SQLite store, or create them if absent."""
     os.makedirs(out_dir, exist_ok=True)
-    dim = embed(["test"]).shape[1]
-    index = faiss.IndexFlatIP(dim)
 
+    index_path = os.path.join(out_dir, f"{name}_faiss.index")
     sqlite_path = os.path.join(out_dir, f"{name}_metadata.sqlite")
-    conn = init_sqlite(sqlite_path)
-    cur = conn.cursor()
+
+    index_exists = os.path.exists(index_path)
+    sqlite_exists = os.path.exists(sqlite_path)
+
+    if index_exists != sqlite_exists:
+        raise RuntimeError(
+            f"Incomplete FAISS database for {name}: "
+            f"index_exists={index_exists}, sqlite_exists={sqlite_exists}"
+        )
 
     with open(chunks_path, encoding="utf-8") as f:
-        total = sum(1 for _ in f)
+        import_count = sum(1 for _ in f)
 
-    vid = 0
+    if index_exists:
+        index = faiss.read_index(index_path)
+        conn = sqlite3.connect(sqlite_path)
+
+        original_count = index.ntotal
+        sqlite_count = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+
+        if sqlite_count != original_count:
+            conn.close()
+            raise RuntimeError(
+                f"FAISS/SQLite count mismatch for {name}: "
+                f"index={original_count}, sqlite={sqlite_count}"
+            )
+
+        print(f"Appending to existing database: {name}")
+        vid = original_count
+    else:
+        dim = embed(["test"]).shape[1]
+        index = faiss.IndexFlatIP(dim)
+        conn = init_sqlite(sqlite_path)
+
+        original_count = 0
+        print(f"Creating new database: {name}")
+        vid = 0
+
+    print(f"Original chunks count: {original_count}")
+    print(f"Import chunks count:   {import_count}")
+
+    cur = conn.cursor()
+    added = 0
 
     for batch in _iter_batches(chunks_path, SAFE_BATCH):
-        raw_texts = [t for (t, _) in batch]
-        embed_texts = [build_embedding_text(t, m) for (t, m) in batch]
+        raw_texts = [t for t, _ in batch]
+        embed_texts = [build_embedding_text(t, m) for t, m in batch]
         metas = [m for _, m in batch]
         embs = embed(embed_texts)
-        index.add(embs)
 
-        _progress_bar(vid + len(batch), total)
+        if embs.shape[1] != index.d:
+            conn.close()
+            raise RuntimeError(
+                f"Embedding dimension mismatch for {name}: "
+                f"index={index.d}, embeddings={embs.shape[1]}"
+            )
+
+        index.add(embs)
+        added += len(batch)
+        _progress_bar(added, import_count)
 
         for j, meta in enumerate(metas):
             cur.execute(
@@ -160,7 +195,11 @@ def build_index(chunks_path, out_dir, name):
 
     print()
 
+    updated_count = index.ntotal
+
     conn.commit()
     conn.close()
+    faiss.write_index(index, index_path)
 
-    faiss.write_index(index, os.path.join(out_dir, f"{name}_faiss.index"))
+    print(f"Updated chunks count:  {updated_count}")
+    print(f"FAISS index + metadata saved: {name}")

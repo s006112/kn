@@ -51,7 +51,7 @@ def route_email(subject: str, body: str) -> str:
     """
     text = f"{subject}\n{body}".lower()
 
-    if re.search(r"\b(iec|ul|en|ce|csa|tests?|testing|certif\w*|compl(?:y|i\w*)|standard\w*|lumin\w*?)\b",text):
+    if re.search(r"\b(iec|ul|nec|csa|tests?|testing|certif\w*|compl(?:y|i\w*)|standard\w*|lumin\w*?)\b",text):
         return "safety"
 
     if re.search(r"\b(rita\w*)\b", text):
