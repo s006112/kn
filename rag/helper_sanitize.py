@@ -23,7 +23,7 @@ Invariants:
 - `sanitize_text` returns `""` when input is falsy and collapses all whitespace to single spaces.
 - `clean_overlay` only removes whole lines and preserves the original line endings of kept lines.
 - `apply_page_splitting` emits `\\n`-joined output and may normalize line endings.
-- Page-break markers use the `<<<PAGE_BREAK_N>>>` format with `PAGE_BREAK_PREFIX`.
+- Page-break markers use the `<<<PAGE_BREAK_LABEL>>>` format with `PAGE_BREAK_PREFIX`.
 
 Out of scope:
 - File I/O, discovery, and orchestration.
@@ -125,18 +125,6 @@ def _remove_email_like_phrases(text: str) -> str:
     """
     Purpose:
     Mask email-like tokens in free text using a heuristic rule.
-
-    Inputs:
-    - text: Source text to scan.
-
-    Outputs:
-    - A string where some tokens are replaced by a single space.
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - None; unexpected inputs raise from string operations.
     """
     parts = _EMAIL_TOKEN_SPLITTER.split(text)
     for idx, part in enumerate(parts):
@@ -145,9 +133,7 @@ def _remove_email_like_phrases(text: str) -> str:
         token = part.strip(_EMAIL_STRIP_CHARS)
         if not token:
             continue
-        lowered = token.lower()
-        # Keep this heuristic conservative to reduce accidental masking of non-email text.
-        if "@" in token and "com" in lowered:
+        if "@" in token and "com" in token.lower():
             parts[idx] = " "
     return "".join(parts)
 
@@ -156,21 +142,10 @@ def sanitize_text(text: str | bytes) -> str:
     """
     Purpose:
     Normalize and clean text from heterogeneous sources into a compact Unicode string.
-
-    Inputs:
-    - text: `str` or raw `bytes`. For `bytes`, decoding is attempted in a fixed order.
-
-    Outputs:
-    - A whitespace-collapsed `str` with selected legacy/control characters removed or replaced.
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - If `text` is not `str | bytes`, operations like `isinstance`/`unicodedata.normalize` may raise.
     """
     if not text:
         return ""
+
     if isinstance(text, bytes):
         for enc in ("utf-8", "windows-1252", "iso-8859-1"):
             try:
@@ -200,29 +175,18 @@ def sanitize_text(text: str | bytes) -> str:
 # Layout-aware standard TXT sanitization (overlay removal + page splitting)
 # ============================================================================
 
-PAGE_BREAK_PREFIX = "<<<PAGE_BREAK_"  # 實際輸出：<<<PAGE_BREAK_2>>>
+PAGE_BREAK_PREFIX = "<<<PAGE_BREAK_"
+PAGE_LABEL_RE = re.compile(r"(?:\d+|T\d+)", flags=re.IGNORECASE)
 
 
 def clean_overlay(text: str) -> str:
     """
     Purpose:
     Remove known overlay/header/footer/banner lines commonly present in UL/IEC standard PDFs converted to text.
-
-    Inputs:
-    - text: Raw extracted text.
-
-    Outputs:
-    - Text with matching overlay lines removed; all other lines are preserved verbatim (including their original
-      line endings).
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - None (returns input unchanged when `text` is falsy).
     """
     if not text:
         return text
+
     patterns = [
         r"[A-Z][A-Z ]+\s+\d{1,2},\s+\d{4}(?:\s*[–-]\s*UL\s*\d+[A-Za-z]?)?",
         r"Document Was Downloaded By .*",
@@ -231,28 +195,14 @@ def clean_overlay(text: str) -> str:
     ]
     overlay_regex = re.compile("|".join(patterns), flags=re.IGNORECASE)
     lines = text.splitlines(keepends=True)
-    kept_lines = [line for line in lines if not overlay_regex.search(line)]
-    cleaned = "".join(kept_lines)
-    return cleaned
+    return "".join(line for line in lines if not overlay_regex.search(line))
+
+
+def is_page_label(s: str) -> bool:
+    return bool(PAGE_LABEL_RE.fullmatch(s))
 
 
 def is_ul_header_line(s: str) -> bool:
-    """
-    Purpose:
-    Detect whether a line is a UL-style header line that can participate in page-break detection.
-
-    Inputs:
-    - s: A single line (typically stripped).
-
-    Outputs:
-    - True if the line matches one of the supported UL-header patterns; otherwise False.
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - None.
-    """
     if re.fullmatch(r"UL\s+\d+[A-Za-z]?", s):
         return True
     if s.startswith("NMX-J") and "UL" in s:
@@ -261,48 +211,37 @@ def is_ul_header_line(s: str) -> bool:
         return True
     if s.startswith("ANSI") and re.search(r"\bUL\s+\d+\b", s):
         return True
+    if re.fullmatch(
+        r"(?:National\s+Electrical\s+Code\s+Handbook\s+\d{4}|\d{4}\s+National\s+Electrical\s+Code\s+Handbook)",
+        s,
+    ):
+        return True
     return False
 
 
 def apply_page_splitting(text: str) -> str:
     """
     Purpose:
-    Replace adjacent "page number" + "UL header" line pairs with a `<<<PAGE_BREAK_N>>>` marker.
-
-    Inputs:
-    - text: Input text to scan for header pairs.
-
-    Outputs:
-    - Text where matched two-line pairs are replaced by a single page-break marker line.
-
-    Side effects:
-    - None.
-
-    Failure modes:
-    - None.
+    Replace adjacent "page label" + "document header" line pairs with a page-break marker.
     """
     lines = text.splitlines()
     out_lines: list[str] = []
     i = 0
+
     while i < len(lines):
         line = lines[i]
         s = line.strip()
 
-        if s.isdigit() and i + 1 < len(lines):
+        if i + 1 < len(lines):
             next_line = lines[i + 1]
             ns = next_line.strip()
-            if is_ul_header_line(ns):
-                page_no = s
-                out_lines.append(f"{PAGE_BREAK_PREFIX}{page_no}>>>")
-                i += 2
-                continue
 
-        if is_ul_header_line(s) and i + 1 < len(lines):
-            next_line = lines[i + 1]
-            ns = next_line.strip()
-            if ns.isdigit():
-                page_no = ns
-                out_lines.append(f"{PAGE_BREAK_PREFIX}{page_no}>>>")
+            s_is_page = is_page_label(s)
+            ns_is_page = is_page_label(ns)
+
+            if (s_is_page and is_ul_header_line(ns)) or (ns_is_page and is_ul_header_line(s)):
+                page_label = s if s_is_page else ns
+                out_lines.append(f"{PAGE_BREAK_PREFIX}{page_label}>>>")
                 i += 2
                 continue
 
