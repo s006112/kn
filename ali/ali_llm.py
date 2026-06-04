@@ -15,6 +15,7 @@ Used by:
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -26,7 +27,6 @@ from helper.helper_config import load_prompt_text
 from helper.helper_llm import call_llm
 from helper.utils_imap_types import EmailMessage
 from rag.helper_rag_pipeline import get_rag_engine
-from ali.ali_router import RouteResult, route_email
 from ali.ali_parse import (
     REVIEW_FOOTER_LINE,
     REVIEW_HEADER_LINE_TEMPLATE,
@@ -41,23 +41,37 @@ RAG_ENGINE_BY_CATEGORY = {
     "rita": "rita",
 }
 
+
 # -----------------------------------------------------------------------------
-# Step2: 检索 / 工具
+# Step2: Routing & RAG
 # -----------------------------------------------------------------------------
 
-RAG_ENGINE_BY_CATEGORY = {
-    "safety_regulation": "standard",
-    "technical": "standard",
-    "rita": "rita",
-}
+def route_email(subject: str, body: str) -> str:
+    """
+    依 email 文字选择 RAG category；未命中则回传 unknown。
+    """
+    text = f"{subject}\n{body}".lower()
+
+    if re.search(r"\b(iec|ul|en|ce|csa|certification|certificates?|compliance|standards?)\b", text):
+        return "safety_regulation"
+
+    if re.search(r"\b(specifications?|test(?:ing|s)?|wiring|voltage|current|power|dimensions?)\b", text):
+        return "technical"
+
+    if re.search(r"\b(rita|ritasoo)\b", text):
+        return "rita"
+
+    return "unknown"
 
 
-def rag_retrieval(route: RouteResult, subject: str, body: str, *, model: str) -> str | None:
-    engine_name = RAG_ENGINE_BY_CATEGORY.get(route.category)
+def rag_retrieval(category: str, subject: str, body: str, *, model: str) -> str | None:
+    engine_name = RAG_ENGINE_BY_CATEGORY.get(category)
     if engine_name is None:
         return None
 
-    query = "\n\n".join(part for part in (f"Subject: {subject}" if subject else "", body) if part).strip()
+    query = "\n\n".join(
+        part for part in (f"Subject: {subject}" if subject else "", body) if part
+    ).strip()
 
     try:
         answer, table_str = get_rag_engine(engine_name).answer_question(query, model=model)
@@ -80,7 +94,7 @@ def generate_review_package(
     model: str,
     previous_draft: str | None = None,
     edit_version: int = 1,
-) -> dict[str, str | list[str]]:
+) -> dict[str, str | list[str] | int]:
     """
     生成内部 review package。
 
@@ -88,19 +102,29 @@ def generate_review_package(
     仅编辑路径。
     """
     subject_norm, body_norm = normalize_email_input(email)
+
     if previous_draft is None:
-        route = route_email(subject_norm, body_norm)
-        retrieval_context = rag_retrieval(route, subject_norm, body_norm, model=model)
+        category = route_email(subject_norm, body_norm)
+        retrieval_context = rag_retrieval(category, subject_norm, body_norm, model=model)
+
         if retrieval_context is not None:
             draft = retrieval_context
         else:
             system_prompt = load_prompt_text(system_prompt_path.parent, system_prompt_path.name)
             if system_prompt is None:
                 raise FileNotFoundError(f"Prompt file not found: {system_prompt_path}")
+
             draft = call_llm(
                 model=model,
                 system_prompt=system_prompt,
-                user_text="\n\n".join(part for part in (f"Subject: {subject_norm}" if subject_norm else "", body_norm) if part),
+                user_text="\n\n".join(
+                    part
+                    for part in (
+                        f"Subject: {subject_norm}" if subject_norm else "",
+                        body_norm,
+                    )
+                    if part
+                ),
                 file_path=None,
             ).strip()
     else:
@@ -108,6 +132,7 @@ def generate_review_package(
         edit_system_prompt = load_prompt_text(edit_prompt_path.parent, edit_prompt_path.name)
         if edit_system_prompt is None:
             raise FileNotFoundError(f"Reviewer-reply edit prompt not found: {edit_prompt_path}")
+
         draft = call_llm(
             model=model,
             system_prompt=edit_system_prompt,
@@ -123,12 +148,14 @@ def generate_review_package(
 
     draft = step4_review(draft, enabled=False)
     review_id = (email.message_id or "").strip() or str(email.uid)
+
     return {
         "review_id": review_id,
         "draft": draft,
         "allowed_actions": ["REPLY", "REJECT"],
         "version": edit_version,
     }
+
 
 # -----------------------------------------------------------------------------
 # Step4: 复核（空壳）
@@ -149,7 +176,6 @@ def step4_review(
 
     # 未来的复核逻辑放在这里。
     return draft
-
 
 
 # -----------------------------------------------------------------------------

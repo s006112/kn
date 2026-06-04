@@ -55,9 +55,9 @@ from ali.ali_llm import (  # noqa: E402
     generate_review_package,
     rag_retrieval,
     render_review,
+    route_email,
     step4_review,
 )
-from ali.ali_router import RouteResult  # noqa: E402
 from helper.utils_imap_client import RawFetchedRecord  # noqa: E402
 from helper.utils_imap_config import ImapConfig, SmtpConfig  # noqa: E402
 from helper.utils_imap_types import EmailMessage  # noqa: E402
@@ -184,16 +184,6 @@ def _raw_email(uid: int = 7, **headers: str) -> RawFetchedRecord:
         flags=[],
         internaldate=None,
         raw_bytes=f"{header_text}\n\nBody text".encode(),
-    )
-
-
-def _route(category: str) -> RouteResult:
-    return RouteResult(
-        category=category,
-        intent="ask_information",
-        risk_level="low",
-        rationale="evaluation",
-        confidence=1.0,
     )
 
 
@@ -600,9 +590,17 @@ class FetchRawEmailParsingTests(unittest.TestCase):
 class LlmRagRetrievalTests(unittest.TestCase):
     target_file = "ali_llm.py"
 
+    def test_route_email_maps_rag_categories(self) -> None:
+        self.assertEqual(route_email("IEC certificate needed", ""), "safety_regulation")
+        self.assertEqual(route_email("", "Please share voltage and wiring specifications"), "technical")
+        self.assertEqual(route_email("Rita request", "Find the attachment"), "rita")
+
+    def test_route_email_defaults_to_unknown(self) -> None:
+        self.assertEqual(route_email("Pricing follow-up", "Can you confirm the delivery date?"), "unknown")
+
     def test_unmapped_category_skips_retrieval(self) -> None:
         with patch("ali.ali_llm.get_rag_engine") as get_engine:
-            result = rag_retrieval(_route("commercial"), "Question", "Body", model="test-model")
+            result = rag_retrieval("unknown", "Question", "Body", model="test-model")
 
         self.assertIsNone(result)
         get_engine.assert_not_called()
@@ -611,8 +609,8 @@ class LlmRagRetrievalTests(unittest.TestCase):
         engine = MagicMock()
         engine.answer_question.side_effect = [("First answer", ""), ("Second answer", "")]
         with patch("ali.ali_llm.get_rag_engine", return_value=engine) as get_engine:
-            first = rag_retrieval(_route("safety_regulation"), "Question", "Body", model="test-model")
-            second = rag_retrieval(_route("technical"), "", "Body only", model="test-model")
+            first = rag_retrieval("safety_regulation", "Question", "Body", model="test-model")
+            second = rag_retrieval("technical", "", "Body only", model="test-model")
 
         self.assertEqual(first, "First answer")
         self.assertEqual(second, "Second answer")
@@ -633,7 +631,7 @@ class LlmRagRetrievalTests(unittest.TestCase):
         engine.answer_question.return_value = ("Historical answer", "")
         with patch("ali.ali_llm.get_rag_engine", return_value=engine) as get_engine:
             result = rag_retrieval(
-                _route("rita"),
+                "rita",
                 "Rita request",
                 "Find the attachment",
                 model="test-model",
@@ -651,7 +649,7 @@ class LlmRagRetrievalTests(unittest.TestCase):
             patch("ali.ali_llm.get_rag_engine", return_value=engine),
             patch("builtins.print") as print_mock,
         ):
-            rag_retrieval(_route("technical"), "Question", "", model="test-model")
+            rag_retrieval("technical", "Question", "", model="test-model")
 
         print_mock.assert_called_once_with("\n[RAG] FAISS similarity table:\n\nscore table\n")
 
@@ -659,7 +657,7 @@ class LlmRagRetrievalTests(unittest.TestCase):
         engine = MagicMock()
         engine.answer_question.return_value = ("", "")
         with patch("ali.ali_llm.get_rag_engine", return_value=engine):
-            result = rag_retrieval(_route("technical"), "", "", model="test-model")
+            result = rag_retrieval("technical", "", "", model="test-model")
 
         self.assertIsNone(result)
         engine.answer_question.assert_called_once_with("", model="test-model")
@@ -669,7 +667,7 @@ class LlmRagRetrievalTests(unittest.TestCase):
             patch("ali.ali_llm.get_rag_engine", side_effect=RuntimeError("offline")),
             patch("builtins.print") as print_mock,
         ):
-            result = rag_retrieval(_route("technical"), "Question", "Body", model="test-model")
+            result = rag_retrieval("technical", "Question", "Body", model="test-model")
 
         self.assertIsNone(result)
         print_mock.assert_called_once_with("RAG Retrieval or Generation failed: offline")
@@ -682,9 +680,9 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
         self.prompt_path = Path("/tmp/prompts/prompt_generate.txt")
 
     def test_v1_uses_rag_answer_without_calling_llm(self) -> None:
-        route = _route("technical")
+        category = "technical"
         with (
-            patch("ali.ali_llm.route_email", return_value=route) as route_email,
+            patch("ali.ali_llm.route_email", return_value=category) as route_email,
             patch(
                 "ali.ali_llm.rag_retrieval",
                 return_value="RAG draft",
@@ -700,13 +698,13 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
 
         self.assertEqual(result["draft"], "RAG draft")
         route_email.assert_called_once_with("Question", "Body")
-        retrieve.assert_called_once_with(route, "Question", "Body", model="test-model")
+        retrieve.assert_called_once_with(category, "Question", "Body", model="test-model")
         load_prompt.assert_not_called()
         call_llm.assert_not_called()
 
     def test_v1_falls_back_to_prompt_llm_and_builds_package(self) -> None:
         with (
-            patch("ali.ali_llm.route_email", return_value=_route("commercial")),
+            patch("ali.ali_llm.route_email", return_value="unknown"),
             patch(
                 "ali.ali_llm.rag_retrieval",
                 return_value=None,
@@ -742,7 +740,7 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
 
     def test_v1_missing_prompt_raises(self) -> None:
         with (
-            patch("ali.ali_llm.route_email", return_value=_route("unknown")),
+            patch("ali.ali_llm.route_email", return_value="unknown"),
             patch(
                 "ali.ali_llm.rag_retrieval",
                 return_value=None,
@@ -758,7 +756,7 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
 
     def test_review_id_falls_back_to_uid(self) -> None:
         with (
-            patch("ali.ali_llm.route_email", return_value=_route("unknown")),
+            patch("ali.ali_llm.route_email", return_value="unknown"),
             patch(
                 "ali.ali_llm.rag_retrieval",
                 return_value=None,
