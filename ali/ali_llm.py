@@ -52,7 +52,7 @@ _RAG_ENGINE_CACHE = {}
 
 
 # -----------------------------------------------------------------------------
-# Step2: Retrieval / Tools
+# Step2: 检索 / 工具
 # -----------------------------------------------------------------------------
 
 def rag_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalResult:
@@ -85,7 +85,7 @@ def rag_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalRes
 
 
 # -----------------------------------------------------------------------------
-# Step3: Draft Generation (v1 rewrite, v2+ edit-only)
+# Step3: 草稿生成（v1 重写，v2+ 仅编辑）
 # -----------------------------------------------------------------------------
 
 def generate_review_package(
@@ -97,10 +97,10 @@ def generate_review_package(
     edit_version: int = 1,
 ) -> dict[str, str | list[str]]:
     """
-    Generate an INTERNAL review package.
+    生成内部 review package。
 
-    `previous_draft=None` selects the v1 path. A previous draft selects the
-    v2+ edit-only path.
+    `previous_draft=None` 走 v1 首次生成路径；传入 previous draft 时走 v2+
+    仅编辑路径。
     """
     subject_norm, body_norm = normalize_email_input(email)
     if previous_draft is None:
@@ -146,7 +146,7 @@ def generate_review_package(
     }
 
 # -----------------------------------------------------------------------------
-# Step4: Review (EMPTY SHELL)
+# Step4: 复核（空壳）
 # -----------------------------------------------------------------------------
 
 def step4_review(
@@ -155,30 +155,29 @@ def step4_review(
     enabled: bool = False,
 ) -> str:
     """
-    NO-OP placeholder for a pure post-generation hook.
+    预留的生成后复核 hook，当前保持 NO-OP。
 
-    Step4 must not reroute, retrieve, call LLM, or introduce new content.
+    Step4 不应重新 route、检索、调用 LLM，或引入新内容。
     """
     if not enabled:
         return draft
 
-    # Future review logic will be inserted here.
+    # 未来的复核逻辑放在这里。
     return draft
 
 
 
 # -----------------------------------------------------------------------------
-# Step5: Packaging
+# Step5: 打包
 # -----------------------------------------------------------------------------
 
 def render_review(
     review_obj: dict[str, str | list[str] | int],
 ) -> str:
     """
-    Render the review package into the final email body.
+    将 review package 渲染为最终邮件正文。
 
-    Today this is intentionally a thin wrapper that formats the review protocol
-    around `review_obj["draft"]`.
+    当前这里只是一个轻量包装，在 `review_obj["draft"]` 外套上 review protocol。
     """
     header = REVIEW_HEADER_LINE_TEMPLATE.format(version=review_obj["version"])
     footer = REVIEW_FOOTER_LINE
