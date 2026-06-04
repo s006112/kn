@@ -32,7 +32,7 @@ if __package__:
 else:
     from helper_faiss_embedding import embed
 
-SAFE_BATCH = 16
+SAFE_BATCH = 8
 
 
 def init_sqlite(path):

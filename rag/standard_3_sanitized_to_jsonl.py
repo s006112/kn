@@ -90,11 +90,14 @@ def main() -> None:
 
                 text = f"UL {standard_number}, page {current_page} {text_body}"
                 block = {
-                    "block_id": f"{doc_id}_{format_page_id(current_page)}",
-                    "doc_id": doc_id,
                     "page": current_page,
                     "char": len(text),
                     "word": len(text.split()),
+                    "file_type": "pdf",
+
+                    "doc_id": doc_id,
+                    "block_id": f"{doc_id}_{format_page_id(current_page)}",
+
                     "text": text,
                 }
                 out.write(json.dumps(block, ensure_ascii=False) + "\n")

@@ -124,14 +124,13 @@ def generate_review_package(
                 file_path=None,
             ).strip()
     else:
-        edit_prompt_path = system_prompt_path.parent / "prompt_edit_reviewer_reply.txt"
-        edit_system_prompt = load_prompt_text(edit_prompt_path.parent, edit_prompt_path.name)
-        if edit_system_prompt is None:
-            raise FileNotFoundError(f"Reviewer-reply edit prompt not found: {edit_prompt_path}")
+        system_prompt = load_prompt_text(system_prompt_path.parent, system_prompt_path.name)
+        if system_prompt is None:
+            raise FileNotFoundError(f"Prompt file not found: {system_prompt_path}")
 
         draft = call_llm(
             model=model,
-            system_prompt=edit_system_prompt,
+            system_prompt=system_prompt,
             user_text=(
                 "previous_draft:\n"
                 f"{previous_draft}\n\n"

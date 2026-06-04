@@ -128,7 +128,7 @@ Owner: `ali/ali_llm.py`
 
 v1 rewrite path：normalize input → route → optional RAG → RAG 有 answer 则用 answer 作 draft，否则走 system-prompt LLM path。
 
-v2+ edit-only path：必须有 `previous_draft`；加载 `prompt_edit_reviewer_reply.txt`；提取 reviewer reply text；只编辑 previous draft。
+v2+ edit-only path：必须有 `previous_draft`；复用 `prompt_ali_system.txt`；通过 `previous_draft + reviewer_reply_text` 表达修改任务；只编辑 previous draft。
 
 v2+ 不得 rerun routing、rerun retrieval、fallback to rewrite semantics。
 

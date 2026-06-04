@@ -13,7 +13,10 @@ def main() -> None:
         for src in sorted(OUTPUT.glob("*_chunks.jsonl")):
             if src == DST:
                 continue
-            out.write(src.read_text(encoding="utf-8"))
+            text = src.read_text(encoding="utf-8")
+            out.write(text)
+            if text and not text.endswith("\n"):
+                out.write("\n")
 
 
 if __name__ == "__main__":

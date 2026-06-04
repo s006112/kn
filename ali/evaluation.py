@@ -788,7 +788,7 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
         with (
             patch("ali.ali_llm.route_email") as route_email,
             patch("ali.ali_llm.rag_retrieval") as retrieve,
-            patch("ali.ali_llm.load_prompt_text", return_value="Edit prompt") as load_prompt,
+            patch("ali.ali_llm.load_prompt_text", return_value="System prompt") as load_prompt,
             patch("ali.ali_llm.call_llm", return_value="  Edited draft  ") as call_llm,
         ):
             result = generate_review_package(
@@ -803,11 +803,10 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
         self.assertEqual(result["version"], 2)
         route_email.assert_not_called()
         retrieve.assert_not_called()
-        edit_prompt_path = self.prompt_path.parent / "prompt_edit_reviewer_reply.txt"
-        load_prompt.assert_called_once_with(edit_prompt_path.parent, edit_prompt_path.name)
+        load_prompt.assert_called_once_with(self.prompt_path.parent, self.prompt_path.name)
         call_llm.assert_called_once_with(
             model="test-model",
-            system_prompt="Edit prompt",
+            system_prompt="System prompt",
             user_text=(
                 "previous_draft:\n"
                 "Previous draft\n\n"
@@ -834,12 +833,12 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
 
         route_email.assert_not_called()
 
-    def test_v2_missing_edit_prompt_raises(self) -> None:
+    def test_v2_missing_system_prompt_raises(self) -> None:
         with (
             patch("ali.ali_llm.load_prompt_text", return_value=None),
             patch("ali.ali_llm.route_email") as route_email,
             patch("ali.ali_llm.rag_retrieval") as retrieve,
-            self.assertRaisesRegex(FileNotFoundError, "Reviewer-reply edit prompt not found"),
+            self.assertRaisesRegex(FileNotFoundError, "Prompt file not found"),
         ):
             generate_review_package(
                 _email(),
