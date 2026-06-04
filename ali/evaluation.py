@@ -602,7 +602,7 @@ class LlmRagRetrievalTests(unittest.TestCase):
 
     def test_unmapped_category_skips_retrieval(self) -> None:
         with patch("ali.ali_llm.get_rag_engine") as get_engine:
-            result = rag_retrieval(_route("commercial"), "Question", "Body")
+            result = rag_retrieval(_route("commercial"), "Question", "Body", model="test-model")
 
         self.assertIsNone(result)
         get_engine.assert_not_called()
@@ -611,8 +611,8 @@ class LlmRagRetrievalTests(unittest.TestCase):
         engine = MagicMock()
         engine.answer_question.side_effect = [("First answer", ""), ("Second answer", "")]
         with patch("ali.ali_llm.get_rag_engine", return_value=engine) as get_engine:
-            first = rag_retrieval(_route("safety_regulation"), "Question", "Body")
-            second = rag_retrieval(_route("technical"), "", "Body only")
+            first = rag_retrieval(_route("safety_regulation"), "Question", "Body", model="test-model")
+            second = rag_retrieval(_route("technical"), "", "Body only", model="test-model")
 
         self.assertEqual(first, "First answer")
         self.assertEqual(second, "Second answer")
@@ -622,14 +622,22 @@ class LlmRagRetrievalTests(unittest.TestCase):
         )
         self.assertEqual(
             engine.answer_question.call_args_list,
-            [unittest.mock.call("Subject: Question\n\nBody"), unittest.mock.call("Body only")],
+            [
+                unittest.mock.call("Subject: Question\n\nBody", model="test-model"),
+                unittest.mock.call("Body only", model="test-model"),
+            ],
         )
 
     def test_rita_retrieval_uses_rita_engine_and_plain_query(self) -> None:
         engine = MagicMock()
         engine.answer_question.return_value = ("Historical answer", "")
         with patch("ali.ali_llm.get_rag_engine", return_value=engine) as get_engine:
-            result = rag_retrieval(_route("rita"), "Rita request", "Find the attachment")
+            result = rag_retrieval(
+                _route("rita"),
+                "Rita request",
+                "Find the attachment",
+                model="test-model",
+            )
 
         query = engine.answer_question.call_args.args[0]
         self.assertEqual(result, "Historical answer")
@@ -643,7 +651,7 @@ class LlmRagRetrievalTests(unittest.TestCase):
             patch("ali.ali_llm.get_rag_engine", return_value=engine),
             patch("builtins.print") as print_mock,
         ):
-            rag_retrieval(_route("technical"), "Question", "")
+            rag_retrieval(_route("technical"), "Question", "", model="test-model")
 
         print_mock.assert_called_once_with("\n[RAG] FAISS similarity table:\n\nscore table\n")
 
@@ -651,17 +659,17 @@ class LlmRagRetrievalTests(unittest.TestCase):
         engine = MagicMock()
         engine.answer_question.return_value = ("", "")
         with patch("ali.ali_llm.get_rag_engine", return_value=engine):
-            result = rag_retrieval(_route("technical"), "", "")
+            result = rag_retrieval(_route("technical"), "", "", model="test-model")
 
         self.assertIsNone(result)
-        engine.answer_question.assert_called_once_with("")
+        engine.answer_question.assert_called_once_with("", model="test-model")
 
     def test_retrieval_failure_degrades_to_unused_context(self) -> None:
         with (
             patch("ali.ali_llm.get_rag_engine", side_effect=RuntimeError("offline")),
             patch("builtins.print") as print_mock,
         ):
-            result = rag_retrieval(_route("technical"), "Question", "Body")
+            result = rag_retrieval(_route("technical"), "Question", "Body", model="test-model")
 
         self.assertIsNone(result)
         print_mock.assert_called_once_with("RAG Retrieval or Generation failed: offline")
@@ -692,7 +700,7 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
 
         self.assertEqual(result["draft"], "RAG draft")
         route_email.assert_called_once_with("Question", "Body")
-        retrieve.assert_called_once_with(route, "Question", "Body")
+        retrieve.assert_called_once_with(route, "Question", "Body", model="test-model")
         load_prompt.assert_not_called()
         call_llm.assert_not_called()
 

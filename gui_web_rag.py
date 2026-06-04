@@ -13,14 +13,16 @@ if str(ROOT) not in sys.path:
 import gradio as gr
 from dotenv import load_dotenv
 from rag.helper_rag_pipeline import get_rag_engine
-    
+
+LLM_MODEL = "sonar"
+
 # ─── Environment setup ──────────────────────────────────────────────────────
 load_dotenv()  # load API keys if present
 
 rag_engine = get_rag_engine("rita") # standard or rita
 
 def answer_question(raw_query: str):
-    return rag_engine.answer_question(raw_query or "")
+    return rag_engine.answer_question(raw_query or "", model=LLM_MODEL)
 
 # ─── Gradio app ─────────────────────────────────────────────────────────────
 with gr.Blocks(title="Email RAG Q&A") as demo:

@@ -34,8 +34,6 @@ from rag.helper_faiss_embedding import embed
 from rag.helper_query_rewriting import rewrite_query_variants, merge_candidates_maxscore
 
 
-
-LLM_MODEL = "sonar"   # sonar, sonar-pro, gpt-5.1, gpt-5-mini,
 SEARCH_BACKEND = "faiss"   # "faiss" | "brute"
 TOP_K = 50
 CANDIDATE_K = 10
@@ -314,7 +312,7 @@ class RagEngine:
         self.SYSTEM_PROMPT = system_prompt_path.read_text(encoding="utf-8").strip()
 
 
-    def answer_question(self, question: str) -> tuple[str, str]:
+    def answer_question(self, question: str, *, model: str) -> tuple[str, str]:
         """
         檢索相關 chunks，產生 LLM 回答與相似度報表。
         """
@@ -380,10 +378,9 @@ class RagEngine:
             table_str = f"{table_str}\n\nFailed CANDIDATE_K (not selected): (none)"
         
         result_text = call_llm(
-            LLM_MODEL,
+            model,
             system_prompt=self.SYSTEM_PROMPT,
             user_text=prompt,
             max_retries=2,
         )
-
         return result_text.strip(), table_str

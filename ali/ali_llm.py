@@ -52,7 +52,7 @@ RAG_ENGINE_BY_CATEGORY = {
 }
 
 
-def rag_retrieval(route: RouteResult, subject: str, body: str) -> str | None:
+def rag_retrieval(route: RouteResult, subject: str, body: str, *, model: str) -> str | None:
     engine_name = RAG_ENGINE_BY_CATEGORY.get(route.category)
     if engine_name is None:
         return None
@@ -60,7 +60,7 @@ def rag_retrieval(route: RouteResult, subject: str, body: str) -> str | None:
     query = "\n\n".join(part for part in (f"Subject: {subject}" if subject else "", body) if part).strip()
 
     try:
-        answer, table_str = get_rag_engine(engine_name).answer_question(query)
+        answer, table_str = get_rag_engine(engine_name).answer_question(query, model=model)
         if table_str:
             print(f"\n[RAG] FAISS similarity table:\n\n{table_str}\n")
         return answer.strip() if answer else None
@@ -90,7 +90,7 @@ def generate_review_package(
     subject_norm, body_norm = normalize_email_input(email)
     if previous_draft is None:
         route = route_email(subject_norm, body_norm)
-        retrieval_context = rag_retrieval(route, subject_norm, body_norm)
+        retrieval_context = rag_retrieval(route, subject_norm, body_norm, model=model)
         if retrieval_context is not None:
             draft = retrieval_context
         else:
