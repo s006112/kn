@@ -5,10 +5,10 @@ python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2
 python3 agent/agent.py --accept-last  # step 3
 python3 agent/agent.py --check-ready
-python3 agent/agent.py --make-patch  # step 4, generate + check only
+python3 agent/agent.py --make-patch  # step 4
 python3 agent/agent.py --run-verify  
-python3 agent/agent.py --apply-patch  # step 5, apply + verify
-python3 agent/agent.py --revert-patch  # if step 5 fails, revert and verify again
+python3 agent/agent.py --apply-patch  # step 5
+python3 agent/agent.py --revert-patch  # revert
 
 Workflow: plan -> review -> revise -> accept -> make/check patch -> apply patch/run verify
 
@@ -174,6 +174,49 @@ def load_allowed_file_context(file_paths: list[str]) -> str:
             continue
         parts.append(f"# {rel}\n\n```text\n{read_text(path)}\n```")
     return "\n\n---\n\n".join(parts)
+
+def discover_evaluation_commands(file_paths: list[str]) -> list[str]:
+    commands: list[str] = []
+    seen: set[str] = set()
+    targets: list[Path] = []
+
+    def add(command: str) -> None:
+        if command not in seen:
+            seen.add(command)
+            commands.append(command)
+
+    for file_path in file_paths:
+        target = Path(file_path)
+        if not target.is_absolute():
+            target = REPO_ROOT / target
+        targets.append(target)
+
+        parent = target.parent
+        if not parent.is_dir():
+            continue
+
+        stem = target.stem
+        patterns = (
+            "evaluation.py",
+            "evaluation_*.py",
+            "*_evaluation.py",
+            f"evaluation_{stem}.py",
+            f"evaluation_*{stem}*.py",
+        )
+        for pattern in patterns:
+            for evaluation_path in sorted(parent.glob(pattern)):
+                if evaluation_path.is_file():
+                    add(f"python {repo_rel(evaluation_path)}")
+
+    for target in targets:
+        if target.is_file():
+            add(f"python -m py_compile {repo_rel(target)}")
+
+    return commands
+
+
+def format_evaluation_commands(file_paths: list[str]) -> str:
+    return "\n".join(f"- `{command}`" for command in discover_evaluation_commands(file_paths))
 
 def latest_plan_path() -> Path | None:
     attempt = latest_attempt()
@@ -455,10 +498,15 @@ def _run_prompt_flow(prompt_path: Path, template_path: Path | None, system_promp
     prompt_path.write_text(prompt_text, encoding="utf-8")
     return call_agent_llm(system_prompt=system_prompt, user_text=prompt_text, file_path=file_path)
 
-def _task_context(task_path: Path) -> tuple[str, list[str], str]:
+def _task_context(task_path: Path) -> tuple[str, list[str], str, str]:
     task_text = read_text(task_path)
     allowed_files = parse_allowed_files(task_text)
-    return task_text, allowed_files, load_allowed_file_context(allowed_files)
+    return (
+        task_text,
+        allowed_files,
+        load_allowed_file_context(allowed_files),
+        format_evaluation_commands(allowed_files),
+    )
 
 
 def run_task(task_path: Path, attempt: int | None = None) -> str:
@@ -472,7 +520,7 @@ def run_task(task_path: Path, attempt: int | None = None) -> str:
             return ""
         else:
             attempt = latest + 1
-    task_text, allowed_files, file_context = _task_context(task_path)
+    task_text, allowed_files, file_context, evaluation_commands_text = _task_context(task_path)
     print("=== Repo Planning Agent ===")
     print(f"task: {task_path}")
     print(f"attempt: {attempt}")
@@ -490,6 +538,7 @@ def run_task(task_path: Path, attempt: int | None = None) -> str:
         task_text=task_text,
         pos_context=load_pos_context(),
         file_context=file_context,
+        evaluation_commands_text=evaluation_commands_text,
         fault_ledger_text=read_optional(S2_FAULT_LEDGER_PATH),
     )
     path = plan_path(attempt)
@@ -514,7 +563,7 @@ def review_last_plan(task_path: Path) -> str:
         print("No plan found to review.")
         return ""
     path = plan_path(attempt)
-    task_text, allowed_files, file_context = _task_context(task_path)
+    task_text, allowed_files, file_context, _evaluation_commands_text = _task_context(task_path)
     review = _run_prompt_flow(
         S2_PROMPT_PATH,
         S2_REVIEW_PROMPT,
@@ -536,7 +585,7 @@ def make_patch(task_path: Path) -> None:
     if not S3_FINAL_PLAN_PATH.exists():
         print("No final plan found.")
         return
-    task_text, allowed_files, file_context = _task_context(task_path)
+    task_text, allowed_files, file_context, _evaluation_commands_text = _task_context(task_path)
     prompt_text = read_text(S4_PATCH_PROMPT).format(
         task_text=task_text,
         final_plan_text=read_text(S3_FINAL_PLAN_PATH),

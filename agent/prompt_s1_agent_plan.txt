@@ -7,9 +7,10 @@
 3. <TASK> 定義 job、scope、constraints、allowed files。
 4. <POS_CONTEXT> 提供 long-term rules。
 5. <ALLOWED_FILE_CONTEXT> 是唯一 repository evidence。
-6. <FAULT_LEDGER> 是 previous rejected issues，作為風險參考。
-7. sources 衝突時，按以下順序處理：
-   system > this prompt > task > pos > file content > fault ledger。
+6. <EVALUATION_COMMANDS> 提供已 discover 的本地 evaluation / syntax commands。
+7. <FAULT_LEDGER> 是 previous rejected issues，作為風險參考。
+8. sources 衝突時，按以下順序處理：
+   system > this prompt > task > pos > fault ledger > file content > evaluation commands。
 
 你的任務：
 
@@ -65,7 +66,7 @@ FAULT_LEDGER 規則：
 
 2. Refactor plan
 
-   * 列出 1-3 個具體改動。
+   * 列出 1-2 個具體改動。
    * 每個改動必須說明 target function / block 與目的。
    * 可以包含 function-level 或 block-level replacement。
    * 不要輸出 code。
@@ -86,6 +87,12 @@ FAULT_LEDGER 規則：
 
    * 必須是具體 command。
    * 不要保留 <TARGET_PATH> placeholder。
+   * 如果 <EVALUATION_COMMANDS> 包含 local evaluation script commands，必須使用它們。
+   * local evaluation script commands 必須排在 python -m py_compile ... 之前。
+   * python -m py_compile ... 是 fallback / minimum syntax protection；有 evaluation scripts 時不可作為主要驗證。
+   * 不要 invent 不存在的 test / evaluation command。
+   * Evaluation command section 必須包含 concrete bash commands，不可使用 placeholder。
+   * 如果 <EVALUATION_COMMANDS> 只有 py_compile commands，使用那些 fallback commands。
 
 6. Stop condition
 
@@ -105,6 +112,10 @@ FAULT_LEDGER 規則：
 <ALLOWED_FILE_CONTEXT>
 {file_context}
 </ALLOWED_FILE_CONTEXT>
+
+<EVALUATION_COMMANDS>
+{evaluation_commands_text}
+</EVALUATION_COMMANDS>
 
 <FAULT_LEDGER>
 {fault_ledger_text}

@@ -228,19 +228,18 @@ def _phase2_sender_replies(*, logger) -> None:
 
         state = extract_last_review_state(reply_msg)
         next_version = state.version + 1
-        review_msg = EmailMessage(
-            uid=reply_msg.uid,
-            message_id=reply_msg.message_id,
-            from_addr=reply_msg.from_addr,
-            to_addrs=reply_msg.to_addrs,
-            cc_addrs=reply_msg.cc_addrs,
-            subject=reply_msg.subject,
-            body_text=reviewer_reply_text,
-            raw_bytes=reply_msg.raw_bytes,
-        )
         review_body = render_review(
             generate_review_package(
-                review_msg,
+                EmailMessage(
+                    uid=reply_msg.uid,
+                    message_id=reply_msg.message_id,
+                    from_addr=reply_msg.from_addr,
+                    to_addrs=reply_msg.to_addrs,
+                    cc_addrs=reply_msg.cc_addrs,
+                    subject=reply_msg.subject,
+                    body_text=reviewer_reply_text,
+                    raw_bytes=reply_msg.raw_bytes,
+                ),
                 system_prompt_path=SYSTEM_PROMPT_PATH,
                 model=LLM_MODEL,
                 previous_draft=state.draft,
