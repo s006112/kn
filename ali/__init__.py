@@ -12,4 +12,4 @@ Used by:
 from pathlib import Path
 
 LLM_MODEL = "sonar-pro"
-SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent / "prompt_ali_system.txt"
+SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent / "prompt_ali_p1_system.txt"

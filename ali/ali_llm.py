@@ -40,6 +40,8 @@ RAG_ENGINE_BY_CATEGORY = {
     "rita": "rita",
 }
 
+REVISION_SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent / "prompt_ali_p2_revision.txt"
+
 
 # -----------------------------------------------------------------------------
 # Step2: Routing & RAG
@@ -124,27 +126,14 @@ def generate_review_package(
                 file_path=None,
             ).strip()
     else:
-        system_prompt = load_prompt_text(system_prompt_path.parent, system_prompt_path.name)
-        if system_prompt is None:
-            raise FileNotFoundError(f"Prompt file not found: {system_prompt_path}")
+        revision_system_prompt = load_prompt_text(
+            REVISION_SYSTEM_PROMPT_PATH.parent,
+            REVISION_SYSTEM_PROMPT_PATH.name,
+        )
+        if revision_system_prompt is None:
+            raise FileNotFoundError(f"Prompt file not found: {REVISION_SYSTEM_PROMPT_PATH}")
 
         reviewer_reply_text = body_norm.strip()
-        revision_system_prompt = (
-            "Act as the company’s internal email assistant named Ali.\n"
-            "Your task is to revise Ali's previous draft according to the reviewer's request.\n"
-            "Return only the complete revised email body that will be sent.\n"
-            "Keep the reply professional, concise, polite, and specific.\n"
-            "Do not include headers such as From, To, or Subject.\n"
-            "Do not include meta-comments, explanations, notes, diffs, or quoted email history.\n"
-            "Do not fabricate or add new facts unless the reviewer explicitly requests them.\n"
-            "Never state, suggest, or imply that you are an AI system.\n\n"
-            "REVIEWER-GUIDED REVISION:\n"
-            "- Use PREVIOUS_DRAFT as the base response to revise.\n"
-            "- Treat REVIEWER_REPLY_TEXT as the reviewer's revision request, whatever word or phrase.\n"
-            "- Infer the intended revision from REVIEWER_REPLY_TEXT and PREVIOUS_DRAFT.\n"
-            "- Rrevise PREVIOUS_DRAFT accordingly while preserving the original meaning.\n"
-            "- Return one complete revised Ali response only."
-        )
         draft = call_llm(
             model=model,
             system_prompt=revision_system_prompt,
