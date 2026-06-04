@@ -36,8 +36,7 @@ from ali.ali_parse import (
 
 
 RAG_ENGINE_BY_CATEGORY = {
-    "safety_regulation": "standard",
-    "technical": "standard",
+    "safety": "standard",
     "rita": "rita",
 }
 
@@ -52,13 +51,10 @@ def route_email(subject: str, body: str) -> str:
     """
     text = f"{subject}\n{body}".lower()
 
-    if re.search(r"\b(iec|ul|en|ce|csa|certification|certificates?|compliance|standards?)\b", text):
-        return "safety_regulation"
+    if re.search(r"\b(iec|ul|en|ce|csa|tests?|testing|certif\w*|compl(?:y|i\w*)|standard\w*|lumin\w*?)\b",text):
+        return "safety"
 
-    if re.search(r"\b(specifications?|test(?:ing|s)?|wiring|voltage|current|power|dimensions?)\b", text):
-        return "technical"
-
-    if re.search(r"\b(rita|ritasoo)\b", text):
+    if re.search(r"\b(rita\w*)\b", text):
         return "rita"
 
     return "unknown"
