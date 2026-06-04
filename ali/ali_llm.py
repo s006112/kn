@@ -16,7 +16,6 @@ Used by:
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,12 +35,6 @@ from ali.ali_parse import (
 )
 
 
-@dataclass(frozen=True)
-class RetrievalResult:
-    used: bool
-    context: str | None
-    source: str | None
-
 
 RAG_ENGINE_BY_CATEGORY = {
     "safety_regulation": "standard",
@@ -55,10 +48,10 @@ _RAG_ENGINE_CACHE = {}
 # Step2: 检索 / 工具
 # -----------------------------------------------------------------------------
 
-def rag_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalResult:
+def rag_retrieval(route: "RouteResult", subject: str, body: str) -> str | None:
     engine_name = RAG_ENGINE_BY_CATEGORY.get(route.category)
     if engine_name is None:
-        return RetrievalResult(used=False, context=None, source=None)
+        return None
 
     query = "\n\n".join(part for part in (f"Subject: {subject}" if subject else "", body) if part).strip()
     if route.category == "rita":
@@ -76,12 +69,10 @@ def rag_retrieval(route: "RouteResult", subject: str, body: str) -> RetrievalRes
         answer, table_str = engine.answer_question(query)
         if table_str:
             print(f"\n[RAG] FAISS similarity table:\n\n{table_str}\n")
-        if answer:
-            return RetrievalResult(used=True, context=answer, source="rag")
-        return RetrievalResult(used=False, context=None, source=None)
+        return answer.strip() if answer else None
     except Exception as e:
         print(f"RAG Retrieval or Generation failed: {e}")
-        return RetrievalResult(used=False, context=None, source=None)
+        return None
 
 
 # -----------------------------------------------------------------------------
@@ -105,9 +96,9 @@ def generate_review_package(
     subject_norm, body_norm = normalize_email_input(email)
     if previous_draft is None:
         route = route_email(subject_norm, body_norm)
-        retrieval = rag_retrieval(route, subject_norm, body_norm)
-        if retrieval.used:
-            draft = retrieval.context.strip()
+        retrieval_context = rag_retrieval(route, subject_norm, body_norm)
+        if retrieval_context is not None:
+            draft = retrieval_context
         else:
             system_prompt = load_prompt_text(system_prompt_path.parent, system_prompt_path.name)
             if system_prompt is None:

@@ -52,7 +52,6 @@ from ali.ali_fetch import (  # noqa: E402
     fetch_sender_replies,
 )
 from ali.ali_llm import (  # noqa: E402
-    RetrievalResult,
     generate_review_package,
     rag_retrieval,
     render_review,
@@ -608,7 +607,7 @@ class LlmRagRetrievalTests(unittest.TestCase):
         with patch("ali.ali_llm.get_rag_engine") as get_engine:
             result = rag_retrieval(_route("commercial"), "Question", "Body")
 
-        self.assertEqual(result, RetrievalResult(used=False, context=None, source=None))
+        self.assertIsNone(result)
         get_engine.assert_not_called()
 
     def test_mapped_categories_share_cached_engine(self) -> None:
@@ -618,8 +617,8 @@ class LlmRagRetrievalTests(unittest.TestCase):
             first = rag_retrieval(_route("safety_regulation"), "Question", "Body")
             second = rag_retrieval(_route("technical"), "", "Body only")
 
-        self.assertEqual(first, RetrievalResult(used=True, context="First answer", source="rag"))
-        self.assertEqual(second, RetrievalResult(used=True, context="Second answer", source="rag"))
+        self.assertEqual(first, "First answer")
+        self.assertEqual(second, "Second answer")
         get_engine.assert_called_once_with("standard")
         self.assertEqual(
             engine.answer_question.call_args_list,
@@ -633,7 +632,7 @@ class LlmRagRetrievalTests(unittest.TestCase):
             result = rag_retrieval(_route("rita"), "Rita request", "Find the attachment")
 
         query = engine.answer_question.call_args.args[0]
-        self.assertEqual(result, RetrievalResult(used=True, context="Historical answer", source="rag"))
+        self.assertEqual(result, "Historical answer")
         get_engine.assert_called_once_with("rita")
         self.assertTrue(query.startswith("Subject: Rita request\n\nFind the attachment\n\n"))
         self.assertIn("Search intent: find relevant historical records", query)
@@ -655,7 +654,7 @@ class LlmRagRetrievalTests(unittest.TestCase):
         with patch("ali.ali_llm.get_rag_engine", return_value=engine):
             result = rag_retrieval(_route("technical"), "", "")
 
-        self.assertEqual(result, RetrievalResult(used=False, context=None, source=None))
+        self.assertIsNone(result)
         engine.answer_question.assert_called_once_with("")
 
     def test_retrieval_failure_degrades_to_unused_context(self) -> None:
@@ -665,7 +664,7 @@ class LlmRagRetrievalTests(unittest.TestCase):
         ):
             result = rag_retrieval(_route("technical"), "Question", "Body")
 
-        self.assertEqual(result, RetrievalResult(used=False, context=None, source=None))
+        self.assertIsNone(result)
         print_mock.assert_called_once_with("RAG Retrieval or Generation failed: offline")
 
 
@@ -681,7 +680,7 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
             patch("ali.ali_llm.route_email", return_value=route) as route_email,
             patch(
                 "ali.ali_llm.rag_retrieval",
-                return_value=RetrievalResult(used=True, context="  RAG draft  ", source="rag"),
+                return_value="RAG draft",
             ) as retrieve,
             patch("ali.ali_llm.load_prompt_text") as load_prompt,
             patch("ali.ali_llm.call_llm") as call_llm,
@@ -703,7 +702,7 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
             patch("ali.ali_llm.route_email", return_value=_route("commercial")),
             patch(
                 "ali.ali_llm.rag_retrieval",
-                return_value=RetrievalResult(used=False, context=None, source=None),
+                return_value=None,
             ),
             patch("ali.ali_llm.load_prompt_text", return_value="System prompt") as load_prompt,
             patch("ali.ali_llm.call_llm", return_value="  LLM draft  ") as call_llm,
@@ -739,7 +738,7 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
             patch("ali.ali_llm.route_email", return_value=_route("unknown")),
             patch(
                 "ali.ali_llm.rag_retrieval",
-                return_value=RetrievalResult(used=False, context=None, source=None),
+                return_value=None,
             ),
             patch("ali.ali_llm.load_prompt_text", return_value=None),
             self.assertRaisesRegex(FileNotFoundError, "Prompt file not found"),
@@ -755,7 +754,7 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
             patch("ali.ali_llm.route_email", return_value=_route("unknown")),
             patch(
                 "ali.ali_llm.rag_retrieval",
-                return_value=RetrievalResult(used=False, context=None, source=None),
+                return_value=None,
             ),
             patch("ali.ali_llm.load_prompt_text", return_value="System prompt"),
             patch("ali.ali_llm.call_llm", return_value="Draft"),
