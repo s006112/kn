@@ -2,17 +2,9 @@
 """
 ali_send.py
 
-职责：
-- 将 INTERNAL review body 包装成 email 并通过 SMTP 发送。
-- hard-block 非 forwarding reviewer recipient。
-- best-effort append 到 IMAP Sent。
-- 不负责 mark SEEN 或 content decision。
-
-完整 delivery contract：
-- 见 ali/README.md
-
-Used by:
-- ali_email.py
+职责：发送 INTERNAL review 给转发人；阻止其他收件人；尽力写入 Sent。
+不负责 mark SEEN 或内容决策。完整 contract 见 ali/README.md。
+调用方：ali_email.py
 """
 
 from __future__ import annotations
@@ -37,20 +29,10 @@ from helper.utils_imap_ops import append_to_imap_sent  # type: ignore
 _DOTENV_PATH = ROOT / ".env"
 
 
-# ------------------------------------------------------------
-# Safety guard: ONLY reply to forward sender
-# ------------------------------------------------------------
+# Safety: only reply to forward sender.
 
 def _require_reply_to_forward_sender(original_from_addr: str, to_header_value: str) -> None:
-    """
-    HARD SAFETY GUARD — FORWARD-ONLY POLICY (NON-NEGOTIABLE)
-
-    Enforces that ALI may ONLY reply to the human reviewer who FORWARDED the email to ALI.
-
-    - Comparison is done strictly on addr-spec (email address), NOT on display names.
-    - Any attempt to reply to a non-forward-sender is intentionally blocked.
-    - This is a security policy, NOT a recoverable error.
-    """
+    """仅允许回复转发给 ALI 的 reviewer；按 addr-spec 严格比对。"""
     if not original_from_addr or not to_header_value:
         raise RuntimeError(
             "SECURITY REJECTED (FORWARD-ONLY POLICY): "
@@ -76,9 +58,7 @@ def _require_reply_to_forward_sender(original_from_addr: str, to_header_value: s
         )
 
 
-# ------------------------------------------------------------
-# Build outgoing message
-# ------------------------------------------------------------
+# Build outgoing message.
 
 def _build_subject(original_subject: str) -> str:
     if not original_subject:
@@ -90,12 +70,7 @@ def _build_subject(original_subject: str) -> str:
 
 
 def _build_to_address(from_addr: str) -> str:
-    """
-    Resolve the reply target from a reviewer addr-spec.
-
-    In forward-to-ALI workflow, original.from_addr MUST be the reviewer (addr-spec),
-    not the customer.
-    """
+    """从 reviewer addr-spec 解析回复对象。"""
     name, addr = parseaddr(from_addr)
     return addr or from_addr or ""
 
@@ -143,9 +118,7 @@ def _build_message(
     return msg
 
 
-# ------------------------------------------------------------
-# Public API: send_reply (EMAIL-SENDER-ONLY)
-# ------------------------------------------------------------
+# Public API.
 
 def send_reply(
     original: EmailMessage,
@@ -153,13 +126,7 @@ def send_reply(
     *,
     from_addr: Optional[str] = None,
 ) -> SendResult:
-    """
-    Send INTERNAL review email to the forwarding reviewer only.
-
-    Notes:
-    - This module does NOT mark messages as SEEN.
-      The pipeline is responsible for marking SEEN AFTER successful processing.
-    """
+    """发送 INTERNAL review 给转发 reviewer；不 mark SEEN。"""
     load_env()
     logger = configure_logging("ali_email_sender")
 
