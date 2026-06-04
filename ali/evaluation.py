@@ -688,46 +688,54 @@ class LlmRagRetrievalTests(unittest.TestCase):
 class LlmGenerateReviewPackageTests(unittest.TestCase):
     target_file = "ali_llm.py"
 
-    def setUp(self) -> None:
-        self.prompt_path = Path("/tmp/prompts/prompt_generate.txt")
+    def test_phase_prompt_paths_are_distinct_and_named(self) -> None:
+        self.assertEqual(ali_llm.P1_SYSTEM_PROMPT_PATH.name, "prompt_ali_p1_system.txt")
+        self.assertEqual(ali_llm.P2_REVISION_PROMPT_PATH.name, "prompt_ali_p2_revision.txt")
+        self.assertNotEqual(ali_llm.P1_SYSTEM_PROMPT_PATH, ali_llm.P2_REVISION_PROMPT_PATH)
 
     def test_v1_uses_rag_answer_without_calling_llm(self) -> None:
         category = "safety"
+        p1_prompt_path = MagicMock()
+        p2_prompt_path = MagicMock()
         with (
             patch("ali.ali_llm.route_email", return_value=category) as route_email,
             patch(
                 "ali.ali_llm.rag_retrieval",
                 return_value="RAG draft",
             ) as retrieve,
-            patch("ali.ali_llm.load_prompt_text") as load_prompt,
+            patch("ali.ali_llm.P1_SYSTEM_PROMPT_PATH", p1_prompt_path),
+            patch("ali.ali_llm.P2_REVISION_PROMPT_PATH", p2_prompt_path),
             patch("ali.ali_llm.call_llm") as call_llm,
         ):
             result = generate_review_package(
                 _email(subject="  Question  ", body_text="  Body  "),
-                system_prompt_path=self.prompt_path,
                 model="test-model",
             )
 
         self.assertEqual(result["draft"], "RAG draft")
         route_email.assert_called_once_with("Question", "Body")
         retrieve.assert_called_once_with(category, "Question", "Body", model="test-model")
-        load_prompt.assert_not_called()
+        p1_prompt_path.read_text.assert_not_called()
+        p2_prompt_path.read_text.assert_not_called()
         call_llm.assert_not_called()
 
     def test_v1_falls_back_to_prompt_llm_and_builds_package(self) -> None:
+        p1_prompt_path = MagicMock()
+        p1_prompt_path.read_text.return_value = "P1 prompt"
+        p2_prompt_path = MagicMock()
         with (
             patch("ali.ali_llm.route_email", return_value="unknown"),
             patch(
                 "ali.ali_llm.rag_retrieval",
                 return_value=None,
             ),
-            patch("ali.ali_llm.load_prompt_text", return_value="System prompt") as load_prompt,
+            patch("ali.ali_llm.P1_SYSTEM_PROMPT_PATH", p1_prompt_path),
+            patch("ali.ali_llm.P2_REVISION_PROMPT_PATH", p2_prompt_path),
             patch("ali.ali_llm.call_llm", return_value="  LLM draft  ") as call_llm,
             patch("ali.ali_llm.step4_review", side_effect=lambda draft, **_: draft) as review,
         ):
             result = generate_review_package(
                 _email(message_id="  <review-id>  ", subject=" Question ", body_text=" Body "),
-                system_prompt_path=self.prompt_path,
                 model="test-model",
                 edit_version=3,
             )
@@ -741,59 +749,74 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
                 "version": 3,
             },
         )
-        load_prompt.assert_called_once_with(self.prompt_path.parent, self.prompt_path.name)
+        p1_prompt_path.read_text.assert_called_once_with(encoding="utf-8")
+        p2_prompt_path.read_text.assert_not_called()
         call_llm.assert_called_once_with(
             model="test-model",
-            system_prompt="System prompt",
+            system_prompt="P1 prompt",
             user_text="Subject: Question\n\nBody",
             file_path=None,
         )
         review.assert_called_once_with("LLM draft", enabled=False)
 
     def test_v1_missing_prompt_raises(self) -> None:
+        p1_prompt_path = MagicMock()
+        p1_prompt_path.read_text.side_effect = FileNotFoundError("Prompt file not found")
+        p2_prompt_path = MagicMock()
         with (
             patch("ali.ali_llm.route_email", return_value="unknown"),
             patch(
                 "ali.ali_llm.rag_retrieval",
                 return_value=None,
             ),
-            patch("ali.ali_llm.load_prompt_text", return_value=None),
+            patch("ali.ali_llm.P1_SYSTEM_PROMPT_PATH", p1_prompt_path),
+            patch("ali.ali_llm.P2_REVISION_PROMPT_PATH", p2_prompt_path),
             self.assertRaisesRegex(FileNotFoundError, "Prompt file not found"),
         ):
             generate_review_package(
                 _email(),
-                system_prompt_path=self.prompt_path,
                 model="test-model",
             )
 
+        p1_prompt_path.read_text.assert_called_once_with(encoding="utf-8")
+        p2_prompt_path.read_text.assert_not_called()
+
     def test_review_id_falls_back_to_uid(self) -> None:
+        p1_prompt_path = MagicMock()
+        p1_prompt_path.read_text.return_value = "System prompt"
+        p2_prompt_path = MagicMock()
         with (
             patch("ali.ali_llm.route_email", return_value="unknown"),
             patch(
                 "ali.ali_llm.rag_retrieval",
                 return_value=None,
             ),
-            patch("ali.ali_llm.load_prompt_text", return_value="System prompt"),
+            patch("ali.ali_llm.P1_SYSTEM_PROMPT_PATH", p1_prompt_path),
+            patch("ali.ali_llm.P2_REVISION_PROMPT_PATH", p2_prompt_path),
             patch("ali.ali_llm.call_llm", return_value="Draft"),
         ):
             result = generate_review_package(
                 _email(uid=42, message_id=" "),
-                system_prompt_path=self.prompt_path,
                 model="test-model",
             )
 
         self.assertEqual(result["review_id"], "42")
+        p1_prompt_path.read_text.assert_called_once_with(encoding="utf-8")
+        p2_prompt_path.read_text.assert_not_called()
 
     def test_v2_edits_previous_draft_and_bypasses_route_and_retrieval(self) -> None:
+        p1_prompt_path = MagicMock()
+        p2_prompt_path = MagicMock()
+        p2_prompt_path.read_text.return_value = "P2 prompt"
         with (
             patch("ali.ali_llm.route_email") as route_email,
             patch("ali.ali_llm.rag_retrieval") as retrieve,
-            patch("ali.ali_llm.load_prompt_text", return_value="System prompt") as load_prompt,
+            patch("ali.ali_llm.P1_SYSTEM_PROMPT_PATH", p1_prompt_path),
+            patch("ali.ali_llm.P2_REVISION_PROMPT_PATH", p2_prompt_path),
             patch("ali.ali_llm.call_llm", return_value="  Edited draft  ") as call_llm,
         ):
             result = generate_review_package(
                 _email(body_text="Please update this.\n\n> quoted history"),
-                system_prompt_path=self.prompt_path,
                 model="test-model",
                 previous_draft="Previous draft",
                 edit_version=2,
@@ -803,46 +826,57 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
         self.assertEqual(result["version"], 2)
         route_email.assert_not_called()
         retrieve.assert_not_called()
-        load_prompt.assert_called_once_with(self.prompt_path.parent, self.prompt_path.name)
+        p1_prompt_path.read_text.assert_not_called()
+        p2_prompt_path.read_text.assert_called_once_with(encoding="utf-8")
         call_llm.assert_called_once_with(
             model="test-model",
-            system_prompt="System prompt",
+            system_prompt="P2 prompt",
             user_text=(
-                "previous_draft:\n"
-                "Previous draft\n\n"
-                "---\n"
-                "reviewer_reply_text:\n"
-                "Please update this.\n"
+                "<PREVIOUS_DRAFT>\n"
+                "Previous draft\n"
+                "</PREVIOUS_DRAFT>\n\n"
+                "<REVIEWER_REPLY_TEXT>\n"
+                "Please update this.\n\n> quoted history\n"
+                "</REVIEWER_REPLY_TEXT>\n\n"
+                "Return the complete revised Ali response only."
             ),
             file_path=None,
         )
 
     def test_empty_previous_draft_still_selects_v2_path(self) -> None:
+        p1_prompt_path = MagicMock()
+        p2_prompt_path = MagicMock()
+        p2_prompt_path.read_text.return_value = "Edit prompt"
         with (
             patch("ali.ali_llm.route_email") as route_email,
-            patch("ali.ali_llm.load_prompt_text", return_value="Edit prompt"),
+            patch("ali.ali_llm.P1_SYSTEM_PROMPT_PATH", p1_prompt_path),
+            patch("ali.ali_llm.P2_REVISION_PROMPT_PATH", p2_prompt_path),
             patch("ali.ali_llm.call_llm", return_value="Edited"),
         ):
             generate_review_package(
                 _email(body_text="Reviewer note"),
-                system_prompt_path=self.prompt_path,
                 model="test-model",
                 previous_draft="",
                 edit_version=2,
             )
 
         route_email.assert_not_called()
+        p1_prompt_path.read_text.assert_not_called()
+        p2_prompt_path.read_text.assert_called_once_with(encoding="utf-8")
 
-    def test_v2_missing_system_prompt_raises(self) -> None:
+    def test_v2_missing_revision_prompt_raises(self) -> None:
+        p1_prompt_path = MagicMock()
+        p2_prompt_path = MagicMock()
+        p2_prompt_path.read_text.side_effect = FileNotFoundError("Prompt file not found")
         with (
-            patch("ali.ali_llm.load_prompt_text", return_value=None),
+            patch("ali.ali_llm.P1_SYSTEM_PROMPT_PATH", p1_prompt_path),
+            patch("ali.ali_llm.P2_REVISION_PROMPT_PATH", p2_prompt_path),
             patch("ali.ali_llm.route_email") as route_email,
             patch("ali.ali_llm.rag_retrieval") as retrieve,
             self.assertRaisesRegex(FileNotFoundError, "Prompt file not found"),
         ):
             generate_review_package(
                 _email(),
-                system_prompt_path=self.prompt_path,
                 model="test-model",
                 previous_draft="Previous draft",
                 edit_version=2,
@@ -850,6 +884,8 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
 
         route_email.assert_not_called()
         retrieve.assert_not_called()
+        p1_prompt_path.read_text.assert_not_called()
+        p2_prompt_path.read_text.assert_called_once_with(encoding="utf-8")
 
 
 class LlmReviewAndRenderingTests(unittest.TestCase):
@@ -1017,7 +1053,6 @@ class EmailPhaseOneTests(unittest.TestCase):
         fetch.assert_called_once_with(max_messages=2)
         generate.assert_called_once_with(
             msg,
-            system_prompt_path=ali_email.SYSTEM_PROMPT_PATH,
             model=ali_email.LLM_MODEL,
         )
         render.assert_called_once_with({"draft": "Draft"})
@@ -1077,7 +1112,6 @@ class EmailPhaseTwoTests(unittest.TestCase):
         self.assertEqual(reviewer_input.body_text, "Please revise")
         generate.assert_called_once_with(
             reviewer_input,
-            system_prompt_path=ali_email.SYSTEM_PROMPT_PATH,
             model=ali_email.LLM_MODEL,
             previous_draft="Previous draft",
             edit_version=3,

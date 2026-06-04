@@ -23,14 +23,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from helper.helper_config import load_prompt_text
 from helper.helper_llm import call_llm
 from helper.utils_imap_types import EmailMessage
 from rag.helper_rag_pipeline import get_rag_engine
 from ali.ali_parse import (
     REVIEW_FOOTER_LINE,
     REVIEW_HEADER_LINE_TEMPLATE,
-    extract_reviewer_reply_text,
     normalize_email_input,
 )
 
@@ -40,7 +38,9 @@ RAG_ENGINE_BY_CATEGORY = {
     "rita": "rita",
 }
 
-REVISION_SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent / "prompt_ali_p2_revision.txt"
+PROMPT_DIR = Path(__file__).resolve().parent
+P1_SYSTEM_PROMPT_PATH = PROMPT_DIR / "prompt_ali_p1_system.txt"
+P2_REVISION_PROMPT_PATH = PROMPT_DIR / "prompt_ali_p2_revision.txt"
 
 
 # -----------------------------------------------------------------------------
@@ -88,14 +88,12 @@ def rag_retrieval(category: str, subject: str, body: str, *, model: str) -> str 
 def generate_review_package(
     email: EmailMessage,
     *,
-    system_prompt_path: Path,
     model: str,
     previous_draft: str | None = None,
     edit_version: int = 1,
 ) -> dict[str, str | list[str] | int]:
     """
     生成内部 review package。
-
     `previous_draft=None` 走 v1 首次生成路径；传入 previous draft 时走 v2+
     仅编辑路径。
     """
@@ -108,10 +106,7 @@ def generate_review_package(
         if retrieval_context is not None:
             draft = retrieval_context
         else:
-            system_prompt = load_prompt_text(system_prompt_path.parent, system_prompt_path.name)
-            if system_prompt is None:
-                raise FileNotFoundError(f"Prompt file not found: {system_prompt_path}")
-
+            system_prompt = P1_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
             draft = call_llm(
                 model=model,
                 system_prompt=system_prompt,
@@ -126,17 +121,11 @@ def generate_review_package(
                 file_path=None,
             ).strip()
     else:
-        revision_system_prompt = load_prompt_text(
-            REVISION_SYSTEM_PROMPT_PATH.parent,
-            REVISION_SYSTEM_PROMPT_PATH.name,
-        )
-        if revision_system_prompt is None:
-            raise FileNotFoundError(f"Prompt file not found: {REVISION_SYSTEM_PROMPT_PATH}")
-
+        revision_prompt = P2_REVISION_PROMPT_PATH.read_text(encoding="utf-8")
         reviewer_reply_text = body_norm.strip()
         draft = call_llm(
             model=model,
-            system_prompt=revision_system_prompt,
+            system_prompt=revision_prompt,
             user_text=(
                 "<PREVIOUS_DRAFT>\n"
                 f"{previous_draft.strip()}\n"
@@ -171,7 +160,6 @@ def step4_review(
 ) -> str:
     """
     预留的生成后复核 hook，当前保持 NO-OP。
-
     Step4 不应重新 route、检索、调用 LLM，或引入新内容。
     """
     if not enabled:
@@ -190,7 +178,6 @@ def render_review(
 ) -> str:
     """
     将 review package 渲染为最终邮件正文。
-
     当前这里只是一个轻量包装，在 `review_obj["draft"]` 外套上 review protocol。
     """
     header = REVIEW_HEADER_LINE_TEMPLATE.format(version=review_obj["version"])

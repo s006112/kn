@@ -49,9 +49,6 @@ from ali.ali_parse import (
 # -----------------------------------------------------------------------------
 
 LLM_MODEL = "sonar"
-# Phase 1 首次生成和 Phase 2 reviewer reply 修改都共用同一份 system prompt；
-# Phase 2 的差异由 previous_draft + reviewer_reply_text 的 user_text 表达。
-SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent / "prompt_ali_p1_system.txt"
 
 _HKT_ZONE = ZoneInfo("Asia/Hong_Kong")
 _DAY_START = dt_time(9, 0)
@@ -179,7 +176,6 @@ def _process_new_message(msg: EmailMessage, *, logger) -> None:
     review_body = render_review(
         generate_review_package(
             msg,
-            system_prompt_path=SYSTEM_PROMPT_PATH,
             model=LLM_MODEL,
         )
     )
@@ -240,7 +236,6 @@ def _phase2_sender_replies(*, logger) -> None:
                     body_text=reviewer_reply_text,
                     raw_bytes=reply_msg.raw_bytes,
                 ),
-                system_prompt_path=SYSTEM_PROMPT_PATH,
                 model=LLM_MODEL,
                 previous_draft=state.draft,
                 edit_version=next_version,

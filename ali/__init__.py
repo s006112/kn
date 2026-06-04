@@ -2,14 +2,7 @@
 ali package defaults.
 
 职责：
-- 暴露 ALI tool scripts 共用的默认 model 和 system prompt path。
-
-Used by:
-- tool/test_llm_responder.py
-- tool/test_email_sender.py
+- 暴露 ALI 默认 model。
 """
 
-from pathlib import Path
-
 LLM_MODEL = "sonar-pro"
-SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent / "prompt_ali_p1_system.txt"
