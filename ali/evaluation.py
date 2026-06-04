@@ -3,7 +3,7 @@
 ALI isolated evaluator.
 
 职责：
-- 验证 ali_fetch.py 和 ali_send.py 的局部行为。
+- 验证 ali_parse.py、ali_fetch.py、ali_llm.py 和 ali_send.py 的局部行为。
 
 Used by:
 - None（standalone test entry point）
@@ -31,6 +31,14 @@ from ali.ali_send import (  # noqa: E402
     _build_to_address,
     _require_reply_to_forward_sender,
     send_reply,
+)
+from ali.ali_parse import (  # noqa: E402
+    REVIEW_FOOTER_LINE,
+    REVIEW_HEADER_LINE_TEMPLATE,
+    ReviewState,
+    extract_last_review_state,
+    extract_reviewer_reply_text,
+    normalize_email_input,
 )
 from ali import ali_fetch  # noqa: E402
 from ali import ali_llm  # noqa: E402
@@ -188,6 +196,134 @@ def _route(category: str) -> RouteResult:
         rationale="evaluation",
         confidence=1.0,
     )
+
+
+class ParseNormalizeEmailInputTests(unittest.TestCase):
+    target_file = "ali_parse.py"
+
+    def test_normalize_email_input_trims_subject_and_body_edges(self) -> None:
+        subject, body = normalize_email_input(
+            _email(subject="  Customer question  ", body_text="\r\n\n  First\r\n\r\nSecond  \n\n")
+        )
+
+        self.assertEqual(subject, "Customer question")
+        self.assertEqual(body, "First\n\nSecond")
+
+    def test_normalize_email_input_preserves_interior_blank_lines(self) -> None:
+        _, body = normalize_email_input(_email(body_text="One\n\n\nTwo"))
+
+        self.assertEqual(body, "One\n\n\nTwo")
+
+    def test_normalize_email_input_applies_max_body_len(self) -> None:
+        _, body = normalize_email_input(_email(body_text="abcdef"), max_body_len=3)
+
+        self.assertEqual(body, "abc")
+
+    def test_normalize_email_input_can_disable_body_limit(self) -> None:
+        _, body = normalize_email_input(_email(body_text="abcdef"), max_body_len=None)
+
+        self.assertEqual(body, "abcdef")
+
+
+class ParseReviewerReplyTests(unittest.TestCase):
+    target_file = "ali_parse.py"
+
+    def test_reply_text_returns_empty_for_empty_body(self) -> None:
+        self.assertEqual(extract_reviewer_reply_text(""), "")
+
+    def test_reply_text_stops_before_quoted_content(self) -> None:
+        body = "Please revise this.\n\n> Original draft\n> More history"
+
+        self.assertEqual(extract_reviewer_reply_text(body), "Please revise this.\n")
+
+    def test_reply_text_stops_before_wrote_marker(self) -> None:
+        body = "Looks good.\nOn Thu, Ali wrote:\nPrevious draft"
+
+        self.assertEqual(extract_reviewer_reply_text(body), "Looks good.")
+
+    def test_reply_text_stops_before_forward_marker(self) -> None:
+        body = "FYI only\n-----Original Message-----\nFrom: Someone"
+
+        self.assertEqual(extract_reviewer_reply_text(body), "FYI only")
+
+    def test_reply_text_stops_before_forwarded_header_run(self) -> None:
+        body = "Please use this.\nFrom: Ali\nSent: Today\nSubject: Draft"
+
+        self.assertEqual(extract_reviewer_reply_text(body), "Please use this.")
+
+    def test_reply_text_keeps_single_header_like_line_as_user_text(self) -> None:
+        body = "Subject: please change tone\nThanks"
+
+        self.assertEqual(extract_reviewer_reply_text(body), body)
+
+
+class ParseReviewStateTests(unittest.TestCase):
+    target_file = "ali_parse.py"
+
+    def test_review_state_extracts_single_protocol_block(self) -> None:
+        body = "\n".join(
+            [
+                REVIEW_HEADER_LINE_TEMPLATE.format(version=1),
+                "Draft body",
+                REVIEW_FOOTER_LINE,
+            ]
+        )
+
+        self.assertEqual(
+            extract_last_review_state(_email(body_text=body)),
+            ReviewState(version=1, draft="Draft body"),
+        )
+
+    def test_review_state_selects_highest_version_block(self) -> None:
+        body = "\n".join(
+            [
+                REVIEW_HEADER_LINE_TEMPLATE.format(version=1),
+                "Old draft",
+                REVIEW_FOOTER_LINE,
+                REVIEW_HEADER_LINE_TEMPLATE.format(version=3),
+                "New draft",
+                REVIEW_FOOTER_LINE,
+                REVIEW_HEADER_LINE_TEMPLATE.format(version=2),
+                "Middle draft",
+                REVIEW_FOOTER_LINE,
+            ]
+        )
+
+        self.assertEqual(
+            extract_last_review_state(_email(body_text=body)),
+            ReviewState(version=3, draft="New draft"),
+        )
+
+    def test_review_state_handles_quoted_protocol_lines(self) -> None:
+        body = "\n".join(
+            [
+                f"> {REVIEW_HEADER_LINE_TEMPLATE.format(version=2)}",
+                "> Updated draft",
+                f"> {REVIEW_FOOTER_LINE}",
+            ]
+        )
+
+        self.assertEqual(
+            extract_last_review_state(_email(body_text=body)),
+            ReviewState(version=2, draft="Updated draft"),
+        )
+
+    def test_review_state_uses_remainder_without_footer(self) -> None:
+        body = "\n".join(
+            [
+                REVIEW_HEADER_LINE_TEMPLATE.format(version=4),
+                "Draft without footer",
+            ]
+        )
+
+        self.assertEqual(
+            extract_last_review_state(_email(body_text=body)),
+            ReviewState(version=4, draft="Draft without footer"),
+        )
+
+    def test_review_state_raises_without_header(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Cannot locate review header"):
+            extract_last_review_state(_email(body_text="No protocol here"))
 
 
 class AdminBypassTests(unittest.TestCase):
@@ -1039,6 +1175,37 @@ class SendReplyTests(unittest.TestCase):
 
         smtp.assert_not_called()
         self.append_sent.assert_not_called()
+
+
+def load_tests(
+    loader: unittest.TestLoader,
+    tests: unittest.TestSuite,
+    pattern: str | None,
+) -> unittest.TestSuite:
+    target_order = {
+        "ali_parse.py": 0,
+        "ali_fetch.py": 1,
+        "ali_llm.py": 2,
+        "ali_send.py": 3,
+    }
+    test_classes = [
+        obj
+        for obj in globals().values()
+        if isinstance(obj, type)
+        and issubclass(obj, unittest.TestCase)
+        and getattr(obj, "target_file", None)
+    ]
+    test_classes.sort(
+        key=lambda cls: (
+            target_order.get(cls.target_file, len(target_order)),
+            cls.__name__,
+        )
+    )
+
+    suite = unittest.TestSuite()
+    for test_class in test_classes:
+        suite.addTests(loader.loadTestsFromTestCase(test_class))
+    return suite
 
 
 if __name__ == "__main__":
