@@ -37,7 +37,7 @@ from helper.utils_imap_config import load_imap_config  # type: ignore
 from ali.ali_fetch import fetch_new_messages, fetch_sender_replies  # type: ignore
 from ali.ali_llm import generate_review_package, render_review  # type: ignore
 from ali.ali_send import send_reply  # type: ignore
-from ali.ali_mail_parse import (
+from ali.ali_parse import (
     REVIEW_SUBJECT_MARKER,
     REVIEW_SUBJECT_PATTERN,
     extract_last_review_state,

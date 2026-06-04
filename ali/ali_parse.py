@@ -1,5 +1,5 @@
 """
-ali_mail_parse.py
+ali_parse.py
 
 职责：
 - 执行 Step0 input normalization、reviewer reply extraction 和 review-state parsing。

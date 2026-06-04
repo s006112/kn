@@ -81,7 +81,7 @@ polling cadence 只是 scheduling，不属于 semantic architecture。
 
 ### Step0 — Input Normalization / Review-State Parsing
 
-Owner: `ali/ali_mail_parse.py`
+Owner: `ali/ali_parse.py`
 
 做：normalize subject/body、限制 body size、extract reviewer reply text、解析 last review version/draft、维护 review protocol constants。
 
@@ -158,7 +158,7 @@ Owner: `ali/ali_llm.py::render_review()` + `ali/ali_email.py` subject/version se
 | ---------------------------- | ------------------------------------------------------------------------------------- |
 | `ali/ali_email.py`           | orchestration、Phase sequencing、guarded execution、subject versioning、message lifecycle |
 | `ali/ali_fetch.py`           | IMAP fetch、sender allowlist、ADMIN bypass、raw record → `EmailMessage`                  |
-| `ali/ali_mail_parse.py`      | input normalization、reviewer reply extraction、review-state parsing、protocol constants       |
+| `ali/ali_parse.py`           | input normalization、reviewer reply extraction、review-state parsing、protocol constants       |
 | `ali/ali_router.py`          | deterministic route selection only                                                    |
 | `ali/ali_llm.py`             | RAG gating、v1 generation、v2+ edit-only generation、Step4 hook、review rendering         |
 | `rag/helper_rag_pipeline.py` | RAG engine execution and answer/context assembly                                      |
@@ -206,7 +206,7 @@ fetch layer 可移动 disallowed mail away from active path；不得 mark normal
 
 可演进：`ali_router.py` 的 route rule；`ali_llm.py` 的 generation / retrieval gating / edit-only behavior；`rag/helper_rag_pipeline.py` 的 retrieval quality；future Step4 module。
 
-谨慎演进：`ali_mail_parse.py` 只为 normalization、reviewer reply extraction、review protocol parsing correctness 改；`ali_email.py` 只做 bug fix、invariant enforcement、orchestration cleanup。
+谨慎演进：`ali_parse.py` 只为 normalization、reviewer reply extraction、review protocol parsing correctness 改；`ali_email.py` 只做 bug fix、invariant enforcement、orchestration cleanup。
 
 legacy / experiment code 必须 isolated、not referenced by `ali_email.py`、标注 non-authoritative。
 
