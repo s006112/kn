@@ -30,7 +30,7 @@ from ali.ali_send import (  # noqa: E402
     _build_message,
     _build_subject,
     _build_to_address,
-    _require_reply_to_forward_sender,
+    _validate_outbound_recipients,
     send_reply,
 )
 from ali.ali_parse import (  # noqa: E402
@@ -1205,6 +1205,21 @@ class SubjectTests(unittest.TestCase):
 class RecipientGuardTests(unittest.TestCase):
     target_file = "ali_send.py"
 
+    def _outbound_msg(
+        self,
+        *,
+        to: str = "reviewer@ampco.com.hk",
+        cc: str | None = None,
+        bcc: str | None = None,
+    ) -> StdEmailMessage:
+        msg = StdEmailMessage()
+        msg["To"] = to
+        if cc is not None:
+            msg["Cc"] = cc
+        if bcc is not None:
+            msg["Bcc"] = bcc
+        return msg
+
     def test_recipient_removes_display_name(self) -> None:
         self.assertEqual(
             _build_to_address("Reviewer Name <reviewer@example.com>"),
@@ -1221,33 +1236,97 @@ class RecipientGuardTests(unittest.TestCase):
         self.assertEqual(_build_to_address("Reviewer <>"), "Reviewer <>")
 
     def test_recipient_allows_same_email_ignoring_case(self) -> None:
-        _require_reply_to_forward_sender(
-            "Reviewer Name <Reviewer@Example.com>",
-            "reviewer@example.com",
-        )
+        with patch("ali.ali_send.dotenv_values", return_value={}):
+            _validate_outbound_recipients(
+                self._outbound_msg(to="reviewer@ampco.com.hk"),
+                reviewer_addr="Reviewer Name <Reviewer@Ampco.com.hk>",
+            )
 
     def test_recipient_rejects_different_email(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "Outbound recipient mismatch"):
-            _require_reply_to_forward_sender(
-                "reviewer@example.com",
-                "customer@example.com",
+        with (
+            patch("ali.ali_send.dotenv_values", return_value={}),
+            self.assertRaisesRegex(RuntimeError, "outbound To must be reviewer only"),
+        ):
+            _validate_outbound_recipients(
+                self._outbound_msg(to="other@ampco.com.hk"),
+                reviewer_addr="reviewer@ampco.com.hk",
             )
 
     def test_recipient_rejects_missing_email(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "Missing sender or recipient"):
-            _require_reply_to_forward_sender("", "reviewer@example.com")
+        with (
+            patch("ali.ali_send.dotenv_values", return_value={}),
+            self.assertRaisesRegex(RuntimeError, "reviewer must be internal address"),
+        ):
+            _validate_outbound_recipients(self._outbound_msg(), reviewer_addr="")
 
     def test_recipient_rejects_missing_target_email(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "Missing sender or recipient"):
-            _require_reply_to_forward_sender("reviewer@example.com", "")
+        with (
+            patch("ali.ali_send.dotenv_values", return_value={}),
+            self.assertRaisesRegex(RuntimeError, "outbound To must be reviewer only"),
+        ):
+            _validate_outbound_recipients(
+                self._outbound_msg(to=""),
+                reviewer_addr="reviewer@ampco.com.hk",
+            )
 
     def test_recipient_rejects_invalid_email(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "Unable to parse email address"):
-            _require_reply_to_forward_sender("Reviewer <>", "reviewer@example.com")
+        with (
+            patch("ali.ali_send.dotenv_values", return_value={}),
+            self.assertRaisesRegex(RuntimeError, "reviewer must be internal address"),
+        ):
+            _validate_outbound_recipients(
+                self._outbound_msg(),
+                reviewer_addr="Reviewer <>",
+            )
 
     def test_recipient_rejects_invalid_target_email(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "Unable to parse email address"):
-            _require_reply_to_forward_sender("reviewer@example.com", "Reviewer <>")
+        with (
+            patch("ali.ali_send.dotenv_values", return_value={}),
+            self.assertRaisesRegex(RuntimeError, "outbound To must be reviewer only"),
+        ):
+            _validate_outbound_recipients(
+                self._outbound_msg(to="Reviewer <>"),
+                reviewer_addr="reviewer@ampco.com.hk",
+            )
+
+    def test_recipient_rejects_multiple_to_addresses(self) -> None:
+        with (
+            patch("ali.ali_send.dotenv_values", return_value={}),
+            self.assertRaisesRegex(RuntimeError, "outbound To must be reviewer only"),
+        ):
+            _validate_outbound_recipients(
+                self._outbound_msg(to="reviewer@ampco.com.hk, other@ampco.com.hk"),
+                reviewer_addr="reviewer@ampco.com.hk",
+            )
+
+    def test_recipient_rejects_cc(self) -> None:
+        with (
+            patch("ali.ali_send.dotenv_values", return_value={}),
+            self.assertRaisesRegex(RuntimeError, "outbound Cc is not allowed"),
+        ):
+            _validate_outbound_recipients(
+                self._outbound_msg(cc="copy@ampco.com.hk"),
+                reviewer_addr="reviewer@ampco.com.hk",
+            )
+
+    def test_recipient_allows_expected_admin_bcc(self) -> None:
+        env = {"ADMIN_USERNAME": "admin@ampco.com.hk"}
+        with patch("ali.ali_send.dotenv_values", return_value=env):
+            _validate_outbound_recipients(
+                self._outbound_msg(bcc="admin@ampco.com.hk"),
+                reviewer_addr="reviewer@ampco.com.hk",
+            )
+
+    def test_recipient_rejects_unexpected_bcc(self) -> None:
+        env = {"ADMIN_USERNAME": "admin@ampco.com.hk"}
+        with (
+            patch("ali.ali_send.dotenv_values", return_value=env),
+            self.assertRaisesRegex(RuntimeError, "outbound Bcc must be admin only"),
+        ):
+            _validate_outbound_recipients(
+                self._outbound_msg(bcc="other@ampco.com.hk"),
+                reviewer_addr="reviewer@ampco.com.hk",
+            )
 
 
 class SenderAdminBccTests(unittest.TestCase):
@@ -1355,9 +1434,15 @@ class SendReplyTests(unittest.TestCase):
         self.logger = MagicMock()
         self.server = MagicMock()
         self.server.__enter__.return_value = self.server
+        dotenv_patcher = patch("ali.ali_send.dotenv_values", return_value={})
+        self.dotenv_values = dotenv_patcher.start()
+        self.addCleanup(dotenv_patcher.stop)
         append_sent_patcher = patch("ali.ali_send.append_to_imap_sent")
         self.append_sent = append_sent_patcher.start()
         self.addCleanup(append_sent_patcher.stop)
+
+    def _internal_email(self, **overrides: object) -> EmailMessage:
+        return _email(from_addr="Reviewer Name <reviewer@ampco.com.hk>", **overrides)
 
     def _common_patches(self, config: SmtpConfig | None):
         return (
@@ -1369,7 +1454,7 @@ class SendReplyTests(unittest.TestCase):
     def test_send_fails_without_smtp_config(self) -> None:
         load_env, configure_logging, load_config = self._common_patches(None)
         with load_env as load_env_mock, configure_logging, load_config as load_config_mock:
-            result = send_reply(_email(), "Internal review")
+            result = send_reply(self._internal_email(), "Internal review")
 
         self.assertFalse(result.ok)
         self.assertEqual(result.error_message, "Missing SMTP_HOST/USER/PASSWORD")
@@ -1386,7 +1471,7 @@ class SendReplyTests(unittest.TestCase):
             load_config,
             patch("ali.ali_send.smtplib.SMTP", return_value=self.server),
         ):
-            result = send_reply(_email(), "Internal review", from_addr="custom@example.com")
+            result = send_reply(self._internal_email(), "Internal review", from_addr="custom@example.com")
 
         self.assertTrue(result.ok)
         sent_msg = self.server.send_message.call_args.args[0]
@@ -1401,7 +1486,7 @@ class SendReplyTests(unittest.TestCase):
             load_config,
             patch("ali.ali_send.smtplib.SMTP", return_value=self.server) as smtp,
         ):
-            result = send_reply(_email(), "Internal review")
+            result = send_reply(self._internal_email(), "Internal review")
 
         self.assertTrue(result.ok)
         smtp.assert_called_once_with("smtp.example.com", 587, timeout=60)
@@ -1416,7 +1501,7 @@ class SendReplyTests(unittest.TestCase):
             load_config,
             patch("ali.ali_send.smtplib.SMTP", return_value=self.server) as smtp,
         ):
-            result = send_reply(_email(), "Internal review")
+            result = send_reply(self._internal_email(), "Internal review")
 
         self.assertTrue(result.ok)
         smtp.assert_called_once_with("smtp.example.com", 587, timeout=60)
@@ -1424,7 +1509,7 @@ class SendReplyTests(unittest.TestCase):
         self.server.starttls.assert_called_once_with()
         self.server.login.assert_called_once_with("ali@example.com", "secret")
         sent_msg = self.server.send_message.call_args.args[0]
-        self.assertEqual(sent_msg["To"], "reviewer@example.com")
+        self.assertEqual(sent_msg["To"], "reviewer@ampco.com.hk")
         self.assertEqual(sent_msg["Reply-To"], "ali@example.com")
         self.append_sent.assert_called_once_with(sent_msg, self.logger)
 
@@ -1437,7 +1522,7 @@ class SendReplyTests(unittest.TestCase):
             load_config,
             patch("ali.ali_send.smtplib.SMTP_SSL", return_value=self.server) as smtp_ssl,
         ):
-            result = send_reply(_email(), "Internal review")
+            result = send_reply(self._internal_email(), "Internal review")
 
         self.assertTrue(result.ok)
         smtp_ssl.assert_called_once_with("smtp.example.com", 465, timeout=60)
@@ -1453,7 +1538,7 @@ class SendReplyTests(unittest.TestCase):
             load_config,
             patch("ali.ali_send.smtplib.SMTP", return_value=self.server),
         ):
-            result = send_reply(_email(), "Internal review")
+            result = send_reply(self._internal_email(), "Internal review")
 
         self.assertFalse(result.ok)
         self.assertEqual(result.error_message, "send_reply failed (see logs)")
@@ -1469,7 +1554,7 @@ class SendReplyTests(unittest.TestCase):
             load_config,
             patch("ali.ali_send.smtplib.SMTP", side_effect=RuntimeError("offline")),
         ):
-            result = send_reply(_email(), "Internal review")
+            result = send_reply(self._internal_email(), "Internal review")
 
         self.assertFalse(result.ok)
         self.assertEqual(result.error_message, "send_reply failed (see logs)")
@@ -1486,7 +1571,7 @@ class SendReplyTests(unittest.TestCase):
             load_config,
             patch("ali.ali_send.smtplib.SMTP", return_value=self.server),
         ):
-            result = send_reply(_email(), "Internal review")
+            result = send_reply(self._internal_email(), "Internal review")
 
         self.assertTrue(result.ok)
         self.assertIsNone(result.error_message)
@@ -1501,7 +1586,7 @@ class SendReplyTests(unittest.TestCase):
             configure_logging,
             load_config,
             patch("ali.ali_send.smtplib.SMTP") as smtp,
-            self.assertRaisesRegex(RuntimeError, "Missing sender or recipient"),
+            self.assertRaisesRegex(RuntimeError, "reviewer must be internal address"),
         ):
             send_reply(_email(from_addr=""), "Internal review")
 

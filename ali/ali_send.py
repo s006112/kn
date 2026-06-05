@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 import smtplib
 from email.message import EmailMessage as StdEmailMessage
-from email.utils import parseaddr
+from email.utils import parseaddr, getaddresses
 from typing import Optional
 from dotenv import dotenv_values
 
@@ -27,34 +27,62 @@ from helper.utils_imap_types import EmailMessage, SendResult  # type: ignore
 from helper.utils_imap_ops import append_to_imap_sent  # type: ignore
 
 _DOTENV_PATH = ROOT / ".env"
+_ALLOWED_DOMAIN_SUFFIX = "@ampco.com.hk"
 
 
 # Safety: only reply to forward sender.
 
-def _require_reply_to_forward_sender(original_from_addr: str, to_header_value: str) -> None:
-    """仅允许回复转发给 ALI 的 reviewer；按 addr-spec 严格比对。"""
-    if not original_from_addr or not to_header_value:
+def _parse_email(value: str) -> str:
+    _, addr = parseaddr(value or "")
+    return addr.strip().lower()
+
+
+def _require_internal_address(addr: str, *, field: str) -> str:
+    email = _parse_email(addr)
+    if not email or not email.endswith(_ALLOWED_DOMAIN_SUFFIX):
         raise RuntimeError(
-            "SECURITY REJECTED (FORWARD-ONLY POLICY): "
-            "Missing sender or recipient address."
+            f"SECURITY REJECTED (INTERNAL-ONLY POLICY): "
+            f"{field} must be internal address, got {addr!r}."
+        )
+    return email
+
+
+def _validate_outbound_recipients(msg: StdEmailMessage, *, reviewer_addr: str) -> None:
+    reviewer = _require_internal_address(reviewer_addr, field="reviewer")
+    env_values = dotenv_values(_DOTENV_PATH)
+    admin = _parse_email(str(env_values.get("ADMIN_USERNAME", "")).strip())
+
+    to_addrs = [
+        _parse_email(addr)
+        for _, addr in getaddresses([msg.get("To", "")])
+        if _parse_email(addr)
+    ]
+    if to_addrs != [reviewer]:
+        raise RuntimeError(
+            f"SECURITY REJECTED: outbound To must be reviewer only. "
+            f"Expected {reviewer}, got {to_addrs or '<empty>'}."
         )
 
-    _, original_email = parseaddr(original_from_addr)
-    _, to_email = parseaddr(to_header_value)
-
-    if not original_email or not to_email:
+    cc_addrs = [
+        _parse_email(addr)
+        for _, addr in getaddresses([msg.get("Cc", "")])
+        if _parse_email(addr)
+    ]
+    if cc_addrs:
         raise RuntimeError(
-            "SECURITY REJECTED (FORWARD-ONLY POLICY): "
-            f"Unable to parse email address "
-            f"(from={original_from_addr}, to={to_header_value})."
+            f"SECURITY REJECTED: outbound Cc is not allowed, got {cc_addrs}."
         )
 
-    if original_email.strip().lower() != to_email.strip().lower():
+    bcc_addrs = [
+        _parse_email(addr)
+        for _, addr in getaddresses([msg.get("Bcc", "")])
+        if _parse_email(addr)
+    ]
+    expected_bcc = [admin] if admin and reviewer != admin else []
+    if bcc_addrs != expected_bcc:
         raise RuntimeError(
-            "SECURITY REJECTED (FORWARD-ONLY POLICY): "
-            f"Outbound recipient mismatch. "
-            f"Expected To={original_email}, but got To={to_email}. "
-            "Only the forwarding reviewer is allowed as recipient."
+            f"SECURITY REJECTED: outbound Bcc must be admin only. "
+            f"Expected {expected_bcc or '<empty>'}, got {bcc_addrs or '<empty>'}."
         )
 
 
@@ -77,9 +105,9 @@ def _build_to_address(from_addr: str) -> str:
 
 def _add_admin_bcc(msg: StdEmailMessage, original_from_addr: str) -> None:
     env_values = dotenv_values(_DOTENV_PATH)
-    admin_addr = str(env_values.get("ADMIN_USERNAME", "")).strip().lower()
-    _, original_email = parseaddr(original_from_addr)
-    if admin_addr and original_email.strip().lower() != admin_addr:
+    admin_addr = _parse_email(str(env_values.get("ADMIN_USERNAME", "")).strip())
+    original_email = _parse_email(original_from_addr)
+    if admin_addr and original_email != admin_addr:
         msg["Bcc"] = admin_addr
 
 
@@ -144,7 +172,7 @@ def send_reply(
     msg = _build_message(original, reply_body, from_addr or smtp_cfg.default_from)
     msg["Reply-To"] = smtp_cfg.user
     _add_admin_bcc(msg, original.from_addr)
-    _require_reply_to_forward_sender(original.from_addr, msg["To"])
+    _validate_outbound_recipients(msg, reviewer_addr=original.from_addr)
 
     try:
         if smtp_cfg.use_ssl:
