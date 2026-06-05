@@ -1,3 +1,19 @@
+"""
+p_txt.py
+Text pipeline workers for pretext extraction, model extraction, and distillation.
+
+Used by:
+* w/p.py
+* w/evaluation.py
+
+Pipelines:
+- raw text -> pretext LLM -> extract watch folder -> Markdown note -> raw archive
+- pretext/premium text -> classifier -> extraction models -> Markdown note -> done archive
+- extract outputs -> distillation LLM -> distilled Markdown section
+- watch folder -> scanner -> queue -> worker thread -> file lock -> processor
+
+"""
+
 from __future__ import annotations
 
 import logging

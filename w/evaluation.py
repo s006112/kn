@@ -8,7 +8,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from queue import Queue
+from queue import Empty, Queue
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -2162,6 +2162,56 @@ def test_audio_scan_enqueues_audio_file(test_id: str) -> tuple[bool, list[Path]]
     return passed, cleanup
 
 
+def test_audio_scan_fallback_deduplicates_and_filters(test_id: str) -> tuple[bool, list[Path]]:
+    folder = ROOT_DIR / f"{test_id}_audio_fallback_watch"
+    small = folder / f"{test_id}_small.mp3"
+    large = folder / f"{test_id}_large.M4A"
+    ignored = folder / f"{test_id}_ignored.txt"
+    audio_queue = Queue()
+
+    cleanup = [folder]
+
+    folder.mkdir(parents=True, exist_ok=True)
+    small.write_text("x", encoding="utf-8")
+    large.write_text("x" * 10, encoding="utf-8")
+    ignored.write_text("not audio", encoding="utf-8")
+
+    audio_queue.put((str(small), str(folder)))
+    config = {
+        **CONFIG,
+        "AUDIO_WATCH_FOLDERS": [],
+        "AUDIO_WATCH_FOLDER": folder,
+    }
+
+    scan_audio_files(config, audio_queue)
+    queued_items = list(audio_queue.queue)
+    queued_paths = [item[0] for item in queued_items]
+
+    passed = (
+        queued_paths.count(str(small)) == 1
+        and queued_paths.count(str(large)) == 1
+        and str(ignored) not in queued_paths
+    )
+
+    print_result(
+        "audio scan fallback deduplicates and filters",
+        passed,
+        {
+            "folder": folder,
+            "small_count": queued_paths.count(str(small)),
+            "large_count": queued_paths.count(str(large)),
+            "ignored_queued": str(ignored) in queued_paths,
+            "queue_size": audio_queue.qsize(),
+        },
+    )
+
+    while not audio_queue.empty():
+        audio_queue.get_nowait()
+        audio_queue.task_done()
+
+    return passed, cleanup
+
+
 def test_audio_pipeline_scans_audio(test_id: str) -> tuple[bool, list[Path]]:
     folder = PATHS.audio_watch_folders[0]
     source = folder / f"{test_id}_audio_pipeline_scan.mp3"
@@ -2304,6 +2354,86 @@ def test_audio_process_file_mocked_full_path(test_id: str) -> tuple[bool, list[P
     finally:
         audio_module.convert_audio_to_wav = original_convert
         audio_module.get_service = original_get_service
+
+
+def test_audio_queue_empty_poll_does_not_double_task_done(test_id: str) -> tuple[bool, list[Path]]:
+    folder = ROOT_DIR / f"{test_id}_audio_queue_watch"
+    source = folder / f"{test_id}_queued.mp3"
+    cleanup = [folder]
+
+    folder.mkdir(parents=True, exist_ok=True)
+    source.write_text(f"queued audio source {test_id}\n", encoding="utf-8")
+
+    shutdown_flag = threading.Event()
+
+    class EmptyAfterFirstQueue(Queue):
+        def __init__(self):
+            super().__init__()
+            self.get_calls = 0
+
+        def get(self, *args, **kwargs):
+            self.get_calls += 1
+            if self.get_calls == 1:
+                return super().get(*args, **kwargs)
+            shutdown_flag.set()
+            raise Empty
+
+    audio_queue = EmptyAfterFirstQueue()
+    audio_queue.put((str(source), str(folder)))
+    processing_lock = threading.Lock()
+    processed: list[str] = []
+    raised: str | None = None
+
+    original_process_audio_file = audio_module.process_audio_file
+
+    try:
+        def fake_process_audio_file(file_path: str, *_args) -> bool:
+            processed.append(file_path)
+            return True
+
+        audio_module.process_audio_file = fake_process_audio_file
+
+        try:
+            audio_module.process_audio_queue(
+                {
+                    **CONFIG,
+                    "INTERVALS": {
+                        **CONFIG["INTERVALS"],
+                        "WAIT_SECONDS": 0.01,
+                    },
+                },
+                audio_queue,
+                processing_lock=processing_lock,
+                done_folder_path=str(PATHS.audio_done),
+                shutdown_flag=shutdown_flag,
+                once=False,
+                wait_seconds=0.01,
+            )
+        except Exception as exc:
+            raised = repr(exc)
+
+        passed = (
+            raised is None
+            and processed == [str(source)]
+            and audio_queue.unfinished_tasks == 0
+            and audio_queue.get_calls == 2
+        )
+
+        print_result(
+            "audio queue empty poll does not double task done",
+            passed,
+            {
+                "processed": processed,
+                "raised": raised,
+                "unfinished_tasks": audio_queue.unfinished_tasks,
+                "get_calls": audio_queue.get_calls,
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        audio_module.process_audio_file = original_process_audio_file
 
 
 def test_process_queue_handles_lock_miss_errors_and_permanent_failures(test_id: str) -> tuple[bool, list[Path]]:
@@ -3540,8 +3670,10 @@ def main() -> int:
             test_torrent_scan_moves_torrent,
             test_text_workers_own_scan_functions,
             test_audio_scan_enqueues_audio_file,
+            test_audio_scan_fallback_deduplicates_and_filters,
             test_audio_pipeline_scans_audio,
             test_audio_process_file_mocked_full_path,
+            test_audio_queue_empty_poll_does_not_double_task_done,
             test_process_queue_handles_lock_miss_errors_and_permanent_failures,
             test_distillation_success_skip_and_error_paths,
             test_extract_multi_model_failure_is_terminal,
