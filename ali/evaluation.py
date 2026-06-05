@@ -12,7 +12,6 @@ Used by:
 from __future__ import annotations
 
 import sys
-import runpy
 import time
 import unittest
 import warnings
@@ -63,12 +62,12 @@ from ali.ali_llm import (  # noqa: E402
 from ali import ali_email  # noqa: E402
 from ali.ali_email import (  # noqa: E402
     _build_review_subject,
-    _default_poll_interval_minutes,
     _move_imap_message_to_failed,
     _phase1_new_messages,
     _phase2_sender_replies,
     _run_guarded,
     _send_internal_review,
+    poll_interval_minutes,
 )
 from helper.utils_imap_client import RawFetchedRecord  # noqa: E402
 from helper.utils_imap_config import ImapConfig, SmtpConfig  # noqa: E402
@@ -911,13 +910,13 @@ class LlmReviewAndRenderingTests(unittest.TestCase):
 class EmailTimingTests(unittest.TestCase):
     target_file = "ali_email.py"
 
-    def test_default_poll_interval_is_shorter_during_hong_kong_business_hours(self) -> None:
-        self.assertEqual(_default_poll_interval_minutes(datetime(2026, 1, 1, 9, 0)), 1)
-        self.assertEqual(_default_poll_interval_minutes(datetime(2026, 1, 1, 17, 59)), 1)
+    def test_poll_interval_is_shorter_during_hong_kong_business_hours(self) -> None:
+        self.assertEqual(poll_interval_minutes(datetime(2026, 1, 1, 9, 0)), 1)
+        self.assertEqual(poll_interval_minutes(datetime(2026, 1, 1, 17, 59)), 1)
 
-    def test_default_poll_interval_is_longer_outside_business_hours(self) -> None:
-        self.assertEqual(_default_poll_interval_minutes(datetime(2026, 1, 1, 8, 59)), 2)
-        self.assertEqual(_default_poll_interval_minutes(datetime(2026, 1, 1, 18, 0)), 2)
+    def test_poll_interval_is_longer_outside_business_hours(self) -> None:
+        self.assertEqual(poll_interval_minutes(datetime(2026, 1, 1, 8, 59)), 5)
+        self.assertEqual(poll_interval_minutes(datetime(2026, 1, 1, 18, 0)), 5)
 
 
 class EmailGuardedExecutionTests(unittest.TestCase):
@@ -1130,31 +1129,27 @@ class EmailPhaseTwoTests(unittest.TestCase):
 class EmailPipelineTests(unittest.TestCase):
     target_file = "ali_email.py"
 
-    def test_main_loop_configures_logger_and_runs_both_phases(self) -> None:
+    def test_main_loop_configures_logger_runs_phases_and_sleeps(self) -> None:
         class StopLoop(Exception):
             pass
 
         logger = MagicMock()
         with (
-            patch("helper.helper_config.configure_logging", return_value=logger) as configure,
-            patch("ali.ali_fetch.fetch_new_messages", return_value=[]) as fetch_new,
-            patch("ali.ali_fetch.fetch_sender_replies", return_value=[]) as fetch_replies,
-            patch("helper.helper_config.get_env_int", return_value=1) as get_interval,
+            patch("ali.ali_email.configure_logging", return_value=logger) as configure,
+            patch("ali.ali_email._phase1_new_messages") as phase1,
+            patch("ali.ali_email._phase2_sender_replies") as phase2,
+            patch("ali.ali_email.poll_interval_minutes", return_value=2) as poll_interval,
             patch("time.sleep", side_effect=StopLoop) as sleep,
+            self.assertRaises(StopLoop),
         ):
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", message="'ali\\.ali_email' found in sys\\.modules.*", category=RuntimeWarning)
-                with self.assertRaises(StopLoop):
-                    runpy.run_module("ali.ali_email", run_name="__main__")
+            ali_email.main()
 
         configure.assert_called_once_with("ali_pipeline")
-        fetch_new.assert_called_once_with(max_messages=2)
-        fetch_replies.assert_called_once_with()
-        get_interval.assert_called_once()
-        self.assertEqual(get_interval.call_args.args[0], "ALI_POLL_INTERVAL_MINUTES")
-        self.assertIn(get_interval.call_args.args[1], (1, 2))
-        sleep.assert_called_once_with(60)
-        logger.info.assert_any_call("Pipeline run finished.")
+        phase1.assert_called_once_with(logger=logger)
+        phase2.assert_called_once_with(logger=logger)
+        logger.info.assert_called_once_with("Pipeline run finished.")
+        poll_interval.assert_called_once_with()
+        sleep.assert_called_once_with(120)
 
 
 class SubjectTests(unittest.TestCase):

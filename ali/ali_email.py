@@ -28,7 +28,7 @@ import time
 from datetime import datetime, time as dt_time
 from zoneinfo import ZoneInfo
 
-from helper.helper_config import configure_logging, get_env_int  # type: ignore
+from helper.helper_config import configure_logging  # type: ignore
 from helper.utils_imap_types import EmailMessage, SendResult
 from helper.utils_imap_ops import mark_imap_message_seen  # type: ignore
 from helper.utils_imap_client import ImapClient  # type: ignore
@@ -50,15 +50,12 @@ from ali.ali_parse import (
 
 LLM_MODEL = "sonar"
 
-_HKT_ZONE = ZoneInfo("Asia/Hong_Kong")
-_DAY_START = dt_time(9, 0)
-_DAY_END = dt_time(18, 0)
 _FAILED_FOLDER = "Ali_failed"
 
-def _default_poll_interval_minutes(now: datetime | None = None) -> float:
-    current = now or datetime.now(tz=_HKT_ZONE)
+def poll_interval_minutes(now: datetime | None = None) -> float:
+    current = now or datetime.now(tz=ZoneInfo("Asia/Hong_Kong"))
     local_time = current.timetz().replace(tzinfo=None)
-    return 1 if _DAY_START <= local_time < _DAY_END else 2
+    return 1 if dt_time(9, 0) <= local_time < dt_time(18, 0) else 5
 
 def _move_imap_message_to_failed(uid: int, *, logger) -> None:
     cfg = load_imap_config(
@@ -264,14 +261,10 @@ def _phase2_sender_replies(*, logger) -> None:
 # Main loop
 # -----------------------------------------------------------------------------
 
-if __name__ == "__main__":
+def main() -> None:
     logger = configure_logging("ali_pipeline")
     while True:
         _phase1_new_messages(logger=logger)
         _phase2_sender_replies(logger=logger)
         logger.info("Pipeline run finished.")
-        interval_minutes = get_env_int(
-            "ALI_POLL_INTERVAL_MINUTES",
-            _default_poll_interval_minutes(),
-        )
-        time.sleep(interval_minutes * 60)
+        time.sleep(poll_interval_minutes() * 60)

@@ -8,7 +8,7 @@ ALI 是一個 reviewer-only email draft generator。
 ## Run
 
 ```bash
-python ali/ali_email.py
+python -c "from ali.ali_email import main; main()"
 ```
 
 ## Document Ownership
@@ -48,7 +48,7 @@ ALI 不是 autonomous customer-reply agent；它只是 **reviewer-only draft gen
 
 ## 2. Runtime Shape
 
-入口：`ali/ali_email.py::pipeline_run()`。
+入口：`ali/ali_email.py::main()`。
 
 ### Terminology
 
