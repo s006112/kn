@@ -44,6 +44,20 @@ P2_REVISION_PROMPT_PATH = PROMPT_DIR / "prompt_ali_p2_revision.txt"
 
 
 # -----------------------------------------------------------------------------
+# Common helpers
+# -----------------------------------------------------------------------------
+
+def format_email_query(subject: str, body: str) -> str:
+    return "\n\n".join(
+        part
+        for part in (
+            f"Subject: {subject}" if subject else "",
+            body,
+        )
+        if part
+    ).strip()
+
+# -----------------------------------------------------------------------------
 # Step2: Routing & RAG
 # -----------------------------------------------------------------------------
 
@@ -63,13 +77,11 @@ def route_email(subject: str, body: str) -> str:
 
 
 def rag_retrieval(category: str, subject: str, body: str, *, model: str) -> str | None:
-    engine_name = RAG_ENGINE_BY_CATEGORY.get(category)
+    engine_name = RAG_ENGINE_BY_CATEGORY.get(category)  # hit route category or None for unknown category
     if engine_name is None:
         return None
 
-    query = "\n\n".join(
-        part for part in (f"Subject: {subject}" if subject else "", body) if part
-    ).strip()
+    query = format_email_query(subject, body)
 
     try:
         answer, table_str = get_rag_engine(engine_name).answer_question(query, model=model)
@@ -103,23 +115,28 @@ def generate_review_package(
         category = route_email(subject_norm, body_norm)
         retrieval_context = rag_retrieval(category, subject_norm, body_norm, model=model)
 
+        original_email_text = format_email_query(subject_norm, body_norm)
+
+        user_text = (
+            "<ORIGINAL_EMAIL>\n"
+            f"{original_email_text}\n"
+            "</ORIGINAL_EMAIL>"
+        )
         if retrieval_context is not None:
-            draft = retrieval_context
-        else:
-            system_prompt = P1_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
-            draft = call_llm(
-                model=model,
-                system_prompt=system_prompt,
-                user_text="\n\n".join(
-                    part
-                    for part in (
-                        f"Subject: {subject_norm}" if subject_norm else "",
-                        body_norm,
-                    )
-                    if part
-                ),
-                file_path=None,
-            ).strip()
+            user_text = (
+                f"{user_text}\n\n"
+                "<GROUNDED_MATERIAL>\n"
+                f"{retrieval_context.strip()}\n"
+                "</GROUNDED_MATERIAL>"
+            )
+
+        system_prompt = P1_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
+        draft = call_llm(
+            model=model,
+            system_prompt=system_prompt,
+            user_text=user_text,
+            file_path=None,
+        ).strip()
     else:
         revision_prompt = P2_REVISION_PROMPT_PATH.read_text(encoding="utf-8")
         reviewer_reply_text = body_norm.strip()

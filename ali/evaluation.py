@@ -692,9 +692,10 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
         self.assertEqual(ali_llm.P2_REVISION_PROMPT_PATH.name, "prompt_ali_p2_revision.txt")
         self.assertNotEqual(ali_llm.P1_SYSTEM_PROMPT_PATH, ali_llm.P2_REVISION_PROMPT_PATH)
 
-    def test_v1_uses_rag_answer_without_calling_llm(self) -> None:
+    def test_v1_uses_rag_answer_as_grounding_for_prompt_llm(self) -> None:
         category = "safety"
         p1_prompt_path = MagicMock()
+        p1_prompt_path.read_text.return_value = "P1 prompt"
         p2_prompt_path = MagicMock()
         with (
             patch("ali.ali_llm.route_email", return_value=category) as route_email,
@@ -704,19 +705,31 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
             ) as retrieve,
             patch("ali.ali_llm.P1_SYSTEM_PROMPT_PATH", p1_prompt_path),
             patch("ali.ali_llm.P2_REVISION_PROMPT_PATH", p2_prompt_path),
-            patch("ali.ali_llm.call_llm") as call_llm,
+            patch("ali.ali_llm.call_llm", return_value="  LLM draft  ") as call_llm,
         ):
             result = generate_review_package(
                 _email(subject="  Question  ", body_text="  Body  "),
                 model="test-model",
             )
 
-        self.assertEqual(result["draft"], "RAG draft")
+        self.assertEqual(result["draft"], "LLM draft")
         route_email.assert_called_once_with("Question", "Body")
         retrieve.assert_called_once_with(category, "Question", "Body", model="test-model")
-        p1_prompt_path.read_text.assert_not_called()
+        p1_prompt_path.read_text.assert_called_once_with(encoding="utf-8")
         p2_prompt_path.read_text.assert_not_called()
-        call_llm.assert_not_called()
+        call_llm.assert_called_once_with(
+            model="test-model",
+            system_prompt="P1 prompt",
+            user_text=(
+                "<ORIGINAL_EMAIL>\n"
+                "Subject: Question\n\nBody\n"
+                "</ORIGINAL_EMAIL>\n\n"
+                "<GROUNDED_MATERIAL>\n"
+                "RAG draft\n"
+                "</GROUNDED_MATERIAL>"
+            ),
+            file_path=None,
+        )
 
     def test_v1_falls_back_to_prompt_llm_and_builds_package(self) -> None:
         p1_prompt_path = MagicMock()
@@ -753,7 +766,11 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
         call_llm.assert_called_once_with(
             model="test-model",
             system_prompt="P1 prompt",
-            user_text="Subject: Question\n\nBody",
+            user_text=(
+                "<ORIGINAL_EMAIL>\n"
+                "Subject: Question\n\nBody\n"
+                "</ORIGINAL_EMAIL>"
+            ),
             file_path=None,
         )
         review.assert_called_once_with("LLM draft", enabled=False)
