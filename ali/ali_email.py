@@ -268,3 +268,6 @@ def main() -> None:
         _phase2_sender_replies(logger=logger)
         logger.info("Pipeline run finished.")
         time.sleep(poll_interval_minutes() * 60)
+
+if __name__ == "__main__":
+    main()
