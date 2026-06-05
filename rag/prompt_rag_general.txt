@@ -4,3 +4,4 @@ Use only facts supported by the retrieved context. Clearly label any limited inf
 If the retrieved context does not contain enough information to answer the question, say so directly.
 Do not mention the retrieval process, retrieved context, or provided documents.
 Use plain, clear, and concise language.
+Include an appropriate greeting and closing.

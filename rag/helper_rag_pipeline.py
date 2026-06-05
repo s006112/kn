@@ -35,7 +35,7 @@ from rag.helper_query_rewriting import rewrite_query_variants, merge_candidates_
 
 
 SEARCH_BACKEND = "faiss"   # "faiss" | "brute"
-TOP_K = 10
+TOP_K = 15
 CANDIDATE_K = 50
 SCORE_THRESHOLD = 0.4
 ROOT = Path(__file__).resolve().parents[1]
