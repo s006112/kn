@@ -3,7 +3,7 @@
 ALI 是一個 reviewer-only email draft generator。
 
 它不會直接回覆 customer，也不會自動對外發信。  
-所有 generated draft 只會回給 forwarding reviewer，由人決定是否採用。
+所有 generated draft 的 `To:` 只會回給 forwarding reviewer，並可按 `ADMIN_USERNAME` 加內部 audit Bcc；由人決定是否採用。
 
 ## Run
 
@@ -17,17 +17,18 @@ python -c "from ali.ali_email import main; main()"
 
 Python module docstring 只保留职责摘要、本文链接和 `Used by:`。与实现直接相关的局部约束可以留在函数附近，但不得复制整段 architecture contract。
 
-ALI 不是 autonomous customer-reply agent；它只是 **reviewer-only draft generator**：内部 reviewer 转发邮件给 ALI，ALI 只把 internal review draft 回给同一个 reviewer，最终是否对客户发信由人决定。
+ALI 不是 autonomous customer-reply agent；它只是 **reviewer-only draft generator**：内部 reviewer 转发邮件给 ALI，ALI 把 internal review draft 回给同一个 reviewer，并可按 `ADMIN_USERNAME` 加内部 audit Bcc；最终是否对客户发信由人决定。
 
 ---
 
 ## 1. Core Invariants
 
 1. **No Autonomous External Action**
-   不得发信给 customer / third party；所有 generated content 都是 INTERNAL-ONLY、reviewer-facing。
+   不得发信给 customer / external third party；所有 generated content 都是 INTERNAL-ONLY、reviewer-facing。
 
 2. **Forward-Only Reply Model**
-   outbound recipient 只能是原 forwarding reviewer；`ali/ali_send.py` 必须 hard-block recipient mismatch。
+   outbound `To:` 必须是原 forwarding reviewer；`ali/ali_send.py` 必须 hard-block `To:` mismatch。
+   系统可按 `ADMIN_USERNAME` 加内部 audit Bcc，但不得把 customer address 作为 `To` / `Cc` / `Bcc`。
 
 3. **Silence Means Termination**
    reviewer 空回复 = REJECT；mark SEEN 后停止。
@@ -65,7 +66,7 @@ ALI 不是 autonomous customer-reply agent；它只是 **reviewer-only draft gen
 
 ### Phase 1 — New Forwarded Emails
 
-`fetch_new_messages(max_messages=2)` 抓 UNSEEN mail；fetch layer 过滤 sender allowlist、`ADMIN_USERNAME` bypass、reserved review subject；生成 initial draft（v1）；只回给 forwarding reviewer；成功后才 mark original message as SEEN。
+`fetch_new_messages(max_messages=2)` 抓 UNSEEN mail；fetch layer 过滤 sender allowlist、`ADMIN_USERNAME` bypass、reserved review subject；生成 initial draft（v1）；`To:` 只回给 forwarding reviewer，可按 `ADMIN_USERNAME` 加内部 audit Bcc；成功后才 mark original message as SEEN。
 
 ### Phase 2 — Reviewer Feedback Emails
 
@@ -91,11 +92,11 @@ Owner: `ali/ali_parse.py`
 
 ### Step1 — Routing
 
-Owner: `ali/ali_router.py`
+Owner: `ali/ali_llm.py::route_email()`
 
-做：deterministic route selection，只输出 `category`、`intent`、`risk_level`、`rationale`、`confidence`。
+做：deterministic route selection，只输出 RAG gating 所需的 `category`。
 
-当前 category：`safety_regulation`、`technical`、`commercial`、`casual`、`rita`、`unknown`。
+当前 category：`safety`、`rita`、`unknown`。
 
 不做：content generation、LLM call、retrieval、recipient decision、final answer decision。
 
@@ -109,8 +110,7 @@ Owner: `ali/ali_llm.py` gates retrieval；`rag/helper_rag_pipeline.py` executes 
 
 | route.category      | RAG engine |
 | ------------------- | ---------- |
-| `safety_regulation` | `standard` |
-| `technical`         | `standard` |
+| `safety`            | `standard` |
 | `rita`              | `rita`     |
 | others              | no RAG     |
 
@@ -159,8 +159,7 @@ Owner: `ali/ali_llm.py::render_review()` + `ali/ali_email.py` subject/version se
 | `ali/ali_email.py`           | orchestration、Phase sequencing、guarded execution、subject versioning、message lifecycle |
 | `ali/ali_fetch.py`           | IMAP fetch、sender allowlist、ADMIN bypass、raw record → `EmailMessage`                  |
 | `ali/ali_parse.py`           | input normalization、reviewer reply extraction、review-state parsing、protocol constants       |
-| `ali/ali_router.py`          | deterministic route selection only                                                    |
-| `ali/ali_llm.py`             | RAG gating、v1 generation、v2+ edit-only generation、Step4 hook、review rendering         |
+| `ali/ali_llm.py`             | deterministic route selection、RAG gating、v1 generation、v2+ edit-only generation、Step4 hook、review rendering |
 | `rag/helper_rag_pipeline.py` | RAG engine execution and answer/context assembly                                      |
 | `ali/ali_send.py`            | reviewer-only outbound delivery、forward-sender enforcement、append Sent best-effort    |
 
@@ -194,7 +193,7 @@ fetch layer 可移动 disallowed mail away from active path；不得 mark normal
 
 `ali/ali_send.py` 是 outbound safety boundary。
 
-规则：`To:` 必须等于 original forwarding reviewer addr-spec；customer address 永远不是合法 recipient；append to IMAP Sent 是 best-effort，不参与 semantic decision。
+规则：`To:` 必须等于 original forwarding reviewer addr-spec；可按 `ADMIN_USERNAME` 加内部 audit Bcc；customer address 永远不是合法 `To` / `Cc` / `Bcc`；append to IMAP Sent 是 best-effort，不参与 semantic decision。
 
 禁止：决定 draft content、判断 REJECT / valid reviewer reply、mark source message SEEN。
 
@@ -204,7 +203,7 @@ fetch layer 可移动 disallowed mail away from active path；不得 mark normal
 
 优先保持 system narrow。
 
-可演进：`ali_router.py` 的 route rule；`ali_llm.py` 的 generation / retrieval gating / edit-only behavior；`rag/helper_rag_pipeline.py` 的 retrieval quality；future Step4 module。
+可演进：`ali_llm.py::route_email()` 的 route rule；`ali_llm.py` 的 generation / retrieval gating / edit-only behavior；`rag/helper_rag_pipeline.py` 的 retrieval quality；future Step4 module。
 
 谨慎演进：`ali_parse.py` 只为 normalization、reviewer reply extraction、review protocol parsing correctness 改；`ali_email.py` 只做 bug fix、invariant enforcement、orchestration cleanup。
 

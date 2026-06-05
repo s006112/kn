@@ -66,6 +66,7 @@ from ali.ali_email import (  # noqa: E402
     _phase1_new_messages,
     _phase2_sender_replies,
     _run_guarded,
+    _run_phase_guarded,
     _send_internal_review,
     poll_interval_minutes,
 )
@@ -947,6 +948,19 @@ class EmailGuardedExecutionTests(unittest.TestCase):
         move_failed.assert_not_called()
         logger.exception.assert_called_once()
 
+    def test_run_phase_guarded_logs_and_leaves_phase_for_next_poll(self) -> None:
+        logger = MagicMock()
+
+        def fail() -> None:
+            raise RuntimeError("imap offline")
+
+        _run_phase_guarded(logger=logger, ctx="Phase1 fetch/process", fn=fail)
+
+        logger.exception.assert_called_once_with(
+            "%s failed; will retry in next polling cycle",
+            "Phase1 fetch/process",
+        )
+
     def test_move_imap_message_to_failed_disconnects_client(self) -> None:
         cfg = _imap_config(folder="Inbox")
         client = MagicMock()
@@ -1150,6 +1164,29 @@ class EmailPipelineTests(unittest.TestCase):
         logger.info.assert_called_once_with("Pipeline run finished.")
         poll_interval.assert_called_once_with()
         sleep.assert_called_once_with(120)
+
+    def test_main_loop_continues_to_phase2_after_phase1_failure(self) -> None:
+        class StopLoop(Exception):
+            pass
+
+        logger = MagicMock()
+        with (
+            patch("ali.ali_email.configure_logging", return_value=logger),
+            patch("ali.ali_email._phase1_new_messages", side_effect=RuntimeError("offline")) as phase1,
+            patch("ali.ali_email._phase2_sender_replies") as phase2,
+            patch("ali.ali_email.poll_interval_minutes", return_value=1),
+            patch("time.sleep", side_effect=StopLoop),
+            self.assertRaises(StopLoop),
+        ):
+            ali_email.main()
+
+        phase1.assert_called_once_with(logger=logger)
+        phase2.assert_called_once_with(logger=logger)
+        logger.exception.assert_called_once_with(
+            "%s failed; will retry in next polling cycle",
+            "Phase1 fetch/process",
+        )
+        logger.info.assert_called_once_with("Pipeline run finished.")
 
 
 class SubjectTests(unittest.TestCase):
@@ -1439,7 +1476,7 @@ class SendReplyTests(unittest.TestCase):
         self.logger.exception.assert_called_once()
         self.append_sent.assert_not_called()
 
-    def test_send_returns_failure_when_saving_sent_email_fails(self) -> None:
+    def test_send_still_succeeds_when_saving_sent_email_fails(self) -> None:
         config = _smtp_config()
         self.append_sent.side_effect = RuntimeError("imap unavailable")
         load_env, configure_logging, load_config = self._common_patches(config)
@@ -1451,8 +1488,8 @@ class SendReplyTests(unittest.TestCase):
         ):
             result = send_reply(_email(), "Internal review")
 
-        self.assertFalse(result.ok)
-        self.assertEqual(result.error_message, "send_reply failed (see logs)")
+        self.assertTrue(result.ok)
+        self.assertIsNone(result.error_message)
         self.server.send_message.assert_called_once()
         self.logger.exception.assert_called_once()
 

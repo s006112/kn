@@ -211,61 +211,81 @@ def _phase2_sender_replies(*, logger) -> None:
         return
 
     for reply_msg in sender_replies:
-        logger.info("Processing sender reply uid=%s subject=%s", reply_msg.uid, reply_msg.subject)
-
-        reviewer_reply_text = extract_reviewer_reply_text((reply_msg.body_text or "").strip()).strip()
-        if not reviewer_reply_text:
-            logger.info("Empty reviewer reply detected; treated as REJECT. Marking as SEEN.")
-            mark_imap_message_seen(reply_msg.uid, logger=logger)
-            continue
-
-        state = extract_last_review_state(reply_msg)
-        next_version = state.version + 1
-        review_body = render_review(
-            generate_review_package(
-                EmailMessage(
-                    uid=reply_msg.uid,
-                    message_id=reply_msg.message_id,
-                    from_addr=reply_msg.from_addr,
-                    to_addrs=reply_msg.to_addrs,
-                    cc_addrs=reply_msg.cc_addrs,
-                    subject=reply_msg.subject,
-                    body_text=reviewer_reply_text,
-                    raw_bytes=reply_msg.raw_bytes,
-                ),
-                model=LLM_MODEL,
-                previous_draft=state.draft,
-                edit_version=next_version,
-            )
-        )
-
         _run_guarded(
             logger=logger,
             ctx="Phase2 process sender reply",
             uid=reply_msg.uid,
             subject=reply_msg.subject,
-            fn=lambda: (
-                _send_internal_review(
-                    reply_msg,
-                    review_body,
-                    logger=logger,
-                    base_subject=reply_msg.subject,
-                    review_version=next_version,
-                ),
-                mark_imap_message_seen(reply_msg.uid, logger=logger),
-            ),
+            fn=lambda reply_msg=reply_msg: _process_sender_reply(reply_msg, logger=logger),
         )
 
+def _process_sender_reply(reply_msg: EmailMessage, *, logger) -> None:
+    logger.info("Processing sender reply uid=%s subject=%s", reply_msg.uid, reply_msg.subject)
+
+    reviewer_reply_text = extract_reviewer_reply_text((reply_msg.body_text or "").strip()).strip()
+    if not reviewer_reply_text:
+        logger.info("Empty reviewer reply detected; treated as REJECT. Marking as SEEN.")
+        mark_imap_message_seen(reply_msg.uid, logger=logger)
+        return
+
+    state = extract_last_review_state(reply_msg)
+    next_version = state.version + 1
+
+    review_body = render_review(
+        generate_review_package(
+            EmailMessage(
+                uid=reply_msg.uid,
+                message_id=reply_msg.message_id,
+                from_addr=reply_msg.from_addr,
+                to_addrs=reply_msg.to_addrs,
+                cc_addrs=reply_msg.cc_addrs,
+                subject=reply_msg.subject,
+                body_text=reviewer_reply_text,
+                raw_bytes=reply_msg.raw_bytes,
+            ),
+            model=LLM_MODEL,
+            previous_draft=state.draft,
+            edit_version=next_version,
+        )
+    )
+
+    _send_internal_review(
+        reply_msg,
+        review_body,
+        logger=logger,
+        base_subject=reply_msg.subject,
+        review_version=next_version,
+    )
+    mark_imap_message_seen(reply_msg.uid, logger=logger)
 
 # -----------------------------------------------------------------------------
 # Main loop
 # -----------------------------------------------------------------------------
 
+def _run_phase_guarded(*, logger, ctx: str, fn) -> None:
+    """
+    Execute a whole phase with standardized logging.
+    Phase-level failures usually happen before a specific message uid exists,
+    so they are logged and left for the next polling cycle to retry.
+    """
+    try:
+        fn()
+    except Exception:
+        logger.exception("%s failed; will retry in next polling cycle", ctx)
+
 def main() -> None:
     logger = configure_logging("ali_pipeline")
     while True:
-        _phase1_new_messages(logger=logger)
-        _phase2_sender_replies(logger=logger)
+        _run_phase_guarded(
+            logger=logger,
+            ctx="Phase1 fetch/process",
+            fn=lambda: _phase1_new_messages(logger=logger),
+        )
+        _run_phase_guarded(
+            logger=logger,
+            ctx="Phase2 fetch/process",
+            fn=lambda: _phase2_sender_replies(logger=logger),
+        )
         logger.info("Pipeline run finished.")
         time.sleep(poll_interval_minutes() * 60)
 

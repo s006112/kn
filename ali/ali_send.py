@@ -160,8 +160,13 @@ def send_reply(
             server.login(smtp_cfg.user, smtp_cfg.password)
             server.send_message(msg)
         logger.info("Sent INTERNAL review to %s (uid=%s)", msg["To"], original.uid)
-        append_to_imap_sent(msg, logger)
-        return SendResult(ok=True)
     except Exception:
         logger.exception("Failed to send internal review for uid=%s", original.uid)
         return SendResult(ok=False, error_message="send_reply failed (see logs)")
+
+    try:
+        append_to_imap_sent(msg, logger)
+    except Exception:
+        logger.exception("Failed to append internal review to Sent for uid=%s", original.uid)
+
+    return SendResult(ok=True)
