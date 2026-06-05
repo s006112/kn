@@ -143,6 +143,7 @@ def _email(**overrides: object) -> EmailMessage:
         "uid": 7,
         "message_id": "<message@example.com>",
         "from_addr": "Reviewer Name <reviewer@example.com>",
+        "from_name": "Reviewer Name",
         "to_addrs": ["ali@example.com"],
         "cc_addrs": [],
         "subject": "Customer question",
@@ -564,6 +565,7 @@ class FetchRawEmailParsingTests(unittest.TestCase):
 
         self.assertEqual(message.uid, 7)
         self.assertEqual(message.message_id, "<message@example.com>")
+        self.assertEqual(message.from_name, "Reviewer")
         self.assertEqual(message.from_addr, "reviewer@ampco.com.hk")
         self.assertEqual(message.to_addrs, ["ali@example.com"])
         self.assertEqual(message.cc_addrs, ["archive@example.com"])
@@ -582,7 +584,10 @@ class FetchRawEmailParsingTests(unittest.TestCase):
 
     def test_raw_email_parses_multiple_addresses(self) -> None:
         message = _raw_to_email_message(
-            _raw_email(To="ali@example.com, archive@example.com", Cc="copy@example.com")
+            _raw_email(
+                To="Ali <ali@example.com>, Archive <archive@example.com>",
+                Cc="Copy User <copy@example.com>",
+            )
         )
 
         self.assertEqual(message.to_addrs, ["ali@example.com", "archive@example.com"])
@@ -698,6 +703,7 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
         p1_prompt_path = MagicMock()
         p2_prompt_path = MagicMock()
         with (
+            patch("ali.ali_llm._extract_query_body", return_value="Extracted query") as extract_query,
             patch("ali.ali_llm.route_email", return_value=category) as route_email,
             patch(
                 "ali.ali_llm.rag_retrieval",
@@ -712,9 +718,10 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
                 model="test-model",
             )
 
-        self.assertEqual(result["draft"], "RAG draft")
-        route_email.assert_called_once_with("Question", "Body")
-        retrieve.assert_called_once_with(category, "Question", "Body", model="test-model")
+        self.assertEqual(result["draft"], "Hi Reviewer Name,\n\nRAG draft\n\nRegards,\nAli")
+        extract_query.assert_called_once_with("Subject: Question\n\nBody", model="test-model")
+        route_email.assert_called_once_with("Question", "Extracted query")
+        retrieve.assert_called_once_with(category, "", "Extracted query", model="test-model")
         p1_prompt_path.read_text.assert_not_called()
         p2_prompt_path.read_text.assert_not_called()
         call_llm.assert_not_called()
@@ -724,11 +731,12 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
         p1_prompt_path.read_text.return_value = "P1 prompt"
         p2_prompt_path = MagicMock()
         with (
-            patch("ali.ali_llm.route_email", return_value="unknown"),
+            patch("ali.ali_llm._extract_query_body", return_value="Extracted query") as extract_query,
+            patch("ali.ali_llm.route_email", return_value="unknown") as route_email,
             patch(
                 "ali.ali_llm.rag_retrieval",
                 return_value=None,
-            ),
+            ) as retrieve,
             patch("ali.ali_llm.P1_SYSTEM_PROMPT_PATH", p1_prompt_path),
             patch("ali.ali_llm.P2_REVISION_PROMPT_PATH", p2_prompt_path),
             patch("ali.ali_llm.call_llm", return_value="  LLM draft  ") as call_llm,
@@ -744,17 +752,20 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
             result,
             {
                 "review_id": "<review-id>",
-                "draft": "LLM draft",
+                "draft": "Hi Reviewer Name,\n\nLLM draft\n\nRegards,\nAli",
                 "allowed_actions": ["REPLY", "REJECT"],
                 "version": 3,
             },
         )
+        extract_query.assert_called_once_with("Subject: Question\n\nBody", model="test-model")
+        route_email.assert_called_once_with("Question", "Extracted query")
+        retrieve.assert_called_once_with("unknown", "", "Extracted query", model="test-model")
         p1_prompt_path.read_text.assert_called_once_with(encoding="utf-8")
         p2_prompt_path.read_text.assert_not_called()
         call_llm.assert_called_once_with(
             model="test-model",
             system_prompt="P1 prompt",
-            user_text="Subject: Question\n\nBody",
+            user_text="Extracted query",
             file_path=None,
         )
         review.assert_called_once_with("LLM draft", enabled=False)
@@ -764,6 +775,7 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
         p1_prompt_path.read_text.side_effect = FileNotFoundError("Prompt file not found")
         p2_prompt_path = MagicMock()
         with (
+            patch("ali.ali_llm._extract_query_body", return_value="Extracted query"),
             patch("ali.ali_llm.route_email", return_value="unknown"),
             patch(
                 "ali.ali_llm.rag_retrieval",
@@ -786,6 +798,7 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
         p1_prompt_path.read_text.return_value = "System prompt"
         p2_prompt_path = MagicMock()
         with (
+            patch("ali.ali_llm._extract_query_body", return_value="Extracted query"),
             patch("ali.ali_llm.route_email", return_value="unknown"),
             patch(
                 "ali.ali_llm.rag_retrieval",
@@ -801,8 +814,26 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
             )
 
         self.assertEqual(result["review_id"], "42")
+        self.assertEqual(result["draft"], "Hi Reviewer Name,\n\nDraft\n\nRegards,\nAli")
         p1_prompt_path.read_text.assert_called_once_with(encoding="utf-8")
         p2_prompt_path.read_text.assert_not_called()
+
+    def test_v1_strips_accidental_email_frame_before_composing(self) -> None:
+        p1_prompt_path = MagicMock()
+        p1_prompt_path.read_text.return_value = "System prompt"
+        with (
+            patch("ali.ali_llm._extract_query_body", return_value="Extracted query"),
+            patch("ali.ali_llm.route_email", return_value="unknown"),
+            patch("ali.ali_llm.rag_retrieval", return_value=None),
+            patch("ali.ali_llm.P1_SYSTEM_PROMPT_PATH", p1_prompt_path),
+            patch("ali.ali_llm.call_llm", return_value="Hi Reviewer,\n\nMain reply\n\nRegards,\nAli"),
+        ):
+            result = generate_review_package(
+                _email(from_name="Reviewer"),
+                model="test-model",
+            )
+
+        self.assertEqual(result["draft"], "Hi Reviewer,\n\nMain reply\n\nRegards,\nAli")
 
     def test_v2_edits_previous_draft_and_bypasses_route_and_retrieval(self) -> None:
         p1_prompt_path = MagicMock()
@@ -813,16 +844,16 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
             patch("ali.ali_llm.rag_retrieval") as retrieve,
             patch("ali.ali_llm.P1_SYSTEM_PROMPT_PATH", p1_prompt_path),
             patch("ali.ali_llm.P2_REVISION_PROMPT_PATH", p2_prompt_path),
-            patch("ali.ali_llm.call_llm", return_value="  Edited draft  ") as call_llm,
+            patch("ali.ali_llm.call_llm", return_value="  Edited main reply  ") as call_llm,
         ):
             result = generate_review_package(
                 _email(body_text="Please update this.\n\n> quoted history"),
                 model="test-model",
-                previous_draft="Previous draft",
+                previous_draft="Hi Reviewer Name,\n\nPrevious draft\n\nRegards,\nAli",
                 edit_version=2,
             )
 
-        self.assertEqual(result["draft"], "Edited draft")
+        self.assertEqual(result["draft"], "Hi Reviewer Name,\n\nEdited main reply\n\nRegards,\nAli")
         self.assertEqual(result["version"], 2)
         route_email.assert_not_called()
         retrieve.assert_not_called()
@@ -838,7 +869,7 @@ class LlmGenerateReviewPackageTests(unittest.TestCase):
                 "<REVIEWER_REPLY_TEXT>\n"
                 "Please update this.\n\n> quoted history\n"
                 "</REVIEWER_REPLY_TEXT>\n\n"
-                "Return the complete revised Ali response only."
+                "Return the revised main reply content only."
             ),
             file_path=None,
         )

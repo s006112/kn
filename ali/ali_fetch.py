@@ -25,8 +25,7 @@ if str(ROOT) not in sys.path:
 
 from email import message_from_bytes
 from email.policy import default as email_default_policy
-from email.utils import parseaddr
-import os
+from email.utils import getaddresses, parseaddr
 from typing import Iterable, List
 
 from dotenv import dotenv_values
@@ -105,6 +104,11 @@ def _build_client(logger, *, require_credentials: bool) -> tuple[ImapClient, str
     return client, cfg.folder
 
 
+def _parse_address(header: str) -> tuple[str, str]:
+    name, addr = parseaddr(header or "")
+    return " ".join((name or "").replace('"', "").split()), (addr or "").strip()
+
+
 def _raw_to_email_message(rec: RawFetchedRecord) -> EmailMessage:
     """
     将 raw record 解析为 EmailMessage。
@@ -112,16 +116,15 @@ def _raw_to_email_message(rec: RawFetchedRecord) -> EmailMessage:
     无效的寄送目标由 downstream guard 拒绝。
     """
     msg = message_from_bytes(rec.raw_bytes, policy=email_default_policy)
+    from_name, from_addr = _parse_address(msg.get("From", ""))
 
     def _addr_list(header: str) -> List[str]:
-        if not header:
-            return []
-        return [parseaddr(part)[1] for part in header.split(",") if part.strip()]
+        return [addr.strip() for _, addr in getaddresses([header or ""]) if addr.strip()]
 
     return EmailMessage(
         uid=rec.uid,
         message_id=msg.get("Message-ID", ""),
-        from_addr=parseaddr(msg.get("From", ""))[1],
+        from_addr=from_addr,
         to_addrs=_addr_list(msg.get("To", "")),
         cc_addrs=_addr_list(msg.get("Cc", "")),
         subject=msg.get("Subject", ""),
@@ -129,6 +132,7 @@ def _raw_to_email_message(rec: RawFetchedRecord) -> EmailMessage:
         if msg.get_body(preferencelist=("plain",))
         else "",
         raw_bytes=rec.raw_bytes,
+        from_name=from_name,
     )
 
 

@@ -14,6 +14,7 @@ class EmailMessage:
     subject: str
     body_text: str
     raw_bytes: bytes
+    from_name: str = ""
 
 
 @dataclass

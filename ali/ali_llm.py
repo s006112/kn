@@ -42,6 +42,71 @@ PROMPT_DIR = Path(__file__).resolve().parent
 P1_SYSTEM_PROMPT_PATH = PROMPT_DIR / "prompt_ali_p1_system.txt"
 P2_REVISION_PROMPT_PATH = PROMPT_DIR / "prompt_ali_p2_revision.txt"
 
+QUERY_BODY_EXTRACTION_PROMPT = """
+Extract the sender's latest meaningful request from the email input.
+
+Return only the query/content that should be answered.
+Do not answer the query.
+Do not write an email.
+Do not include greeting, recipient name, sender name, closing, signature, mobile signature, quoted history, forwarded history, or email headers.
+Include the subject only when it contains real request context beyond a generic greeting.
+Preserve the original language, technical terms, standard numbers, product names, model numbers, quantities, dates, and all concrete action items.
+If there are multiple actionable points, keep them all.
+If no meaningful request is found, return the best remaining meaningful content.
+""".strip()
+
+
+# -----------------------------------------------------------------------------
+# Email composition
+# -----------------------------------------------------------------------------
+
+def _sender_name(email: EmailMessage) -> str:
+    name = " ".join(str(getattr(email, "from_name", "") or "").split())
+    return "" if not name or "@" in name else name
+
+
+def _compose_email_body(main_body: str, email: EmailMessage) -> str:
+    name = _sender_name(email)
+    greeting = f"Hi {name}," if name else "Hi,"
+    return f"{greeting}\n\n{main_body.strip()}\n\nRegards,\nAli"
+
+
+def _strip_email_frame(text: str) -> str:
+    lines = (text or "").strip().splitlines()
+
+    if lines and re.match(r"^(hi|hello|dear)\b.*[,，]?$|^(您好|你好)[,，]?$", lines[0].strip(), flags=re.I):
+        lines = lines[1:]
+        while lines and not lines[0].strip():
+            lines = lines[1:]
+
+    while lines and not lines[-1].strip():
+        lines = lines[:-1]
+    if len(lines) >= 2 and lines[-1].strip().lower() == "ali" and re.match(r"^(regards|best regards|thanks|thank you|sincerely)[,，]?$", lines[-2].strip(), flags=re.I):
+        lines = lines[:-2]
+    elif lines and re.match(r"^(regards|best regards|thanks|thank you|sincerely)[,，]?$", lines[-1].strip(), flags=re.I):
+        lines = lines[:-1]
+
+    return "\n".join(lines).strip()
+
+
+def _extract_query_body(email_text: str, *, model: str) -> str:
+    source = (email_text or "").strip()
+    if not source:
+        return ""
+
+    try:
+        query = call_llm(
+            model=model,
+            system_prompt=QUERY_BODY_EXTRACTION_PROMPT,
+            user_text=source,
+            file_path=None,
+        ).strip()
+    except Exception as e:
+        print(f"Query body extraction failed: {e}")
+        return source
+
+    return query or source
+
 
 # -----------------------------------------------------------------------------
 # Step2: Routing & RAG
@@ -108,39 +173,48 @@ def generate_review_package(
         if part
     ).strip()
 
+    print("\n========== ALI DEBUG email_text BEGIN ==========")
+    print(email_text)
+    print("========== ALI DEBUG email_text END ==========\n")
+
     if previous_draft is None:
-        category = route_email(subject_norm, body_norm)
-        retrieval_context = rag_retrieval(category, subject_norm, body_norm, model=model)
+        query_body = _extract_query_body(email_text, model=model)
+        print("\n========== ALI DEBUG query_body BEGIN ==========")
+        print(query_body)
+        print("========== ALI DEBUG query_body END ==========\n")
+
+        category = route_email(subject_norm, query_body)
+        retrieval_context = rag_retrieval(category, "", query_body, model=model)
 
         if retrieval_context is not None:
-            draft = retrieval_context
+            main_body = retrieval_context
         else:
             system_prompt = P1_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
-            draft = call_llm(
+            main_body = call_llm(
                 model=model,
                 system_prompt=system_prompt,
-                user_text=email_text,
+                user_text=query_body,
                 file_path=None,
             ).strip()
     else:
         revision_prompt = P2_REVISION_PROMPT_PATH.read_text(encoding="utf-8")
         reviewer_reply_text = body_norm.strip()
-        draft = call_llm(
+        main_body = call_llm(
             model=model,
             system_prompt=revision_prompt,
             user_text=(
                 "<PREVIOUS_DRAFT>\n"
-                f"{previous_draft.strip()}\n"
+                f"{_strip_email_frame(previous_draft)}\n"
                 "</PREVIOUS_DRAFT>\n\n"
                 "<REVIEWER_REPLY_TEXT>\n"
                 f"{reviewer_reply_text}\n"
                 "</REVIEWER_REPLY_TEXT>\n\n"
-                "Return the complete revised Ali response only."
+                "Return the revised main reply content only."
             ),
             file_path=None,
         ).strip()
 
-    draft = step4_review(draft, enabled=False)
+    draft = _compose_email_body(_strip_email_frame(step4_review(main_body, enabled=False)), email)
     review_id = (email.message_id or "").strip() or str(email.uid)
 
     return {
