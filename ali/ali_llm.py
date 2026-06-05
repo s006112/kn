@@ -77,8 +77,9 @@ def route_email(subject: str, body: str) -> str:
 
 
 def rag_retrieval(category: str, subject: str, body: str, *, model: str) -> str | None:
-    engine_name = RAG_ENGINE_BY_CATEGORY.get(category)  # hit route category or None for unknown category
+    engine_name = RAG_ENGINE_BY_CATEGORY.get(category)
     if engine_name is None:
+        print(f"[RAG] skipped: category={category!r}")
         return None
 
     query = format_email_query(subject, body)
@@ -87,6 +88,10 @@ def rag_retrieval(category: str, subject: str, body: str, *, model: str) -> str 
         answer, table_str = get_rag_engine(engine_name).answer_question(query, model=model)
         if table_str:
             print(f"\n[RAG] FAISS similarity table:\n\n{table_str}\n")
+        if answer:
+            print(f"\n[RAG] grounded answer:\n\n{answer.strip()}\n")
+        else:
+            print("\n[RAG] grounded answer: (empty)\n")
         return answer.strip() if answer else None
     except Exception as e:
         print(f"RAG Retrieval or Generation failed: {e}")
@@ -113,7 +118,7 @@ def generate_review_package(
 
     if previous_draft is None:
         category = route_email(subject_norm, body_norm)
-        retrieval_context = rag_retrieval(category, subject_norm, body_norm, model=model)
+        grounded_answer = rag_retrieval(category, subject_norm, body_norm, model=model)
 
         original_email_text = format_email_query(subject_norm, body_norm)
 
@@ -122,13 +127,16 @@ def generate_review_package(
             f"{original_email_text}\n"
             "</ORIGINAL_EMAIL>"
         )
-        if retrieval_context is not None:
+        if grounded_answer is not None:
+            print("\n[ALI] RAG grounded material attached to P1 composer.\n")
             user_text = (
                 f"{user_text}\n\n"
                 "<GROUNDED_MATERIAL>\n"
-                f"{retrieval_context.strip()}\n"
+                f"{grounded_answer.strip()}\n"
                 "</GROUNDED_MATERIAL>"
             )
+        else:
+            print("\n[ALI] No RAG grounded material attached; using P1 only.\n")
 
         system_prompt = P1_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
         draft = call_llm(
