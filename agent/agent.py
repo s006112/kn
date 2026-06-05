@@ -1,5 +1,5 @@
 '''
-python3 agent/agent.py --run-iterate-task w/p_audio.py
+python3 agent/agent.py --run-iterate-task w/p_txt.py
 python3 agent/agent.py --draft-task  # step 0
 python3 agent/agent.py --run-task  # step 1
 python3 agent/agent.py --review-last  # step 2

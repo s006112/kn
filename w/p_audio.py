@@ -123,7 +123,7 @@ def process_audio_file(file_path: str, folder_path: str, config: dict, done_fold
         wav_file = desktop_wav_path
     start = time.time()
     try:
-        text = get_service(config.get("WHISPER_MODEL", "large-v3-turbo")).transcribe_file(wav_file)
+        text = get_service(config.get("WHISPER_MODEL")).transcribe_file(wav_file)
         txt_path = os.path.join(config['AUDIO_TRANSCRIBED_TXT_FOLDER'], sanitized + str(config["PRETEXT_SUFFIX"]).lower())
         with open(txt_path, 'w', encoding='utf-8') as f:
             f.write(text)
@@ -157,12 +157,13 @@ def process_audio_queue(
         if shutdown_flag is not None and shutdown_flag.is_set():
             return
         try:
-            file_path, folder_path = audio_queue.get(timeout=wait_seconds) if shutdown_flag is not None else audio_queue.get()
+            item = audio_queue.get(timeout=wait_seconds) if shutdown_flag is not None else audio_queue.get()
         except Empty:
             if once:
                 return
             continue
         try:
+            file_path, folder_path = item
             if os.path.exists(file_path):
                 with processing_lock:
                     process_audio_file(file_path, folder_path, config, done_folder_path)

@@ -112,25 +112,16 @@ def process_extract_file(config, file_path):
 	try:
 		logging.info("Extract: Start %s", filename_log)
 		content, _ = read_file_with_encodings(file_path)
-
-		classifier_result = ""
-		if len(content) < 6000:
-			classifier_result = (call_text_llm(config, config["PRETEXT_MODEL"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper()
-		route = "CORE" if matched_suffix == premium_suffix or classifier_result == "CORE" else "OTHER"
+		route = "CORE" if matched_suffix == premium_suffix or len(content) >= 6000 else ("CORE" if (call_text_llm(config, config["PRETEXT_MODEL"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper() == "CORE" else "OTHER")
 		logging.info("Extract: |%s| for %s", route, filename_log)
 
-		payload = f"《{base}》\n{content}"
 		md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(config, base, allow_existing=True)
-
-		extract_models = list(config.get("EXTRACT_MODELS", {}).get(route, []))
-
-		extract_count = 0
+		payload = f"《{base}》\n{content}"
 		extracts = []
-		for model in extract_models:
+		for i, model in enumerate(config.get("EXTRACT_MODELS", {}).get(route, [])):
 			result = call_text_llm(config, model, config["EXTRACT_PROMPT"], payload, file_path)
-			save_extract_result(config, model, result, md_path, link_name, md_is_new_seed and extract_count == 0)
+			save_extract_result(config, model, result, md_path, link_name, md_is_new_seed and i == 0)
 			extracts.append((f"{base}_{sanitize_filename(model)}.txt", result, file_path))
-			extract_count += 1
 			logging.info("Extract: %s (%s : %s)", filename_log, model, f"{len(result):,}")
 
 		distill_model = (config.get("DISTILL_MODEL", {}).get(route) or "").strip()
@@ -186,11 +177,8 @@ def run_distillation(config, base_name: str, md_path: str | None = None, extract
 		return None
 
 	payload = [f"《{base_name}》", "Below are outputs from multiple expert extraction models for the same source. Please distill them into one final, coherent result according to the system instructions."]
-	for i, (fname, content, path) in enumerate(extracts, 1):
-		payload += [f"--- Extraction input {i}: {fname} ---", content.strip()]	# include extract content as primary input for distillation.
-	#if pretext_content:
-	#	payload += ["--- Pretext input ---", pretext_content.strip()]	# include pretext content as reference for distillation.
-
+	for i, (name, text, _) in enumerate(extracts, 1):
+		payload.extend((f"--- Extraction input {i}: {name} ---", text.strip()))
 	logging.info("Distillation: Start %s %s (%d inputs)", short_log_name(base_name), distill_model, len(extracts))
 	distilled = call_text_llm(config, distill_model, config["DISTILL_PROMPT"], "\n\n".join(payload), extracts[0][2])
 	save_extract_result(config, distill_model, distilled, md_path, Path(md_path).stem if md_path else None, False, f"{distill_model} distilled")
@@ -295,11 +283,39 @@ def _start_text_thread(threads, name, config, queue, process, method_name, scan_
 
 def process_text_pipeline(config, shutdown_flag):
 	pretext_queue, extract_queue = Queue(), Queue()
-	processed_files_global = set()
-	processed_files_lock = threading.Lock()
+	processed_files_global, processed_files_lock = set(), threading.Lock()
 	threads = {}
 
-	if config["PIPELINES"]["PRETEXT"]: _start_text_thread(threads, "TextPipeline-Pretext", config, pretext_queue, lambda path: process_pretext_file(config, path, processed_files_global, processed_files_lock), "process_pretext", scan_text_files, shutdown_flag, config["PRETEXT_WATCH_FOLDER"], pretext_queue, config["PRETEXT_SUFFIX"], (config["EXTRACT_SUFFIX"], config["PREMIUM_SUFFIX"]), processed_files_global, processed_files_lock)
-	if config["PIPELINES"]["EXTRACT"]: _start_text_thread(threads, "TextPipeline-Extract", config, extract_queue, lambda path: process_extract_file(config, path), "process_extract", scan_text_files, shutdown_flag, config["EXTRACT_WATCH_FOLDER"], extract_queue, (config["EXTRACT_SUFFIX"], config["PREMIUM_SUFFIX"]))
+	if config["PIPELINES"]["PRETEXT"]:
+		_start_text_thread(
+			threads,
+			"TextPipeline-Pretext",
+			config,
+			pretext_queue,
+			lambda path: process_pretext_file(config, path, processed_files_global, processed_files_lock),
+			"process_pretext",
+			scan_text_files,
+			shutdown_flag,
+			config["PRETEXT_WATCH_FOLDER"],
+			pretext_queue,
+			config["PRETEXT_SUFFIX"],
+			(config["EXTRACT_SUFFIX"], config["PREMIUM_SUFFIX"]),
+			processed_files_global,
+			processed_files_lock,
+		)
+	if config["PIPELINES"]["EXTRACT"]:
+		_start_text_thread(
+			threads,
+			"TextPipeline-Extract",
+			config,
+			extract_queue,
+			lambda path: process_extract_file(config, path),
+			"process_extract",
+			scan_text_files,
+			shutdown_flag,
+			config["EXTRACT_WATCH_FOLDER"],
+			extract_queue,
+			(config["EXTRACT_SUFFIX"], config["PREMIUM_SUFFIX"]),
+		)
 
 	return threads
