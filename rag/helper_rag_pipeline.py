@@ -39,8 +39,9 @@ TOP_K = 10
 CANDIDATE_K = 50
 SCORE_THRESHOLD = 0.4
 ROOT = Path(__file__).resolve().parents[1]
-STANDARD_SYSTEM_PROMPT_PATH = ROOT / "prompt/prompt_rag_standard.txt"
-GENERAL_SYSTEM_PROMPT_PATH = ROOT / "prompt/prompt_rag_general.txt"
+RAG_DIR = Path(__file__).resolve().parent
+STANDARD_SYSTEM_PROMPT_PATH = RAG_DIR / "prompt_rag_standard.txt"
+GENERAL_SYSTEM_PROMPT_PATH = RAG_DIR / "prompt_rag_general.txt"
 faiss_dir = ROOT / "data/faiss"
 ENABLE_QUERY_REWRITE = False   # True = current behavior, False = single-query
 REWRITE_MAX_VARIANTS = 3
