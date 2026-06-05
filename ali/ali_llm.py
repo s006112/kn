@@ -99,6 +99,15 @@ def generate_review_package(
     """
     subject_norm, body_norm = normalize_email_input(email)
 
+    email_text = "\n\n".join(
+        part
+        for part in (
+            f"Subject: {subject_norm}" if subject_norm else "",
+            body_norm,
+        )
+        if part
+    ).strip()
+
     if previous_draft is None:
         category = route_email(subject_norm, body_norm)
         retrieval_context = rag_retrieval(category, subject_norm, body_norm, model=model)
@@ -110,14 +119,7 @@ def generate_review_package(
             draft = call_llm(
                 model=model,
                 system_prompt=system_prompt,
-                user_text="\n\n".join(
-                    part
-                    for part in (
-                        f"Subject: {subject_norm}" if subject_norm else "",
-                        body_norm,
-                    )
-                    if part
-                ),
+                user_text=email_text,
                 file_path=None,
             ).strip()
     else:
@@ -147,7 +149,6 @@ def generate_review_package(
         "allowed_actions": ["REPLY", "REJECT"],
         "version": edit_version,
     }
-
 
 # -----------------------------------------------------------------------------
 # Step4: 复核（空壳）
