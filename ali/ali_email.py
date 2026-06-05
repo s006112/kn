@@ -48,7 +48,7 @@ from ali.ali_parse import (
 # Config
 # -----------------------------------------------------------------------------
 
-LLM_MODEL = "sonar"
+LLM_MODEL = "sonar-pro"
 
 _FAILED_FOLDER = "Ali_failed"
 
@@ -242,6 +242,7 @@ def _process_sender_reply(reply_msg: EmailMessage, *, logger) -> None:
                 subject=reply_msg.subject,
                 body_text=reviewer_reply_text,
                 raw_bytes=reply_msg.raw_bytes,
+                from_name=reply_msg.from_name,
             ),
             model=LLM_MODEL,
             previous_draft=state.draft,

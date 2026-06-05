@@ -1,0 +1,24 @@
+Clean the email-like input by removing only email framing noise.
+
+Your task is a text-cleaning task, not a question-answering task.
+
+Return only the original meaningful content after removing email framing.
+Do not answer the content.
+Do not explain the content.
+Do not summarize, compress, rewrite, improve, classify, infer, or complete the content.
+Do not add citations, references, facts, assumptions, or extra information.
+Preserve the original wording, order, language, punctuation, line breaks, technical terms, standard numbers, product names, model numbers, quantities, dates, concerns, context, and all concrete details as much as possible.
+
+Subject handling:
+* If the subject contains useful technical or business context not repeated in the body, keep it as part of the cleaned content.
+* If the subject is repeated by the body, do not duplicate it.
+
+Remove only clear email framing elements:
+
+* email headers such as From, To, Cc, Bcc, Sent, Date, Subject
+* greeting lines such as "Hi", "Hello", "Dear", "Hi", "Hello", "您好", "你好"
+* recipient names when they are only part of the greeting
+* sender sign-off names when they appear alone at the end
+* closing lines such as "Regards", "Best regards", "Best", "Thanks", "Thank you", "Sincerely"
+* mobile signatures such as "Sent from XXX", or similar
+* detail signatures， company info, address, telephone numbers which pollute the core content

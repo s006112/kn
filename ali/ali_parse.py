@@ -176,3 +176,46 @@ def extract_last_review_state(review_email: EmailMessage) -> ReviewState:
     draft = (remainder[: footer.start()] if footer else remainder).strip()
 
     return ReviewState(version=version, draft=draft)
+
+
+# =============================================================================
+# Generated email frame parsing
+# =============================================================================
+
+_GENERATED_GREETING_LINE_RE = re.compile(
+    r"^(hi|hello|dear)\b.*[,，]?$|^(您好|你好)[,，]?$",
+    flags=re.I,
+)
+
+_GENERATED_CLOSING_LINE_RE = re.compile(
+    r"^(regards|best regards|best|thanks|thank you|sincerely)[,，]?$",
+    flags=re.I,
+)
+
+
+def strip_generated_email_frame(text: str) -> str:
+    """
+    Strip Ali-generated greeting/closing frame from a ready-to-send email body.
+
+    Intended for generated drafts only, not for raw incoming emails.
+    """
+    lines = (text or "").strip().splitlines()
+
+    if lines and _GENERATED_GREETING_LINE_RE.match(lines[0].strip()):
+        lines = lines[1:]
+        while lines and not lines[0].strip():
+            lines = lines[1:]
+
+    while lines and not lines[-1].strip():
+        lines = lines[:-1]
+
+    if (
+        len(lines) >= 2
+        and lines[-1].strip().lower() == "ali"
+        and _GENERATED_CLOSING_LINE_RE.match(lines[-2].strip())
+    ):
+        lines = lines[:-2]
+    elif lines and _GENERATED_CLOSING_LINE_RE.match(lines[-1].strip()):
+        lines = lines[:-1]
+
+    return "\n".join(lines).strip()

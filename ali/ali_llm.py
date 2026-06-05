@@ -30,6 +30,7 @@ from ali.ali_parse import (
     REVIEW_FOOTER_LINE,
     REVIEW_HEADER_LINE_TEMPLATE,
     normalize_email_input,
+    strip_generated_email_frame,
 )
 
 
@@ -39,22 +40,9 @@ RAG_ENGINE_BY_CATEGORY = {
 }
 
 PROMPT_DIR = Path(__file__).resolve().parent
+P0_EXTRACTION_PATH = PROMPT_DIR / "prompt_ali_p0_extraction.txt"
 P1_SYSTEM_PROMPT_PATH = PROMPT_DIR / "prompt_ali_p1_system.txt"
 P2_REVISION_PROMPT_PATH = PROMPT_DIR / "prompt_ali_p2_revision.txt"
-
-QUERY_BODY_EXTRACTION_PROMPT = """
-Extract the sender's latest meaningful request from the email input.
-
-Return only the query/content that should be answered.
-Do not answer the query.
-Do not write an email.
-Do not include greeting, recipient name, sender name, closing, signature, mobile signature, quoted history, forwarded history, or email headers.
-Include the subject only when it contains real request context beyond a generic greeting.
-Preserve the original language, technical terms, standard numbers, product names, model numbers, quantities, dates, and all concrete action items.
-If there are multiple actionable points, keep them all.
-If no meaningful request is found, return the best remaining meaningful content.
-""".strip()
-
 
 # -----------------------------------------------------------------------------
 # Email composition
@@ -71,24 +59,6 @@ def _compose_email_body(main_body: str, email: EmailMessage) -> str:
     return f"{greeting}\n\n{main_body.strip()}\n\nRegards,\nAli"
 
 
-def _strip_email_frame(text: str) -> str:
-    lines = (text or "").strip().splitlines()
-
-    if lines and re.match(r"^(hi|hello|dear)\b.*[,，]?$|^(您好|你好)[,，]?$", lines[0].strip(), flags=re.I):
-        lines = lines[1:]
-        while lines and not lines[0].strip():
-            lines = lines[1:]
-
-    while lines and not lines[-1].strip():
-        lines = lines[:-1]
-    if len(lines) >= 2 and lines[-1].strip().lower() == "ali" and re.match(r"^(regards|best regards|thanks|thank you|sincerely)[,，]?$", lines[-2].strip(), flags=re.I):
-        lines = lines[:-2]
-    elif lines and re.match(r"^(regards|best regards|thanks|thank you|sincerely)[,，]?$", lines[-1].strip(), flags=re.I):
-        lines = lines[:-1]
-
-    return "\n".join(lines).strip()
-
-
 def _extract_query_body(email_text: str, *, model: str) -> str:
     source = (email_text or "").strip()
     if not source:
@@ -97,7 +67,7 @@ def _extract_query_body(email_text: str, *, model: str) -> str:
     try:
         query = call_llm(
             model=model,
-            system_prompt=QUERY_BODY_EXTRACTION_PROMPT,
+            system_prompt=P0_EXTRACTION_PATH.read_text(encoding="utf-8"),
             user_text=source,
             file_path=None,
         ).strip()
@@ -199,22 +169,30 @@ def generate_review_package(
     else:
         revision_prompt = P2_REVISION_PROMPT_PATH.read_text(encoding="utf-8")
         reviewer_reply_text = body_norm.strip()
+        reviewer_instruction = _extract_query_body(reviewer_reply_text, model=model)
+        print("\n========== ALI DEBUG reviewer_instruction BEGIN ==========")
+        print(reviewer_instruction)
+        print("========== ALI DEBUG reviewer_instruction END ==========\n")
+        print("\n========== ALI DEBUG previous draft BEGIN ==========")
+        print(strip_generated_email_frame(previous_draft))
+        print("========== ALI DEBUG previous draft END ==========\n")
+
         main_body = call_llm(
             model=model,
             system_prompt=revision_prompt,
             user_text=(
                 "<PREVIOUS_DRAFT>\n"
-                f"{_strip_email_frame(previous_draft)}\n"
+                f"{strip_generated_email_frame(previous_draft)}\n"
                 "</PREVIOUS_DRAFT>\n\n"
                 "<REVIEWER_REPLY_TEXT>\n"
-                f"{reviewer_reply_text}\n"
+                f"{reviewer_instruction}\n"
                 "</REVIEWER_REPLY_TEXT>\n\n"
                 "Return the revised main reply content only."
             ),
             file_path=None,
         ).strip()
 
-    draft = _compose_email_body(_strip_email_frame(step4_review(main_body, enabled=False)), email)
+    draft = _compose_email_body(strip_generated_email_frame(step4_review(main_body, enabled=False)), email)
     review_id = (email.message_id or "").strip() or str(email.uid)
 
     return {
