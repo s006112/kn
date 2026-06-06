@@ -209,7 +209,36 @@ def _chat_completion_text(resp: Any, provider: str) -> str:
 
 
 def call_perplexity(client: Any, model: str, payload: Any, timeout: int) -> str:
-    resp = client.chat.completions.create(model=model, messages=payload, timeout=timeout)
+    if model.lower().startswith("openai/"):
+        instructions: List[str] = []
+        user_parts: List[str] = []
+        for m in payload:
+            role = m.get("role")
+            content = _format_text(m.get("content"))
+            if role == "system":
+                instructions.append(content)
+            else:
+                user_parts.append(content)
+        body = {"model": model, "input": "\n\n".join(user_parts)}
+        if instructions:
+            body["instructions"] = "\n\n".join(instructions)
+        resp = client.post("/v1/agent", cast_to=object, body=body, options={"timeout": timeout})
+        text = getattr(resp, "output_text", None)
+        if text:
+            return _normalize_output(text)
+        output = resp.get("output") if isinstance(resp, dict) else getattr(resp, "output", None)
+        if output:
+            for item in output:
+                content = item.get("content") if isinstance(item, dict) else getattr(item, "content", None)
+                if not content:
+                    continue
+                for part in content:
+                    text = part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
+                    if text:
+                        return _normalize_output(text)
+        raise RuntimeError("Perplexity returned empty text.")
+    api_model = model.split("/", 1)[1] if model.lower().startswith("perplexity/") else model
+    resp = client.chat.completions.create(model=api_model, messages=payload, timeout=timeout)
     return _chat_completion_text(resp, "Perplexity")
 
 
@@ -230,7 +259,7 @@ def call_gemini(client: Any, model: str, payload: Any, timeout: int) -> str:
 
 _BACKENDS: Dict[str, Dict[str, Any]] = {
     "perplexity": {
-        "match": lambda m: m.lower().startswith("sonar"),
+        "match": lambda m: m.lower().startswith(("perplexity/", "openai/", "google/")),
         "client_getter": get_perplexity_client,
         "payload_builder": build_perplexity_payload,
         "call_fn": call_perplexity,
