@@ -303,6 +303,7 @@ class WikilinkCleaner:
                 if not self.dry_run:
                     self.stats["broken_links_removed"] += 1
 
+            removed_link_flags = remove_flags.copy()
             for i, line in enumerate(lines):
                 if line.strip() or remove_flags[i]:
                     continue
@@ -318,8 +319,8 @@ class WikilinkCleaner:
                             i + 1,
                         )
                 if keep_empty or (
-                    (i == 0 or not remove_flags[i - 1])
-                    and (i + 1 == len(lines) or not remove_flags[i + 1])
+                    (i == 0 or not removed_link_flags[i - 1])
+                    and (i + 1 == len(lines) or not removed_link_flags[i + 1])
                 ):
                     continue
                 remove_flags[i] = True

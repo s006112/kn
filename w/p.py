@@ -24,6 +24,7 @@ WHISPER_FOLDER = Path("/desktop/Sync/Whisper")
 CONFIG = {
     "WHISPER_MODEL": "large-v3-turbo",
     "PRETEXT_MODEL": "gpt-5.4-mini",
+    "ROUTE_MODEL": "o3-mini",
     "DISTILL_MODEL": {
         "CORE": "o3",  
         "OTHER": "o3-mini"

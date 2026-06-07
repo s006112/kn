@@ -112,7 +112,7 @@ def process_extract_file(config, file_path):
 	try:
 		logging.info("Extract: Start %s", filename_log)
 		content, _ = read_file_with_encodings(file_path)
-		route = "CORE" if matched_suffix == premium_suffix or len(content) >= 6000 else ("CORE" if (call_text_llm(config, config["PRETEXT_MODEL"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper() == "CORE" else "OTHER")
+		route = "CORE" if matched_suffix == premium_suffix else ("OTHER" if len(content) >= 6000 else ("CORE" if (call_text_llm(config, config["ROUTE_MODEL"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper() == "CORE" else "OTHER"))
 		logging.info("Extract: |%s| for %s", route, filename_log)
 
 		md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(config, base, allow_existing=True)

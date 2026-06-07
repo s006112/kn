@@ -668,7 +668,7 @@ def test_wikilink_cleaner_removes_only_adjacent_empty_lines(test_id: str) -> tup
 
     passed = (
         processed
-        and updated == f"\nstart {test_id}\n\nend {test_id}\n"
+        and updated == f"\nstart {test_id}\n\n\nend {test_id}\n"
     )
 
     print_result(
@@ -1820,7 +1820,7 @@ def test_extract_full_process_writes_extract_markdown_and_archives_input(test_id
             and captured_llm_calls
             == [
                 {
-                    "model": config["PRETEXT_MODEL"],
+                    "model": config["ROUTE_MODEL"],
                     "system_prompt": config["CLASSIFIER_PROMPT"],
                     **expected_llm_options,
                 },
@@ -1908,7 +1908,7 @@ def test_extract_failure_renames_source_in_place(test_id: str) -> tuple[bool, li
             and not top_level_error.exists()
             and call_sequence
             == [
-                (config["CLASSIFIER_PROMPT"], config["PRETEXT_MODEL"]),
+                (config["CLASSIFIER_PROMPT"], config["ROUTE_MODEL"]),
                 (config["EXTRACT_PROMPT"], model),
             ]
         )
@@ -2711,7 +2711,7 @@ def test_extract_multi_model_failure_is_terminal(test_id: str) -> tuple[bool, li
             and not error_files
             and call_sequence
             == [
-                (config["CLASSIFIER_PROMPT"], config["PRETEXT_MODEL"]),
+                (config["CLASSIFIER_PROMPT"], config["ROUTE_MODEL"]),
                 (config["EXTRACT_PROMPT"], bad_model),
             ]
         )
@@ -2764,7 +2764,7 @@ def test_extract_other_route_uses_other_models_and_distills(test_id: str) -> tup
     PATHS.watch.mkdir(parents=True, exist_ok=True)
     PATHS.obsidian.mkdir(parents=True, exist_ok=True)
 
-    source.write_text(f"other route source {test_id}\n", encoding="utf-8")
+    source.write_text((f"other route source {test_id}\n" * 300), encoding="utf-8")
 
     config = {
         **extract_text_config(),
@@ -2827,7 +2827,6 @@ def test_extract_other_route_uses_other_models_and_distills(test_id: str) -> tup
             and f"mock other extract result {second_other_model} {test_id}" in captured_distill_prompts[0]
             and call_sequence
             == [
-                (config["CLASSIFIER_PROMPT"], config["PRETEXT_MODEL"]),
                 (config["EXTRACT_PROMPT"], first_other_model),
                 (config["EXTRACT_PROMPT"], second_other_model),
                 (config["DISTILL_PROMPT"], distill_model),
