@@ -8,7 +8,9 @@ Used by:
 
 from __future__ import annotations
 
+import io
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -22,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import ytd as ytd_web  # noqa: E402
 from helper import helper_ytd as ytd  # noqa: E402
 
 # Toggle this to True when you want real network metadata checks by default.
@@ -418,9 +421,87 @@ class DownloadWrapperTests(unittest.TestCase):
 
         self.assertEqual(result, (source, None))
 
+    def test_download_keeps_temp_dir_for_caller_after_success(self) -> None:
+        temp_dir = tempfile.mkdtemp()
+        source = Path(temp_dir) / "video.mp4"
+        source.write_text("video", encoding="utf-8")
+
+        try:
+            with (
+                patch("helper.helper_ytd.tempfile.mkdtemp", return_value=temp_dir),
+                patch("helper.helper_ytd.build_download_command", return_value=("https://youtube.com/watch?v=abc", ["yt-dlp"])),
+                patch("helper.helper_ytd.run_yt_dlp", return_value=(source, temp_dir)),
+            ):
+                path, returned_temp_dir = ytd.download("https://youtube.com/watch?v=abc", "worst")
+
+            self.assertEqual(path, source)
+            self.assertEqual(returned_temp_dir, temp_dir)
+            self.assertTrue(source.is_file())
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_download_removes_temp_dir_when_command_build_fails(self) -> None:
+        temp_dir = tempfile.mkdtemp()
+
+        with (
+            patch("helper.helper_ytd.tempfile.mkdtemp", return_value=temp_dir),
+            patch("helper.helper_ytd.build_download_command", side_effect=RuntimeError("bad command")),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "bad command"):
+                ytd.download("https://youtube.com/watch?v=abc", "worst")
+
+        self.assertFalse(Path(temp_dir).exists())
+
     def test_download_rejects_invalid_clean_url(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "Invalid URL"):
             ytd.download("", "720p")
+
+
+class WebAppLifecycleTests(unittest.TestCase):
+    def test_app_keeps_download_until_response_is_streamed(self) -> None:
+        temp_dir = tempfile.mkdtemp()
+        path = Path(temp_dir) / "video.mp4"
+        path.write_bytes(b"video")
+        payload = b"url=https%3A%2F%2Fyoutube.com%2Fwatch%3Fv%3Dabc&mode=worst"
+        response = {}
+
+        def start_response(status, headers):
+            response["status"] = status
+            response["headers"] = dict(headers)
+
+        environ = {
+            "REQUEST_METHOD": "POST",
+            "CONTENT_LENGTH": str(len(payload)),
+            "wsgi.input": io.BytesIO(payload),
+        }
+        with patch.object(ytd_web, "download_ttml_or_video", return_value=(path, temp_dir)):
+            stream = ytd_web.app(environ, start_response)
+
+        self.assertTrue(path.is_file())
+        self.assertEqual(b"".join(stream), b"video")
+        self.assertEqual(response["status"], "200 OK")
+        self.assertFalse(Path(temp_dir).exists())
+
+    def test_app_reports_missing_download_instead_of_raising(self) -> None:
+        temp_dir = tempfile.mkdtemp()
+        path = Path(temp_dir) / "missing.mp4"
+        payload = b"url=https%3A%2F%2Fyoutube.com%2Fwatch%3Fv%3Dabc&mode=worst"
+        response = {}
+
+        def start_response(status, headers):
+            response["status"] = status
+
+        environ = {
+            "REQUEST_METHOD": "POST",
+            "CONTENT_LENGTH": str(len(payload)),
+            "wsgi.input": io.BytesIO(payload),
+        }
+        with patch.object(ytd_web, "download_ttml_or_video", return_value=(path, temp_dir)):
+            body = b"".join(ytd_web.app(environ, start_response)).decode("utf-8")
+
+        self.assertEqual(response["status"], "200 OK")
+        self.assertIn("生成的文件已丢失", body)
+        self.assertFalse(Path(temp_dir).exists())
 
 
 class TtmlFallbackTests(unittest.TestCase):

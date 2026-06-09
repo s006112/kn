@@ -58,6 +58,10 @@ def app(environ, start_response):
             path, temp_dir = download_ttml_or_video(url, "worst")
         else:
             path, temp_dir = download(url, mode)
+        if not path.is_file():
+            if temp_dir is not None:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            raise RuntimeError("下载完成，但生成的文件已丢失，请重试。")
     except ValueError:
         return reply("Content-Length 无效。", True)
     except RuntimeError as exc:

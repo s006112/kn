@@ -332,12 +332,13 @@ def download(url, mode, output_dir=None, resolve_timeout=20):
     if not url:
         raise RuntimeError(f"Invalid URL: {original_url}")
     temp_dir = tempfile.mkdtemp(prefix="ytdlp_")
-    url, cmd = build_download_command(url, mode, temp_dir, resolve_timeout)
-    print(f"Download request: {url} ({classify_url(url) or mode})")
     try:
+        url, cmd = build_download_command(url, mode, temp_dir, resolve_timeout)
+        print(f"Download request: {url} ({classify_url(url) or mode})")
         return move_download_to_output_dir(*run_yt_dlp(cmd, temp_dir), output_dir)
-    finally:
+    except Exception:
         shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
 
 
 def _try_download_ttml_for_lang(lang, url, output_dir):

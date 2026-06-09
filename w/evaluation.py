@@ -29,6 +29,7 @@ from w.p_torrent import (
     scan_torrent_watch_folder,
 )
 import w.p_ytd as ytd_module
+import helper.helper_ytd as helper_ytd_module
 from w.p_ytd import (
     process_ytd_pipeline,
     read_next_download_url,
@@ -461,6 +462,63 @@ def test_ytd_pipeline_mocked_loop_removes_completed_url(test_id: str) -> tuple[b
     finally:
         ytd_module.download = original_download
         shutdown_flag.set()
+
+
+def test_ytd_download_preserves_temp_file_for_caller(test_id: str) -> tuple[bool, list[Path]]:
+    temp_dir = ROOT_DIR / f"{test_id}_ytd_temp_lifetime"
+    output = temp_dir / f"{test_id}.mp4"
+    cleanup = [temp_dir]
+
+    original_mkdtemp = helper_ytd_module.tempfile.mkdtemp
+    original_build_command = helper_ytd_module.build_download_command
+    original_run = helper_ytd_module.run_yt_dlp
+
+    try:
+        def fake_mkdtemp(*_args, **_kwargs):
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            return str(temp_dir)
+
+        def fake_build_command(url, _mode, _temp_dir, _resolve_timeout):
+            return url, ["yt-dlp", url]
+
+        def fake_run(_cmd, actual_temp_dir):
+            output.write_bytes(b"downloaded video")
+            return output, actual_temp_dir
+
+        helper_ytd_module.tempfile.mkdtemp = fake_mkdtemp
+        helper_ytd_module.build_download_command = fake_build_command
+        helper_ytd_module.run_yt_dlp = fake_run
+
+        returned_path, returned_temp_dir = helper_ytd_module.download(
+            f"https://www.youtube.com/watch?v={test_id}",
+            "worst",
+        )
+
+        passed = (
+            returned_path == output
+            and returned_path.is_file()
+            and Path(returned_temp_dir) == temp_dir
+            and temp_dir.is_dir()
+        )
+
+        print_result(
+            "ytd download preserves temp file for caller",
+            passed,
+            {
+                "returned_path": returned_path,
+                "file_exists": returned_path.is_file(),
+                "returned_temp_dir": returned_temp_dir,
+                "temp_dir_exists": temp_dir.is_dir(),
+            },
+        )
+
+        return passed, cleanup
+
+    finally:
+        helper_ytd_module.tempfile.mkdtemp = original_mkdtemp
+        helper_ytd_module.build_download_command = original_build_command
+        helper_ytd_module.run_yt_dlp = original_run
+
 
 def test_ytd_uses_shared_write_text_file_static(test_id: str) -> tuple[bool, list[Path]]:
     ytd_path = ROOT_DIR / "w" / "p_ytd.py"
@@ -3644,6 +3702,7 @@ def main() -> int:
             test_ttml_plain_text_branch_converts_and_archives,
             test_ytd_list_remove_completed,
             test_ytd_pipeline_mocked_loop_removes_completed_url,
+            test_ytd_download_preserves_temp_file_for_caller,
             test_ytd_uses_shared_write_text_file_static,
             test_ytd_remove_uses_shared_write_text_file_contract,
             test_wikilink_cleaner_removes_broken_link,
