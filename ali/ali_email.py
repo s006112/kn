@@ -48,7 +48,7 @@ from ali.ali_parse import (
 # Config
 # -----------------------------------------------------------------------------
 
-LLM_MODEL = "openai/gpt-5.4-nano" # must use pro, otherwise p0 extraction tends to answer
+LLM_MODEL = "perplexity/sonar-pro" # openai/gpt-5.4-mini, must use pro, otherwise p0 extraction tends to answer
 
 _FAILED_FOLDER = "Ali_failed"
 
