@@ -103,16 +103,27 @@ def process_pretext_file(config, file_path, processed_files, processed_files_loc
 def process_extract_file(config, file_path):
 	filename = os.path.basename(file_path)
 	filename_lower = filename.lower()
-	extract_suffix = str(config["EXTRACT_SUFFIX"]).lower()
 	premium_suffix = str(config["PREMIUM_SUFFIX"]).lower()
-	matched_suffix = premium_suffix if filename_lower.endswith(premium_suffix) else extract_suffix if filename_lower.endswith(extract_suffix) else ""
-	base = filename[: -len(matched_suffix)] if matched_suffix else os.path.splitext(filename)[0]
+	extract_suffix = str(config["EXTRACT_SUFFIX"]).lower()
+
+	if filename_lower.endswith(premium_suffix):
+		base, premium = filename[:-len(premium_suffix)], True
+	elif filename_lower.endswith(extract_suffix):
+		base, premium = filename[:-len(extract_suffix)], False
+	else:
+		base, premium = os.path.splitext(filename)[0], False
 	filename_log = short_log_name(filename)
 
 	try:
 		logging.info("Extract: Start %s", filename_log)
 		content, _ = read_file_with_encodings(file_path)
-		route = "CORE" if matched_suffix == premium_suffix else ("OTHER" if len(content) >= 6000 else ("CORE" if (call_text_llm(config, config["ROUTE_MODEL"], config["CLASSIFIER_PROMPT"], content, file_path) or "").strip().upper() == "CORE" else "OTHER"))
+		if premium:
+			route = "CORE"
+		elif len(content) >= 6000:
+			route = "OTHER"
+		else:
+			classification = call_text_llm(config, config["ROUTE_MODEL"], config["CLASSIFIER_PROMPT"], content, file_path)
+			route = "CORE" if (classification or "").strip().upper() == "CORE" else "OTHER"
 		logging.info("Extract: |%s| for %s", route, filename_log)
 
 		md_path, link_name, md_is_new_seed = create_or_find_note_for_base_name(config, base, allow_existing=True)

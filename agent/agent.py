@@ -33,7 +33,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from helper.helper_llm import call_llm  # noqa: E402
 
-DEFAULT_MODEL = "gpt-5.4-mini" # codex, gpt-5.4-mini
+DEFAULT_MODEL = "codex" # codex, gpt-5.4-mini
 
 CODEX_MODEL = "gpt-5.5"
 CODEX_REASONING_EFFORT = "low" # "mid", "high", "xhigh"
