@@ -32,7 +32,6 @@ CONSECUTIVE_READS = 2  # btc_mid 连续不变读数窗口
 ORDER_ZONE = GRID_GAP * 0.03 # 订单区间，价格偏移在网格间距的 xx% 以内时，认为价格在订单附近
 
 ALLOW_BUY_ONLY_WHEN_NO_BTC = True  # 卖单因 BTC 不足下不出时，允许退化成仅挂买单
-ALLOW_SELL_ONLY_WHEN_NO_USDC = True  # 买单因 USDC 不足下不出时，允许退化成仅挂卖单
 
 WAIT_NO_OPEN_ORDERS_INTERVAL_SEC = 0.5  # 撤单后检查一次是否已无遗留挂单
 

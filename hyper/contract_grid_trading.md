@@ -33,7 +33,6 @@ Key runtime inputs:
 - `MAIN_LOOP_POLL_INTERVAL_SEC`
 - `CONSECUTIVE_READS`
 - `ALLOW_BUY_ONLY_WHEN_NO_BTC`
-- `ALLOW_SELL_ONLY_WHEN_NO_USDC`
 - `MAX_RETRIES`
 - `RETRY_SEC`
 - `WAIT_NO_OPEN_ORDERS_INTERVAL_SEC`
@@ -50,8 +49,10 @@ Derived configuration:
 - Creates `Info(constants.MAINNET_API_URL)`.
 - Creates `Exchange(Account.from_key(API_WALLET_KEY), constants.MAINNET_API_URL, account_address=ACCOUNT_ADDRESS)`.
 - Calls `read_orders(info)`, `summarize_orders(orders)`, and `classify_order_mode(orders)`.
-- Accepts only live `PAIR` directly and returns `(info, trader, state)`.
-- For any non-`PAIR` live classification, builds `live_snapshot = {"orders": orders, "btc_mid": None, **state}` and calls `rebuild(info, trader, live_snapshot)`.
+- Accepts live `PAIR` directly and returns `(info, trader, state)`.
+- Accepts live `BUY_ONLY` and `SELL_ONLY` directly without replacing the residual order.
+- For empty `ABNORMAL`, builds `live_snapshot = {"orders": orders, "btc_mid": None, **state}` and calls `rebuild(info, trader, live_snapshot)`.
+- For non-empty `ABNORMAL`, logs the unsafe layout and halts without cancelling or replacing orders.
 - If rebuild returns `None`, logs `Bootstrap Rebuild Failed` and returns `(info, trader, None)`.
 
 `run_cycle(info, trader, saved_state, tick_count, live_poll_interval_sec)`:
@@ -60,8 +61,9 @@ Derived configuration:
 - Refreshes live orders when any of the following is true:
 - `btc_mid is None`
 - `tick_count % TICK_COUNT == 0`
-- `btc_mid <= saved_state["buy_price"] + ORDER_ZONE`
-- `btc_mid >= saved_state["sell_price"] - ORDER_ZONE`
+- `PAIR`: price is near either saved BUY or SELL.
+- `BUY_ONLY`: price is near the residual BUY.
+- `SELL_ONLY`: price is near the residual SELL.
 - If no refresh is needed, returns `(saved_state, btc_mid)`.
 - On refresh, reads and summarizes orders, builds `live_snapshot = {"orders": orders, "btc_mid": btc_mid, **classify_order_mode(orders)}`, and calls `decide_cycle_action(live_snapshot, saved_state)`.
 - On `"keep"`, returns `(saved_state, btc_mid)`.
@@ -224,18 +226,18 @@ Execution helpers are `build_pair`, `classify_order_result`, `place_limit_order`
 
 `rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None)`:
 
-- Uses the one-sided replacement path only when `strategy == "done_deal"` and `live_snapshot["mode"] in (BUY_ONLY_MODE, SELL_ONLY_MODE)`.
-- No other strategy uses the one-sided replacement path.
-- In that path, uses `rebuild_price` when provided, otherwise reads a fresh `read_btc_grid(info)`, and treats `live_snapshot["orders"][0]` as the remaining old order.
+- When `strategy == "done_deal"`, uses `rebuild_price` when provided, otherwise reads a fresh `read_btc_grid(info)`.
+- A one-sided live state treats `live_snapshot["orders"][0]` as the remaining old order.
+- An empty live order list rebuilds directly at the done-deal price.
+- A non-empty live state outside `BUY_ONLY` or `SELL_ONLY` logs an abnormal done-deal rebuild and returns `None` without cleanup or placement.
 - In the general path, cancels existing `live_snapshot["orders"]` when present, ignores explicit `rebuild_price`, reads a fresh `read_btc_grid(info)`, and rebuilds from that price.
 
 General rebuild path:
 
 - Calls `build_pair(price)` and `log_rebuild`.
-- Places BUY and SELL.
-- Evaluates BUY status first.
+- Places BUY first.
 - If BUY is not `"ok"`, returns `finish_rebuild(..., buy_action, buy_status)`.
-- If BUY is `"ok"`, returns `finish_rebuild(..., sell_action, sell_status)`.
+- Only if BUY is `"ok"`, places SELL and returns `finish_rebuild(..., sell_action, sell_status)`.
 
 One-sided replacement path:
 
@@ -251,8 +253,8 @@ One-sided replacement path:
 
 - `"ok"` returns `PAIR`.
 - SELL `insufficient_spot_balance` with `ALLOW_BUY_ONLY_WHEN_NO_BTC` returns `BUY_ONLY`.
-- BUY `insufficient_spot_balance` with `ALLOW_SELL_ONLY_WHEN_NO_USDC` returns `SELL_ONLY`.
-- Any other status logs partial placement failure, calls `cleanup_orders(info, trader)`, and returns `None`.
+- BUY failure never degrades to `SELL_ONLY`; it logs partial placement failure, calls `cleanup_orders(info, trader)`, and returns `None`.
+- Any other status also cleans up and returns `None`.
 
 ## Failure Semantics
 
@@ -263,6 +265,10 @@ One-sided replacement path:
 `main` exits when `saved_state is None`.
 
 `bootstrap` exits with a `None` state when its rebuild fails.
+
+`bootstrap` preserves a valid one-sided residual order across process restarts instead of cancelling and re-anchoring it at the current market price.
+
+`bootstrap` rebuilds only from an empty order book. A non-empty `ABNORMAL` order layout halts for manual intervention.
 
 There is no global exception shell in `grid.py`.
 

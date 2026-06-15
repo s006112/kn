@@ -4,7 +4,6 @@ import time
 
 from grid_config import (
     ALLOW_BUY_ONLY_WHEN_NO_BTC,
-    ALLOW_SELL_ONLY_WHEN_NO_USDC,
     BUDGET_USDC,
     BUY_GRID_FACTOR,
     BUY_ONLY_MODE,
@@ -144,31 +143,22 @@ def finish_rebuild(info, trader, price, buy_action, sell_action, action, status)
             "price": price,
         }
 
-    if (
-        action["side"] == "BUY"
-        and status == "insufficient_spot_balance"
-        and ALLOW_SELL_ONLY_WHEN_NO_USDC
-    ):
-        log_msg("rebuild -> sell-only")
-        return {
-            "mode": SELL_ONLY_MODE,
-            "buy_price": buy_action["price"],
-            "sell_price": sell_action["price"],
-            "price": price,
-        }
-
     log_msg("partial placement failure: cleanup remaining orders")
     cleanup_orders(info, trader)
     return None
 
 
 def rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None):
-    if (    # 如果是 done_deal 场景，并且当前状态是单边，那么尝试在原价位重建；否则直接清理所有订单，在当前价格重建
-        strategy == "done_deal"
-        and live_snapshot["mode"] in (BUY_ONLY_MODE, SELL_ONLY_MODE)
-    ):
+    if strategy == "done_deal":
         price = rebuild_price if rebuild_price is not None else read_btc_grid(info)
-        remaining_order = live_snapshot["orders"][0]
+
+        if live_snapshot["mode"] in (BUY_ONLY_MODE, SELL_ONLY_MODE):
+            remaining_order = live_snapshot["orders"][0]
+        else:
+            if live_snapshot["orders"]:
+                log_msg("done_deal rebuild abnormal: unexpected open orders")
+                return None
+            remaining_order = None
     else:
         if live_snapshot["orders"] and not cleanup_orders(info, trader, live_snapshot["orders"]):   # 如果当前有订单但清理失败，记录日志并放弃本次重建
             return None
@@ -180,11 +170,10 @@ def rebuild(info, trader, live_snapshot, strategy="reset", rebuild_price=None):
 
     if remaining_order is None:
         buy_status = place_limit_order(trader, buy_action)
-        sell_status = place_limit_order(trader, sell_action)
-
         if buy_status != "ok":
             return finish_rebuild(info, trader, price, buy_action, sell_action, buy_action, buy_status)
 
+        sell_status = place_limit_order(trader, sell_action)
         return finish_rebuild(info, trader, price, buy_action, sell_action, sell_action, sell_status)
 
     if remaining_order["side"] == "SELL":

@@ -173,7 +173,7 @@ def run_bootstrap_saved_state_case(orders, bootstrap_state, rebuild_state):
         def from_key(key):
             return object()
 
-    def fake_info(api_url):
+    def fake_info(api_url, skip_ws=False):
         return object()
 
     def fake_exchange(account, api_url, account_address=None):
@@ -308,7 +308,7 @@ def run_bootstrap_saved_state_real_case(orders, rebuild_state):
         def from_key(key):
             return object()
 
-    def fake_info(api_url):
+    def fake_info(api_url, skip_ws=False):
         return object()
 
     def fake_exchange(account, api_url, account_address=None):
@@ -413,8 +413,8 @@ def run_red_team_eval():
             orders=pair_orders(9900.0, 10000.0),  # wrong gap, real decision should reject
             rebuild_state={"mode": PAIR_MODE, "buy_price": 9700.0, "sell_price": 10100.0},
         )
-        log_res("red-team: bootstrap real reject->rebuild", result, {"mode": PAIR_MODE, "buy_price": 9700.0, "sell_price": 10100.0})
-        log_res("red-team: bootstrap real reject rebuild", calls["rebuild"], 1)
+        log_res("red-team: bootstrap abnormal open -> halt", result, None)
+        log_res("red-team: bootstrap abnormal open no rebuild", calls["rebuild"], 0)
 
     if grid_exec is None:
         log_note("red-team: cleanup missing oid", "SKIPPED", "grid_execution import failed")
@@ -654,19 +654,19 @@ def run_run_cycle_eval():
     log_res("run_cycle: PAIR abnormal return", result, (None, 10500.0))
     log_res("run_cycle: PAIR abnormal no rebuild", calls["rebuild"], 0)
 
-    buy_only_sell_zone = state_b["sell_price"] - ORDER_ZONE
-    result, calls = run_run_cycle_case(state_b, buy_only_orders(), ("keep", None, None), btc_mid=buy_only_sell_zone)
-    log_res("run_cycle: BUY_ONLY keep return", result, (state_b, buy_only_sell_zone))
+    buy_only_buy_zone = state_b["buy_price"] + ORDER_ZONE
+    result, calls = run_run_cycle_case(state_b, buy_only_orders(), ("keep", None, None), btc_mid=buy_only_buy_zone)
+    log_res("run_cycle: BUY_ONLY keep return", result, (state_b, buy_only_buy_zone))
     log_res("run_cycle: BUY_ONLY read mid", calls["read_btc_mid"], 1)
-    log_res("run_cycle: BUY_ONLY sell zone read orders", calls["read_orders"], 1)
-    log_res("run_cycle: BUY_ONLY pass mid", calls["btc_mid_seen"], buy_only_sell_zone)
+    log_res("run_cycle: BUY_ONLY buy zone read orders", calls["read_orders"], 1)
+    log_res("run_cycle: BUY_ONLY pass mid", calls["btc_mid_seen"], buy_only_buy_zone)
 
-    sell_only_buy_zone = state_s["buy_price"] + ORDER_ZONE
-    result, calls = run_run_cycle_case(state_s, sell_only_orders(), ("keep", None, None), btc_mid=sell_only_buy_zone)
-    log_res("run_cycle: SELL_ONLY keep return", result, (state_s, sell_only_buy_zone))
+    sell_only_sell_zone = state_s["sell_price"] - ORDER_ZONE
+    result, calls = run_run_cycle_case(state_s, sell_only_orders(), ("keep", None, None), btc_mid=sell_only_sell_zone)
+    log_res("run_cycle: SELL_ONLY keep return", result, (state_s, sell_only_sell_zone))
     log_res("run_cycle: SELL_ONLY read mid", calls["read_btc_mid"], 1)
-    log_res("run_cycle: SELL_ONLY buy zone read orders", calls["read_orders"], 1)
-    log_res("run_cycle: SELL_ONLY pass mid", calls["btc_mid_seen"], sell_only_buy_zone)
+    log_res("run_cycle: SELL_ONLY sell zone read orders", calls["read_orders"], 1)
+    log_res("run_cycle: SELL_ONLY pass mid", calls["btc_mid_seen"], sell_only_sell_zone)
 
 
 def run_adaptive_polling_eval():
@@ -742,7 +742,6 @@ def run_rebuild_case(
     place_statuses=None,
     strategy="reset",
     allow_buy_only=True,
-    allow_sell_only=True,
     wait_result=True,
     cancel_exc=None,
 ):
@@ -768,7 +767,6 @@ def run_rebuild_case(
     old_place_limit_order = grid_exec.place_limit_order
     old_wait_until = grid_exec.wait_until
     old_allow_buy_only = grid_exec.ALLOW_BUY_ONLY_WHEN_NO_BTC
-    old_allow_sell_only = grid_exec.ALLOW_SELL_ONLY_WHEN_NO_USDC
 
     initial_orders = [] if initial_orders is None else initial_orders
     buy_action = {"side": "BUY", "price": 9800.0, "size": 0.001}
@@ -812,7 +810,6 @@ def run_rebuild_case(
         grid_exec.place_limit_order = fake_place_limit_order
         grid_exec.wait_until = fake_wait_until
         grid_exec.ALLOW_BUY_ONLY_WHEN_NO_BTC = allow_buy_only
-        grid_exec.ALLOW_SELL_ONLY_WHEN_NO_USDC = allow_sell_only
         result = grid_exec.rebuild(
             info=object(),
             trader=FakeTrader(),
@@ -827,7 +824,6 @@ def run_rebuild_case(
         grid_exec.place_limit_order = old_place_limit_order
         grid_exec.wait_until = old_wait_until
         grid_exec.ALLOW_BUY_ONLY_WHEN_NO_BTC = old_allow_buy_only
-        grid_exec.ALLOW_SELL_ONLY_WHEN_NO_USDC = old_allow_sell_only
 
     return result, calls
 
@@ -988,6 +984,40 @@ def run_execution_eval():
     log_res("rebuild: done_deal cancel remaining", calls["cancel_args"], [(grid_exec.SYMBOL, 11)])
     log_res("rebuild: done_deal verify cancel", calls["wait_until"], 1)
 
+    result, calls = run_rebuild_case(
+        [],
+        rebuild_price_input=10000.0,
+        computed_price=9999.0,
+        strategy="done_deal",
+    )
+    log_res("rebuild: done_deal empty explicit return", result, done_deal_state)
+    log_res("rebuild: done_deal empty explicit no grid read", calls["read_btc_grid"], 0)
+    log_res("rebuild: done_deal empty explicit build_pair arg", calls["build_pair_args"], [10000.0])
+    log_res("rebuild: done_deal empty explicit call order", calls["place_limit_order_args"], ["BUY", "SELL"])
+
+    result, calls = run_rebuild_case(
+        [],
+        rebuild_price_input=None,
+        computed_price=10400.0,
+        strategy="done_deal",
+    )
+    log_res("rebuild: done_deal empty fallback return", result, placed_state_10400)
+    log_res("rebuild: done_deal empty fallback grid read", calls["read_btc_grid"], 1)
+
+    abnormal_orders = [
+        order("BUY", 9800.0, oid=11),
+        order("BUY", 9700.0, oid=12),
+    ]
+    result, calls = run_rebuild_case(
+        abnormal_orders,
+        rebuild_price_input=10000.0,
+        computed_price=9999.0,
+        strategy="done_deal",
+    )
+    log_res("rebuild: done_deal abnormal open -> None", result, None)
+    log_res("rebuild: done_deal abnormal open no cleanup", calls["cleanup_orders"], 0)
+    log_res("rebuild: done_deal abnormal open no place", calls["place_limit_order"], 0)
+
 
 def run_execution_step4_eval():
     print("\n🚀 execution Step 4")
@@ -1030,7 +1060,6 @@ def run_execution_step4_eval():
     result, calls = run_rebuild_case(
         place_statuses=["ok", "ok"],
         allow_buy_only=True,
-        allow_sell_only=True,
         computed_price=10000.0,
     )
     log_res(
@@ -1044,7 +1073,6 @@ def run_execution_step4_eval():
     result, calls = run_rebuild_case(
         place_statuses=["ok", "insufficient_spot_balance"],
         allow_buy_only=True,
-        allow_sell_only=True,
         computed_price=10000.0,
     )
     log_res(
@@ -1057,47 +1085,32 @@ def run_execution_step4_eval():
     result, calls = run_rebuild_case(
         place_statuses=["insufficient_spot_balance", "ok"],
         allow_buy_only=True,
-        allow_sell_only=True,
         computed_price=10000.0,
     )
-    log_res(
-        "rebuild reset: sell ok -> SELL_ONLY",
-        result,
-        {"mode": SELL_ONLY_MODE, "buy_price": 9800.0, "sell_price": 10200.0, "price": 10000.0},
-    )
-    log_res("rebuild reset: SELL_ONLY no cleanup", calls["cleanup_orders"], 0)
+    log_res("rebuild reset: BUY insufficient -> None", result, None)
+    log_res("rebuild reset: BUY insufficient cleanup", calls["cleanup_orders"], 1)
+    log_res("rebuild reset: BUY insufficient no SELL", calls["place_limit_order_args"], ["BUY"])
 
     result, calls = run_rebuild_case(
         place_statuses=["ok", "insufficient_spot_balance"],
         allow_buy_only=False,
-        allow_sell_only=True,
         computed_price=10000.0,
     )
     log_res("rebuild reset: BUY_ONLY disallowed -> None", result, None)
     log_res("rebuild reset: BUY_ONLY disallowed cleanup", calls["cleanup_orders"], 1)
 
     result, calls = run_rebuild_case(
-        place_statuses=["insufficient_spot_balance", "ok"],
-        allow_buy_only=True,
-        allow_sell_only=False,
-        computed_price=10000.0,
-    )
-    log_res("rebuild reset: SELL_ONLY disallowed -> None", result, None)
-    log_res("rebuild reset: SELL_ONLY disallowed cleanup", calls["cleanup_orders"], 1)
-
-    result, calls = run_rebuild_case(
         place_statuses=["error", "ok"],
         allow_buy_only=True,
-        allow_sell_only=True,
         computed_price=10000.0,
     )
     log_res("rebuild reset: buy error -> None", result, None)
     log_res("rebuild reset: buy error cleanup", calls["cleanup_orders"], 1)
+    log_res("rebuild reset: buy error no SELL", calls["place_limit_order_args"], ["BUY"])
 
     result, calls = run_rebuild_case(
         place_statuses=["ok", "error"],
         allow_buy_only=True,
-        allow_sell_only=True,
         computed_price=10000.0,
     )
     log_res("rebuild reset: sell error -> None", result, None)
@@ -1106,11 +1119,21 @@ def run_execution_step4_eval():
     result, calls = run_rebuild_case(
         place_statuses=["error", "error"],
         allow_buy_only=True,
-        allow_sell_only=True,
         computed_price=10000.0,
     )
     log_res("rebuild reset: both error -> None", result, None)
     log_res("rebuild reset: both error cleanup", calls["cleanup_orders"], 1)
+    log_res("rebuild reset: both error no SELL", calls["place_limit_order_args"], ["BUY"])
+
+    result, calls = run_rebuild_case(
+        [order("BUY", 9800.0, oid=11)],
+        rebuild_price_input=10000.0,
+        place_statuses=["ok", "insufficient_spot_balance"],
+        strategy="done_deal",
+    )
+    log_res("rebuild done_deal: BUY insufficient -> None", result, None)
+    log_res("rebuild done_deal: BUY insufficient cleanup", calls["cleanup_orders"], 1)
+    log_res("rebuild done_deal: BUY insufficient order sequence", calls["place_limit_order_args"], ["SELL", "BUY"])
 
     result, calls = run_rebuild_case(
         [order("BUY", 9800.0, oid=11)],
@@ -1195,7 +1218,10 @@ def run_gateway_eval():
     log_res("gateway: read_btc_grid missing", result, "ValueError")
 
     result, _ = run_gateway_reference_case(mids_value={grid_gate.BTC_MID_KEY: 100.0})
-    log_res("gateway: read_btc_grid small mid", result, grid_gate.normalize_price(GRID_STEP))
+    log_res("gateway: read_btc_grid below half-step", result, 0)
+
+    result, _ = run_gateway_reference_case(mids_value={grid_gate.BTC_MID_KEY: GRID_STEP / 2})
+    log_res("gateway: read_btc_grid at half-step", result, GRID_STEP)
 
     result, _ = run_retry_read_case([TimeoutError("timeout"), True], retries=1)
     log_res("gateway: retryable TimeoutError", result, True)
@@ -1232,19 +1258,52 @@ def run_bootstrap_step7a_eval():
     result, calls = run_bootstrap_saved_state_case(
         orders=orders[:1],
         bootstrap_state=None,
-        rebuild_state=rebuilt_state,
+        rebuild_state={"mode": "SHOULD_NOT_HAPPEN"},
     )
-    log_res("bootstrap_saved_state: reject->rebuild", result, rebuilt_state)
-    log_res("bootstrap_saved_state: reject->rebuild count", calls["rebuild"], 1)
-    log_res("bootstrap_saved_state: reject->rebuild args", calls["rebuild_args"][0], live_snapshot(orders[:1]))
+    log_res(
+        "bootstrap_saved_state: inherit buy-only",
+        result,
+        {"mode": BUY_ONLY_MODE, "buy_price": orders[0]["price"]},
+    )
+    log_res("bootstrap_saved_state: buy-only no rebuild", calls["rebuild"], 0)
 
     result, calls = run_bootstrap_saved_state_case(
-        orders=orders[:1],
+        orders=sell_only_orders(10200.0),
+        bootstrap_state=None,
+        rebuild_state={"mode": "SHOULD_NOT_HAPPEN"},
+    )
+    log_res(
+        "bootstrap_saved_state: inherit sell-only",
+        result,
+        {"mode": SELL_ONLY_MODE, "sell_price": 10200.0},
+    )
+    log_res("bootstrap_saved_state: sell-only no rebuild", calls["rebuild"], 0)
+
+    abnormal_orders = pair_orders(9900.0, 10000.0)
+    result, calls = run_bootstrap_saved_state_case(
+        orders=abnormal_orders,
+        bootstrap_state=None,
+        rebuild_state={"mode": "SHOULD_NOT_HAPPEN"},
+    )
+    log_res("bootstrap_saved_state: abnormal open -> halt", result, None)
+    log_res("bootstrap_saved_state: abnormal open no rebuild", calls["rebuild"], 0)
+
+    result, calls = run_bootstrap_saved_state_case(
+        orders=[],
+        bootstrap_state=None,
+        rebuild_state=rebuilt_state,
+    )
+    log_res("bootstrap_saved_state: abnormal->rebuild", result, rebuilt_state)
+    log_res("bootstrap_saved_state: abnormal rebuild", calls["rebuild"], 1)
+    log_res("bootstrap_saved_state: abnormal rebuild args", calls["rebuild_args"][0], live_snapshot([]))
+
+    result, calls = run_bootstrap_saved_state_case(
+        orders=[],
         bootstrap_state=None,
         rebuild_state=None,
     )
-    log_res("bootstrap_saved_state: reject->fail", result, None)
-    log_res("bootstrap_saved_state: reject->fail rebuild", calls["rebuild"], 1)
+    log_res("bootstrap_saved_state: abnormal->fail", result, None)
+    log_res("bootstrap_saved_state: abnormal->fail rebuild", calls["rebuild"], 1)
 
 def run_gateway_execution_step7b_eval():
     print("\n🚀 gateway/execution Step 7B")

@@ -14,6 +14,8 @@ from grid_config import (
     MAIN_LOOP_POLL_INTERVAL_SEC,
     ORDER_ZONE,
     PAIR_MODE,
+    BUY_ONLY_MODE,
+    SELL_ONLY_MODE,
     TICK_COUNT,
     log_msg,
     summarize_orders,
@@ -32,9 +34,19 @@ def bootstrap():
     summarize_orders(orders)
 
     state = classify_order_mode(orders)
-    if state["mode"] == PAIR_MODE:
-        log_msg("Bootstrap Pair")
+
+    # Important safety rule:
+    # If a valid one-sided residual order already exists, keep it as-is.
+    # Do NOT reset/reprice it around current market on restart.
+    if state["mode"] in (PAIR_MODE, BUY_ONLY_MODE, SELL_ONLY_MODE):
+        log_msg(f"Bootstrap {state['mode']}")
         return info, trader, state
+
+    # Only rebuild from scratch when there are no open orders.
+    # If open orders exist but do not match a known safe shape, halt for manual check.
+    if orders:
+        log_msg("Bootstrap abnormal open order layout; halt")
+        return info, trader, None
 
     live_snapshot = {
         "orders": orders,
@@ -51,10 +63,22 @@ def bootstrap():
 
 
 def in_order_zone(btc_mid, saved_state):
-    return (
-        btc_mid <= saved_state["buy_price"] + ORDER_ZONE
-        or btc_mid >= saved_state["sell_price"] - ORDER_ZONE
-    )
+    mode = saved_state.get("mode")
+
+    if mode == PAIR_MODE:
+        return (
+            btc_mid <= saved_state["buy_price"] + ORDER_ZONE
+            or btc_mid >= saved_state["sell_price"] - ORDER_ZONE
+        )
+
+    if mode == BUY_ONLY_MODE:
+        return btc_mid <= saved_state["buy_price"] + ORDER_ZONE
+
+    if mode == SELL_ONLY_MODE:
+        return btc_mid >= saved_state["sell_price"] - ORDER_ZONE
+
+    # Unknown state: force refresh instead of trusting stale state.
+    return True
 
 
 def run_cycle(info, trader, saved_state, tick_count, live_poll_interval_sec):
